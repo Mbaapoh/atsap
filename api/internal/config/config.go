@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// Config holds all runtime settings for the voip-server process.
+// Config holds all runtime settings for the atsap-api process.
 type Config struct {
 	// HTTPAddr is where the app's own health/metrics/API server listens.
 	HTTPAddr string

@@ -2,7 +2,7 @@
 
 This directory is mounted read-only over `/etc/asterisk` in
 `docker-compose.prod.yml`, replacing the dev defaults baked into the image
-(`deploy/asterisk/conf/`).
+(`core/conf/`).
 
 Populate it on the deploy server (never commit real secrets) with at least:
 
@@ -17,5 +17,5 @@ Populate it on the deploy server (never commit real secrets) with at least:
   Apply `deploy/postgres/init/*.sql` against that database first.
 - `cel.conf` — only needed if you want CEL, not just CDR.
 
-Copy the files from `deploy/asterisk/conf/` as a starting point and edit
+Copy the files from `core/conf/` as a starting point and edit
 the credentials and routing for production.

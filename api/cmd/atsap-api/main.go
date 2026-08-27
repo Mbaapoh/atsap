@@ -1,4 +1,4 @@
-// Command voip-server connects to Asterisk over ARI (call control) and AMI
+// Command atsap-api connects to Asterisk over ARI (call control) and AMI
 // (events), and exposes a small HTTP API for health checks.
 package main
 
@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"voip-platform/internal/ami"
-	"voip-platform/internal/ari"
-	"voip-platform/internal/config"
-	"voip-platform/internal/logging"
-	"voip-platform/internal/server"
+	"atsap-api/internal/ami"
+	"atsap-api/internal/ari"
+	"atsap-api/internal/config"
+	"atsap-api/internal/logging"
+	"atsap-api/internal/server"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-// Jenkins pipeline for the voip-platform project.
+// Jenkins pipeline for the atsap project.
 //
 // Requires on the agent: Docker (with socket access) and curl. Go and
 // golangci-lint are NOT required on the agent — they're installed by mise
@@ -9,10 +9,10 @@
 //     adjust the `when` blocks to your branching model.
 //   - Credentials:
 //       docker-registry-creds  (username/password) - push access to REGISTRY
-//       voip-deploy-ssh-key    (SSH private key)    - access to the deploy host
+//       atsap-deploy-ssh-key   (SSH private key)    - access to the deploy host
 //   - Job/global environment variables (or edit the defaults below):
-//       REGISTRY      e.g. registry.example.com/voip
-//       DEPLOY_HOST   e.g. voip.example.com
+//       REGISTRY      e.g. registry.example.com/atsap
+//       DEPLOY_HOST   e.g. atsap.example.com
 //       DEPLOY_USER   e.g. deploy
 //       DEPLOY_PATH   absolute path to this repo checkout on the deploy host
 
@@ -27,11 +27,11 @@ pipeline {
 
     environment {
         MISE_BIN     = "${HOME}/.local/bin/mise"
-        REGISTRY     = "${env.REGISTRY ?: 'registry.example.com/voip'}"
+        REGISTRY     = "${env.REGISTRY ?: 'registry.example.com/atsap'}"
         IMAGE_TAG    = "${env.GIT_COMMIT.take(7)}"
         DEPLOY_HOST  = "${env.DEPLOY_HOST ?: ''}"
         DEPLOY_USER  = "${env.DEPLOY_USER ?: 'deploy'}"
-        DEPLOY_PATH  = "${env.DEPLOY_PATH ?: '/opt/voip-platform'}"
+        DEPLOY_PATH  = "${env.DEPLOY_PATH ?: '/opt/atsap'}"
     }
 
     stages {
@@ -50,21 +50,21 @@ pipeline {
 
         stage('Lint') {
             steps {
-                sh '"$MISE_BIN" x -- golangci-lint run ./...'
+                sh 'cd api && "$MISE_BIN" x -- golangci-lint run ./...'
             }
         }
 
         stage('Test') {
             steps {
-                sh '"$MISE_BIN" x -- go test ./... -race -cover'
+                sh 'cd api && "$MISE_BIN" x -- go test ./... -race -cover'
             }
         }
 
         stage('Build images') {
             steps {
                 sh """
-                    docker build -t ${REGISTRY}/voip-app:${IMAGE_TAG} -f deploy/app/Dockerfile .
-                    docker build -t ${REGISTRY}/voip-asterisk:${IMAGE_TAG} deploy/asterisk
+                    docker build -t ${REGISTRY}/atsap-api:${IMAGE_TAG} api
+                    docker build -t ${REGISTRY}/atsap-core:${IMAGE_TAG} core
                 """
             }
         }
@@ -75,12 +75,12 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'docker-registry-creds', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
                     sh """
                         echo "\$REG_PASS" | docker login ${REGISTRY} -u "\$REG_USER" --password-stdin
-                        docker tag ${REGISTRY}/voip-app:${IMAGE_TAG} ${REGISTRY}/voip-app:latest
-                        docker tag ${REGISTRY}/voip-asterisk:${IMAGE_TAG} ${REGISTRY}/voip-asterisk:latest
-                        docker push ${REGISTRY}/voip-app:${IMAGE_TAG}
-                        docker push ${REGISTRY}/voip-app:latest
-                        docker push ${REGISTRY}/voip-asterisk:${IMAGE_TAG}
-                        docker push ${REGISTRY}/voip-asterisk:latest
+                        docker tag ${REGISTRY}/atsap-api:${IMAGE_TAG} ${REGISTRY}/atsap-api:latest
+                        docker tag ${REGISTRY}/atsap-core:${IMAGE_TAG} ${REGISTRY}/atsap-core:latest
+                        docker push ${REGISTRY}/atsap-api:${IMAGE_TAG}
+                        docker push ${REGISTRY}/atsap-api:latest
+                        docker push ${REGISTRY}/atsap-core:${IMAGE_TAG}
+                        docker push ${REGISTRY}/atsap-core:latest
                     """
                 }
             }
@@ -89,7 +89,7 @@ pipeline {
         stage('Deploy') {
             when { branch 'main' }
             steps {
-                sshagent(credentials: ['voip-deploy-ssh-key']) {
+                sshagent(credentials: ['atsap-deploy-ssh-key']) {
                     sh """
                         ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
                             cd ${DEPLOY_PATH} &&

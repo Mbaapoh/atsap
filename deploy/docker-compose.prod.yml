@@ -7,7 +7,7 @@
 
 services:
   asterisk:
-    image: ${REGISTRY}/voip-asterisk:${IMAGE_TAG:-latest}
+    image: ${REGISTRY}/atsap-core:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "5060:5060/udp"
@@ -18,7 +18,7 @@ services:
     volumes:
       - asterisk-data:/var/lib/asterisk
       - asterisk-logs:/var/log/asterisk
-      - ./asterisk/conf.prod:/etc/asterisk:ro
+      - ../core/conf.prod:/etc/asterisk:ro
     networks:
       - voip
     deploy:
@@ -28,7 +28,7 @@ services:
           memory: 2G
 
   app:
-    image: ${REGISTRY}/voip-app:${IMAGE_TAG:-latest}
+    image: ${REGISTRY}/atsap-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - .env

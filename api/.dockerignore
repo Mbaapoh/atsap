@@ -4,4 +4,3 @@ dist
 *.md
 .env
 .env.local
-deploy

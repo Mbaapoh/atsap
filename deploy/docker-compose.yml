@@ -18,7 +18,8 @@ services:
 
   asterisk:
     build:
-      context: ./asterisk
+      context: ../core
+    image: atsap-core:dev
     ports:
       - "5060:5060/udp"
       - "5060:5060/tcp"
@@ -36,8 +37,8 @@ services:
 
   app:
     build:
-      context: ..
-      dockerfile: deploy/app/Dockerfile
+      context: ../api
+    image: atsap-api:dev
     env_file:
       - ../.env
     environment:

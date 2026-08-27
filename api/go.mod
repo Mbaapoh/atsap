@@ -1,4 +1,4 @@
-module voip-platform
+module atsap-api
 
 go 1.23
 
