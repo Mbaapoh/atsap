@@ -1,0 +1,7 @@
+.git
+bin
+dist
+*.md
+.env
+.env.local
+deploy

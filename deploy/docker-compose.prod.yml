@@ -1,0 +1,55 @@
+# Production compose file for a single-VPS deployment. Pulls pre-built
+# images pushed by CI rather than building on the server. Deployed with:
+#   docker compose -f deploy/docker-compose.prod.yml up -d
+#
+# Required on the host: a .env file (see .env.example) and the
+# REGISTRY/IMAGE_TAG variables set (Jenkins exports these before deploying).
+
+services:
+  asterisk:
+    image: ${REGISTRY}/voip-asterisk:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "8088:8088/tcp"
+      - "5038:5038/tcp"
+      - "10000-10200:10000-10200/udp"
+    volumes:
+      - asterisk-data:/var/lib/asterisk
+      - asterisk-logs:/var/log/asterisk
+      - ./asterisk/conf.prod:/etc/asterisk:ro
+    networks:
+      - voip
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  app:
+    image: ${REGISTRY}/voip-app:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ARI_URL: http://asterisk:8088/ari
+      AMI_ADDR: asterisk:5038
+    ports:
+      - "8080:8080"
+    depends_on:
+      - asterisk
+    networks:
+      - voip
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+networks:
+  voip:
+
+volumes:
+  asterisk-data:
+  asterisk-logs:
