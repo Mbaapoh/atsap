@@ -46,3 +46,19 @@ run = "go mod tidy"
 [tasks."docker:build"]
 description = "Build production images for the app and Asterisk"
 run = "docker build -t atsap-api:local api && docker build -t atsap-core:local core"
+
+[tasks."images:push"]
+description = "Build, tag and push the production images to REGISTRY (default: registry.example.com/atsap), tagged IMAGE_TAG (default: latest)"
+run = '''
+set -eu
+: "${REGISTRY:=registry.example.com/atsap}"
+: "${IMAGE_TAG:=latest}"
+docker build -t "$REGISTRY/atsap-api:$IMAGE_TAG" api
+docker build -t "$REGISTRY/atsap-core:$IMAGE_TAG" core
+docker push "$REGISTRY/atsap-api:$IMAGE_TAG"
+docker push "$REGISTRY/atsap-core:$IMAGE_TAG"
+'''
+
+[tasks.deploy]
+description = "Deploy the prod stack on this host from pre-built images (run on the VPS; see README's Production deployment section). Set REGISTRY/IMAGE_TAG as needed."
+run = "docker compose -f deploy/docker-compose.prod.yml pull && docker compose -f deploy/docker-compose.prod.yml up -d"

@@ -31,7 +31,7 @@ services:
     image: ${REGISTRY}/atsap-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
-      - .env
+      - ../.env
     environment:
       ARI_URL: http://asterisk:8088/ari
       AMI_ADDR: asterisk:5038
