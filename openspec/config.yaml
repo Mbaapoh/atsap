@@ -1,0 +1,74 @@
+schema: spec-driven
+
+context: |
+  Product/business background: docs/BRD.md (Business Requirements) and
+  docs/PRD.md (Product Requirements — epics, user stories, acceptance
+  criteria, lifecycle state tables). Read these for *what* and *why*.
+
+  docs/DECISIONS.md is an append-only log of decisions already taken, with
+  reasoning (commercial, architecture, process). READ THIS BEFORE PROPOSING
+  AN ALTERNATIVE APPROACH — most obvious-looking suggestions (microservices,
+  event sourcing/CQRS, per-entity repositories, sequential specialist
+  dispatch, 5-nines availability, predictive dialling before power dialling,
+  etc.) have already been considered and rejected there. Do not re-litigate
+  a decision in that log; if a change genuinely warrants revisiting one,
+  say so explicitly rather than silently drifting from it.
+
+  docs/TRD.md and docs/hld/ form the cross-cutting technical baseline:
+  docs/hld/ (markers TRD-HLD-01 through TRD-HLD-12) provides the modular
+  architecture, C4 system context, domain model (Call as N Participants,
+  Participant vs Asterisk Channel across transfers), pure-fold IVR engine,
+  PostgreSQL DDL with RLS, 9 bounded context port contracts + an explicit
+  build/dependency graph (docs/hld/04-bounded-contexts.md §10) that fixes
+  LLD build order — do not propose a change for a context out of that
+  order, security/T-9/T-10, zero-downtime deployment, RTCP-XR quality
+  telemetry, FMEA failure model, and ADR decisions (ADR-001–015).
+
+  docs/lld/ holds one Low-Level Design per bounded context, written and
+  implemented in the dependency-graph order above (docs/lld/README.md is
+  the index). A change should be proposed FROM an existing LLD file, not
+  invented at propose time — if the LLD for the context being touched
+  doesn't exist yet, write it first.
+
+  BRD/PRD/DECISIONS/HLD/LLD are never converted into OpenSpec specs —
+  different audiences and lifecycles (docs/DECISIONS.md D-29). OpenSpec
+  specs are the per-domain behavioural requirements+scenarios derived from
+  BRD/PRD/TRD/HLD/LLD.
+
+  Tech stack & toolset: Go 1.23 (api/), Asterisk 22.x LTS (core/), Postgres 16
+  (deploy/postgres), Docker Compose for local/prod deploy.
+  All agents and engineers MUST adhere to docs/TOOLSET.md (pgx/v5, connectrpc,
+  nats.go, slog; no ORMs, no unapproved web frameworks, no unvetted agent skills).
+
+  Process: a walking-skeleton spike proves a real path before it is
+  specified (docs/DECISIONS.md D-25) — don't write a formal OpenSpec domain
+  spec for unproven territory. Dependency-first ordering within a release,
+  risk-first across releases (D-26). Power dialling before predictive
+  dialling (D-27).
+
+  Building an MVP contact-center/VoIP platform: predictive dialer
+  (Vicidial-equivalent) + PBX (3CX/VitalPBX-equivalent) on top of Asterisk —
+  built to extend into the full R1–R3 product scope in docs/PRD.md without
+  requiring a redesign.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
