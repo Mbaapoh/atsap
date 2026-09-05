@@ -163,6 +163,77 @@ one-participant-equals-one-channel.
 - **reporting** — CDR/CEL-based usage and billing export, keyed on
   Participant identity per Usage records above.
 
+## Dependency graph
+
+Two dependency chains matter here, and they are easy to conflate: which
+*document* a decision must trace back to, and which *bounded context* a
+package is allowed to import. Both exist to do one job — stop scope creep —
+so both are made explicit rather than left implicit in prose.
+
+### Document lineage
+
+```mermaid
+graph LR
+    BRD["BRD.md<br/>business requirements"] --> PRD["PRD.md<br/>epics, acceptance criteria"]
+    DEC["DECISIONS.md<br/>append-only decision log"] -.->|constrains| TRD
+    PRD --> TRD["TRD.md<br/>(this document)<br/>domain model, architecture style"]
+    DEC -.->|constrains| HLD
+    TRD --> HLD["hld/*.md<br/>system context, bounded contexts,<br/>security, deployment, ADRs"]
+    HLD --> LLD["lld/*.md<br/>one per bounded context,<br/>built in dependency order"]
+    LLD -->|design source for| CHANGE["openspec/changes/&lt;name&gt;/<br/>proposal.md, design.md, tasks.md"]
+    CHANGE -->|implements| CODE["api/... Go code"]
+    CHANGE -->|archives into| SPECS["openspec/specs/*<br/>living behavioural specs"]
+```
+
+A change here never skips a link: a new epic with no BRD requirement behind
+it, an HLD chapter with no TRD principle behind it, or an OpenSpec change
+with no LLD behind it is exactly the creep this chain exists to catch. Per
+D-29, BRD/PRD/DECISIONS/TRD/HLD/LLD are read by OpenSpec proposals as
+*context*, never rewritten as OpenSpec specs — the rightward arrows above
+are "informs" and "traces to," not "is converted into."
+
+### Bounded-context build order (condensed)
+
+Full detail — the allowed-dependency matrix and the LLD build sequence it
+implies — lives in
+[`hld/04-bounded-contexts.md` §10](hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)
+and is not duplicated here. This is the quick-reference view:
+
+```mermaid
+graph TD
+    subgraph T0["Tier 0 — zero bounded-context dependencies"]
+        TC["telephony-core"]
+        ID["identity"]
+        LIC["licensing"]
+        COMP["compliance<br/>(pure functions)"]
+    end
+    subgraph T1["Tier 1 — depend on telephony-core / identity"]
+        PBX["pbx-core"]
+        REP["reporting"]
+        WH["webhook-delivery"]
+        AIP["ai-pipeline"]
+    end
+    subgraph T2["Tier 2 — R2, depends on Tier 0 + Tier 1"]
+        DIAL["dialer"]
+    end
+    TC --> PBX
+    TC -->|async events| REP
+    TC --> AIP
+    ID --> WH
+    ID -.->|tenant context| PBX
+    TC -.->|Screening port call| LIC
+    TC -.->|Screening port call| COMP
+    TC --> DIAL
+    COMP -->|BR-10 clearance| DIAL
+    PBX -->|queues/routing| DIAL
+    REP -->|usage| DIAL
+```
+
+`telephony-core` is built first (Tier 0, but risk-first per D-26) against
+**stub** `LicenseManager`/`ComplianceEngine` adapters — see LLD-01 §5 — so
+the dependency arrows above are real from day one even before `licensing`
+and `compliance` have real implementations behind them.
+
 ## Call and Participant lifecycle (state machines)
 
 Not yet formally specified in this document — `docs/PRD.md` §11.1 defines
