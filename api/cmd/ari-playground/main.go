@@ -90,7 +90,7 @@ func main() {
 		if len(args) > 1 {
 			callerID = args[1]
 		}
-		id, err := ariClient.Originate(ctx, args[0], callerID)
+		id, err := ariClient.Originate(ctx, ari.OriginateRequest{Endpoint: args[0], CallerID: callerID})
 		if err != nil {
 			fatal("originate: %v", err)
 		}
