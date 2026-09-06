@@ -20,7 +20,9 @@
 FROM debian:bookworm-slim
 
 ARG ASTERISK_VERSION=22.8.2
-ARG ASTERISK_SHA256=6669a8d2e50481a3b70c6099a21a100ab7d7ae9ac00e2182eabb94c68c94bcc9
+# Verified 2026-09-06 against the official releases/asterisk-22.8.2.tar.gz
+# (26,523,526 bytes; sha256sum of a local download).
+ARG ASTERISK_SHA256=8dd373ce0771a9ed40bb54a72a889ccdd14c0cee458ed68da9ce913a668e4b22
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
