@@ -43,6 +43,15 @@ description = "Tidy go modules"
 dir = "api"
 run = "go mod tidy"
 
+[tasks.docs]
+description = "Run documentation wiring checks (HLD markers, decision refs, internal links)"
+run = "./scripts/check-docs.sh"
+
+[tasks.vuln]
+description = "Run govulncheck (pinned, matches CI GOVULNCHECK_VERSION) on the Go module"
+dir = "api"
+run = "go run golang.org/x/vuln/cmd/govulncheck@v1.1.3 ./..."
+
 [tasks."docker:build"]
 description = "Build production images for the app and Asterisk"
 run = "docker build -t atsap-api:local api && docker build -t atsap-core:local core"
