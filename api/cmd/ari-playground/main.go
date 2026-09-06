@@ -28,10 +28,10 @@ import (
 	"syscall"
 	"time"
 
-	"atsap-api/internal/ami"
-	"atsap-api/internal/ari"
 	"atsap-api/internal/config"
 	"atsap-api/internal/logging"
+	"atsap-api/internal/telephony/acl/ami"
+	"atsap-api/internal/telephony/acl/ari"
 )
 
 func main() {
