@@ -78,6 +78,7 @@ mise run ci           # full local gate in Jenkins order: docs, lint, vuln, test
 mise run build        # build ./bin/atsap-api
 mise run dev:logs      # tail the dev stack's logs
 mise run dev:down      # stop the dev stack
+mise run dev:app       # rebuild + restart only the app service (fast)
 ```
 
 All dev-only credentials (ARI/AMI/SIP passwords) live in
