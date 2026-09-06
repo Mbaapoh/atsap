@@ -13,20 +13,35 @@ core/                        Asterisk (built from source) + dialplan/config, ima
   conf/                       dev config baked into the image
   conf.prod/                  production config overlay (see its README)
 api/                          Go control-plane, image: atsap-api
-  cmd/atsap-api/              entry point
-  internal/ari/               ARI REST client + WebSocket event stream
-  internal/ami/                AMI TCP client (login, actions, events)
-  internal/config/             env-based configuration
-  internal/server/             app's own HTTP server (health checks)
+  cmd/atsap-api/              entry point (composes; call logic lives in the app layers)
+  cmd/ari-playground/         dev tool for poking ARI/AMI live (not shipped)
+  internal/
+    shared/                   shared kernel across bounded contexts
+      domain/ event/ apperrors/ context/   (landing with telephony-core)
+    telephony/                bounded context: telephony-core
+      domain/ ports/ application/          (landing with telephony-core)
+      acl/                    Asterisk Anti-Corruption Layer
+        ari/                  ARI REST client + WebSocket event stream
+        ami/                  AMI TCP client (login, actions, events)
+    postgres/                 pgxpool wiring, RLS tenant-context helper (with telephony-core)
+    nats/                     JetStream publisher (with telephony-core)
+    config/                   env-based configuration
+    server/                   app's own HTTP server (health checks)
 deploy/
-  docker-compose.yml           local dev stack
+  docker-compose.yml           local dev stack (Asterisk + Postgres + NATS + app)
   docker-compose.prod.yml      single-VPS production stack (pulls built images)
-  postgres/init/                CDR/CEL schema, applied on first postgres boot
-Jenkinsfile                  CI: lint, test, build+push images, deploy
+  postgres/init/               CDR/CEL + atsapbx database provisioning
+scripts/check-docs.sh          doc wiring checks (HLD markers, decision refs, links)
+Jenkinsfile                  CI: lint, test, vuln-scan, docs, build+scan+push, deploy
 ```
 
-`app/` (the interpreter/agent web dashboard) doesn't exist yet — this repo
-is currently just the telephony core + control-plane boilerplate.
+`portal/` (the React + TypeScript web dashboard, D-36) doesn't exist yet — this
+repo is currently the telephony core + control-plane boilerplate. The empty
+`internal/telephony/{domain,ports,application}`, `internal/shared/*`,
+`internal/postgres` and `internal/nats` directories mark where the first
+bounded context lands; `golangci-lint`'s `depguard` rule already enforces
+that nothing outside `internal/telephony/acl` may import the ARI/AMI
+adapters (HLD 01-architecture.md §1.2).
 
 ## Local development
 
@@ -66,10 +81,27 @@ All dev-only credentials (ARI/AMI/SIP passwords) live in
 `core/conf/*.conf` and `.env.example` — they must match. **Never
 reuse these in production.**
 
+## Git workflow and branching
+
+`main` is the source of truth and always deployable; `develop` is the
+integration branch where tested work accumulates. Feature, bugfix, hotfix
+and release branches branch off `develop` (or `main` for hotfixes), are
+merged back to `develop` once reviewed and green, and `develop` is promoted
+to `main` only after it has passed the full CI and walking-skeleton test
+suite (D-28: no change merges the day it was generated).
+
 ## Production deployment (single VPS via Docker Compose)
 
 Production uses pre-built images (pushed by Jenkins) rather than building
 on the server:
+
+> **Scope today:** this single-VPS Compose flow is the current deployment.
+> The richer topology in `docs/hld/06-deployment.md` — Ansible roles,
+> Traefik ingress, MinIO/S3, the `atsapbx-support-bundle` tool and its
+> canary/expand-contract rollout — is R1.0 EPIC-09 roadmap work, not yet
+> implemented. Postgres for the app's own `atsapbx` database and NATS
+> JetStream join this Compose stack with the telephony-core walking
+> skeleton (`openspec/changes/telephony-core-originate-bridge-hangup/`).
 
 ```bash
 # on the VPS, one-time:
