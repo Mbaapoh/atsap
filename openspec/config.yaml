@@ -15,7 +15,7 @@ context: |
   say so explicitly rather than silently drifting from it.
 
   docs/TRD.md and docs/hld/ form the cross-cutting technical baseline:
-  docs/hld/ (markers TRD-HLD-01 through TRD-HLD-15) provides the modular
+  docs/hld/ (markers TRD-HLD-01 through TRD-HLD-17) provides the modular
   architecture, C4 system context, domain model (Call as N Participants,
   Participant vs Asterisk Channel across transfers), pure-fold IVR engine,
   PostgreSQL DDL with RLS, 9 bounded context port contracts + an explicit
