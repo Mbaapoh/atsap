@@ -281,6 +281,20 @@ consumer of the ConnectRPC API, just like partners.
 **Related Decisions:** D-33 (ConnectRPC sole API ingress), D-24 (API-first)
 **Traceability:** BRD §2.4, PRD EPIC-10
 
+**D-37 · Third-party agent skills allowed upon explicit owner approval (2026-09-06).**
+
+Amends D-30. D-30's default stands: bulk installation of unreviewed
+marketplace skills stays prohibited — prose that steers an agent with commit
+access is a supply-chain risk no dependency scanner catches. What changes: a
+third-party skill MAY be installed once the owner has explicitly approved that
+specific skill, in a separate message, after its contents (SKILL.md plus any
+scripts or commands it ships) have been reviewed. Approval is per skill, never
+bundled — `--all`-style bulk installs remain prohibited even under this
+amendment. Each approval and the skill's provenance (source repository and
+commit) are recorded alongside the installed skill. This amendment satisfies
+the "explicit human architectural authorization" clause of TOOLSET.md §5, so
+no TOOLSET.md change is required.
+
 ---
 
 ## Known and accepted limitations
