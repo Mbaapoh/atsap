@@ -72,6 +72,9 @@ Other mise tasks:
 ```bash
 mise run test        # go test ./... -race -cover (in api/)
 mise run lint         # golangci-lint run ./... (in api/)
+mise run vuln         # govulncheck (pinned) on the Go module
+mise run docs         # doc wiring checks (HLD markers, decision refs, links)
+mise run ci           # full local gate in Jenkins order: docs, lint, vuln, test
 mise run build        # build ./bin/atsap-api
 mise run dev:logs      # tail the dev stack's logs
 mise run dev:down      # stop the dev stack

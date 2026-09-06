@@ -29,7 +29,7 @@ pipeline {
         MISE_BIN            = "${HOME}/.local/bin/mise"
         REGISTRY            = "${env.REGISTRY ?: 'registry.example.com/atsap'}"
         IMAGE_TAG           = "${env.GIT_COMMIT.take(7)}"
-        GOVULNCHECK_VERSION = "${env.GOVULNCHECK_VERSION ?: 'v1.1.3'}"
+        GOVULNCHECK_VERSION = "${env.GOVULNCHECK_VERSION ?: 'v1.7.0'}"
         DEPLOY_HOST         = "${env.DEPLOY_HOST ?: ''}"
         DEPLOY_USER         = "${env.DEPLOY_USER ?: 'deploy'}"
         DEPLOY_PATH         = "${env.DEPLOY_PATH ?: '/opt/atsap'}"

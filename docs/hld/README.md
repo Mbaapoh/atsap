@@ -28,7 +28,7 @@ The design strictly implements the non-negotiable principles established across 
 
 | Layer / Concern | Technology Choice | Rationale & Requirements Trace |
 |---|---|---|
-| **Core Monolith** | Go 1.23+ | Memory safety, high concurrency, low latency, single static binary deployment [BRD §2.3; TRD §Tech stack] |
+| **Core Monolith** | Go 1.25+ | Memory safety, high concurrency, low latency, single static binary deployment [BRD §2.3; TRD §Tech stack] |
 | **Media & SIP Engine** | Asterisk 22.x LTS (PJSIP, ARI, AMI) | Carrier-certified SIP/RTP engine, WebRTC gateway, DTLS-SRTP, audio snooping [BRD §2.3; DECISIONS D-15, D-16] |
 | **API Framework** | ConnectRPC (HTTP/2, gRPC, Protobuf, JSON) | Type-safe RPCs, bidirectional streaming, web browser support without Envoy proxy [BRD FBR-R1-11; PRD EPIC-05] |
 | **Primary Database** | PostgreSQL 16+ | ACID transactions, native Row-Level Security (RLS), JSONB flow storage, transactional outbox [BRD FBR-R1-04; PRD EPIC-01] |

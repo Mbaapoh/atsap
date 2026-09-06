@@ -35,7 +35,7 @@ context: |
   specs are the per-domain behavioural requirements+scenarios derived from
   BRD/PRD/TRD/HLD/LLD.
 
-  Tech stack & toolset: Go 1.23 (api/), Asterisk 22.x LTS (core/), Postgres 16
+  Tech stack & toolset: Go 1.25 (api/), Asterisk 22.x LTS (core/), Postgres 16
   (deploy/postgres), Docker Compose for local/prod deploy.
   All agents and engineers MUST adhere to docs/TOOLSET.md (pgx/v5, connectrpc,
   nats.go, slog; no ORMs, no unapproved web frameworks, no unvetted agent skills).

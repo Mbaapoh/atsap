@@ -1,6 +1,6 @@
 [tools]
-go = "1.23"
-golangci-lint = "latest"
+go = "1.25"
+golangci-lint = "2.13.1"
 
 [env]
 GOFLAGS = "-mod=mod"
@@ -50,7 +50,11 @@ run = "./scripts/check-docs.sh"
 [tasks.vuln]
 description = "Run govulncheck (pinned, matches CI GOVULNCHECK_VERSION) on the Go module"
 dir = "api"
-run = "go run golang.org/x/vuln/cmd/govulncheck@v1.1.3 ./..."
+run = "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./..."
+
+[tasks.ci]
+description = "Run the full local CI gate in Jenkins order (docs, lint, vuln, test)"
+depends = ["docs", "lint", "vuln", "test"]
 
 [tasks."docker:build"]
 description = "Build production images for the app and Asterisk"
