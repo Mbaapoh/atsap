@@ -4,10 +4,13 @@
 # enabled by default in a standard build; --with-pjproject-bundled and
 # --with-jansson-bundled make sure their dependencies (SIP stack, JSON)
 # are available regardless of what's packaged for this Debian release.
+#
+# ASTERISK_MAJOR tracks the documented media engine baseline (22.x LTS —
+# see docs/hld/README.md §2 and docs/TRD.md).
 
 FROM debian:bookworm-slim
 
-ARG ASTERISK_MAJOR=21
+ARG ASTERISK_MAJOR=22
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
