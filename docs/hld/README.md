@@ -42,7 +42,7 @@ The design strictly implements the non-negotiable principles established across 
 
 ## 3. Document Navigation
 
-The High-Level Design is partitioned into fourteen modular chapters:
+The High-Level Design is partitioned into fifteen modular chapters:
 
 1. [Architecture & Component Design](01-architecture.md) — Modular monolith structure, Hexagonal ports & adapters, Asterisk Anti-Corruption Layer (ACL), and context propagation.
 2. [System Context & Interfaces](02-system-context.md) — C4 system context, container topology, network boundaries, protocols, and end-to-end scenario sequence diagrams.
@@ -58,6 +58,7 @@ The High-Level Design is partitioned into fourteen modular chapters:
 12. [Approved Toolset & Dependency Baseline](../TOOLSET.md) — Mandatory Go libraries, database drivers, developer CLI tools, and forbidden dependencies.
 13. [Architectural Trade-Off Analysis & Technology Evaluation](ARCHITECTURAL-TRADEOFFS.md) — ISO/IEC/IEEE 42010 & SEI ATAM analysis: ConnectRPC vs REST, native pgx/v5 vs ORMs, and FOSS governance.
 14. [Portal Architecture](12-portal-architecture.md) — React + TypeScript consumer of the ConnectRPC API (D-36): Admin UI, Agent UI with browser softphone, Supervisor Dashboard, and Partner Portal.
+15. [Go Coding Standards](13-coding-standards.md) — Normative house subset for all Go code (D-40): SDD law, line-of-sight, error rules, context-first, concurrency safety, import grouping, machine gates, and the agent role prompt.
 
 ---
 
@@ -88,7 +89,7 @@ Every requirement across `BRD.md`, `PRD.md`, and `TRD.md` is addressed in this H
 
 The architecture is verified through continuous automated gates:
 
-1. **Static Marker & Link Check:** CI validates all fourteen `<!-- OpenSpec: TRD-HLD-xx -->` markers, cross-file document links, and ADR traceability citations.
+1. **Static Marker & Link Check:** CI validates all fifteen `<!-- OpenSpec: TRD-HLD-xx -->` markers, cross-file document links, and ADR traceability citations.
 2. **Architecture Dependency Linting:** Go import rules enforce strict package boundaries. Domain packages cannot import adapters, and no package outside `telephony/acl` may import Asterisk ARI/AMI packages or reference channel IDs.
 3. **Walking Skeleton Integration Test (D-25):** End-to-end verification proving:
    - WebRTC ingress establishes an audio session with Asterisk.

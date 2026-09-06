@@ -363,6 +363,48 @@ secrets were never logged (INV-11).
 **Related Decisions:** D-38 (logging standard)
 **Traceability:** HLD `07-observability.md` §3.2; PRD INV-11; BRD BR-15
 
+**D-40 · Go Coding Standards Adoption (2026-09-06).**
+
+**Decision:** All Go code — human-written or agent-generated — follows the
+house Go coding standards in `docs/hld/13-coding-standards.md`, which are
+normative and reference the [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments)
+and the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
+instead of copying them.
+
+**Context:** AI agents write most of this project's Go code. Without
+enforceable standards, agent output drifts in quality and reintroduces
+classic Go failure modes (leaked goroutines, copied mutexes, swallowed
+errors, untestable nesting). The audience includes Go beginners, so the
+rules must be few, simple, and machine-checkable.
+
+**Key Principles:**
+1. Spec-Driven Development: specifications are law — implement only what
+   OpenSpec delta specs, Protobuf contracts, and migration SQL describe.
+2. Error handling: always handle, wrap (`%w`), and return; blank-identifier
+   ignores follow the scoped rule in HLD 13 §2 (never on
+   behavior-affecting I/O).
+3. Context propagation: `context.Context` is the first argument of all I/O
+   operations.
+4. Concurrency safety: mutexes by pointer, every goroutine has a documented
+   exit strategy, channel ownership is explicit.
+5. Line of sight: happy path left-aligned, errors return early.
+
+**Alternatives:**
+- No standards: rejected — inconsistent agent-generated code quality.
+- Full Uber guide adopted verbatim: rejected — too verbose for agents and
+  drifts with upstream; we link it instead of copying it.
+- Custom from-scratch standards: rejected — not industry proven.
+
+**Consequences:**
+- All new code must pass `gofmt`, `go vet`, and `golangci-lint` (including
+  the `depguard` ACL rule and `goimports` grouping); CI fails otherwise.
+- Agents are instructed via the role prompt in HLD 13, Appendix A.
+- Existing code is refactored incrementally, not all at once.
+
+**Related Decisions:** D-24 (API-first), D-28 (machine gates), D-33
+(ConnectRPC), D-35 (toolset)
+**Traceability:** TRD Tech stack; HLD `13-coding-standards.md`; TOOLSET.md
+
 ---
 
 ## Known and accepted limitations
