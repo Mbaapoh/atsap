@@ -52,7 +52,7 @@
 - [ ] 9.1 Add two static PJSIP dev-test endpoints to `core/conf/pjsip.conf`, clearly commented as temporary fixtures (not the real `pbx-core` Extension feature), and verify Asterisk starts cleanly with `asterisk -rx "pjsip show endpoints"` listing both
 - [ ] 9.2 Wire config, Postgres, NATS, and the ACL into `api/cmd/atsap-api/main.go`'s startup, and verify the binary starts against the local `docker compose` dev stack and still serves `/healthz`
 - [ ] 9.3 Add the `nats` JetStream service to `deploy/docker-compose.yml`, and add `NATS_URL`/`DATABASE_URL` keys to `.env.example` and `config.Load` so the stack reaches Postgres and NATS (design.md "App uses its own atsapbx database")
-- [ ] 9.4 Provision the `atsapbx` app database + scoped app role in the dev `postgres` init (`deploy/postgres/init/`), alongside the existing `asterisk` CDR/CEL database, and verify `migrate up` against `atsapbx` creates the telephony-core schema there
+- [x] 9.4 Provision the `atsapbx` app database + scoped app role in the dev `postgres` init (`deploy/postgres/init/`), alongside the existing `asterisk` CDR/CEL database, and verify `migrate up` against `atsapbx` creates the telephony-core schema there (`deploy/postgres/init/02-atsapbx.sql`; verified via `TestMigrateUpDown` and `TestOutboxWorkerRole` against a container bootstrapped with this exact script)
 
 ## 10. Walking-skeleton verification
 
