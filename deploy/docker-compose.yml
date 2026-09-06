@@ -16,6 +16,18 @@ services:
     networks:
       - voip
 
+  # NATS JetStream: durable domain-event bus for the transactional outbox
+  # (event.call.* / event.participant.*). Consumed by the app from the
+  # telephony-core walking skeleton onwards.
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222/tcp"   # client connections
+      - "8222:8222/tcp"   # monitoring (optional, local debugging)
+    networks:
+      - voip
+
   asterisk:
     build:
       context: ../core

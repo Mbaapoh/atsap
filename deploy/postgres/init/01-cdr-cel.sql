@@ -1,6 +1,6 @@
 -- Schema for Asterisk's cdr_pgsql and cel_pgsql backends.
 -- Column names/types follow what those modules expect by default
--- (see deploy/asterisk/conf/cdr_pgsql.conf and cel_pgsql.conf).
+-- (see core/conf/cdr_pgsql.conf and cel_pgsql.conf).
 
 CREATE TABLE IF NOT EXISTS cdr (
     id           bigserial PRIMARY KEY,
