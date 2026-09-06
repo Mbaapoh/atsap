@@ -29,14 +29,14 @@ Keep the happy path left-aligned; check errors immediately and return early:
 ```go
 // Good: happy path left-aligned.
 func ProcessCall(ctx context.Context, callID string) error {
-    if callID == "" {
-        return fmt.Errorf("call id is required")
-    }
-    call, err := getCall(ctx, callID)
-    if err != nil {
-        return fmt.Errorf("failed to get call: %w", err)
-    }
-    return routeCall(ctx, call)
+	if callID == "" {
+		return fmt.Errorf("call id is required")
+	}
+	call, err := getCall(ctx, callID)
+	if err != nil {
+		return fmt.Errorf("failed to get call: %w", err)
+	}
+	return routeCall(ctx, call)
 }
 ```
 
@@ -90,12 +90,12 @@ func ProcessCall(ctx context.Context, callID string) error {
 
 ```go
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    "github.com/gorilla/websocket"
+	"github.com/gorilla/websocket"
 
-    "atsap-api/internal/telephony/ports"
+	"atsap-api/internal/config"
 )
 ```
 
@@ -174,7 +174,6 @@ and the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style
 - Inline identifiers in backticks with compiler casing (`CallService`
   exported, `ctx` internal).
 - Directory trees in `text` blocks.
-```
 ```
 
 ---
