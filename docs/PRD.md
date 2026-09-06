@@ -936,10 +936,16 @@ Raised deliberately and left unanswered here. Each is an implementation decision
 | T-12 | What upgrade and rollback mechanism preserves configuration and data? | Rollback within 30 minutes; no configuration loss; tested from every supported prior version |
 
 ---
-
 ## 17. Definition of Ready — technical design gate
 
-This PRD is ready for handoff to engineering when every line below is satisfied. A partially satisfied gate is not a gate.
+This PRD is ready for handoff to engineering when every line below is
+satisfied. A partially satisfied gate is not a gate.
+
+> **Gate status (2026-09-06):** the checkboxes below are the living
+> readiness record, ticked as each artefact is produced and verified during
+> technical design and implementation. They are evidence, not decoration:
+> PRD §1's "approved for technical design" is held against this gate until
+> every item is checked.
 
 **Functional completeness**
 

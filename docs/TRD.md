@@ -150,8 +150,8 @@ one-participant-equals-one-channel.
 ## Bounded contexts (draft — refine as changes are proposed)
 
 - **telephony-core** — Call/Participant lifecycle, the Asterisk ARI/AMI
-  anti-corruption layer (builds on existing `api/internal/ari`,
-  `api/internal/ami`).
+  anti-corruption layer (uses the ARI/AMI adapters now under
+  `api/internal/telephony/acl`).
 - **pbx-core** — extensions, SIP trunks, IVR/call-flow-as-data
   (3CX/VitalPBX-equivalent).
 - **dialer** — campaigns, dial lists, pacing. Power dialling before

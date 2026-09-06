@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `telephony-core` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | Draft — not yet proposed as an OpenSpec change |
+| **Status** | Proposed — in progress as the OpenSpec change [`telephony-core-originate-bridge-hangup`](../../openspec/changes/telephony-core-originate-bridge-hangup/); not yet archived |
 | **Traces to** | BRD FBR-R1-01/§7.1; PRD EPIC-03 (calling only, no IVR yet), PRD §11.1 (Call lifecycle), PRD §11.1/T-5 (participant continuity); TRD Domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md), [04-bounded-contexts.md §1](../hld/04-bounded-contexts.md); DECISIONS D-15–D-20, D-25, D-26, D-32 |
 | **Why this is LLD-01** | D-25 (spike before spec), D-26 (prove the media path before building on assumptions about it). Every other bounded context — `pbx-core` for real routing, `dialer` for the predictive/power dialler, `compliance`, `reporting` — either calls into `telephony-core` or reacts to its events. Nothing else can be honestly specified until a real two-party call has gone `Initiated → Active → Terminated` through this code. |
 
@@ -16,7 +16,9 @@
 - Per-participant, per-second usage ticks (`usage_seconds`) from the moment a participant is `Connected` — this is D-24 extensibility seam #4, and it must exist from this first walking skeleton, not bolted on later.
 - Outbox → NATS JetStream publishing of `event.call.*` / `event.participant.*`.
 - One ConnectRPC method, `GetCall`, proving the "no channel ID ever leaves the ACL" invariant end-to-end.
-- Relocating the existing `api/internal/ari` and `api/internal/ami` packages under the ACL boundary (see §4).
+- Relocating the existing `ari`/`ami` packages under the ACL boundary was
+  completed by the codebase reorganisation that precedes this change (see
+  §4 for the ACL design that consumes them).
 
 **Explicitly out of scope (deferred to the LLD that owns it — see [`docs/lld/README.md`](README.md) index):**
 
@@ -54,7 +56,15 @@ api/internal/
 └── logging/             # EXISTING — unchanged
 ```
 
-**Why move `ari`/`ami`:** HLD 01-architecture.md §1.2 rule 3 states raw Asterisk concepts are "strictly forbidden outside `api/internal/telephony/acl`." Today `api/internal/ari` sits directly under `internal/`, where nothing stops another future package from importing it directly — the rule exists but nothing enforces it yet. Moving it under `telephony/acl/` is what makes the Dependency Invariant Test (HLD 01-architecture.md §6.1) meaningful. The client code itself (`Client`, `StreamEvents`, `Originate`, etc.) does not need a rewrite — see §4.
+**Why relocate `ari`/`ami` under `acl/`:** HLD 01-architecture.md §1.2 rule 3
+states raw Asterisk concepts are "strictly forbidden outside
+`api/internal/telephony/acl`." The packages now live under
+`internal/telephony/acl/` (part of the codebase reorganisation that preceded
+this change), which is what makes the Dependency Invariant Test
+(HLD 01-architecture.md §6.1) enforceable — the rule only bites once the
+packages it gates are under the path it checks. The client code itself
+(`Client`, `StreamEvents`, `Originate`, etc.) does not need a rewrite — see
+§4.
 
 ## 3. Domain types (`internal/telephony/domain`)
 
@@ -119,12 +129,21 @@ type correlationRegistry struct {
 ```
 
 Populated exactly per HLD [01-architecture.md §2.1](../hld/01-architecture.md) / D-19:
-- **Outbound origination:** ACL calls `ari.Originate` with an explicit `channelId=atsa-part-<participant_id>-<uuid>` and a custom channel variable carrying the same IDs, so a reconnect after a brief ARI WebSocket drop can re-derive correlation from Asterisk's own channel var (`GET /channels/{id}/variable`) rather than only from the in-memory map.
+- **Outbound origination:** ACL calls `ari.Originate` with an explicit
+  `channelId=atsa-part-<participant_id>-<uuid>` and a custom channel variable
+  carrying the same IDs, so every channel we originate is self-describing to
+  the ACL. (Being able to re-derive correlation from Asterisk's own channel
+  var — `GET /channels/{id}/variable` — after an event-stream gap is
+  deliberate design headroom, but no resync mechanism is built or exercised
+  in this LLD; see §9.)
 - **Inbound Stasis entry (`StasisStart`):** if the channel already carries `ATSA_PARTICIPANT_ID` (set by our own origination), reuse it; otherwise this is a fresh inbound leg — mint a new `CallID`/`ParticipantID` and set the variable immediately via ARI so any subsequent event referencing this channel is self-describing.
 
 ### 4.2 Required `ari` package additions
 
-The existing `api/internal/ari.Client` (moving to `acl/ari`) already provides `Originate`, `AnswerChannel`, `HangupChannel`, `Play`, `StreamEvents` — all reusable as-is. This LLD adds, following the same style (plain `net/http`, no new dependency):
+The existing `acl/ari.Client` (relocated from the original `api/internal/ari`)
+already provides `Originate`, `AnswerChannel`, `HangupChannel`, `Play`,
+`StreamEvents` — all reusable as-is. This LLD adds, following the same style
+(plain `net/http`, no new dependency):
 
 ```go
 // Originate gains explicit channel-ID and variable injection (D-19 correlation).
@@ -266,8 +285,16 @@ Verbatim from HLD [`README.md` §5.3](../hld/README.md) (the Walking Skeleton In
 ## 9. Known limitations of this LLD (carried, not introduced)
 
 - Correlation registry is in-memory: a process crash mid-call loses ACL state for calls in flight. This is the same "active calls on a lost media node end" limitation already accepted in `docs/DECISIONS.md`, not a new gap.
+- A brief ARI WebSocket drop with the process alive is reconnected by the existing event-stream loop and the in-memory registry survives it, but events emitted during the gap are not replayed — an event-stream re-adoption/resync slice is tracked for later `telephony-core` work, not this LLD.
 - No attended-transfer test yet (T-5's full scenario, HLD 03-domain-model.md §3) — this skeleton proves the simpler originate/answer/bridge/hangup path first, per D-26's incremental-risk framing; transfer continuity is the next thing built in `telephony-core` before `pbx-core` starts, still ahead of LLD-02.
 
 ## 10. OpenSpec handoff
 
-When ready to implement: `/opsx:propose "telephony-core walking skeleton — Call/Participant lifecycle over the Asterisk ACL"` in Claude Code (or `/opsx-propose` in OpenCode). `openspec/config.yaml`'s `context:` already surfaces `docs/hld/`, `docs/TRD.md`, and `docs/DECISIONS.md` to the proposing agent; point it at this file too as the design source. Suggested change name: `telephony-core-walking-skeleton`.
+This LLD is in progress as the OpenSpec change
+[`telephony-core-originate-bridge-hangup`](../../openspec/changes/telephony-core-originate-bridge-hangup/)
+(`/opsx:apply` in Claude Code, or `/opsx-apply` in OpenCode). `openspec/config.yaml`'s
+`context:` surfaces `docs/hld/`, `docs/TRD.md`, and `docs/DECISIONS.md` to the
+applying agent; this file is the design source. The codebase reorganisation
+that preceded the change already relocated `ari`/`ami` under
+`internal/telephony/acl` and created the skeleton package directories, so
+tasks 5.1/5.2 are satisfied in the working tree before apply begins.

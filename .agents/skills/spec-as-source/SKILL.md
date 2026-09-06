@@ -15,8 +15,8 @@ reconcile openly, never invent.
 
 - `api/...` — Go: domain/application layers define ports (interfaces);
   adapters implement them. Domain code never imports adapters (TRD).
-- `api/internal/ari`, `api/internal/ami` — the Asterisk interface surface
-  the anti-corruption layer absorbs.
+- `api/internal/telephony/acl/ari`, `api/internal/telephony/acl/ami` —
+  the Asterisk interface surface the anti-corruption layer absorbs.
 - `core/conf/*` — dialplan entry points only; all call logic lives in
   application code (D-16).
 - Pure units: compliance checks (D-21, inputs in → verdict out), IVR fold
