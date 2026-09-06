@@ -387,18 +387,35 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 
 -- Row-Level Security Activation & Policies
+-- FORCE (not just ENABLE) is required on every table: the app connects
+-- as the role that OWNS these tables (its own migrations created them),
+-- and PostgreSQL exempts a table's owner from its own RLS policies
+-- unless FORCE ROW LEVEL SECURITY is also set. Confirmed by LLD-01's
+-- RLS Isolation Test failing (silently returning rows) without FORCE.
 ALTER TABLE calls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calls FORCE ROW LEVEL SECURITY;
 ALTER TABLE call_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE call_participants FORCE ROW LEVEL SECURITY;
 ALTER TABLE channel_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE channel_history FORCE ROW LEVEL SECURITY;
 ALTER TABLE usage_seconds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_seconds FORCE ROW LEVEL SECURITY;
 ALTER TABLE carrier_trunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carrier_trunks FORCE ROW LEVEL SECURITY;
 ALTER TABLE carrier_routes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE carrier_routes FORCE ROW LEVEL SECURITY;
 ALTER TABLE extensions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE extensions FORCE ROW LEVEL SECURITY;
 ALTER TABLE ivr_flows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ivr_flows FORCE ROW LEVEL SECURITY;
 ALTER TABLE flow_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flow_versions FORCE ROW LEVEL SECURITY;
 ALTER TABLE recordings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recordings FORCE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
 ALTER TABLE outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE outbox FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation_calls ON calls
     FOR ALL USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
