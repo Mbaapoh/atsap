@@ -250,10 +250,12 @@ channel-level events into Participant-level and Call-level transitions.
 
 ## High-level design, data model, API contract, test strategy
 
-Not yet written — fill in as the first bounded context (`telephony-core`) is
-built, once D-25's walking-skeleton spike has proven the real call path.
-Add sections here rather than creating separate top-level docs, unless/until
-any one section grows large enough to warrant its own file.
+Test strategy has outgrown this file and now lives in
+[`docs/TESTING.md`](TESTING.md) — test pyramid, build tags, suite layout,
+naming, coverage bar, and CI mapping. High-level design, data model, and
+API contract stay in `docs/hld/`; remaining sections here fill in as the
+first bounded context (`telephony-core`) is built, once D-25's
+walking-skeleton spike has proven the real call path.
 
 One data-model constraint to carry forward once this is written: the
 relationship between `Participant` and Asterisk `Channel` records is
