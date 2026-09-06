@@ -28,3 +28,11 @@ linters:
               desc: "Asterisk ARI adapters stay inside telephony/acl (HLD 01 §1.2, LLD-01 §2)"
             - pkg: atsap-api/internal/telephony/acl/ami
               desc: "Asterisk AMI adapters stay inside telephony/acl (HLD 01 §1.2, LLD-01 §2)"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: atsap-api
