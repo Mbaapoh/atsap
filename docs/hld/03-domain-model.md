@@ -404,6 +404,11 @@ CREATE POLICY tenant_isolation_calls ON calls
     FOR ALL USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 CREATE POLICY tenant_isolation_participants ON call_participants
     FOR ALL USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+-- channel_history is an ACL-owned table written inside the call's tenant
+-- transaction; it needs the same isolation policy or a non-owner app role
+-- would be denied every read/write (RLS enabled but no policy == no rows).
+CREATE POLICY tenant_isolation_channel_history ON channel_history
+    FOR ALL USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 CREATE POLICY tenant_isolation_usage ON usage_seconds
     FOR ALL USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 CREATE POLICY tenant_isolation_recordings ON recordings
@@ -413,6 +418,23 @@ CREATE POLICY tenant_isolation_audit ON audit_logs
 CREATE POLICY tenant_isolation_outbox ON outbox
     FOR ALL USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 ```
+
+> **Outbox worker and RLS (platform-role exception).** The transactional
+> outbox worker (HLD `01-architecture.md` §3.2) must read rows across *all*
+> tenants to publish each tenant's events, so it cannot run tenant-scoped.
+> It connects with a dedicated **`BYPASSRLS` platform role granted read +
+> update access to the `outbox` table only** (never to tenant domain tables).
+> Tenant isolation (PRD INV-10) governs tenant-facing access; the outbox
+> worker is platform infrastructure, not an interface any tenant reaches, and
+> NATS subjects remain tenant-partitioned. Tenant-facing queries without
+> `app.tenant_id` still fail closed. The exception must be granted narrowly
+> and documented wherever the role is created.
+>
+> Tables enabled for RLS but without a policy above (`principals`,
+> `carrier_trunks`, `carrier_routes`, `extensions`, `ivr_flows`,
+> `flow_versions`) gain their `tenant_isolation_*` policies in the migration
+> owned by the LLD that introduces them — never ship an RLS-enabled table
+> with no policy.
 
 ---
 

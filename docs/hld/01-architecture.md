@@ -215,6 +215,13 @@ Tenant isolation is enforced continuously from HTTP ingress to storage:
 
 If a database query is executed without `app.tenant_id` set, PostgreSQL Row-Level Security evaluates `app.tenant_id` to `NULL` and returns zero rows, failing closed safely.
 
+> **One documented exception:** cross-tenant platform workers that must read
+> every tenant's rows — the transactional outbox publisher (§3.2) — connect
+> with a narrowly-scoped `BYPASSRLS` role (granted only the tables they need,
+> e.g. `outbox`). This is platform infrastructure, never a tenant-facing
+> interface (see HLD `03-domain-model.md` §5). Everything tenant-facing keeps
+> the fail-closed behaviour above.
+
 ---
 
 ## 5. Architectural Seams for R2 / R3 (D-24, TRD §Extensibility seams)
