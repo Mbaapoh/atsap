@@ -107,6 +107,24 @@ The custom `slog.Handler` automatically redacts sensitive data:
 - **Tokens & Passwords:** Fields named `password`, `secret`, `api_key`, `token`, or `credential` are automatically replaced with `[REDACTED]`.
 - **Zero Audio:** Audio payloads and transcript fragments are strictly barred from log lines.
 
+### 3.2 Required Log Fields (D-39)
+
+Every log record MUST carry these fields:
+
+| Field | Description | Required |
+|---|---|---|
+| `timestamp` | ISO 8601 with timezone | ✅ |
+| `level` | Log level (debug, info, warn, error, fatal) | ✅ |
+| `call_id` | Correlation ID for call (if applicable) | ✅ |
+| `tenant_id` | Tenant identifier | ✅ |
+| `trace_id` | OpenTelemetry trace ID | ✅ |
+| `msg` | Human-readable message | ✅ |
+| `module` | Source module | ✅ |
+
+**What MUST NOT be logged:** secrets, API keys, passwords, tokens,
+call audio/transcripts (unless explicitly enabled), PII (unless required for
+debugging and with explicit consent).
+
 ---
 
 ## 4. Distributed Tracing (OpenTelemetry)

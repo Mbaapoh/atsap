@@ -163,8 +163,18 @@ cannot be recreated.
 
 **D-25 · The walking-skeleton spike comes before any specification.**
 Specifications written before a real call has been through the system are
-guesses, and an agent implements guesses faithfully. Ten days, local rig first,
-carrier when it arrives, then delete the code and keep the findings.
+guesses, and an agent implements guesses faithfully. Ten days, local rig first
+(no carrier needed), carrier when it arrives, then delete the code and keep
+the findings.
+
+Development SIP setup (local rig):
+- Asterisk configured with local SIP peers (extensions 1001-1999)
+- No SIP trunks configured
+- WebRTC works locally via WSS
+- Test SIP endpoint (pure Go, `sipgo`) simulates external caller
+
+Carrier integration happens AFTER the core call path works. It uses the same
+architecture — just add trunk configuration. No code changes required.
 
 **D-26 · Dependency-first ordering within a release, risk-first across it.**
 Tenancy is the correct first dependency and the wrong first build. Prove the
@@ -233,6 +243,43 @@ approved. Copyleft (GPL, AGPL) and proprietary licenses are strictly prohibited 
 protect partner appliance distributions from legal liability. All dependencies
 must be pinned in `go.mod` and `.mise.toml`. Pull requests and CI builds are
 strictly gated on `govulncheck` and Trivy container vulnerability scanning.
+
+**D-36 · React + TypeScript for Portal (2026-09-06).**
+
+**Decision:** The AtsaPBX portal (Admin UI, Agent UI, Supervisor Dashboard,
+Partner Portal) will be built with React + TypeScript.
+
+**Context:** Need to decide frontend technology for the portal. The portal is a
+consumer of the ConnectRPC API, just like partners.
+
+**Alternatives:**
+- HTMX: Simpler, server-rendered. Rejected because agent workspaces, supervisor
+  dashboards, and wallboards require rich, stateful UI.
+- Vue.js: Lighter than React. Rejected because ConnectRPC TypeScript support
+  less mature.
+- Svelte: Emerging. Rejected because smaller ecosystem and ConnectRPC support
+  less mature.
+- Vanilla JS: No build step. Rejected because no type safety and harder to
+  maintain at scale.
+- Angular: Full framework. Rejected because too heavy for solo engineer.
+
+**Rationale:**
+- ConnectRPC generates TypeScript clients from Protobuf (type safety end-to-end)
+- Rich, stateful UI required (agent workspaces, live wallboards, real-time
+  presence)
+- Largest ecosystem, best AI agent support for React + TypeScript
+- Solo engineer friendly - most documented stack
+- Same stack partners will use for their own portals
+
+**Consequences:**
+- Portal consumes same ConnectRPC API as partners (no privileged path - D-24)
+- Portal serves as reference implementation for partners
+- Partners can build their own portals using the same patterns
+- Portal deployment: static SPA served from CDN or nginx
+- Frontend package management: npm/yarn
+
+**Related Decisions:** D-33 (ConnectRPC sole API ingress), D-24 (API-first)
+**Traceability:** BRD §2.4, PRD EPIC-10
 
 ---
 
