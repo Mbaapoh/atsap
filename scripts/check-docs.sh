@@ -3,7 +3,7 @@
 # rot (HLD docs/README.md §5.1 "Verification & Acceptance Criteria"; TOOLSET
 # D-28 machine gates):
 #
-#   1. All seventeen <!-- OpenSpec: TRD-HLD-NN --> markers (01-17) exist.
+#   1. All nineteen <!-- OpenSpec: TRD-HLD-NN --> markers (01-19) exist.
 #   2. Every "D-NN" decision citation in docs/, openspec/ and README.md
 #      resolves to an entry in docs/DECISIONS.md (no orphan citations such
 #      as the former D-38/D-39 gap).
@@ -24,8 +24,8 @@ note_fail() {
     failures=$((failures + 1))
 }
 
-echo "== 1. HLD markers (TRD-HLD-01 .. TRD-HLD-17) =="
-for n in $(seq -w 1 17); do
+echo "== 1. HLD markers (TRD-HLD-01 .. TRD-HLD-19) =="
+for n in $(seq -w 1 19); do
     if ! grep -rq --include='*.md' "OpenSpec: TRD-HLD-$n" docs/hld; then
         note_fail "missing marker <!-- OpenSpec: TRD-HLD-$n --> in docs/hld/"
     fi

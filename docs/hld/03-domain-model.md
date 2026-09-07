@@ -202,7 +202,11 @@ $$\text{Fold}(\text{CurrentNode}, \text{FlowState}, \text{TelephonyEvent}) \to (
 
 ## 5. Comprehensive Relational Schema (PostgreSQL 16)
 
-Every table has `tenant_id` and PostgreSQL Row-Level Security (`RLS`) enabled:
+Every table has `tenant_id` and PostgreSQL Row-Level Security (`RLS`) enabled.
+This section is authoritative; [17-data-model-erd.md](17-data-model-erd.md)
+draws these same tables as entity-relationship diagrams, including the
+ACL projection tables that D-47 added and that Asterisk — not the
+domain — owns the shape of.
 
 ```sql
 -- Core Tenancy & Principals

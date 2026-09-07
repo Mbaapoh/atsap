@@ -42,7 +42,7 @@ The design strictly implements the non-negotiable principles established across 
 
 ## 3. Document Navigation
 
-The High-Level Design is partitioned into seventeen modular chapters:
+The High-Level Design is partitioned into nineteen modular chapters:
 
 1. [Architecture & Component Design](01-architecture.md) — Modular monolith structure, Hexagonal ports & adapters, Asterisk Anti-Corruption Layer (ACL), and context propagation.
 2. [System Context & Interfaces](02-system-context.md) — C4 system context, container topology, network boundaries, protocols, and end-to-end scenario sequence diagrams.
@@ -61,6 +61,8 @@ The High-Level Design is partitioned into seventeen modular chapters:
 15. [Go Coding Standards](13-coding-standards.md) — Normative house subset for all Go code (D-40): SDD law, line-of-sight, error rules, context-first, concurrency safety, import grouping, machine gates, and the agent role prompt.
 16. [Call Origination Sequence](15-call-origination-sequence.md) — Outbound originate path end to end (ConnectRPC → Screening → Routing → ARI originate → bridge → Active) with outbox/NATS delivery, timeouts, and error matrix.
 17. [Call Lifecycle State Machine](16-call-lifecycle-state-machine.md) — Visual companion to the canonical states in [03](03-domain-model.md) §2: call and participant diagrams, transition matrix, published events, and recovery rules.
+18. [Data Model — Entity Relationships](17-data-model-erd.md) — Visual companion to the DDL in [03](03-domain-model.md) §5: entity-relationship diagrams for identity, configuration, calls and usage, the D-47 ACL projection tables, and which tables land in which phase.
+19. [Phase A User Flows](18-phase-a-user-flows.md) — What an administrator actually does from a fresh install to a working call (D-46 Phase A): first-run bootstrap, users and roles, extensions, trunks and routes, the first call, and the console slice they imply.
 
 ---
 

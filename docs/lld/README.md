@@ -57,6 +57,14 @@ be shown, each continuing from what is already implemented:
 
 Predictive pacing is R2 (D-27, D-45).
 
+Phase A is drawn before it is built:
+[`../hld/18-phase-a-user-flows.md`](../hld/18-phase-a-user-flows.md) has
+the five administrator journeys it must support and the console slice
+they imply, and
+[`../hld/17-data-model-erd.md`](../hld/17-data-model-erd.md) has the
+entity relationships those journeys write, including which tables Phase A
+adds. LLD-03 is written against those, not invented alongside them.
+
 **API-first applies per phase, not per release.** A phase's endpoints
 land before its console slice, and the slice uses only public endpoints —
 so each slice is the first honest test of whether that phase's API can
