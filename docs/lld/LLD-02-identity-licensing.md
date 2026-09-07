@@ -414,10 +414,10 @@ sequence for integration coherence, not a dependency chain:
 | Change ID | Scope | Sequencing note |
 |---|---|---|
 | `identity-auth-rbac` | Tenant provisioning, Argon2id hashing, JWT issuer/validator, ConnectRPC auth interceptor, RBAC `AuthorizeAction` | First: everything else integrates against tenants that exist |
+| `identity-api` | `IdentityService` proto (9 RPCs), auth enforced on this service, first-administrator bootstrap, generated OpenAPI | **Second, pulled ahead of licensing (2026-09-07).** Nothing external can call anything until this lands, and `auth-cutover-connectrpc` is blocked without a wire-level `AuthenticateUser` to mint tokens. Enforces auth on its own endpoints from the start — shipping `ProvisionTenant` reachable without a token would let anyone create a tenant and self-grant admin (D-43) |
+| `identity-bootstrap` | Dev-token minting for the rig, UAT script updates | After `identity-api`, whose CLI bootstrap already covers the production first-admin case; what remains here is rig convenience |
 | `licensing-capacity-grace` | Full `LicenseManager`, atomic counter, Ed25519 verify, 7-day grace tracker | Second: no hard dependency on the above (Tier-0 peer), ordered here so capacity tests run against real tenants |
 | `licensing-apply-key` | `ApplyLicenseKey` RPC/CLI, hardware fingerprint collection & matching | After capacity-grace (keys set capacity) |
-| `identity-bootstrap` | Dev-token minting, dev-seed-deletion follow-through, UAT script updates | After auth (replaces what it bypasses) |
-| `identity-api` | `IdentityService` proto: `AuthenticateUser`, tenant/principal provisioning, status changes, role grants, API-key issue, audit read | **Before the cutover, and required by it.** Without a wire-level `AuthenticateUser` there is no way to obtain a token in production, so enforcing JWTs would lock every caller out. Also what finally satisfies US-05.1 for this context (D-43) |
 | `auth-cutover-connectrpc` | Enforce JWT on all RPCs, tenant-match rule, dev-token issuer for the rig | Last: flips the switch only once providers and consumers exist — including `identity-api`, which provides the token |
 
 Each change is proposed, applied, and archived independently.
