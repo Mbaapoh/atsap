@@ -128,6 +128,8 @@ func main() {
 	}
 
 	logger.Info("sip-ua ready")
+	go renewRegistrations(ctx, client, sipServer, localIP, logger)
+
 	<-ctx.Done()
 	logger.Info("shutting down")
 	_ = client.Close()
@@ -171,6 +173,49 @@ func discoverLocalIP(sipServer string) (string, error) {
 		return "", fmt.Errorf("split local addr: %w", err)
 	}
 	return host, nil
+}
+
+// reRegisterInterval is how often registrations are renewed.
+//
+// Asterisk's AOR default_expiration is 3600s, and a registration is
+// simply forgotten when it lapses — the endpoint then has no contact to
+// dial, and an Originate to it fails with "Allocation failed" rather
+// than anything that names the real cause. Renewing well inside that
+// window (rather than at, say, 55 minutes) means a few consecutive
+// failures still leave time to recover before the contact is lost.
+const reRegisterInterval = 15 * time.Minute
+
+// renewRegistrations re-registers every extension periodically for as
+// long as the process runs.
+//
+// Without this the sidecar answers calls for an hour and then silently
+// stops: registration lapses, Asterisk drops the contact, and the next
+// originate fails in a way that looks like an Asterisk fault. Found
+// exactly that way — the e2e suite failed after the container had been
+// up five hours, and a restart "fixed" it.
+func renewRegistrations(ctx context.Context, client *sipgo.Client, sipServer, localIP string, logger *slog.Logger) {
+	ticker := time.NewTicker(reRegisterInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, ext := range extensions {
+				// A failed renewal is logged and retried on the next
+				// tick rather than being fatal: the existing
+				// registration is still valid for a while yet, so
+				// exiting here would turn a transient blip into an
+				// outage.
+				if err := register(ctx, client, sipServer, localIP, ext); err != nil {
+					logger.Warn("re-registration failed, will retry", "extension", ext, "error", err)
+					continue
+				}
+				logger.Debug("re-registered", "extension", ext)
+			}
+		}
+	}
 }
 
 // registerWithRetry retries register: at compose startup Asterisk is
