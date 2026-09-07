@@ -17,7 +17,7 @@ To safeguard AtsaPBX against supply-chain attacks, license liabilities, and runt
    - Always target the latest GA (Generally Available) stable release of any dependency. Experimental alphas, release candidates (RCs), or abandoned forks are forbidden.
    - Minimal dependency graph: Choose libraries with zero or minimal transitive dependencies to shrink the binary footprint and attack surface.
 3. **Continuous Vulnerability Auditing:**
-   - Automated `govulncheck` runs on every pull request and Jenkins CI build to detect known CVEs in Go dependencies before code merges.
+   - Automated `govulncheck` runs on every pull request and CI build to detect known CVEs in Go dependencies before code merges.
    - Container images are scanned via Trivy during CI packaging; builds with unmitigated High or Critical CVEs fail automatically.
 4. **Standard Library First:**
    - If the Go standard library provides a capability (`net/http`, `log/slog`, `crypto/aes`, `crypto/ed25519`, `sync`, `context`), use it. Do not introduce third-party wrappers (e.g. no `logrus`, `zap`, `zerolog`).
@@ -153,6 +153,15 @@ All developer environments and CI pipelines execute tools managed strictly by `m
 | **docker** | `24+` | Host / CI | Local dev stack (`docker compose`) and production image builds |
 | **trivy** | `0.52.2` (pinned image in `Jenkinsfile`) | CI Pipeline | Container image security scanning for OS-level and binary CVEs |
 | **SIPp** | `3.7+` | Test harness | SIP load testing, CPS burst benchmarks, and WebRTC simulation |
+
+### CI provider abstraction
+
+The CI contract is provider-agnostic: `mise run ci` (`docs → lint → vuln → test`)
+plus image build, Trivy scan, test-report publishing, and (on `main`) image
+push + deploy. `Jenkinsfile` is the current Jenkins implementation of that
+contract — not the contract itself. Any CI provider (GitHub Actions, GitLab
+CI, …) that implements the same stages in the same order satisfies it; no
+document may require a specific provider, only the contract.
 
 ---
 

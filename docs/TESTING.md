@@ -68,8 +68,9 @@ Rules:
 
 ## 5. CI mapping
 
-`mise run ci` runs `docs → lint → vuln → test` (unit). Jenkins mirrors it,
-then builds images and scans them (Trivy). The `integration` and `e2e`
+`mise run ci` runs `docs → lint → vuln → test` (unit). The CI pipeline —
+whatever provider implements it (`Jenkinsfile` today) — runs the same
+stages in the same order, then builds images and scans them (Trivy). The `integration` and `e2e`
 suites run in their own stages once they exist — the walking skeleton's
 tasks 2.x/5.6/6.3/7.x (integration) and 10.2 (e2e, local rig **and** CI)
 are the first occupants.

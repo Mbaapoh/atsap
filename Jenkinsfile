@@ -1,5 +1,10 @@
 // Jenkins pipeline for the atsap project.
 //
+// This file is one implementation of the provider-agnostic CI contract
+// (docs/TOOLSET.md §5: `mise run ci`, image build/scan/publish, test
+// reporting, main-only push+deploy) — not the contract itself. Any CI
+// provider implementing the same stages in the same order satisfies it.
+
 // Requires on the agent: Docker (with socket access) and curl. Go and
 // golangci-lint are NOT required on the agent — they're installed by mise
 // from .mise.toml, so CI uses the exact same tool versions as local dev.

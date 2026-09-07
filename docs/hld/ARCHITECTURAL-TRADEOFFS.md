@@ -156,7 +156,7 @@ Furthermore, AtsaPBX must ingest per-second usage records (`usage_seconds`) and 
 +---------------------------------------------------------------------------------------------------------+
 |                                                                                                         |
 |   Permissive Licenses Only              Continuous Security Gates              Zero Proprietary Locks   |
-|   - MIT, Apache 2.0, BSD-3              - govulncheck in Jenkins CI            - Standard Go runtime    |
+|   - MIT, Apache 2.0, BSD-3              - govulncheck in CI                    - Standard Go runtime    |
 |   - Zero GPL / AGPL copyleft            - Trivy image vulnerability scan       - PostgreSQL 16 FOSS     |
 |   - Zero partner distribution risk      - Locked .mise.toml toolchain          - NATS JetStream FOSS    |
 |                                                                                                         |
@@ -176,7 +176,7 @@ Furthermore, AtsaPBX must ingest per-second usage records (`usage_seconds`) and 
 
 1. **Deterministic Pinning:** All external dependencies are pinned with cryptographic SHA-256 checksums in `go.mod` and `go.sum`. Unpinned dependencies (`@latest`) in Docker or CI builds are rejected.
 2. **Automated Vulnerability Gating:**
-   - **`govulncheck`:** Executes as a blocking step in the Jenkins CI pipeline. Any commit introducing a dependency with an unresolved Go vulnerability fails the build.
+   - **`govulncheck`:** Executes as a blocking step in the CI pipeline. Any commit introducing a dependency with an unresolved Go vulnerability fails the build.
    - **Trivy Container Scanning:** Every production Docker image is scanned against the National Vulnerability Database (NVD); images with unmitigated High or Critical CVEs are blocked from deployment.
 3. **No Unreviewed Agent Skills (D-30):** AI coding agents are strictly prohibited from downloading unvetted agent skill packages, third-party prompts, or external scaffolding scripts from online marketplaces. All agent capabilities must be authored internally in the codebase.
 

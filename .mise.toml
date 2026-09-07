@@ -58,7 +58,7 @@ dir = "api"
 run = "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./..."
 
 [tasks.ci]
-description = "Run the full local CI gate in Jenkins order (docs, lint, vuln, test)"
+description = "Run the full local CI gate in pipeline order (docs, lint, vuln, test)"
 depends = ["docs", "lint", "vuln", "test"]
 
 [tasks."docker:build"]

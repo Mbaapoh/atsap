@@ -85,7 +85,7 @@ mise run test        # go test ./... -race -cover (in api/)
 mise run lint         # golangci-lint run ./... (in api/)
 mise run vuln         # govulncheck (pinned) on the Go module
 mise run docs         # doc wiring checks (HLD markers, decision refs, links)
-mise run ci           # full local gate in Jenkins order: docs, lint, vuln, test
+mise run ci           # full local gate in pipeline order: docs, lint, vuln, test
 mise run build        # build ./bin/atsap-api
 mise run dev:logs      # tail the dev stack's logs
 mise run dev:down      # stop the dev stack
@@ -107,7 +107,7 @@ suite (D-28: no change merges the day it was generated).
 
 ## Production deployment (single VPS via Docker Compose)
 
-Production uses pre-built images (pushed by Jenkins) rather than building
+Production uses pre-built images (pushed by CI) rather than building
 on the server:
 
 > **Scope today:** this single-VPS Compose flow is the current deployment.
