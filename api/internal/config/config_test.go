@@ -37,7 +37,6 @@ func TestLoad_Defaults(t *testing.T) {
 		DatabaseURL:       "postgres://atsapbx_app:pw@postgres:5432/atsapbx?sslmode=disable",
 		DatabaseWorkerURL: "postgres://atsap_outbox_worker:pw@postgres:5432/atsapbx?sslmode=disable",
 		NATSURL:           "nats://nats:4222",
-		SeedDevTenant:     false,
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
@@ -53,7 +52,6 @@ func TestLoad_Overrides(t *testing.T) {
 	t.Setenv("ARI_APP_NAME", "custom-app")
 	t.Setenv("AMI_ADDR", "example:5038")
 	t.Setenv("AMI_USERNAME", "custom-ami-user")
-	t.Setenv("ATSAPBX_SEED_DEV_TENANT", "true")
 
 	cfg, err := Load()
 	if err != nil {
@@ -62,7 +60,7 @@ func TestLoad_Overrides(t *testing.T) {
 
 	if cfg.HTTPAddr != ":9090" || cfg.LogLevel != "debug" || cfg.ARIURL != "http://example:8088/ari" ||
 		cfg.ARIUsername != "custom-user" || cfg.ARIAppName != "custom-app" || cfg.AMIAddr != "example:5038" ||
-		cfg.AMIUsername != "custom-ami-user" || !cfg.SeedDevTenant {
+		cfg.AMIUsername != "custom-ami-user" {
 		t.Errorf("Load() = %+v, overrides not applied", cfg)
 	}
 }
@@ -105,18 +103,6 @@ func TestLoad_MissingNATSURL(t *testing.T) {
 
 	_, err := Load()
 	requireErrorContains(t, err, "NATS_URL")
-}
-
-func TestLoad_SeedDevTenant_DefaultsFalse(t *testing.T) {
-	setRequired(t)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() returned error: %v", err)
-	}
-	if cfg.SeedDevTenant {
-		t.Error("SeedDevTenant should default to false")
-	}
 }
 
 func requireErrorContains(t *testing.T, err error, substr string) {

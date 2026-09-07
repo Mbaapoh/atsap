@@ -1,7 +1,13 @@
--- Fixed-UUID dev tenant. Applying this migration at all is gated by the
--- Go migration runner (internal/postgres), which only migrates to this
--- version when ATSAPBX_SEED_DEV_TENANT=true — never in production.
--- Deleted once LLD-02 lands real tenant provisioning.
-INSERT INTO tenants (id, name, status, residency_zone)
-VALUES ('00000000-0000-0000-0000-000000000001', 'Dev Tenant', 'ACTIVE', 'EU')
-ON CONFLICT (id) DO NOTHING;
+-- Tombstone. This version once seeded a fixed-UUID dev tenant, gated by
+-- ATSAPBX_SEED_DEV_TENANT. LLD-02 retires that seed in favour of real
+-- tenant provisioning (identity-auth-rbac), and 0003 removes the row it
+-- used to create.
+--
+-- The file is deliberately kept as an empty no-op rather than deleted:
+-- golang-migrate resolves the next version from the files present, so a
+-- database already at version 2 — every developer's local stack, since
+-- the seed was dev-only — cannot migrate forward if version 2's files
+-- are absent. An empty version keeps that chain intact and costs
+-- nothing. See openspec change identity-auth-rbac, design.md
+-- ("tombstoned, not deleted outright").
+SELECT 1;

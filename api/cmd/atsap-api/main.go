@@ -60,7 +60,7 @@ func main() {
 	}
 	defer appPool.Close()
 
-	if err := corepostgres.MigrateUp(cfg.DatabaseURL, "migrations", cfg.SeedDevTenant); err != nil {
+	if err := corepostgres.MigrateUp(cfg.DatabaseURL, "migrations"); err != nil {
 		logger.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}

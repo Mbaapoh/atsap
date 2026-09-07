@@ -36,10 +36,6 @@ type Config struct {
 	DatabaseWorkerURL string
 	// NATSURL is the JetStream connection string.
 	NATSURL string
-	// SeedDevTenant gates the 0002_dev_tenant_seed migration
-	// (postgres.MigrateUp's seedDevTenant parameter). Never true in
-	// production.
-	SeedDevTenant bool
 }
 
 // Load reads configuration from environment variables, applying sane
@@ -59,7 +55,6 @@ func Load() (Config, error) {
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 		DatabaseWorkerURL: getEnv("DATABASE_WORKER_URL", ""),
 		NATSURL:           getEnv("NATS_URL", ""),
-		SeedDevTenant:     getEnv("ATSAPBX_SEED_DEV_TENANT", "false") == "true",
 	}
 
 	if cfg.ARIPassword == "" {

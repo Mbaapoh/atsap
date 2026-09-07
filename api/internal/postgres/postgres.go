@@ -98,28 +98,39 @@ func (p *Pool) WithTenant(ctx context.Context, tenantID domain.TenantID, fn func
 	return nil
 }
 
-// MigrateUp applies all pending migrations from dir, unless
-// seedDevTenant is false, in which case it stops at the last migration
-// that is not the dev-tenant seed (0002_dev_tenant_seed) — the
-// ATSAPBX_SEED_DEV_TENANT gate for that migration (api/migrations/0002).
-func MigrateUp(databaseURL, dir string, seedDevTenant bool) error {
+// MigrateUp applies all pending migrations from dir.
+//
+// It takes no seed gate: version 2 (the dev-tenant seed) became an empty
+// tombstone when identity-auth-rbac landed real tenant provisioning, so
+// there is nothing left to gate — every environment runs the same
+// migrations to the same version. Tenants are provisioned through
+// identity, not conjured by a migration.
+func MigrateUp(databaseURL, dir string) error {
 	m, err := migrate.New("file://"+dir, migrateURL(databaseURL))
 	if err != nil {
 		return fmt.Errorf("open migrator: %w", err)
 	}
 	defer func() { _, _ = m.Close() }()
 
-	if seedDevTenant {
-		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			return fmt.Errorf("migrate up: %w", err)
-		}
-		return nil
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migrate up: %w", err)
 	}
+	return nil
+}
 
-	// Without the dev-tenant seed, migrate only to version 1 (schema),
-	// explicitly excluding version 2 (the seed).
-	if err := m.Migrate(1); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("migrate to schema version: %w", err)
+// MigrateTo migrates to one specific schema version. Used by tests that
+// need to reproduce an upgrade from a particular starting state (a
+// database left at the retired dev-seed version, say); never part of the
+// application's own startup, which always migrates all the way up.
+func MigrateTo(databaseURL, dir string, version uint) error {
+	m, err := migrate.New("file://"+dir, migrateURL(databaseURL))
+	if err != nil {
+		return fmt.Errorf("open migrator: %w", err)
+	}
+	defer func() { _, _ = m.Close() }()
+
+	if err := m.Migrate(version); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migrate to version %d: %w", version, err)
 	}
 	return nil
 }

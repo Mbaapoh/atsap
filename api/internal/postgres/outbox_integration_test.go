@@ -83,7 +83,7 @@ func (f *fakePublisher) count() int {
 
 func TestOutboxWorker_PollOnce_PublishesAndMarks(t *testing.T) {
 	databaseURL := testDatabaseURL(t)
-	resetSchema(t, databaseURL, false)
+	resetSchema(t, databaseURL)
 	ctx := context.Background()
 
 	appPool, err := postgres.Open(ctx, databaseURL)
@@ -117,7 +117,7 @@ func TestOutboxWorker_PollOnce_PublishesAndMarks(t *testing.T) {
 
 func TestOutboxWorker_PollOnce_PublishFailure_LeftUnpublished(t *testing.T) {
 	databaseURL := testDatabaseURL(t)
-	resetSchema(t, databaseURL, false)
+	resetSchema(t, databaseURL)
 	ctx := context.Background()
 
 	appPool, err := postgres.Open(ctx, databaseURL)
@@ -149,7 +149,7 @@ func TestOutboxWorker_PollOnce_PublishFailure_LeftUnpublished(t *testing.T) {
 // same rows never both claim the same row.
 func TestOutboxWorker_ConcurrentPolls_NoDoubleProcessing(t *testing.T) {
 	databaseURL := testDatabaseURL(t)
-	resetSchema(t, databaseURL, false)
+	resetSchema(t, databaseURL)
 	ctx := context.Background()
 
 	appPool, err := postgres.Open(ctx, databaseURL)

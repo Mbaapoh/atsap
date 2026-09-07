@@ -40,7 +40,7 @@ func migrationsDir(t *testing.T) string {
 func resetSchema(t *testing.T, databaseURL string) {
 	t.Helper()
 	_ = corepostgres.MigrateDownAll(databaseURL, migrationsDir(t))
-	require.NoError(t, corepostgres.MigrateUp(databaseURL, migrationsDir(t), false))
+	require.NoError(t, corepostgres.MigrateUp(databaseURL, migrationsDir(t)))
 	t.Cleanup(func() {
 		_ = corepostgres.MigrateDownAll(databaseURL, migrationsDir(t))
 	})
