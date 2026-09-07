@@ -12,7 +12,12 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/atsap-api ./cmd/atsap-api
 
 FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
 COPY --from=build /out/atsap-api /usr/local/bin/atsap-api
+# postgres.MigrateUp is called with the relative path "migrations" —
+# WORKDIR here must match api/'s own layout (mise run run's cwd) so the
+# same relative path resolves in both contexts with no code branching.
+COPY migrations ./migrations
 
 USER nonroot:nonroot
 EXPOSE 8080
