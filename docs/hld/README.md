@@ -93,7 +93,7 @@ Every requirement across `BRD.md`, `PRD.md`, and `TRD.md` is addressed in this H
 
 The architecture is verified through continuous automated gates:
 
-1. **Static Marker & Link Check:** CI validates all seventeen `<!-- OpenSpec: TRD-HLD-xx -->` markers, cross-file document links, and ADR traceability citations.
+1. **Static Marker & Link Check:** CI validates all nineteen `<!-- OpenSpec: TRD-HLD-xx -->` markers, cross-file document links, and ADR traceability citations.
 2. **Architecture Dependency Linting:** Go import rules enforce strict package boundaries. Domain packages cannot import adapters, and no package outside `telephony/acl` may import Asterisk ARI/AMI packages or reference channel IDs.
 3. **Walking Skeleton Integration Test (D-25):** End-to-end verification proving:
    - WebRTC ingress establishes an audio session with Asterisk.
@@ -103,4 +103,79 @@ The architecture is verified through continuous automated gates:
    - Per-second usage records are written with deduplication.
    - Outbox event publishes to NATS JetStream.
    - ConnectRPC API query returns full call and participant state without leaking Asterisk channel IDs.
+
+---
+
+## 6. Diagram Conventions
+
+The choice of notation was ad hoc until it was written down here. It is
+not a matter of taste: a diagram a machine cannot check is a diagram that
+rots silently, and three diagrams in this HLD had never rendered at all
+before `scripts/check-diagrams.sh` existed to say so.
+
+### 6.1 Notation by diagram kind
+
+| Kind | Notation | Why |
+|---|---|---|
+| Entity relationships | mermaid `erDiagram` | Seventeen tables and their edges are unmaintainable by hand, and the relationships are the content |
+| Sequence / interaction | mermaid `sequenceDiagram` | Ordering and participants are structural; hand-drawn columns drift the moment a step is inserted |
+| State machines | mermaid `stateDiagram-v2` | Transitions are enumerable and must match the code that enforces them |
+| User flows and decisions | mermaid `flowchart` | Branches, including failure branches, are the point; ASCII forces you to redraw the page to add one |
+| Fixed physical topology | ASCII box art | Small, rarely changes, and exact layout control is worth more than machine checking — [06-deployment.md](06-deployment.md) is the example |
+| Tables of facts | a markdown table | Not everything is a picture. A transition matrix or an endpoint inventory reads better as a table and diffs far better |
+
+**Default to mermaid.** Reach for ASCII only when the diagram is a fixed
+physical picture and you can say why layout control matters more than
+verification. Existing ASCII diagrams stay; they are not converted for
+the sake of consistency.
+
+### 6.2 C4 is a vocabulary, not a format
+
+C4 fixes *what a diagram is about* — Context, Container, Component,
+Code — independently of how it is drawn.
+[02-system-context.md](02-system-context.md) is a C4 Level 1 and 2 view
+and says so; [01-architecture.md](01-architecture.md) is the component
+level. Two rules follow:
+
+- **Never mix levels in one picture.** A context diagram that also shows
+  internal packages is two diagrams badly overlaid.
+- **C4 has no notation for data models or user journeys.** ER diagrams
+  and flows are not C4 and must not be dressed as it.
+
+Mermaid's `C4Context` block is deliberately **not** used. It renders, but
+its auto-layout overlaps edge labels and misplaces boundaries, and
+mermaid documents the syntax as experimental. The discipline C4 provides
+is in the content, and the existing ASCII carries it.
+
+### 6.3 Every mermaid diagram must render
+
+`mise run diagrams` (`scripts/check-diagrams.sh`) extracts every
+` ```mermaid ` block under `docs/` and renders it, naming the file and
+block number when one fails. Run it whenever a diagram changes. It is not
+in the `ci` task because it needs mermaid-cli and a Chromium binary,
+which the build image does not carry yet.
+
+Four syntax traps that have actually bitten this repository:
+
+- **`;` terminates a statement.** A semicolon inside a sequence message
+  truncates it, and every line after it fails to parse. Use a comma.
+- **Labels cannot contain raw newlines.** Break lines with `<br/>`.
+- **The bidirectional sequence arrow is `<<->>`**, not `<-->>`.
+- **Multiple keys on an ER attribute** are unreliable — write one key and
+  put the rest in the attribute's quoted comment.
+
+### 6.4 A diagram is a companion, never the authority
+
+Every diagram document names what it is subordinate to, in its opening
+lines, and says that the other file wins on disagreement:
+
+| Diagram document | Authority |
+|---|---|
+| [15-call-origination-sequence.md](15-call-origination-sequence.md) | [03-domain-model.md](03-domain-model.md) §2 and the `telephony-core/call-lifecycle` living spec |
+| [16-call-lifecycle-state-machine.md](16-call-lifecycle-state-machine.md) | [03-domain-model.md](03-domain-model.md) §2 |
+| [17-data-model-erd.md](17-data-model-erd.md) | [03-domain-model.md](03-domain-model.md) §5 and the migrations |
+| [18-phase-a-user-flows.md](18-phase-a-user-flows.md) | [../API.md](../API.md) for endpoint status; the decision log for scope |
+
+This is what keeps a picture from quietly becoming a second, competing
+specification.
 

@@ -7,6 +7,12 @@ covers the **originate path only** — inbound IVR flow lives in
 [02-system-context.md §4.1](02-system-context.md#41-inbound-call-via-visual-ivr-to-webrtc-agent),
 carrier-failover behavior in [§4.2](02-system-context.md#42-carrier-failover-during-outbound-dialling).
 
+This diagram is a companion, not a specification: the states it moves
+through are defined in [03-domain-model.md §2](03-domain-model.md#2-state-machines),
+and the behaviour it draws is recorded in the living spec
+[`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md).
+Where they disagree, those win and this file is corrected.
+
 ## 1. Architectural principles
 
 - **Asterisk is a black box behind ARI.** Every interaction crosses the
