@@ -46,7 +46,10 @@ priced, every edge defended, no creep on credit.
    - §1.2 package rules: `domain` imports nothing; `application` only
      `domain` + `ports`; adapters implement ports; nothing outside
      `internal/telephony/acl` imports ARI/AMI packages or names a
-     channel ID.
+     channel ID. Engine rule (D-41): no engine imports outside its own
+     `acl/<engine>` package, and exactly one engine stays wired
+     (Asterisk) until a D-logged revisit — a second engine import is a
+     BLOCKED finding, not a cleanup note.
    - D-24 seams on every new row, object, and event: `tenant_id`
      present; usage emission where call state changes; new capabilities
      reachable through the same API the portal would use.
