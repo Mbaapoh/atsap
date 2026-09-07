@@ -18,7 +18,14 @@ CREATE TABLE IF NOT EXISTS cdr (
     disposition  varchar(45)  NOT NULL DEFAULT '',
     amaflags     integer      NOT NULL DEFAULT 0,
     accountcode  varchar(20)  NOT NULL DEFAULT '',
-    uniqueid     varchar(32)  NOT NULL DEFAULT '',
+    -- Wide enough for our own self-supplied channel IDs (D-19
+    -- correlation strategy, docs/hld/01-architecture.md §2.1), e.g.
+    -- "atsa-part-<uuid>" (46 chars) — Asterisk's default short numeric
+    -- uniqueid fits easily too. A too-narrow column here doesn't just
+    -- drop the CDR/CEL row: the insert failure loop it causes was
+    -- observed hanging up the live channel almost immediately after
+    -- answer (task 10.2 walking-skeleton test).
+    uniqueid     varchar(64)  NOT NULL DEFAULT '',
     userfield    varchar(255) NOT NULL DEFAULT ''
 );
 
@@ -41,8 +48,10 @@ CREATE TABLE IF NOT EXISTS cel (
     appdata      varchar(80)  NOT NULL DEFAULT '',
     amaflags     integer      NOT NULL DEFAULT 0,
     accountcode  varchar(20)  NOT NULL DEFAULT '',
-    uniqueid     varchar(32)  NOT NULL DEFAULT '',
-    linkedid     varchar(32)  NOT NULL DEFAULT '',
+    -- Same widening as cdr.uniqueid above, plus linkedid (also set from
+    -- a channel's uniqueid for a linked call).
+    uniqueid     varchar(64)  NOT NULL DEFAULT '',
+    linkedid     varchar(64)  NOT NULL DEFAULT '',
     userdeftype  varchar(255) NOT NULL DEFAULT '',
     peer         varchar(80)  NOT NULL DEFAULT '',
     peeraccount  varchar(20)  NOT NULL DEFAULT '',
