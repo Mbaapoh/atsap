@@ -75,6 +75,25 @@ if [ -f /tmp/atsap-doclinks.$$ ]; then
     rm -f /tmp/atsap-doclinks.$$
 fi
 
+# 4. Every RPC defined in a .proto appears in docs/API.md §1.
+#
+# The API surface doc is only useful if it cannot drift from the protos
+# it describes (D-43: the change that changes the surface updates the
+# doc). Machine gate rather than review discipline, per D-28.
+echo "== 4. Every proto RPC is listed in docs/API.md =="
+apidoc="docs/API.md"
+if [ ! -f "$apidoc" ]; then
+    note_fail "docs/API.md is missing — it is the living API surface inventory"
+elif [ -d api/proto ]; then
+    while read -r rpc; do
+        [ -z "$rpc" ] && continue
+        if ! grep -q "\`$rpc\`" "$apidoc"; then
+            note_fail "rpc $rpc is defined in api/proto but absent from docs/API.md (D-43)"
+        fi
+    done < <(grep -rhoE '^[[:space:]]*rpc[[:space:]]+[A-Za-z0-9_]+' api/proto --include='*.proto' \
+                | awk '{print $2}' | sort -u)
+fi
+
 if [ "$failures" -ne 0 ]; then
     echo "== $failures documentation check(s) failed =="
     exit 1

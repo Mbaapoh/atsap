@@ -21,6 +21,17 @@ LLDs are written and implemented **one at a time, in that order** — writing
 LLD-03 before LLD-01 is built is exactly the scope creep the graph exists
 to prevent.
 
+**Every LLD states its API surface, and every change that changes that
+surface updates [`../API.md`](../API.md) in the same commit.** Per D-43, a
+capability gets an RPC in the change that builds it when it has a named
+R1.0 consumer (the portal, a partner developer per US-05.1, or a test
+harness); otherwise it stays a Go port and the LLD records why. An LLD
+whose ConnectRPC section says only "ports for now" without naming the
+consumer test has not made the decision, it has postponed it — which is
+how LLD-02 nearly shipped a JWT cutover with no way to obtain a JWT.
+`scripts/check-docs.sh` fails if a proto defines an RPC that `API.md`
+does not list, so the inventory cannot rot quietly.
+
 ## Index
 
 | # | LLD | Bounded context | Status | OpenSpec change (when proposed) |
