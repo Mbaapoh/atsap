@@ -296,16 +296,39 @@ amendment, not before it:
   is the correct, fast, standard primitive for this shape (HLD 04 §7 already
   specifies "API keys stored as SHA-256 hashes").
 
-## 6. ConnectRPC surface (this LLD: auth on existing methods + identity methods)
+## 6. ConnectRPC surface
 
-No `.proto` shape changes (no `buf breaking` impact — deliberate):
-`GetCall` keeps its fields; auth arrives via metadata. New RPCs for
-`AuthenticateUser` (username/password → short-lived JWT) and tenant
-provisioning land here only if EPIC-01's stories need them over the wire
-in R1.0 — otherwise identity stays a Go-port surface until the portal
-slices (HLD 12) demand otherwise. (API-first (D-24) is satisfied either
-way: every *capability* is reachable; the decision of wire-vs-port per
-method is recorded in the proposing change, not smuggled in.)
+`identity-auth-rbac` itself makes no `.proto` change: `GetCall` keeps its
+fields and auth arrives via metadata, so there is no `buf breaking`
+impact from the context landing.
+
+**Corrected 2026-09-07.** This section previously argued that API-first
+(D-24) was "satisfied either way" because every capability is
+*reachable*. That reasoning was wrong, and reviewing it surfaced a
+concrete defect. Reachable by in-process Go code is not reachable by a
+portal, a partner (US-05.1: "every action available in the console
+through a documented API"), or a test harness. Worse, the §9 sequence
+ended with `auth-cutover-connectrpc` requiring a JWT on every RPC while
+the only way to obtain one — `AuthenticateUser` — was a Go method:
+**the cutover would have locked the API with the key inside the
+building**, since the dev-token path is `//go:build dev` and refuses to
+run outside `ATSAPBX_ENV=development`.
+
+The rule that replaces it (D-43): **a capability gets an RPC in the
+change that builds it when it has a named R1.0 consumer; otherwise it
+stays a port and the change records why.** Applied here:
+
+| Capability | Wire? | Reason |
+|---|---|---|
+| `AuthenticateUser` | **RPC, required before cutover** | Portal login, partner developers, and the UAT harness after cutover all need a token, and nothing else can mint one in production |
+| `ProvisionTenant`, `ProvisionPrincipal` | **RPC** | EPIC-01 admin stories; the portal's first screens |
+| `SetTenantStatus`, `SetPrincipalStatus` | **RPC** | AC-01.5/01.7 suspend and disable are console actions |
+| `GrantRole`, `IssueAPIKey`, audit read | **RPC** | EPIC-01 RBAC and audit review; partner key self-service |
+| `ValidateToken`, `AuthorizeAction`, `AuthenticateAPIKey` | Port only | Mechanism, not capability — these are what the interceptor does *for* a caller, never something a caller invokes. Exposing them would let a client ask "is this token valid" as an oracle |
+| `RecordAudit` | Port only | A write path used by provisioning; partners read audit, they do not author it |
+
+These land in a new `identity-api` change, sequenced in §9 **before** the
+cutover.
 
 ## 7. Definition of Done
 
@@ -394,7 +417,8 @@ sequence for integration coherence, not a dependency chain:
 | `licensing-capacity-grace` | Full `LicenseManager`, atomic counter, Ed25519 verify, 7-day grace tracker | Second: no hard dependency on the above (Tier-0 peer), ordered here so capacity tests run against real tenants |
 | `licensing-apply-key` | `ApplyLicenseKey` RPC/CLI, hardware fingerprint collection & matching | After capacity-grace (keys set capacity) |
 | `identity-bootstrap` | Dev-token minting, dev-seed-deletion follow-through, UAT script updates | After auth (replaces what it bypasses) |
-| `auth-cutover-connectrpc` | Enforce JWT on all RPCs, tenant-match rule, dev-token issuer for the rig | Last: flips the switch only once providers and consumers exist |
+| `identity-api` | `IdentityService` proto: `AuthenticateUser`, tenant/principal provisioning, status changes, role grants, API-key issue, audit read | **Before the cutover, and required by it.** Without a wire-level `AuthenticateUser` there is no way to obtain a token in production, so enforcing JWTs would lock every caller out. Also what finally satisfies US-05.1 for this context (D-43) |
+| `auth-cutover-connectrpc` | Enforce JWT on all RPCs, tenant-match rule, dev-token issuer for the rig | Last: flips the switch only once providers and consumers exist — including `identity-api`, which provides the token |
 
 Each change is proposed, applied, and archived independently.
 

@@ -511,6 +511,64 @@ retrofit. The coupling that would actually bite is not in the code:
 
 ---
 
+**D-43 · A capability gets an RPC when it has a named R1.0 consumer
+(2026-09-07).**
+
+**Decision:** A capability is exposed over the wire in the same change
+that builds it if a named R1.0 consumer needs it — the partner portal
+(EPIC-10), a partner developer (US-05.1), or a test harness. Otherwise
+it stays a Go port and the change records why. "Reachable in principle"
+is not API-first.
+
+**Context:** After two implemented LLDs, 17 capabilities existed and
+exactly one — `GetCall` — was reachable over the wire. LLD-02 §6 had
+argued API-first was "satisfied either way" because every capability was
+reachable; that reasoning treated in-process Go calls as an API, which
+they are not for a portal, a partner, or a harness.
+
+Reviewing it surfaced a concrete defect rather than a stylistic one:
+LLD-02's sequence ended with `auth-cutover-connectrpc` requiring a JWT on
+every RPC, while the only way to mint one (`AuthenticateUser`) was a Go
+method, and the dev-token path is `//go:build dev` and refuses to run
+outside `ATSAPBX_ENV=development`. The cutover would have locked the API
+with the key inside the building. A rule stated once prevents that class
+of error; per-change judgement did not.
+
+**Alternatives:**
+- Expose every capability as it is built: rejected — freezes contracts
+  before their consumers exist. `InitiateCall` is the example: `pbx-core`
+  (LLD-03) will reshape what origination means once routing and
+  extensions are real, and D-25 warns against specifying unproven
+  territory.
+- Defer all wire surface to a portal slice: rejected — this is what
+  produced the lockout above, and it back-loads US-05.1 ("every action
+  available in the console through a documented API") into the release
+  where it is least affordable.
+- Expose read paths only: rejected — provisioning and suspension are
+  console actions in EPIC-01; a read-only API cannot run a portal.
+
+**Consequences:**
+- Mechanism stays internal by construction: `ValidateToken`,
+  `AuthorizeAction`, and `AuthenticateAPIKey` are what the interceptor
+  does *for* a caller, never something a caller invokes. Exposing
+  `ValidateToken` would hand out a token-validity oracle.
+- Each LLD's ConnectRPC section states, per capability, wire or port and
+  the consumer that justifies it. A capability with no named consumer is
+  a port, and saying so is the record.
+- The wire surface grows per context rather than in one late portal
+  change, so `buf breaking` has something real to protect from the point
+  each contract acquires a consumer.
+- Applied immediately: LLD-02 §9 gains an `identity-api` change before
+  `auth-cutover-connectrpc`.
+
+**Related Decisions:** D-24 (API-first from commit one), D-25
+(walking-skeleton before specification), D-33 (ConnectRPC), D-42
+(identity stays in-process)
+**Traceability:** PRD EPIC-05 (US-05.1), EPIC-10; HLD
+`12-portal-architecture.md`; LLD-02 §§6/9
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
