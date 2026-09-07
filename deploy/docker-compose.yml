@@ -76,6 +76,26 @@ services:
     networks:
       - voip
 
+  # Auto-answer SIP UA sidecar (cmd/sip-ua): the answering party for the
+  # telephony-core walking-skeleton e2e test (task 10.2). Registers as
+  # the dev-fixture PJSIP endpoints 1000/1001 and answers every INVITE.
+  # Runs as a container on the voip network, not on the host: ufw here
+  # drops UDP from this bridge into host-published ports, so a
+  # host-resident UA is never reachable by Asterisk's INVITE back
+  # (design.md "UAs as sidecar container").
+  sipua:
+    build:
+      context: ../api
+      dockerfile: Dockerfile.sipua
+    image: atsap-sipua:dev
+    environment:
+      SIP_SERVER: asterisk:5060
+    restart: unless-stopped
+    depends_on:
+      - asterisk
+    networks:
+      - voip
+
   app:
     build:
       context: ../api
