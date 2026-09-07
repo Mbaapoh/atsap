@@ -173,6 +173,29 @@ and the authoritative HLD DDL:**
   is unaffected either way, since it comes from `GenerateUsageTicks`, not
   from when the write happens. Real-time streaming remains a legitimate
   future enhancement, not a gap in this change's own scope.
+- **`ports.CallStore.SaveCall` originally took no events, and
+  `ports.EventPublisher` was called separately by the orchestrator.**
+  Found while implementing 7.1: two separate port calls (`CallStore.SaveCall`
+  then `EventPublisher.Publish`) can never be atomic — exactly the failure
+  the transactional outbox pattern exists to prevent. Fixed by folding
+  event-enqueueing into `SaveCall` itself (it now takes `events
+  []event.DomainEvent` and inserts outbox rows in the same transaction as
+  the domain write), and removing the orchestrator's direct
+  `EventPublisher` dependency entirely — the *outbox worker*
+  (`internal/postgres.OutboxWorker`, generic, not telephony-specific)
+  reads the outbox and publishes asynchronously, independent of any
+  request. Proven with an integration test that forces the outbox insert
+  to fail (an unmarshalable event payload) after the domain writes have
+  already run in the same transaction, and confirms the whole transaction
+  — including those domain writes — rolled back, not just the failing
+  statement.
+- **Integration tests across packages sharing the dev database need
+  `-p 1`.** Found running the full suite once `internal/telephony/postgres`
+  (task 6.3) joined `internal/postgres` (task 2.x) as a second package
+  migrating the same `atsapbx` database: `go test ./...`'s default
+  cross-package parallelism produces real Postgres deadlocks on
+  concurrent `DROP TABLE`/`CREATE TABLE`, not a flaky test. Documented in
+  `docs/TESTING.md` §1 and the README's integration-test command.
 - The dev-tenant seed gate (`ATSAPBX_SEED_DEV_TENANT`) cannot live inside
   `0002_dev_tenant_seed.up.sql` itself — a migration file has no way to
   read an environment variable. The gate is implemented in
