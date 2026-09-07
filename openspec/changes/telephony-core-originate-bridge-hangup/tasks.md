@@ -50,7 +50,9 @@
 ## 9. Dev fixtures and wiring
 
 - [ ] 9.1 Add two static PJSIP dev-test endpoints to `core/conf/pjsip.conf`, clearly commented as temporary fixtures (not the real `pbx-core` Extension feature), and verify Asterisk starts cleanly with `asterisk -rx "pjsip show endpoints"` listing both
-- [ ] 9.2 Wire config, Postgres, NATS, and the ACL into `api/cmd/atsap-api/main.go`'s startup, and verify the binary starts against the local `docker compose` dev stack and still serves `/healthz`
+- [ ] 9.2 Wire config, Postgres, NATS, and the ACL into `api/cmd/atsap-api/main.go`'s startup, and verify the binary starts against the local `docker compose` dev stack and still serves `/healthz`. Also, while `main.go` is being rewritten anyway (config/env-coupling review, 2026-09-07):
+  - Add `DATABASE_URL`, `NATS_URL`, and `ATSAPBX_SEED_DEV_TENANT` to `Config`, validated at startup the same fail-fast way `ARI_PASSWORD`/`AMI_PASSWORD` already are — not read ad hoc where they're used.
+  - Move `LOG_LEVEL` into `Config` (`config.getEnv`) and delete `main.go`'s duplicate `envOr` helper, which currently reads it bypassing `Config` entirely.
 - [ ] 9.3 Add the `nats` JetStream service to `deploy/docker-compose.yml`, and add `NATS_URL`/`DATABASE_URL` keys to `.env.example` and `config.Load` so the stack reaches Postgres and NATS (design.md "App uses its own atsapbx database")
 - [x] 9.4 Provision the `atsapbx` app database + scoped app role in the dev `postgres` init (`deploy/postgres/init/`), alongside the existing `asterisk` CDR/CEL database, and verify `migrate up` against `atsapbx` creates the telephony-core schema there (`deploy/postgres/init/02-atsapbx.sql`; verified via `TestMigrateUpDown` and `TestOutboxWorkerRole` against a container bootstrapped with this exact script)
 
