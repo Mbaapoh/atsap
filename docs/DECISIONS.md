@@ -405,6 +405,46 @@ rules must be few, simple, and machine-checkable.
 (ConnectRPC), D-35 (toolset)
 **Traceability:** TRD Tech stack; HLD `13-coding-standards.md`; TOOLSET.md
 
+**D-41 · Media engine stance: Asterisk retained; portability via contract (2026-09-07).**
+
+**Decision:** Keep Asterisk 22.x LTS as the sole media engine. Future
+engines are made pluggable through the `MediaGateway` capability
+contract plus the `mediatest` conformance suite — not through
+multi-engine support, and never by reshaping the ports to fit a
+candidate.
+
+**Context:** Four candidates evaluated against the port surface.
+FreeSWITCH fits the shape (ESL control, UUIDs + channel variables,
+bridge mixers) but has no business driver — paying its adapter cost now
+buys nothing. LiveKit is a different media architecture (rooms/tracks,
+no PSTN originate or channel correlation). Diago-as-engine inverts D-15
+(protocol risk moves into our process). VoiceBlender fails D-15 on
+maturity (months old) and D-05/D-23 on provider-coupled, in-path AI.
+
+**Alternatives:**
+- Adopt FreeSWITCH now: rejected — real adapter + container + config +
+  CDR work with zero product benefit today; the option stays open via
+  the contract.
+- Adopt LiveKit, Diago, or VoiceBlender as engine: rejected — role
+  mismatch (LiveKit), locked-decision conflict (Diago vs D-15),
+  maturity + AI-posture failure (VoiceBlender).
+- Do nothing beyond the interfaces: rejected — portability would stay
+  folk knowledge instead of an executable gate.
+
+**Consequences:**
+- A future engine proves fit by passing `mediatest`; unsuitable
+  candidates die at design review, never mid-build.
+- Exactly one engine stays wired (Asterisk) until a D-logged revisit
+  with a business driver.
+- Watch, don't adopt: VoiceBlender revisited in 18–24 months if it
+  hardens; LiveKit only if video/meetings ever enters scope (out
+  through R3).
+
+**Related Decisions:** D-15 (orchestrate, don't build), D-20 (modular
+monolith), D-24 (API-first)
+**Traceability:** BRD FBR-R1-01/FBR-R1-03; PRD EPIC-02/EPIC-03; HLD
+`01-architecture.md` §2, `04-bounded-contexts.md` §1
+
 ---
 
 ## Known and accepted limitations
