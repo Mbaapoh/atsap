@@ -93,7 +93,7 @@ at minimum; the full stack for `e2e`), then:
 | Suite | Command | Services needed | Env overrides (defaults shown) |
 |---|---|---|---|
 | unit | `cd api && go test ./... -race -cover` | none (hermetic by rule §1) | — |
-| integration | `cd api && go test -tags integration ./... -race` | Postgres, NATS | `DATABASE_URL` (`postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable`), `NATS_URL` (`nats://127.0.0.1:4222`) |
+| integration | `cd api && go test -tags integration -p 1 ./... -race` | Postgres, NATS | `DATABASE_URL` (`postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable`), `NATS_URL` (`nats://127.0.0.1:4222`) |
 | e2e | `cd api && go test -tags e2e ./internal/telephony/e2e/ -count=1` | full dev stack (Asterisk + Postgres + NATS + app) | above plus ARI `http://127.0.0.1:8088/ari`, SIP `127.0.0.1:5060/udp`, app API `http://127.0.0.1:8080` |
 | automated UAT | `mise run uat:auto` | full dev stack + host baresip phones (script manages them) | — (script owns setup/teardown; see `docs/uat/walking-skeleton.md`) |
 
@@ -101,6 +101,20 @@ at minimum; the full stack for `e2e`), then:
 ports, so a default dev stack works with zero extra flags. If a suite
 cannot run hermetically (unit) or against these defaults, that is a
 defect in the suite, not in the machine.
+
+### 6.1 There is no seeded dev tenant
+
+Migration `0002_dev_tenant_seed` once inserted a fixed-UUID tenant behind
+`ATSAPBX_SEED_DEV_TENANT`. Both the gate and the seed are gone: tenants
+are provisioned through `identity` (openspec change
+`identity-auth-rbac`), and no migration conjures one in any environment.
+`0002` remains as an empty tombstone purely so `golang-migrate` can still
+resolve the chain on a database already at that version — deleting the
+files strands every existing dev stack.
+
+Tests create the tenants they need, which they already did. A test that
+assumed the seeded UUID would now find nothing, correctly: provisioning
+is a call, not a fixture.
 
 ## 7. Results & records
 

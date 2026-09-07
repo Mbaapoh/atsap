@@ -23,6 +23,10 @@ api/                          Go control-plane, image: atsap-api
       acl/                    Asterisk Anti-Corruption Layer
         ari/                  ARI REST client + WebSocket event stream
         ami/                  AMI TCP client (login, actions, events)
+    identity/                 bounded context: identity (Tier 0)
+      domain/ ports/ application/ postgres/
+                              tenants, principals, Argon2id credentials,
+                              Ed25519 tokens, RBAC, append-only audit log
     postgres/                 pgxpool wiring, RLS tenant-context helper (with telephony-core)
     nats/                     JetStream publisher (with telephony-core)
     config/                   env-based configuration
@@ -35,11 +39,16 @@ scripts/check-docs.sh          doc wiring checks (HLD markers, decision refs, li
 Jenkinsfile                  CI: lint, test, vuln-scan, docs, build+scan+push, deploy
 ```
 
-`portal/` (the React + TypeScript web dashboard, D-36) doesn't exist yet — this
-repo is currently the telephony core + control-plane boilerplate. The empty
-`internal/telephony/{domain,ports,application}`, `internal/shared/*`,
-`internal/postgres` and `internal/nats` directories mark where the first
-bounded context lands; `golangci-lint`'s `depguard` rule already enforces
+`portal/` (the React + TypeScript web dashboard, D-36) doesn't exist yet. Two
+bounded contexts are implemented so far, in the build order fixed by
+[`docs/hld/04-bounded-contexts.md` §10](docs/hld/04-bounded-contexts.md):
+`telephony-core` (LLD-01 — originate, bridge, hangup, proven end to end
+against real Asterisk) and `identity` (LLD-02 — tenants, principals,
+credentials, RBAC, audit). Authentication is built but **not yet enforced
+on RPCs**: that cutover is its own later change, so the e2e suite and the
+UAT rig still call the API without tokens.
+
+`golangci-lint`'s `depguard` rule and `internal/archtest` both enforce
 that nothing outside `internal/telephony/acl` may import the ARI/AMI
 adapters (HLD 01-architecture.md §1.2).
 
