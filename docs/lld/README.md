@@ -109,8 +109,24 @@ implementation:
 - **Generated config + reload** — we keep full control of the schema, at
   the cost of file generation, reload orchestration, and a window where
   written state is not yet live.
-- **ARI/AMI runtime provisioning** — dynamic, but not everything PJSIP
-  needs is settable at runtime.
+- **ARI dynamic config** — `PUT /ari/asterisk/config/dynamic/{configClass}/{objectType}/{id}`
+  exists, but **tested against our own Asterisk 22.8.2 on 2026-09-07 it
+  returns `403 "Cannot create sorcery objects of type 'endpoint'"`**,
+  because `res_pjsip`'s default sorcery backend is the config file and is
+  read-only for dynamic creation. Making it work means configuring a
+  writable sorcery backend — which is options 1 or 2 underneath anyway —
+  and objects created this way still need our database as the source of
+  truth to survive a restart.
+
+**What ARI does and does not do, since this is easy to conflate.** ARI is
+*call control*: originate, bridge, play, hang up — proven since LLD-01
+and unaffected by this decision. ARI's `/endpoints` resource is
+**read-only** (`GET`, plus messaging and refer); there is no create. So
+"we use ARI" answers how a call is controlled, not how an extension a
+phone can register to comes to exist. That second question is what this
+decision settles, and it lives entirely inside the ACL: the console calls
+our API, our API writes our database, and the ACL makes Asterisk aware.
+No part of the choice is visible to the console, the API, or a partner.
 
 Whichever is chosen, `docs/API.md` §3a already fixes the contract-side
 consequence: the API models the domain (an `Extension`, a
