@@ -1,0 +1,32 @@
+# baresip config for AtsaPBX AUTOMATED UAT (extension 1001).
+module_path		/usr/lib/baresip/modules
+
+module			stdio.so
+module			g711.so
+module			auconv.so
+module			auresamp.so
+module			pipewire.so
+module_app		account.so
+module_app		contact.so
+module_app		menu.so
+module_app		uuid.so
+
+# PipeWire matches Omarchy's audio stack; if calls are silent, swap both
+# lines to alsa,default and restart.
+audio_player		pipewire,default
+audio_source		pipewire,default
+ausrc_format		s16
+auplay_format		s16
+# Answering is driven by the automation via ctrl_tcp (/accept) or
+# answermode; no human needed. See scripts/uat-auto.sh.
+
+# Fixed ports so the dev-machine firewall can allow exactly these
+# (ephemeral ports change every restart and cannot be allow-listed).
+sip_listen		0.0.0.0:5071
+rtp_ports		18020-18039
+
+# AUTOMATED-UAT variant: answer without human, log RTP stats as media evidence.
+rtp_stats		yes
+
+module_app		ctrl_tcp.so
+ctrl_tcp_listen		127.0.0.1:5551

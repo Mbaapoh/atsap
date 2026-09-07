@@ -1,0 +1,3 @@
+# AtsaPBX walking-skeleton dev fixture (matches core/conf/pjsip.conf [1000]).
+# transport must stay UDP: Asterisk fixture transport is UDP-only.
+<sip:1000@127.0.0.1:5060;transport=udp>;auth_user=1000;auth_pass=devpassword123;outbound="sip:127.0.0.1:5060;transport=udp";regint=300

@@ -94,6 +94,7 @@ mise run build        # build ./bin/atsap-api
 mise run dev:logs      # tail the dev stack's logs
 mise run dev:down      # stop the dev stack
 mise run dev:app       # rebuild + restart only the app service (fast)
+mise run uat:auto      # automated UAT on real baresip phones (signaling + media, rig restored after)
 ```
 
 All dev-only credentials (ARI/AMI/SIP passwords) live in

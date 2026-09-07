@@ -22,7 +22,8 @@ IVR), PRD §11.1 (call lifecycle), delta spec
 | Fixtures | PJSIP endpoints `1000`/`1001`, userpass auth, `ulaw,alaw` only, `max_contacts=1` |
 | Softphones | baresip 4.6.0 ×2 (`~/.baresip-1000`, `~/.baresip-1001`), PipeWire audio, codecs PCMU/PCMA only |
 | Softphone network | Fixed SIP ports `5070`/`5071`, RTP `18000–18039`; host ufw allows UDP for these **from `172.18.0.0/16` only** (compose net). Without this, Asterisk→host INVITEs are dropped and legs die at the 20 s timeout — misdiagnosable as an app bug |
-| Sidecar | `sipua` stopped for human runs (`max_contacts=1`); restarted afterwards |
+| Sidecar | `sipua` stopped for any baresip run, human or automated (`max_contacts=1`); restarted afterwards |
+| Auto variant | Versioned templates in `scripts/uat/baresip-{1000,1001}-auto/` (manual config plus `ctrl_tcp` on `127.0.0.1:5550`/`5551` and `rtp_stats yes`). Answering is driven per-run via ctrl_tcp `answermode auto` (reply verified) — NOT the `call_accept` config key, which parses but does not auto-answer INVITEs (proven 2026-09-07). Media evidence comes from each phone's end-of-call RTP summary (`packets` TX/RX) |
 
 ## 2. Entry / exit criteria
 
@@ -64,6 +65,21 @@ Expected: `Terminated` + final billable seconds (UC-01) / no usage
 (UC-02); every outbox row `published`; no `atsa-part-`/channel-shaped
 content in any API response or event payload.
 
+### UC-04 — Automated regression on the same real phones
+Objective: re-prove UC-01 unattended on the identical endpoints, so every
+future change re-runs the human cases without a human. Manual UAT stays
+for first-proof, audio-quality judgment, and exploratory work; UC-04 is
+the regression net.
+Steps: `mise run uat:auto` (i.e. `scripts/uat-auto.sh`), which stops the
+sidecar, installs the auto configs, starts both phones, waits for both
+registrations, sets `answermode auto` over ctrl_tcp (verified reply),
+runs the unchanged Go e2e, then asserts endpoint-measured media and
+restores the rig (kills auto phones, restarts sidecar) even on failure.
+Expected: e2e PASS (Active → Terminated, continuous usage, ordered NATS,
+leak-free GetCall) **and** both phones report RTP `packets` TX>0 and RX>0
+with zero errors — bidirectional media measured at the endpoints, not
+inferred from signaling.
+
 ## 4. Execution record
 
 | Case | Result | Evidence |
@@ -71,6 +87,7 @@ content in any API response or event payload.
 | UC-01 | **PASS** 2026-09-07 ~09:44 UTC | Call `963848b1`: originated 09:44:31, answered 09:44:38 (~7 s human answer time), ended 09:44:41, `normal clearing`. baresip logs both sides: `Incoming call` → `Call established`, PCMU encoder+decoder, PipeWire capture+playback started, 3–4 s audio. `usage_seconds`: 7 continuous non-duplicated rows / 2 participants. NATS: `call.initiated, call.active, call.terminated` in order. `GetCall`: `Terminated`, leak-free. Test: `PASS ok 10.46s` |
 | UC-02 | **PASS** 2026-09-07 ~09:49 UTC | Call `02fd8a7c`: 09:49:19→09:49:39 (exactly the 20 s alerting timeout), never answered, `call setup did not complete`. `usage_seconds`: 0 rows. Outbox: `call.initiated → call.terminated`, both published, no `active`. Phones observed `Cancel Q.850 cause=19`. (Test-failure at the Active wait is the expected signal, not a defect.) |
 | UC-03 | **PASS** | `GetCall` returned `Terminated` + final billable durations; outbox rows all `published`; no channel-ID content in API/event payloads (mirrors task 8.2's automated scan on live data) |
+| UC-04 | **PASS** 2026-09-07 ~11:08 UTC | `mise run uat:auto` first-try green (4.4 s): e2e PASS on auto-answering real phones (no human), rig auto-restored. Media measured at endpoints — phone 1000: TX 152 / RX 151 packets, phone 1001: TX 152 / RX 152, 0 errors, ~64 kbit/s PCMU both ways |
 
 Logs: app log free of ERRORs across both runs; Asterisk log free of errors
 except historical `cel_pgsql varchar(32)` noise (schema since widened to
@@ -93,8 +110,10 @@ except historical `cel_pgsql varchar(32)` noise (schema since widened to
 
 ## 6. Sign-off
 
-UC-01/02/03 PASS with evidence above. The walking skeleton is accepted
+UC-01/02/03/04 PASS with evidence above. The walking skeleton is accepted
 for human-affecting behavior (ring/answer/audio/hangup/timeout). Automated
 DoD (31/31 tasks, `mise run ci`, e2e) plus this record = archive-ready.
+Manual UAT remains the first-proof and audio-quality/exploratory path;
+UC-04 is the unattended regression net for every future change.
 
 Sign-off: ______________________ Date: __________

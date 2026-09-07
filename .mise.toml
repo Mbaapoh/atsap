@@ -18,6 +18,10 @@ run = "docker compose -f deploy/docker-compose.yml down"
 description = "Rebuild and restart only the app service (fast; Asterisk is untouched)"
 run = "docker compose -f deploy/docker-compose.yml up -d --build app"
 
+[tasks."uat:auto"]
+description = "Automated UAT: real baresip phones auto-answer the e2e call; asserts signaling, records, events, and bidirectional media, then restores the rig"
+run = "./scripts/uat-auto.sh"
+
 [tasks."dev:logs"]
 description = "Tail logs from the local dev stack"
 run = "docker compose -f deploy/docker-compose.yml logs -f"
