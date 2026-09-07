@@ -7,6 +7,13 @@
 | **Traces to** | BRD FBR-R1-04/FBR-R1-08/FBR-R1-12/§10; PRD EPIC-01 (US-01.1–01.7, AC-01.1–01.7), EPIC-06 (US-06.1–06.7, AC-06.1–06.10), PRD §11.2 (licence states), INV-01/INV-03/INV-10/INV-11; TRD Domain model, extensibility seams; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §§4/7, [05-security.md](../hld/05-security.md) §1, [11-decisions.md](../hld/11-decisions.md) (T-1–T-3); DECISIONS D-11–D-14, D-24 |
 | **Why this is LLD-02** | LLD-01 proved the media path against stub adapters whose files say, verbatim, "until LLD-02 lands." Every Tier 1 context needs `identity`'s tenant context (§10.1), and without real licensing there is no sellable product — capacity enforcement, not dialing features, is what makes the platform commercial. D-26 (dependency-first within a release) puts both here, ahead of `pbx-core`. |
 
+## Document history
+
+| Date | Change |
+|---|---|
+| 2026-09-07 | Initial draft. |
+| 2026-09-07 | Amendment: dev-token three-layer guardrails (§5.2); distributed-capacity future direction (§8); change table with propose order (§9); Security & Compliance Invariants (§10); critical-path sequence diagrams (§11); DoD items 9–11. |
+
 ## 1. Scope
 
 **In scope (this LLD only):**
@@ -186,10 +193,24 @@ this LLD owns — **not a new schema**, the agreed one, same as LLD-01 §6.1:
   the e2e create their own tenants (already the established pattern);
   local dev provisions via the new `AuthenticateUser` bootstrap flow
   documented in `docs/TESTING.md` §6 follow-up.
-- Dev-only token minting for rig/test use (`ATSAPBX_DEV_TOKEN_*`,
-  env-gated, never prod): lands here so existing UAT scripts and the e2e
-  keep working after the auth cutover. The UAT runbook's `curl GetCall`
-  examples gain the `Authorization: Bearer` header at that point.
+- **Dev-only token minting guardrails**: the development bootstrap flow
+  (`ATSAPBX_DEV_TOKEN_*`) is protected by **three independent layers**,
+  so existing UAT scripts and the e2e keep working after the auth
+  cutover without any prod exposure:
+  1. **Build tag**: `//go:build dev` keeps dev-token code out of
+     production binaries entirely — implications: dev/rig builds
+     (`Dockerfile`, `mise run`, CI dev jobs) pass `-tags dev`
+     explicitly; default `go build ./...` never contains it.
+  2. **Runtime environment**: the wire-up path refuses to run unless
+     `ATSAPBX_ENV=development`, failing closed otherwise — a prod
+     environment with the tag accidentally set still cannot mint.
+  3. **Configuration isolation**: the dev issuer uses a separate,
+     hardcoded Ed25519 key; config structs carry distinct `DevJWTKey`
+     vs `ProdJWTKey` fields so the two keys can never be confused
+     (INV-11).
+  All three must fail together for a leak — defense in depth, not a
+  single gate. The UAT runbook's `curl GetCall` examples gain the
+  `Authorization: Bearer` header at that point.
 
 ## 6. ConnectRPC surface (this LLD: auth on existing methods + identity methods)
 
@@ -230,6 +251,19 @@ method is recorded in the proposing change, not smuggled in.)
 8. `go-arch-lint`/AST + `depguard` green with the two new contexts
    present; RLS isolation test extended to the new tables; `tenant_id`
    absent from no new row, event, or log (D-24 seam 1, D-39).
+9. **Security invariants verified**: `AuthorizeAction` is deny-by-default
+   (no-match tuple test); no audit row contains `password_hash` or
+   `key_hash` (constructor-redaction test); all SQL in the two new
+   contexts uses parameter placeholders — enforced in review, since
+   `depguard` matches import paths, not string shapes, and no gate may
+   claim otherwise (D-28 honesty).
+10. **Session invalidation tested**: disabling a principal causes the next
+    RPC to fail (per-RPC validation leaves no window — only the already
+    in-flight RPC completes); suspending a tenant blocks new calls while
+    active calls drain, per the AC-01.5/AC-01.7 patterns in item 3.
+11. **Rate-limiting readiness**: the auth interceptor documents the
+    extension point where a limiter wraps it — documentation only, no
+    stub limiter ships with this LLD.
 
 ## 8. Known limitations of this LLD (carried, not introduced)
 
@@ -238,7 +272,13 @@ method is recorded in the proposing change, not smuggled in.)
   are LLD-03's ingress work reusing the verdicts built here.
 - Single-node capacity counting: the atomic counter is per-process.
   Multi-node shared counting is a later scaling change, explicitly not
-  this LLD (D-08: nothing over-built for year-three scale).
+  this LLD (D-08: nothing over-built for year-three scale). If
+  multi-node active-active scaling becomes necessary, a future LLD will
+  replace the in-memory counter with a distributed lease mechanism
+  consistent with the approved stack (e.g. PostgreSQL `SELECT ... FOR
+  UPDATE` row-level contention, per the `SKIP LOCKED` patterns already
+  in use) — never an unevaluated new dependency. The `LicenseManager`
+  port abstraction allows this swap without affecting `telephony-core`.
 - `compliance` stays a stub (LLD-04 owns real DNC/hours/spend).
 
 ## 9. OpenSpec handoff
@@ -246,7 +286,141 @@ method is recorded in the proposing change, not smuggled in.)
 When ready to implement: `/opsx:propose "identity provisioning, auth, and
 licensing capacity/grace"` (Claude Code) or `/opsx-propose` (OpenCode).
 `openspec/config.yaml`'s `context:` already surfaces the docs baseline;
-point the agent at this file as the design source. Expect several
-changes from this LLD (e.g. `identity-provisioning-auth`,
-`licensing-capacity-grace`, `auth-cutover-connectrpc`), each proposed,
-applied, and archived independently per `docs/lld/README.md` granularity.
+point the agent at this file as the design source.
+
+**Expected changes from this LLD** (implementation granularity per
+`docs/lld/README.md`). Both contexts are Tier-0 peers with no hard build
+dependency between them (HLD 04 §10.1) — the order below is a propose
+sequence for integration coherence, not a dependency chain:
+
+| Change ID | Scope | Sequencing note |
+|---|---|---|
+| `identity-auth-rbac` | Tenant provisioning, Argon2id hashing, JWT issuer/validator, ConnectRPC auth interceptor, RBAC `AuthorizeAction` | First: everything else integrates against tenants that exist |
+| `licensing-capacity-grace` | Full `LicenseManager`, atomic counter, Ed25519 verify, 7-day grace tracker | Second: no hard dependency on the above (Tier-0 peer), ordered here so capacity tests run against real tenants |
+| `licensing-apply-key` | `ApplyLicenseKey` RPC/CLI, hardware fingerprint collection & matching | After capacity-grace (keys set capacity) |
+| `identity-bootstrap` | Dev-token minting, dev-seed-deletion follow-through, UAT script updates | After auth (replaces what it bypasses) |
+| `auth-cutover-connectrpc` | Enforce JWT on all RPCs, tenant-match rule, dev-token issuer for the rig | Last: flips the switch only once providers and consumers exist |
+
+Each change is proposed, applied, and archived independently.
+
+## 10. Security & Compliance Invariants
+
+This LLD lays the identity and licensing groundwork that later
+regulatory posture (consent handling, residency enforcement,
+payment-scope reduction — BRD §15) builds on. The following
+invariants are **mandatory** here, enforced by the tests in §7 items
+9–10 and by review:
+
+### 10.1 Deny-by-default authorization
+`AuthorizeAction` returns `PermissionDenied` unless a role binding
+matches the (principal, action, resource) tuple exactly. Wildcards exist
+only for explicit admin roles and only in the scoped forms `tenant:*`
+or `system:*` — a new tightening introduced at LLD level, reviewable
+per change.
+
+### 10.2 Session invalidation (two layers)
+`ValidateToken` checks both (1) the JWT itself — Ed25519 signature,
+`exp`, `nbf` — and (2) live state: the principal and tenant rows must
+both read `Active`. Suspension-time call blocking stays deferred to
+LLD-03 with the rest of ingress (see §1, §8); until then a suspended
+tenant fails closed at the API with no media path to protect.
+
+### 10.3 Audit-log secret redaction
+`before_json`/`after_json` MUST NOT contain `password_hash`, `key_hash`,
+or key material. The `AuditEntry` constructor strips any field tagged
+`sensitive:"true"` before marshal — redaction at construction, not at
+read time, so no query path can leak (D-39, INV-11).
+
+### 10.4 Mandatory parameterized queries
+All SQL in `identity/*` and `licensing/*` uses pgx parameter
+placeholders (`$1`, `$2`, …). String-built SQL is forbidden. (Stated
+plainly: this is review-enforced — `depguard` matches import paths, not
+string shapes, so no CI gate claims this check. See §7 item 9.)
+
+### 10.5 Rate limiting (deferred)
+Brute-force protection (e.g. fail-after-N) belongs at the connection
+boundary — an edge proxy once HLD 06 lands one, or a dedicated
+rate-limiting interceptor wrapping auth in a future LLD — never inside
+the auth logic itself. This LLD documents the extension point only
+(§7 item 11).
+
+### 10.6 Data residency posture (deferred enforcement)
+`Tenant.ResidencyZone` is populated at provisioning and immutable
+thereafter. Actual storage routing lives at the deployment layer and is
+enforced by a future LLD, not here — this LLD guarantees the field
+exists, is carried in `TenantContext`, and can never be blanked.
+
+## 11. Critical Path Sequence Diagrams
+
+### 11.1 Auth & capacity check (call setup)
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent client
+    participant ConnectRPC as ConnectRPC ingress
+    participant Auth as identity/application (JWT)
+    participant RLS as PostgreSQL (RLS)
+    participant Lic as licensing/application
+    participant PBX as telephony-core
+
+    Agent->>ConnectRPC: GetCall (tenant_id, call_id) + Bearer JWT
+    ConnectRPC->>Auth: ValidateToken(token)
+    Auth->>Auth: Verify Ed25519 signature, check exp/nbf
+    Auth->>Auth: Check principal + tenant rows Active
+    Auth-->>ConnectRPC: TenantContext (principal_id, tenant_id, roles)
+
+    ConnectRPC->>ConnectRPC: Compare body tenant_id vs context tenant_id
+    alt Mismatch
+        ConnectRPC-->>Agent: InvalidArgument (tenant mismatch)
+    end
+
+    ConnectRPC->>RLS: SET LOCAL app.tenant_id = context tenant_id
+    ConnectRPC->>PBX: Forward RPC with tenant context
+
+    PBX->>Lic: ValidateCapacity(tenant_id, requested_channels)
+    Lic->>Lic: Check atomic counter + burst allowance
+    alt Capacity exceeded
+        Lic-->>PBX: CapacityVerdict not permitted with reason
+        PBX-->>Agent: ResourceExhausted (telemetry code BR-05)
+    else Capacity available
+        Lic->>Lic: Increment used channels atomically
+        Lic-->>PBX: CapacityVerdict permitted
+        PBX-->>Agent: Call record (domain state, never channel handles)
+    end
+```
+
+### 11.2 License key application & grace flow
+
+```mermaid
+sequenceDiagram
+    participant Admin as Partner admin
+    participant Lic as licensing/application
+    participant DB as licensing_state table
+
+    Admin->>Lic: ApplyLicenseKey(signed payload)
+    Lic->>Lic: Verify Ed25519 signature against vendor public key
+    alt Invalid signature
+        Lic-->>Admin: InvalidArgument (tampered)
+    end
+    Lic->>Lic: Parse payload (edition, capacity, expiry, instance, fingerprint)
+    Lic->>Lic: Compare hardware fingerprint (3 of 5 match)
+    alt Fewer than 3 match
+        Lic-->>Admin: FailedPrecondition (fingerprint mismatch)
+    end
+    Lic->>DB: Upsert licensing_state, last_confirmed_at = now
+    Lic-->>Admin: OK, capacity active
+
+    Note over Lic,DB: Offline grace check (daily worker)
+    Lic->>DB: Read last_confirmed_at
+    Lic->>Lic: Days since last confirmation
+    alt Days 1 to 6
+        Lic->>Lic: Warn from day 2 (logs only, full function)
+    else Day 7 and beyond
+        Lic->>Lic: Degraded to defined reduced level, never zero
+    end
+    Note over Lic: Emergency calls bypass capacity entirely (LLD-03 ingress)
+```
+
+`ApplyLicenseKey` takes no user input besides the payload: verification
+is pure cryptography over bytes, so there is no injection surface in
+this path by construction.
