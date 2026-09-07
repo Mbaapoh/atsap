@@ -150,6 +150,25 @@ Under high call concurrency (e.g., 30+ CPS), correlating events by caller ID and
 2. **Inbound Ingress:** When a call enters Stasis from the minimal dialplan, Asterisk passes the channel to Stasis. The ACL inspects SIP headers (`X-Atsa-Correlation-ID` if internal, or generates a fresh `CallID` and `ParticipantID`), registers the initial channel in the `ChannelHistory` registry, and sets channel variables in Asterisk.
 3. **Channel Replacement & Attended Transfer Handover:** When Asterisk issues `ChannelDestroyed` followed by `ChannelCreated` or `BridgeMerged` during a transfer, the ACL identifies the handover via the bridge token, links the new channel ID to the existing `participant_id` in `ChannelHistory`, and preserves the participant's domain identity and billing timer unbroken.
 
+### 2.2 Engine Capability Checklist (D-41)
+
+`MediaGateway` is written in domain capabilities so a future engine can
+implement it without reshaping (normative contract on the interface
+itself; executable proof in `api/internal/telephony/mediatest`). An
+engine qualifies by meeting every row — a miss is a pre-decided degraded
+path, never orchestrator branching:
+
+| Primitive | Engine must provide | If it cannot |
+|---|---|---|
+| Originate with caller-supplied ID + variables | Token in, same token on every later event (D-19) | Disqualified — correlation by guess is forbidden, no fallback exists |
+| Answer / hangup events | Answered + destroyed/hangup signals mappable to the fixed sink vocabulary | Disqualified — the orchestrator cannot track what it cannot see |
+| Bridge / mix N legs | Mixer with add/remove semantics | Out of scope for that engine (no multi-party on it) |
+| Hold / playback / record | Media operations per leg | Feature-gated off for that engine |
+| Audio tap for AI | Non-blocking cloned-audio feed | AI pipeline disabled for that engine (INV-04) |
+| Transfer with identity continuity | Channel-swap events preserving participant (T-5 pattern) | Transfers rejected on that engine, never half-migrated |
+| Per-second usage + CDR-grade detail | Derivable from answer/hangup/transfer events | Disqualified — an engine that cannot bill cannot serve |
+| TLS/SRTP media | Encrypted signaling and media | Disqualified (BR-02) |
+
 ---
 
 ## 3. Ingress, Protocols & Outbox Pattern

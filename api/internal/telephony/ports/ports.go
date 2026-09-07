@@ -76,10 +76,34 @@ type OriginateRequest struct {
 	TimeoutSeconds int
 }
 
-// MediaGateway is telephony-core's outbound port onto the Asterisk ACL —
-// exactly docs/hld/04-bounded-contexts.md §1's interface. StartSnoop is
+// MediaGateway is telephony-core's outbound port onto the media engine,
+// today implemented by the Asterisk ACL — exactly
+// docs/hld/04-bounded-contexts.md §1's interface. StartSnoop is
 // declared but not implemented in this change (returns an error);
 // ai-pipeline (LLD-05) is its first caller.
+//
+// Engine capability contract (DECISIONS D-41): this interface is written
+// in domain capabilities, never engine verbs, so a future engine can
+// implement it without reshaping. Any implementation must additionally
+// satisfy all four clauses, verified by the mediatest conformance suite
+// (api/internal/telephony/mediatest):
+//
+//  1. Caller-supplied correlation: Originate must accept an
+//     orchestrator-chosen identifier (OriginateRequest.ChannelID plus
+//     Variables) and return it on every subsequent event for that leg.
+//     Matching by dialled-number-plus-timestamp is forbidden (D-19) —
+//     an engine without token support fails the contract at review.
+//  2. Fixed event vocabulary: the engine translates its native events
+//     into ParticipantAnswered/ParticipantLeft-shaped signals inside its
+//     own acl/<engine> package. New event kinds are never added here to
+//     suit an engine.
+//  3. Metering from events alone: per-second per-participant usage and
+//     CDR-grade detail must be derivable from answer/hangup/transfer
+//     events. An engine that cannot report these cannot bill.
+//  4. Degraded paths per primitive: anything the engine cannot do
+//     (e.g. no audio tap) degrades by configuration — never by
+//     orchestrator branching. See the capability checklist in
+//     docs/hld/01-architecture.md §2.
 type MediaGateway interface {
 	Originate(ctx context.Context, req OriginateRequest) (ChannelRef, error)
 	CreateBridge(ctx context.Context, bridgeType string) (BridgeID, error)
