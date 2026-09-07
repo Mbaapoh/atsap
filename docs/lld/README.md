@@ -42,9 +42,28 @@ does not list, so the inventory cannot rot quietly.
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started — `compliance` is a **release gate** for LLD-06's dialling (D-45) | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
 | 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |
-| 07 | Console — administration and partner portal (`portal/`) | — (frontend; consumes the public API only) | Not started — **R1.0 scope, and the largest unbuilt piece** | — |
+| 07 | Console — administration and partner portal (`portal/`) | — (frontend; consumes the public API only) | **Not one LLD.** Delivered as a slice per phase (D-46): A with `pbx-core` basics, B with IVR and reporting, C with campaigns | — |
 
-### The console is R1.0 scope and depends on nearly everything
+### Delivery phases (D-46)
+
+R1.0 is delivered in three phases, each ending in something a partner can
+be shown, each continuing from what is already implemented:
+
+| Phase | A partner can… | Backend | Console slice |
+|---|---|---|---|
+| **A** | install, licence, and make and receive real calls, configured entirely in the UI | finish LLD-02 licensing; LLD-03 minimal — extensions, a trunk, basic routing | login, users and roles, extensions, trunk, licence status |
+| **B** | run it as a business phone system | LLD-03 completion — IVR, auto-attendant, business hours, queues; LLD-04 `reporting`; recording governance | visual IVR builder, queues, call history, recording policy |
+| **C** | run an outbound operation | LLD-04 `compliance` **first**, then LLD-06 `dialer` (preview and power) | campaigns, contact lists, compliance configuration |
+
+Predictive pacing is R2 (D-27, D-45).
+
+**API-first applies per phase, not per release.** A phase's endpoints
+land before its console slice, and the slice uses only public endpoints —
+so each slice is the first honest test of whether that phase's API can
+actually carry an interface. A screen that cannot be built without a
+private endpoint means the API is wrong, and it is fixed in that phase.
+
+### The console depends on nearly everything, which is why it is sliced
 
 PRD EPIC-10 covers one web application for both tenant administration and
 partner commerce, and PRD principle 4 fixes what it must hide: **no

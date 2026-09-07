@@ -715,6 +715,73 @@ EPIC-14, EPIC-15; HLD `04-bounded-contexts.md` §10
 
 ---
 
+**D-46 · R1.0 is delivered in three phases, each demonstrable, each
+ending with console work (2026-09-07).**
+
+**Decision:** Keep R1.0's scope as D-45 set it, and deliver it in three
+phases that each end in something a partner can be shown. Every phase
+includes its own console slice; the console is **not** one large
+frontend built at the end. Phases continue from what is already
+implemented — nothing is restarted.
+
+**Context:** D-45 widened R1.0 to nearly the whole platform, which is
+correct for what the product is but leaves a long stretch with nothing
+demonstrable. Separately, the console had been planned as a single
+LLD-07 *after* every backend LLD, on the reasoning that it can only
+consume APIs that exist. That reasoning is sound per API and wrong per
+delivery: it means no user-visible product until the end, no feedback on
+whether the API is usable by the interface that must use it, and a large
+frontend integration risk concentrated at the worst moment.
+
+**Phases:**
+
+| Phase | Ends with a partner able to… | Work |
+|---|---|---|
+| **A** | install it, licence it, and make and receive real calls — configured entirely in the UI | finish LLD-02's licensing half (already designed); LLD-03 `pbx-core` minimal — extensions, a SIP trunk, basic routing; console slice A — login, users and roles, extensions, trunk, licence status |
+| **B** | run it as a business phone system | LLD-03 completion — IVR, auto-attendant, business hours, queues; LLD-04 `reporting` — call detail, history, quality; recording governance; console slice B — visual IVR builder, queues, call history, recording policy |
+| **C** | run an outbound operation on it | LLD-04 `compliance` **first** — DNC, calling hours, opt-out; LLD-06 `dialer` — preview and power; console slice C — campaigns, contact lists, compliance configuration |
+
+Predictive pacing remains R2 (D-27, D-45), landing on a power loop that
+has run in production.
+
+**Alternatives:**
+- Backend-complete, then one console: rejected — the reasoning above.
+  Nothing demonstrable until the end, and the first real test of "can the
+  interface actually be built on these endpoints" arrives too late to act
+  on.
+- Console-first against mocks: rejected — it would freeze contracts
+  before the domain that serves them exists, and AC-05.1 requires the
+  console to use the same endpoints a partner would, not mocks that later
+  diverge.
+- Shrink R1.0 instead of phasing it: rejected — D-45 set that scope
+  deliberately and for product reasons; phasing addresses the delivery
+  concern without reopening it.
+
+**Consequences:**
+- **API-first still holds, per phase.** A phase's endpoints land before
+  its console slice, and the slice uses only public endpoints — the
+  console gets no back door (D-43, AC-10.7). Each phase is a small
+  version of the same discipline, not an exception to it.
+- Each phase's console slice is the first honest test of that phase's
+  API. If a screen cannot be built without a private endpoint, the API
+  is wrong and is fixed in that phase rather than worked around.
+- The `pbx-core` Asterisk-translation decision (docs/lld/README.md) is
+  settled in Phase A, where the surface is smallest and being wrong is
+  cheapest to correct.
+- Phase A is independently sellable as a PBX. B and C add contact centre
+  and outbound. Compliance precedes the first dial in C, always — it is
+  a gate, not a phase-ordering preference (D-45).
+- LLD-07 is retired as a single unit; console work is tracked as a slice
+  per phase.
+
+**Related Decisions:** D-25 (walking skeleton before specification), D-26
+(dependency-first ordering), D-27 (power before predictive), D-43
+(API-first consumer test), D-45 (outbound in R1.0)
+**Traceability:** PRD §4 release plan, EPIC-03, EPIC-10, EPIC-14,
+EPIC-15; HLD `04-bounded-contexts.md` §10; `docs/lld/README.md`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
