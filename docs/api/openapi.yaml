@@ -1,0 +1,924 @@
+openapi: 3.1.0
+info: {}
+paths:
+  /atsapbx.v1.IdentityService/AuthenticateUser:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: AuthenticateUser
+      description: |-
+        AuthenticateUser exchanges a username and password for a
+         short-lived token. The only method reachable without one.
+      operationId: atsapbx.v1.IdentityService.AuthenticateUser
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.AuthenticateUserRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.AuthenticateUserResponse'
+  /atsapbx.v1.IdentityService/ProvisionTenant:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: ProvisionTenant
+      description: |-
+        ProvisionTenant creates a tenant. Its residency zone is fixed here
+         and cannot be changed afterwards.
+      operationId: atsapbx.v1.IdentityService.ProvisionTenant
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ProvisionTenantRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ProvisionTenantResponse'
+  /atsapbx.v1.IdentityService/ProvisionPrincipal:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: ProvisionPrincipal
+      description: ProvisionPrincipal creates a user account within a tenant.
+      operationId: atsapbx.v1.IdentityService.ProvisionPrincipal
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ProvisionPrincipalRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ProvisionPrincipalResponse'
+  /atsapbx.v1.IdentityService/SetTenantStatus:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: SetTenantStatus
+      description: |-
+        SetTenantStatus suspends or reactivates a tenant. Reversible, and it
+         never terminates a call already in progress (INV-03).
+      operationId: atsapbx.v1.IdentityService.SetTenantStatus
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.SetTenantStatusRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.SetTenantStatusResponse'
+  /atsapbx.v1.IdentityService/SetPrincipalStatus:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: SetPrincipalStatus
+      description: |-
+        SetPrincipalStatus disables or reactivates an account. Takes effect
+         on that account's next request, not at token expiry.
+      operationId: atsapbx.v1.IdentityService.SetPrincipalStatus
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.SetPrincipalStatusRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.SetPrincipalStatusResponse'
+  /atsapbx.v1.IdentityService/GrantRole:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: GrantRole
+      description: GrantRole binds a role to a principal within a scope.
+      operationId: atsapbx.v1.IdentityService.GrantRole
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GrantRoleRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GrantRoleResponse'
+  /atsapbx.v1.IdentityService/IssueApiKey:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: IssueApiKey
+      description: |-
+        IssueApiKey creates a machine credential. Its response is the only
+         place the usable key value ever appears.
+      operationId: atsapbx.v1.IdentityService.IssueApiKey
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.IssueApiKeyRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.IssueApiKeyResponse'
+  /atsapbx.v1.IdentityService/RevokeApiKey:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: RevokeApiKey
+      description: RevokeApiKey makes a key unusable immediately.
+      operationId: atsapbx.v1.IdentityService.RevokeApiKey
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.RevokeApiKeyRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.RevokeApiKeyResponse'
+  /atsapbx.v1.IdentityService/ListAudit:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: ListAudit
+      description: ListAudit returns the calling tenant's most recent audit records.
+      operationId: atsapbx.v1.IdentityService.ListAudit
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListAuditRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListAuditResponse'
+components:
+  schemas:
+    atsapbx.v1.PrincipalStatus:
+      type: string
+      title: PrincipalStatus
+      enum:
+        - PRINCIPAL_STATUS_UNSPECIFIED
+        - PRINCIPAL_STATUS_ACTIVE
+        - PRINCIPAL_STATUS_DISABLED
+      description: PrincipalStatus mirrors the domain's principal lifecycle.
+    atsapbx.v1.TenantStatus:
+      type: string
+      title: TenantStatus
+      enum:
+        - TENANT_STATUS_UNSPECIFIED
+        - TENANT_STATUS_ACTIVE
+        - TENANT_STATUS_SUSPENDED
+      description: TenantStatus mirrors the domain's tenant lifecycle.
+    atsapbx.v1.AuditRecord:
+      type: object
+      properties:
+        id:
+          type:
+            - integer
+            - string
+          title: id
+          format: int64
+        tenantId:
+          type: string
+          title: tenant_id
+        actorId:
+          type: string
+          title: actor_id
+        actorType:
+          type: string
+          title: actor_type
+        action:
+          type: string
+          title: action
+        resourceType:
+          type: string
+          title: resource_type
+        resourceId:
+          type: string
+          title: resource_id
+        beforeStateJson:
+          type: string
+          title: before_state_json
+        afterStateJson:
+          type: string
+          title: after_state_json
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: AuditRecord
+      additionalProperties: false
+      description: |-
+        AuditRecord is one immutable administrative mutation. Credential
+         material is stripped before the record is written, so before_state and
+         after_state never contain it.
+    atsapbx.v1.AuthenticateUserRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+          description: |-
+            tenant_id is explicit because usernames are unique per tenant, never
+             globally (AC-01.2) — two tenants may each have an "admin", and
+             without a tenant there is no single account to resolve to.
+        username:
+          type: string
+          title: username
+        password:
+          type: string
+          title: password
+      title: AuthenticateUserRequest
+      additionalProperties: false
+    atsapbx.v1.AuthenticateUserResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          title: token
+          description: token is credential material. Never log it, never store it.
+        expiresAt:
+          title: expires_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        tenantId:
+          type: string
+          title: tenant_id
+        principalId:
+          type: string
+          title: principal_id
+      title: AuthenticateUserResponse
+      additionalProperties: false
+    atsapbx.v1.GrantRoleRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        principalId:
+          type: string
+          title: principal_id
+        role:
+          type: string
+          title: role
+        scope:
+          type: string
+          title: scope
+          description: |-
+            scope is "tenant" when omitted; "system" is platform-operator
+             authority and is not grantable by a tenant's own administrators.
+      title: GrantRoleRequest
+      additionalProperties: false
+    atsapbx.v1.GrantRoleResponse:
+      type: object
+      title: GrantRoleResponse
+      additionalProperties: false
+    atsapbx.v1.IssueApiKeyRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        principalId:
+          type: string
+          title: principal_id
+        expiresAt:
+          title: expires_at
+          description: |-
+            expires_at is optional; omitted means the key does not expire on its
+             own and must be revoked to stop working.
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: IssueApiKeyRequest
+      additionalProperties: false
+    atsapbx.v1.IssueApiKeyResponse:
+      type: object
+      properties:
+        apiKeyId:
+          type: string
+          title: api_key_id
+        rawKey:
+          type: string
+          title: raw_key
+          description: |-
+            raw_key is the usable credential, returned here and nowhere else,
+             ever. Losing it means issuing a new key — it cannot be recovered
+             from what is stored.
+        expiresAt:
+          title: expires_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: IssueApiKeyResponse
+      additionalProperties: false
+    atsapbx.v1.ListAuditRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        limit:
+          type: integer
+          title: limit
+          format: int32
+          description: |-
+            limit defaults to a server-chosen bound when zero. No cursor: a
+             partner needing pagination will say so, and guessing the shape now
+             freezes a contract nobody has asked for (D-25).
+      title: ListAuditRequest
+      additionalProperties: false
+    atsapbx.v1.ListAuditResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.AuditRecord'
+          title: records
+      title: ListAuditResponse
+      additionalProperties: false
+    atsapbx.v1.Principal:
+      type: object
+      properties:
+        principalId:
+          type: string
+          title: principal_id
+        tenantId:
+          type: string
+          title: tenant_id
+        username:
+          type: string
+          title: username
+        email:
+          type: string
+          title: email
+        role:
+          type: string
+          title: role
+        status:
+          title: status
+          $ref: '#/components/schemas/atsapbx.v1.PrincipalStatus'
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Principal
+      additionalProperties: false
+      description: |-
+        Principal is a user account. It carries no credential representation:
+         there is deliberately no password or hash field here.
+    atsapbx.v1.ProvisionPrincipalRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        username:
+          type: string
+          title: username
+        email:
+          type: string
+          title: email
+        password:
+          type: string
+          title: password
+          description: |-
+            password is accepted here and never echoed back: the response
+             carries a Principal, which has no field for it.
+        role:
+          type: string
+          title: role
+      title: ProvisionPrincipalRequest
+      additionalProperties: false
+    atsapbx.v1.ProvisionPrincipalResponse:
+      type: object
+      properties:
+        principal:
+          title: principal
+          $ref: '#/components/schemas/atsapbx.v1.Principal'
+      title: ProvisionPrincipalResponse
+      additionalProperties: false
+    atsapbx.v1.ProvisionTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        residencyZone:
+          type: string
+          title: residency_zone
+      title: ProvisionTenantRequest
+      additionalProperties: false
+    atsapbx.v1.ProvisionTenantResponse:
+      type: object
+      properties:
+        tenant:
+          title: tenant
+          $ref: '#/components/schemas/atsapbx.v1.Tenant'
+      title: ProvisionTenantResponse
+      additionalProperties: false
+    atsapbx.v1.RevokeApiKeyRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        apiKeyId:
+          type: string
+          title: api_key_id
+      title: RevokeApiKeyRequest
+      additionalProperties: false
+    atsapbx.v1.RevokeApiKeyResponse:
+      type: object
+      title: RevokeApiKeyResponse
+      additionalProperties: false
+    atsapbx.v1.SetPrincipalStatusRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        principalId:
+          type: string
+          title: principal_id
+        status:
+          title: status
+          $ref: '#/components/schemas/atsapbx.v1.PrincipalStatus'
+      title: SetPrincipalStatusRequest
+      additionalProperties: false
+    atsapbx.v1.SetPrincipalStatusResponse:
+      type: object
+      properties:
+        principal:
+          title: principal
+          $ref: '#/components/schemas/atsapbx.v1.Principal'
+      title: SetPrincipalStatusResponse
+      additionalProperties: false
+    atsapbx.v1.SetTenantStatusRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        status:
+          title: status
+          $ref: '#/components/schemas/atsapbx.v1.TenantStatus'
+      title: SetTenantStatusRequest
+      additionalProperties: false
+    atsapbx.v1.SetTenantStatusResponse:
+      type: object
+      properties:
+        tenant:
+          title: tenant
+          $ref: '#/components/schemas/atsapbx.v1.Tenant'
+      title: SetTenantStatusResponse
+      additionalProperties: false
+    atsapbx.v1.Tenant:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        name:
+          type: string
+          title: name
+        status:
+          title: status
+          $ref: '#/components/schemas/atsapbx.v1.TenantStatus'
+        residencyZone:
+          type: string
+          title: residency_zone
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Tenant
+      additionalProperties: false
+      description: Tenant is a partner organisation.
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - 1s
+        - 1.000340012s
+      format: date-time
+      description: |-
+        A Timestamp represents a point in time independent of any time zone or local
+         calendar, encoded as a count of seconds and fractions of seconds at
+         nanosecond resolution. The count is relative to an epoch at UTC midnight on
+         January 1, 1970, in the proleptic Gregorian calendar which extends the
+         Gregorian calendar backwards to year one.
+
+         All minutes are 60 seconds long. Leap seconds are "smeared" so that no leap
+         second table is needed for interpretation, using a [24-hour linear
+         smear](https://developers.google.com/time/smear).
+
+         The range is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z. By
+         restricting to that range, we ensure that we can convert to and from [RFC
+         3339](https://www.ietf.org/rfc/rfc3339.txt) date strings.
+
+         # Examples
+
+         Example 1: Compute Timestamp from POSIX `time()`.
+
+             Timestamp timestamp;
+             timestamp.set_seconds(time(NULL));
+             timestamp.set_nanos(0);
+
+         Example 2: Compute Timestamp from POSIX `gettimeofday()`.
+
+             struct timeval tv;
+             gettimeofday(&tv, NULL);
+
+             Timestamp timestamp;
+             timestamp.set_seconds(tv.tv_sec);
+             timestamp.set_nanos(tv.tv_usec * 1000);
+
+         Example 3: Compute Timestamp from Win32 `GetSystemTimeAsFileTime()`.
+
+             FILETIME ft;
+             GetSystemTimeAsFileTime(&ft);
+             UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+
+             // A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
+             // is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
+             Timestamp timestamp;
+             timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
+             timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
+
+         Example 4: Compute Timestamp from Java `System.currentTimeMillis()`.
+
+             long millis = System.currentTimeMillis();
+
+             Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
+                 .setNanos((int) ((millis % 1000) * 1000000)).build();
+
+         Example 5: Compute Timestamp from Java `Instant.now()`.
+
+             Instant now = Instant.now();
+
+             Timestamp timestamp =
+                 Timestamp.newBuilder().setSeconds(now.getEpochSecond())
+                     .setNanos(now.getNano()).build();
+
+         Example 6: Compute Timestamp from current time in Python.
+
+             timestamp = Timestamp()
+             timestamp.GetCurrentTime()
+
+         # JSON Mapping
+
+         In JSON format, the Timestamp type is encoded as a string in the
+         [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) format. That is, the
+         format is "{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z"
+         where {year} is always expressed using four digits while {month}, {day},
+         {hour}, {min}, and {sec} are zero-padded to two digits each. The fractional
+         seconds, which can go up to 9 digits (i.e. up to 1 nanosecond resolution),
+         are optional. The "Z" suffix indicates the timezone ("UTC"); the timezone
+         is required. A proto3 JSON serializer should always use UTC (as indicated by
+         "Z") when printing the Timestamp type and a proto3 JSON parser should be
+         able to accept both UTC and other timezones (as indicated by an offset).
+
+         For example, "2017-01-15T01:30:15.01Z" encodes 15.01 seconds past
+         01:30 UTC on January 15, 2017.
+
+         In JavaScript, one can convert a Date object to this format using the
+         standard
+         [toISOString()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString)
+         method. In Python, a standard `datetime.datetime` object can be converted
+         to this format using
+         [`strftime`](https://docs.python.org/2/library/time.html#time.strftime) with
+         the time format spec '%Y-%m-%dT%H:%M:%S.%fZ'. Likewise, in Java, one can use
+         the Joda Time's [`ISODateTimeFormat.dateTime()`](
+         http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
+         ) to obtain a formatter capable of generating timestamps in this format.
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        detail:
+          $ref: '#/components/schemas/google.protobuf.Any'
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    google.protobuf.Any:
+      type: object
+      properties:
+        type:
+          type: string
+        value:
+          type: string
+          format: binary
+        debug:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+    atsapbx.v1.GetCallRequest:
+      type: object
+      properties:
+        callId:
+          type: string
+          title: call_id
+        tenantId:
+          type: string
+          title: tenant_id
+          description: |-
+            tenant_id is explicit here because no auth/identity layer exists yet
+             to derive it from a request context (LLD-02, identity, is a later
+             bounded context). Replaced by auth-derived tenant context once that
+             lands — this field is a deliberate, temporary walking-skeleton
+             scope choice, not a permanent API design.
+      title: GetCallRequest
+      additionalProperties: false
+    atsapbx.v1.GetCallResponse:
+      type: object
+      properties:
+        callId:
+          type: string
+          title: call_id
+        tenantId:
+          type: string
+          title: tenant_id
+        state:
+          type: string
+          title: state
+          description: |-
+            state is one of: Initiated, Screening, Routing, Presenting, Active,
+             Degraded, Terminating, Terminated (docs/telephony/domain.CallState).
+        direction:
+          type: string
+          title: direction
+          description: 'direction is one of: INBOUND, OUTBOUND, INTERNAL.'
+        sourceNumber:
+          type: string
+          title: source_number
+        destNumber:
+          type: string
+          title: dest_number
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.Participant'
+          title: participants
+      title: GetCallResponse
+      additionalProperties: false
+    atsapbx.v1.Participant:
+      type: object
+      properties:
+        participantId:
+          type: string
+          title: participant_id
+        role:
+          type: string
+          title: role
+          description: 'role is one of: CALLER, AGENT, IVR, QUEUE, SUPERVISOR, SPECIALIST, AI.'
+        endpointUri:
+          type: string
+          title: endpoint_uri
+        state:
+          type: string
+          title: state
+          description: |-
+            state is one of: Invited, Ringing, Connected, OnHold, Transferring,
+             Disconnected.
+        billableSeconds:
+          type: integer
+          title: billable_seconds
+          format: int32
+      title: Participant
+      additionalProperties: false
+security: []
+tags:
+  - name: atsapbx.v1.IdentityService
+    description: |-
+      IdentityService is the identity context's public contract: obtaining a
+       token, administering tenants and principals, granting roles, issuing
+       API keys, and reading audit history.
+
+       Every method except AuthenticateUser requires
+       `Authorization: Bearer <JWT>`. AuthenticateUser is exempt by
+       necessity, not exception — a caller cannot hold a token before
+       obtaining one.
+
+       No message in this file carries a password, a password hash, an API
+       key digest, or signing key material. The one raw API key the service
+       ever emits is returned exactly once, by IssueApiKey, and by nothing
+       else (spec requirement "A raw API key is returned once and never
+       again").
+
+       Failures disclose nothing about other tenants or accounts: every
+       credential failure is the same Unauthenticated result whatever its
+       cause, and a resource in another tenant answers as though it did not
+       exist (INV-10).
