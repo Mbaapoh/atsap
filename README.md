@@ -76,7 +76,7 @@ first instead.
   Postgres container (`deploy/postgres/init/02-atsapbx.sql`), reachable
   from the host at `localhost:15432` for the `api/` integration test
   suite (`docs/TESTING.md`), e.g.
-  `DATABASE_URL=postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable mise exec -- go test ./... -tags integration -race` (run from `api/`)
+  `DATABASE_URL=postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable mise exec -- go test -tags integration -p 1 ./... -race` (run from `api/`; `-p 1` is required once more than one package's integration tests share the dev database — see `docs/TESTING.md` §1)
 
 Other mise tasks:
 

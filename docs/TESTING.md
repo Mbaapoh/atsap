@@ -15,7 +15,7 @@ Definition of Done); TOOLSET.md §1 (gates).
 | Suite | Build tag | Needs | Runs where | Command |
 |---|---|---|---|---|
 | **unit** | none (default) | nothing — pure logic, `httptest` fakes, scripted fixtures | every `go test`, local + CI | `go test ./... -race -cover` |
-| **integration** | `//go:build integration` | live dev Postgres (+ NATS where the test says so) | explicitly, local + CI-gated stage | `go test -tags integration ./... -race` |
+| **integration** | `//go:build integration` | live dev Postgres (+ NATS where the test says so) | explicitly, local + CI-gated stage | `go test -tags integration -p 1 ./... -race` |
 | **e2e** | `//go:build e2e` | full rig: Asterisk + Postgres + NATS (dev compose) | explicitly, local rig + CI e2e stage | `go test -tags e2e ./...` |
 
 Rules:
@@ -29,6 +29,15 @@ Rules:
   exercised concurrently.
 - Long/soak and load shapes (HLD `08-performance.md`) are marked
   long-running and gated separately — they never block the unit gate.
+- **`integration` always runs with `-p 1` across `./...`.** `go test`
+  runs different packages' test binaries in parallel by default; once
+  more than one package's integration tests migrate the same shared dev
+  database (as `internal/postgres` and `internal/telephony/postgres`
+  both do from task 6.3 onward), that parallelism produces real
+  Postgres deadlocks on concurrent `DROP TABLE`/`CREATE TABLE` — not a
+  flaky test, a genuine cross-package schema race. `-p 1` serializes
+  package test binaries (tests within one package still ran
+  sequentially already, `-p 1` only changes cross-package scheduling).
 
 ## 2. Layout
 
