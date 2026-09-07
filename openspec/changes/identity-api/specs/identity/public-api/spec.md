@@ -36,6 +36,40 @@ before obtaining one.
   credentials
 - **THEN** a token is returned
 
+### Requirement: Holding a token is not permission to act
+Authentication SHALL establish only who a caller is. Every operation SHALL
+additionally require that the caller holds a role granting that operation,
+and SHALL be refused otherwise — including for a caller whose token is
+entirely valid.
+
+#### Scenario: An ordinary account cannot administer
+- **WHEN** a principal holding only a basic role authenticates successfully
+  and then attempts to provision a principal, grant a role, or issue an API
+  key
+- **THEN** each attempt is refused as not permitted, and no record is
+  created or changed
+
+#### Scenario: An account cannot grant itself authority
+- **WHEN** a principal without administrative authority attempts to grant
+  itself an administrative role
+- **THEN** the attempt is refused, so authority cannot be self-issued
+
+### Requirement: Creating a tenant requires authority over the installation
+Creating a tenant SHALL require platform-level authority, not authority
+within any single tenant. An administrator of one tenant SHALL NOT be able to
+create another tenant.
+
+#### Scenario: A tenant administrator cannot create tenants
+- **WHEN** a principal holding full administrative authority *within its own
+  tenant* attempts to create a new tenant
+- **THEN** the attempt is refused, because its authority does not extend to
+  the installation
+
+#### Scenario: A platform operator can create tenants
+- **WHEN** a principal holding platform-level authority creates a tenant and
+  then provisions that tenant's first administrator
+- **THEN** both succeed, and the new administrator can authenticate
+
 ### Requirement: A first administrator can be created without an existing one
 The system SHALL provide a means, available to an operator of the
 installation and not over the public network, to create an initial tenant and

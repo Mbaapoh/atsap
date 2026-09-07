@@ -1,0 +1,217 @@
+syntax = "proto3";
+
+package atsapbx.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
+
+// IdentityService is the identity context's public contract: obtaining a
+// token, administering tenants and principals, granting roles, issuing
+// API keys, and reading audit history.
+//
+// Every method except AuthenticateUser requires
+// `Authorization: Bearer <JWT>`. AuthenticateUser is exempt by
+// necessity, not exception — a caller cannot hold a token before
+// obtaining one.
+//
+// No message in this file carries a password, a password hash, an API
+// key digest, or signing key material. The one raw API key the service
+// ever emits is returned exactly once, by IssueApiKey, and by nothing
+// else (spec requirement "A raw API key is returned once and never
+// again").
+//
+// Failures disclose nothing about other tenants or accounts: every
+// credential failure is the same Unauthenticated result whatever its
+// cause, and a resource in another tenant answers as though it did not
+// exist (INV-10).
+service IdentityService {
+  // AuthenticateUser exchanges a username and password for a
+  // short-lived token. The only method reachable without one.
+  rpc AuthenticateUser(AuthenticateUserRequest) returns (AuthenticateUserResponse);
+
+  // ProvisionTenant creates a tenant. Its residency zone is fixed here
+  // and cannot be changed afterwards.
+  rpc ProvisionTenant(ProvisionTenantRequest) returns (ProvisionTenantResponse);
+
+  // ProvisionPrincipal creates a user account within a tenant.
+  rpc ProvisionPrincipal(ProvisionPrincipalRequest) returns (ProvisionPrincipalResponse);
+
+  // SetTenantStatus suspends or reactivates a tenant. Reversible, and it
+  // never terminates a call already in progress (INV-03).
+  rpc SetTenantStatus(SetTenantStatusRequest) returns (SetTenantStatusResponse);
+
+  // SetPrincipalStatus disables or reactivates an account. Takes effect
+  // on that account's next request, not at token expiry.
+  rpc SetPrincipalStatus(SetPrincipalStatusRequest) returns (SetPrincipalStatusResponse);
+
+  // GrantRole binds a role to a principal within a scope.
+  rpc GrantRole(GrantRoleRequest) returns (GrantRoleResponse);
+
+  // IssueApiKey creates a machine credential. Its response is the only
+  // place the usable key value ever appears.
+  rpc IssueApiKey(IssueApiKeyRequest) returns (IssueApiKeyResponse);
+
+  // RevokeApiKey makes a key unusable immediately.
+  rpc RevokeApiKey(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+
+  // ListAudit returns the calling tenant's most recent audit records.
+  rpc ListAudit(ListAuditRequest) returns (ListAuditResponse);
+}
+
+// TenantStatus mirrors the domain's tenant lifecycle.
+enum TenantStatus {
+  TENANT_STATUS_UNSPECIFIED = 0;
+  TENANT_STATUS_ACTIVE = 1;
+  TENANT_STATUS_SUSPENDED = 2;
+}
+
+// PrincipalStatus mirrors the domain's principal lifecycle.
+enum PrincipalStatus {
+  PRINCIPAL_STATUS_UNSPECIFIED = 0;
+  PRINCIPAL_STATUS_ACTIVE = 1;
+  PRINCIPAL_STATUS_DISABLED = 2;
+}
+
+// Tenant is a partner organisation.
+message Tenant {
+  string tenant_id = 1;
+  string name = 2;
+  TenantStatus status = 3;
+  string residency_zone = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// Principal is a user account. It carries no credential representation:
+// there is deliberately no password or hash field here.
+message Principal {
+  string principal_id = 1;
+  string tenant_id = 2;
+  string username = 3;
+  string email = 4;
+  string role = 5;
+  PrincipalStatus status = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message AuthenticateUserRequest {
+  // tenant_id is explicit because usernames are unique per tenant, never
+  // globally (AC-01.2) — two tenants may each have an "admin", and
+  // without a tenant there is no single account to resolve to.
+  string tenant_id = 1;
+  string username = 2;
+  string password = 3;
+}
+
+message AuthenticateUserResponse {
+  // token is credential material. Never log it, never store it.
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  string tenant_id = 3;
+  string principal_id = 4;
+}
+
+message ProvisionTenantRequest {
+  string name = 1;
+  string residency_zone = 2;
+}
+
+message ProvisionTenantResponse {
+  Tenant tenant = 1;
+}
+
+message ProvisionPrincipalRequest {
+  string tenant_id = 1;
+  string username = 2;
+  string email = 3;
+  // password is accepted here and never echoed back: the response
+  // carries a Principal, which has no field for it.
+  string password = 4;
+  string role = 5;
+}
+
+message ProvisionPrincipalResponse {
+  Principal principal = 1;
+}
+
+message SetTenantStatusRequest {
+  string tenant_id = 1;
+  TenantStatus status = 2;
+}
+
+message SetTenantStatusResponse {
+  Tenant tenant = 1;
+}
+
+message SetPrincipalStatusRequest {
+  string tenant_id = 1;
+  string principal_id = 2;
+  PrincipalStatus status = 3;
+}
+
+message SetPrincipalStatusResponse {
+  Principal principal = 1;
+}
+
+message GrantRoleRequest {
+  string tenant_id = 1;
+  string principal_id = 2;
+  string role = 3;
+  // scope is "tenant" when omitted; "system" is platform-operator
+  // authority and is not grantable by a tenant's own administrators.
+  string scope = 4;
+}
+
+message GrantRoleResponse {}
+
+message IssueApiKeyRequest {
+  string tenant_id = 1;
+  string principal_id = 2;
+  // expires_at is optional; omitted means the key does not expire on its
+  // own and must be revoked to stop working.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message IssueApiKeyResponse {
+  string api_key_id = 1;
+  // raw_key is the usable credential, returned here and nowhere else,
+  // ever. Losing it means issuing a new key — it cannot be recovered
+  // from what is stored.
+  string raw_key = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message RevokeApiKeyRequest {
+  string tenant_id = 1;
+  string api_key_id = 2;
+}
+
+message RevokeApiKeyResponse {}
+
+// AuditRecord is one immutable administrative mutation. Credential
+// material is stripped before the record is written, so before_state and
+// after_state never contain it.
+message AuditRecord {
+  int64 id = 1;
+  string tenant_id = 2;
+  string actor_id = 3;
+  string actor_type = 4;
+  string action = 5;
+  string resource_type = 6;
+  string resource_id = 7;
+  string before_state_json = 8;
+  string after_state_json = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message ListAuditRequest {
+  string tenant_id = 1;
+  // limit defaults to a server-chosen bound when zero. No cursor: a
+  // partner needing pagination will say so, and guessing the shape now
+  // freezes a contract nobody has asked for (D-25).
+  int32 limit = 2;
+}
+
+message ListAuditResponse {
+  repeated AuditRecord records = 1;
+}
