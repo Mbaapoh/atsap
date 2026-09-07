@@ -30,7 +30,7 @@ type domainSink struct {
 	call *domain.Call
 }
 
-func (s *domainSink) ParticipantAnswered(_ context.Context, corr acl.Correlation) error {
+func (s *domainSink) ParticipantAnswered(_ context.Context, corr acl.Correlation, _ string) error {
 	pid, err := shareddomain.ParseParticipantID(corr.ParticipantID)
 	if err != nil {
 		return err
@@ -185,6 +185,20 @@ func TestEventLoop_SinkError_Logged(t *testing.T) {
 	assert.Equal(t, 1, sink.leftCalls)
 }
 
+// TestEventLoop_ParticipantAnswered_PassesChannelID covers that the
+// triggering channel ID reaches the sink — needed downstream to bridge
+// the newly answered leg (MediaGateway.AddChannelToBridge).
+func TestEventLoop_ParticipantAnswered_PassesChannelID(t *testing.T) {
+	registry := acl.NewCorrelationRegistry()
+	registry.Register("chan-42", acl.Correlation{CallID: "call-1", ParticipantID: "participant-1"})
+	sink := &recordingSink{}
+	loop := acl.NewEventLoop(registry, sink, discardLogger())
+
+	loop.Handle(context.Background(), channelStateChangeEvent(t, "chan-42", "Up"))
+
+	assert.Equal(t, "chan-42", sink.lastAnsweredChan)
+}
+
 // TestEventLoop_ChannelHangupRequest covers the second event name that
 // maps to the same handler as ChannelDestroyed.
 func TestEventLoop_ChannelHangupRequest(t *testing.T) {
@@ -202,13 +216,15 @@ func TestEventLoop_ChannelHangupRequest(t *testing.T) {
 }
 
 type recordingSink struct {
-	answeredCalls int
-	leftCalls     int
-	err           error
+	answeredCalls    int
+	leftCalls        int
+	lastAnsweredChan string
+	err              error
 }
 
-func (s *recordingSink) ParticipantAnswered(context.Context, acl.Correlation) error {
+func (s *recordingSink) ParticipantAnswered(_ context.Context, _ acl.Correlation, channelID string) error {
 	s.answeredCalls++
+	s.lastAnsweredChan = channelID
 	return s.err
 }
 
