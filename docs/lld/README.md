@@ -38,7 +38,7 @@ does not list, so the inventory cannot rot quietly.
 |---|---|---|---|---|
 | 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
 | 02 | [Identity & Licensing](LLD-02-identity-licensing.md) | `identity`, `licensing` | Draft | — |
-| 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started — translation mechanism settled by D-47 (see below) | — |
+| 03 | [PBX Core](LLD-03-pbx-core.md) | `pbx-core` | Draft — Phase A slice specified; translation mechanism settled by D-47 (see below) | — |
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started — `compliance` is a **release gate** for LLD-06's dialling (D-45) | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
 | 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |

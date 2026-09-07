@@ -97,11 +97,36 @@ pending until the `licensing` context exists.
 
 ### LLD-03 — pbx-core
 
-Extensions, trunks, routing, and IVR flows are all console-managed, so
-each needs CRUD on the wire (US-05.1). Expected: `Extension*`,
-`CarrierTrunk*`, `CarrierRoute*`, `IvrFlow*` (including publish/version),
-plus whatever call control survives LLD-03's reshaping — this is where
-`InitiateCall` and `HangupCall` are decided.
+Specified in [`lld/LLD-03-pbx-core.md`](lld/LLD-03-pbx-core.md) §6. All
+of it lands on a new **`PbxService`**, not on `TelephonyService`:
+`PlaceCall` needs routing before it needs a channel, and putting it on
+`TelephonyService` would force `internal/telephony/rpc` to import
+`pbx`, which the dependency graph forbids.
+
+| RPC | Phase | Consumer |
+|---|---|---|
+| `CreateExtension`, `ListExtensions`, `UpdateExtension`, `DeleteExtension` | A | Console extensions screen |
+| `CreateTrunk`, `ListTrunks`, `UpdateTrunk`, `DeleteTrunk` | A | Console trunks screen |
+| `CreateRoute`, `ListRoutes`, `DeleteRoute` | A | Console outbound routing |
+| `PlaceCall`, `HangupCall` | A | The UAT harness, which BRD §16 requires to demonstrate Phase A through the public API; the Phase B agent UI second |
+| `IvrFlow*` (including publish, version, rollback) | B | Visual IVR builder |
+
+**This resolves the `InitiateCall`/`HangupCall` question §2 left open**:
+they stay ports on `telephony-core`, and `PbxService.PlaceCall` becomes
+the wire surface, because a caller dials a number — resolving it to an
+endpoint is the platform's job, not the client's.
+
+Staying off the wire, with reasons: `SelectOutboundRoute` and
+`ReportRouteHealth` (mechanism — asking which trunk would be picked,
+separately from placing the call, is an oracle whose answer can change
+between the two calls), `ResolveInbound` (called by `telephony-core`,
+never by a client), and `IsEmergency` (INV-01 is not delegable to a
+caller).
+
+`TelephonyService.GetCall` stays where it is. Splitting the call read and
+the call write across two services is awkward; it is recorded as a known
+cost, and consolidation is a Phase B decision taken when the agent UI
+shows which grouping a real client wants.
 
 ### LLD-04 — compliance & reporting
 
