@@ -44,8 +44,8 @@
 
 ## 8. ConnectRPC API
 
-- [ ] 8.1 Write `api/proto/atsapbx/v1/telephony.proto` (`GetCall` only, no `channel_id` field anywhere) and generate Go code via `buf`, and verify `buf generate` succeeds and the generated code compiles
-- [ ] 8.2 Implement the `GetCall` handler returning `Call` + `Participants`, and verify an automated response scan (per `docs/hld/01-architecture.md` §6.2) asserts no Asterisk-channel-ID-shaped value appears anywhere in the response
+- [x] 8.1 Write `api/proto/atsapbx/v1/telephony.proto` (`GetCall` only, no `channel_id` field anywhere) and generate Go code via `buf`, and verify `buf generate` succeeds and the generated code compiles (`api/buf.yaml`/`buf.gen.yaml` using buf's remote `protocolbuffers/go` and `connectrpc/go` plugins — no local protoc/plugin install needed; generated into `api/internal/genproto/`. Added `tenant_id` to `GetCallRequest` — no auth/identity layer exists yet to derive it from, LLD-02's job; documented as a deliberate, temporary walking-skeleton choice in the proto itself)
+- [x] 8.2 Implement the `GetCall` handler returning `Call` + `Participants`, and verify an automated response scan (per `docs/hld/01-architecture.md` §6.2) asserts no Asterisk-channel-ID-shaped value appears anywhere in the response (`internal/telephony/rpc.TelephonyHandler`, reads `CallStore` directly rather than through `CallService` — a query has no domain invariant to protect on the read path. Two-layer scan: `protoreflect` walks the message schema recursively for any field name containing "channel" — catches a future regression even without new test content — plus a content-level JSON scan of an actual response. 100% coverage)
 
 ## 9. Dev fixtures and wiring
 
