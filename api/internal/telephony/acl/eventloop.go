@@ -53,7 +53,8 @@ func NewEventLoop(registry *CorrelationRegistry, sink EventSink, logger *slog.Lo
 
 // Handle processes one raw ARI event. Its signature matches
 // ari.EventHandler once wrapped in a closure over ctx, the same pattern
-// api/cmd/atsap-api/main.go already uses for handleARIEvent.
+// api/cmd/atsap-api/main.go uses when it calls eventLoop.Handle from its
+// ari.Client.StreamEvents callback.
 func (l *EventLoop) Handle(ctx context.Context, ev ari.Event) {
 	switch ev.Type {
 	case "ChannelStateChange":

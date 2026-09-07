@@ -64,10 +64,14 @@ first instead.
 - Asterisk ARI: http://localhost:8088/ari (basic auth: `voipapp` / `devpassword123`)
 - Asterisk AMI: localhost:5038
 - App health check: http://localhost:8080/healthz
-- SIP: register a softphone to extension `1000` / `devpassword123` at
-  `localhost:5060` (UDP) to place a test call — it will be handed to the
-  Go app's Stasis application (`voip-app`), which answers it by default
-  (see `handleARIEvent` in `api/cmd/atsap-api/main.go`).
+- SIP: two static PJSIP dev-test endpoints, `1000` and `1001`
+  (both `devpassword123` at `localhost:5060` UDP), exist as fixtures for
+  the LLD-01 walking-skeleton test (`core/conf/pjsip.conf`). They are not
+  dialed into directly — calls are originated by the Go app itself via
+  `telephony/application.Service.InitiateCall`, which drives Asterisk
+  through the ACL (`api/internal/telephony/acl`); there is no
+  auto-answer, and no `InitiateCall` RPC is exposed yet (`GetCall` is
+  the only ConnectRPC method in this change).
 - CDR/CEL: every call is logged to Postgres (`cdr` and `cel` tables) by
   Asterisk's `cdr_pgsql`/`cel_pgsql` backends — schema in
   `deploy/postgres/init/`. Inspect with:
