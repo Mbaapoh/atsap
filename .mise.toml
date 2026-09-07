@@ -1,6 +1,8 @@
 [tools]
-go = "1.23"
-golangci-lint = "latest"
+go = "1.25"
+golangci-lint = "2.13.1"
+buf = "1.72.0"
+gotestsum = "1.13.0"
 
 [env]
 GOFLAGS = "-mod=mod"
@@ -12,6 +14,14 @@ run = "docker compose -f deploy/docker-compose.yml up --build"
 [tasks."dev:down"]
 description = "Stop and remove the local dev stack"
 run = "docker compose -f deploy/docker-compose.yml down"
+
+[tasks."dev:app"]
+description = "Rebuild and restart only the app service (fast; Asterisk is untouched)"
+run = "docker compose -f deploy/docker-compose.yml up -d --build app"
+
+[tasks."uat:auto"]
+description = "Automated UAT: real baresip phones auto-answer the e2e call; asserts signaling, records, events, and bidirectional media, then restores the rig"
+run = "./scripts/uat-auto.sh"
 
 [tasks."dev:logs"]
 description = "Tail logs from the local dev stack"
@@ -42,6 +52,19 @@ run = "golangci-lint run ./..."
 description = "Tidy go modules"
 dir = "api"
 run = "go mod tidy"
+
+[tasks.docs]
+description = "Run documentation wiring checks (HLD markers, decision refs, internal links)"
+run = "./scripts/check-docs.sh"
+
+[tasks.vuln]
+description = "Run govulncheck (pinned, matches CI GOVULNCHECK_VERSION) on the Go module"
+dir = "api"
+run = "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./..."
+
+[tasks.ci]
+description = "Run the full local CI gate in pipeline order (docs, lint, vuln, test)"
+depends = ["docs", "lint", "vuln", "test"]
 
 [tasks."docker:build"]
 description = "Build production images for the app and Asterisk"

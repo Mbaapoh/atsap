@@ -295,6 +295,156 @@ commit) are recorded alongside the installed skill. This amendment satisfies
 the "explicit human architectural authorization" clause of TOOLSET.md §5, so
 no TOOLSET.md change is required.
 
+**D-38 · Structured `slog` logging with mandatory redaction is the platform logging standard (2026-09-06).**
+
+**Decision:** All application logs are emitted through Go's standard-library
+`log/slog` as JSON, through a single shared handler in `internal/logging`. The
+handler applies the mandatory field envelope (D-39) and a redaction layer that
+masks telephone numbers and replaces any field whose name is `password`,
+`secret`, `api_key`, `token`, or `credential` with `[REDACTED]`. Call audio and
+transcript content are barred from log lines.
+
+**Context:** The platform's observability design (HLD `07-observability.md`) and
+its credential-isolation obligations (PRD INV-11, BRD BR-15) both require that
+logs be machine-parseable, correlatable, and free of secrets and PII. Without a
+single enforced standard, each bounded context invents its own format and its
+own idea of what is safe to log — and a credential leaked once into logs,
+diagnostics or error paths is unrecoverable exposure (BR-15).
+
+**Alternatives:**
+- Third-party logging packages (`logrus`, `zap`, `zerolog`): rejected — redundant
+  given `log/slog`, and forbidden by TOOLSET.md §1.4 (standard library first).
+- Unstructured text logs: rejected — PII/secret scrubbing is impractical, and
+  collection/alerting tools lose the structured fields D-39 requires.
+- Redaction left to each call site: rejected — a caller forgetting to redact is
+  exactly how a credential reaches a log. Central redaction at the handler
+  boundary is the only place every caller is covered by default.
+
+**Consequences:**
+- All services and the eventual portal backend log through `internal/logging`.
+- A test gate asserts the D-39 field set and the redaction behaviour; a log line
+  containing a known secret pattern fails CI.
+- Scrubbers in diagnostic bundles and exports reuse the same redaction rules.
+
+**Related Decisions:** D-39 (mandatory fields), D-35 (approved toolset)
+**Traceability:** PRD INV-11; BRD BR-15; HLD `07-observability.md` §3.1
+
+**D-39 · Mandatory structured log fields (2026-09-06).**
+
+**Decision:** Every log record MUST carry the fields below; what MUST NOT be
+logged is equally normative.
+
+| Field | Description | Required |
+|---|---|---|
+| `timestamp` | ISO 8601 with timezone | ✅ |
+| `level` | Log level (debug, info, warn, error, fatal) | ✅ |
+| `call_id` | Correlation ID for call (if applicable) | ✅ |
+| `tenant_id` | Tenant identifier | ✅ |
+| `trace_id` | OpenTelemetry trace ID | ✅ |
+| `msg` | Human-readable message | ✅ |
+| `module` | Source module | ✅ |
+
+**What MUST NOT be logged:** secrets, API keys, passwords, tokens, call
+audio/transcripts (unless explicitly enabled for a supported feature), and PII
+(unless required for debugging and logged with explicit consent).
+
+**Context:** Named by HLD `07-observability.md` §3.2 and by the in-house agent
+skills as "the D-39 fields" before this entry existed — this entry makes the
+decision the citations point at.
+
+**Alternatives:** A looser "log what is useful" policy: rejected — a support
+engineer resolving a dispute in under 10 minutes (BRD §11) needs every record
+correlatable by `call_id`/`tenant_id`/`trace_id`; an auditor needs to *prove*
+secrets were never logged (INV-11).
+
+**Consequences:** Implemented by the shared handler in `internal/logging`
+(D-38); the field set is part of the CI log-inspection gate.
+
+**Related Decisions:** D-38 (logging standard)
+**Traceability:** HLD `07-observability.md` §3.2; PRD INV-11; BRD BR-15
+
+**D-40 · Go Coding Standards Adoption (2026-09-06).**
+
+**Decision:** All Go code — human-written or agent-generated — follows the
+house Go coding standards in `docs/hld/13-coding-standards.md`, which are
+normative and reference the [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments)
+and the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
+instead of copying them.
+
+**Context:** AI agents write most of this project's Go code. Without
+enforceable standards, agent output drifts in quality and reintroduces
+classic Go failure modes (leaked goroutines, copied mutexes, swallowed
+errors, untestable nesting). The audience includes Go beginners, so the
+rules must be few, simple, and machine-checkable.
+
+**Key Principles:**
+1. Spec-Driven Development: specifications are law — implement only what
+   OpenSpec delta specs, Protobuf contracts, and migration SQL describe.
+2. Error handling: always handle, wrap (`%w`), and return; blank-identifier
+   ignores follow the scoped rule in HLD 13 §2 (never on
+   behavior-affecting I/O).
+3. Context propagation: `context.Context` is the first argument of all I/O
+   operations.
+4. Concurrency safety: mutexes by pointer, every goroutine has a documented
+   exit strategy, channel ownership is explicit.
+5. Line of sight: happy path left-aligned, errors return early.
+
+**Alternatives:**
+- No standards: rejected — inconsistent agent-generated code quality.
+- Full Uber guide adopted verbatim: rejected — too verbose for agents and
+  drifts with upstream; we link it instead of copying it.
+- Custom from-scratch standards: rejected — not industry proven.
+
+**Consequences:**
+- All new code must pass `gofmt`, `go vet`, and `golangci-lint` (including
+  the `depguard` ACL rule and `goimports` grouping); CI fails otherwise.
+- Agents are instructed via the role prompt in HLD 13, Appendix A.
+- Existing code is refactored incrementally, not all at once.
+
+**Related Decisions:** D-24 (API-first), D-28 (machine gates), D-33
+(ConnectRPC), D-35 (toolset)
+**Traceability:** TRD Tech stack; HLD `13-coding-standards.md`; TOOLSET.md
+
+**D-41 · Media engine stance: Asterisk retained; portability via contract (2026-09-07).**
+
+**Decision:** Keep Asterisk 22.x LTS as the sole media engine. Future
+engines are made pluggable through the `MediaGateway` capability
+contract plus the `mediatest` conformance suite — not through
+multi-engine support, and never by reshaping the ports to fit a
+candidate.
+
+**Context:** Four candidates evaluated against the port surface.
+FreeSWITCH fits the shape (ESL control, UUIDs + channel variables,
+bridge mixers) but has no business driver — paying its adapter cost now
+buys nothing. LiveKit is a different media architecture (rooms/tracks,
+no PSTN originate or channel correlation). Diago-as-engine inverts D-15
+(protocol risk moves into our process). VoiceBlender fails D-15 on
+maturity (months old) and D-05/D-23 on provider-coupled, in-path AI.
+
+**Alternatives:**
+- Adopt FreeSWITCH now: rejected — real adapter + container + config +
+  CDR work with zero product benefit today; the option stays open via
+  the contract.
+- Adopt LiveKit, Diago, or VoiceBlender as engine: rejected — role
+  mismatch (LiveKit), locked-decision conflict (Diago vs D-15),
+  maturity + AI-posture failure (VoiceBlender).
+- Do nothing beyond the interfaces: rejected — portability would stay
+  folk knowledge instead of an executable gate.
+
+**Consequences:**
+- A future engine proves fit by passing `mediatest`; unsuitable
+  candidates die at design review, never mid-build.
+- Exactly one engine stays wired (Asterisk) until a D-logged revisit
+  with a business driver.
+- Watch, don't adopt: VoiceBlender revisited in 18–24 months if it
+  hardens; LiveKit only if video/meetings ever enters scope (out
+  through R3).
+
+**Related Decisions:** D-15 (orchestrate, don't build), D-20 (modular
+monolith), D-24 (API-first)
+**Traceability:** BRD FBR-R1-01/FBR-R1-03; PRD EPIC-02/EPIC-03; HLD
+`01-architecture.md` §2, `04-bounded-contexts.md` §1
+
 ---
 
 ## Known and accepted limitations

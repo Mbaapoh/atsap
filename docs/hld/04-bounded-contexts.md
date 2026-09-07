@@ -186,6 +186,15 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
   - **Strictly Out-of-Band:** Operates exclusively on Asterisk Snoop channels (`ARI Snoop`).
   - **Zero Call Path Blocking:** If an AI provider slows down or disconnects, audio frames are discarded via tail-drop buffers. Call quality and call continuity are 100% unaffected (INV-04).
   - **Zero AI Dependency:** AtsaPBX operates fully without AI (INV-05). AI features are enabled per-tenant.
+- **Provider contract (D-41; FBR-R1-07 open engine choice):** a provider
+  is a capability (STT/TTS/agent), never embedded — audio frames in,
+  results out, tail-drop on slowness, per-tenant credentials, no provider
+  SDK past the adapter. Before the first provider ships, its chaos
+  conformance is fixed: kill the provider mid-call → call provably
+  unaffected; stall it past the buffer → frames drop, call provably
+  unaffected (INV-04 in executable form). Runnable harness waits for
+  LLD-05 per build order (§10.2) — specified here so the criteria
+  predate every implementation.
 
 ---
 

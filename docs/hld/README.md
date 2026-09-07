@@ -28,7 +28,7 @@ The design strictly implements the non-negotiable principles established across 
 
 | Layer / Concern | Technology Choice | Rationale & Requirements Trace |
 |---|---|---|
-| **Core Monolith** | Go 1.23+ | Memory safety, high concurrency, low latency, single static binary deployment [BRD §2.3; TRD §Tech stack] |
+| **Core Monolith** | Go 1.25+ | Memory safety, high concurrency, low latency, single static binary deployment [BRD §2.3; TRD §Tech stack] |
 | **Media & SIP Engine** | Asterisk 22.x LTS (PJSIP, ARI, AMI) | Carrier-certified SIP/RTP engine, WebRTC gateway, DTLS-SRTP, audio snooping [BRD §2.3; DECISIONS D-15, D-16] |
 | **API Framework** | ConnectRPC (HTTP/2, gRPC, Protobuf, JSON) | Type-safe RPCs, bidirectional streaming, web browser support without Envoy proxy [BRD FBR-R1-11; PRD EPIC-05] |
 | **Primary Database** | PostgreSQL 16+ | ACID transactions, native Row-Level Security (RLS), JSONB flow storage, transactional outbox [BRD FBR-R1-04; PRD EPIC-01] |
@@ -42,7 +42,7 @@ The design strictly implements the non-negotiable principles established across 
 
 ## 3. Document Navigation
 
-The High-Level Design is partitioned into fourteen modular chapters:
+The High-Level Design is partitioned into seventeen modular chapters:
 
 1. [Architecture & Component Design](01-architecture.md) — Modular monolith structure, Hexagonal ports & adapters, Asterisk Anti-Corruption Layer (ACL), and context propagation.
 2. [System Context & Interfaces](02-system-context.md) — C4 system context, container topology, network boundaries, protocols, and end-to-end scenario sequence diagrams.
@@ -58,6 +58,9 @@ The High-Level Design is partitioned into fourteen modular chapters:
 12. [Approved Toolset & Dependency Baseline](../TOOLSET.md) — Mandatory Go libraries, database drivers, developer CLI tools, and forbidden dependencies.
 13. [Architectural Trade-Off Analysis & Technology Evaluation](ARCHITECTURAL-TRADEOFFS.md) — ISO/IEC/IEEE 42010 & SEI ATAM analysis: ConnectRPC vs REST, native pgx/v5 vs ORMs, and FOSS governance.
 14. [Portal Architecture](12-portal-architecture.md) — React + TypeScript consumer of the ConnectRPC API (D-36): Admin UI, Agent UI with browser softphone, Supervisor Dashboard, and Partner Portal.
+15. [Go Coding Standards](13-coding-standards.md) — Normative house subset for all Go code (D-40): SDD law, line-of-sight, error rules, context-first, concurrency safety, import grouping, machine gates, and the agent role prompt.
+16. [Call Origination Sequence](15-call-origination-sequence.md) — Outbound originate path end to end (ConnectRPC → Screening → Routing → ARI originate → bridge → Active) with outbox/NATS delivery, timeouts, and error matrix.
+17. [Call Lifecycle State Machine](16-call-lifecycle-state-machine.md) — Visual companion to the canonical states in [03](03-domain-model.md) §2: call and participant diagrams, transition matrix, published events, and recovery rules.
 
 ---
 
@@ -88,7 +91,7 @@ Every requirement across `BRD.md`, `PRD.md`, and `TRD.md` is addressed in this H
 
 The architecture is verified through continuous automated gates:
 
-1. **Static Marker & Link Check:** CI validates all fourteen `<!-- OpenSpec: TRD-HLD-xx -->` markers, cross-file document links, and ADR traceability citations.
+1. **Static Marker & Link Check:** CI validates all seventeen `<!-- OpenSpec: TRD-HLD-xx -->` markers, cross-file document links, and ADR traceability citations.
 2. **Architecture Dependency Linting:** Go import rules enforce strict package boundaries. Domain packages cannot import adapters, and no package outside `telephony/acl` may import Asterisk ARI/AMI packages or reference channel IDs.
 3. **Walking Skeleton Integration Test (D-25):** End-to-end verification proving:
    - WebRTC ingress establishes an audio session with Asterisk.

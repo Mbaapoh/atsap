@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package atsapbx.v1;
+
+option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
+
+// TelephonyService exposes telephony-core's public Call/Participant
+// state. It never exposes an Asterisk channel identifier, or any other
+// telephony-engine-internal identifier, anywhere in its contract —
+// docs/hld/01-architecture.md §1.2 rule 3; spec requirement "No
+// infrastructure channel identifier is ever exposed"
+// (openspec/changes/telephony-core-originate-bridge-hangup/specs/telephony-core/call-lifecycle/spec.md).
+service TelephonyService {
+  // GetCall returns a Call's current state and participants.
+  rpc GetCall(GetCallRequest) returns (GetCallResponse);
+}
+
+message GetCallRequest {
+  string call_id = 1;
+  // tenant_id is explicit here because no auth/identity layer exists yet
+  // to derive it from a request context (LLD-02, identity, is a later
+  // bounded context). Replaced by auth-derived tenant context once that
+  // lands — this field is a deliberate, temporary walking-skeleton
+  // scope choice, not a permanent API design.
+  string tenant_id = 2;
+}
+
+message GetCallResponse {
+  string call_id = 1;
+  string tenant_id = 2;
+  // state is one of: Initiated, Screening, Routing, Presenting, Active,
+  // Degraded, Terminating, Terminated (docs/telephony/domain.CallState).
+  string state = 3;
+  // direction is one of: INBOUND, OUTBOUND, INTERNAL.
+  string direction = 4;
+  string source_number = 5;
+  string dest_number = 6;
+  repeated Participant participants = 7;
+}
+
+message Participant {
+  string participant_id = 1;
+  // role is one of: CALLER, AGENT, IVR, QUEUE, SUPERVISOR, SPECIALIST, AI.
+  string role = 2;
+  string endpoint_uri = 3;
+  // state is one of: Invited, Ringing, Connected, OnHold, Transferring,
+  // Disconnected.
+  string state = 4;
+  int32 billable_seconds = 5;
+}

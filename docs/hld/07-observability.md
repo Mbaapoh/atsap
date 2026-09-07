@@ -85,9 +85,10 @@ AtsaPBX uses Go `log/slog` emitting single-line JSON records to `stdout`:
 
 ```json
 {
-  "time": "2026-09-05T20:30:00.123Z",
+  "timestamp": "2026-09-05T20:30:00.123Z",
   "level": "INFO",
   "service": "atsapbx-core",
+  "module": "telephony.acl",
   "tenant_id": "4a1d8212-32b0-4f5b-9d41-2a9bb4109121",
   "call_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
   "participant_id": "b3e21820-2ef8-4791-bf92-6902263a0bfb",
@@ -100,7 +101,7 @@ AtsaPBX uses Go `log/slog` emitting single-line JSON records to `stdout`:
 }
 ```
 
-### 3.1 PII & Secret Redaction Interceptor
+### 3.1 PII & Secret Redaction Interceptor (D-38)
 
 The custom `slog.Handler` automatically redacts sensitive data:
 - **Phone Numbers:** Masked in standard application logs (e.g. `+1555****0199`). Full unmasked numbers are stored only in tenant-isolated, encrypted database tables.

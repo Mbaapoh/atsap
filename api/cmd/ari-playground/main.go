@@ -28,10 +28,10 @@ import (
 	"syscall"
 	"time"
 
-	"atsap-api/internal/ami"
-	"atsap-api/internal/ari"
 	"atsap-api/internal/config"
 	"atsap-api/internal/logging"
+	"atsap-api/internal/telephony/acl/ami"
+	"atsap-api/internal/telephony/acl/ari"
 )
 
 func main() {
@@ -90,7 +90,7 @@ func main() {
 		if len(args) > 1 {
 			callerID = args[1]
 		}
-		id, err := ariClient.Originate(ctx, args[0], callerID)
+		id, err := ariClient.Originate(ctx, ari.OriginateRequest{Endpoint: args[0], CallerID: callerID})
 		if err != nil {
 			fatal("originate: %v", err)
 		}

@@ -6,3 +6,33 @@ linters:
     - govet
     - staticcheck
     - unused
+    - depguard
+  settings:
+    depguard:
+      rules:
+        # Architectural invariant (HLD 01-architecture.md §1.2 rule 3,
+        # TRD "Architecture style", LLD-01 §2): raw Asterisk concepts stay
+        # inside telephony/acl. Domain/application/shared code must never
+        # import the ARI/AMI adapters directly — it depends on the ports in
+        # telephony/ports and receives adapters via dependency injection.
+        # cmd/ (composition root) and cmd/ari-playground (dev tool) are
+        # deliberately NOT guarded here; the walking-skeleton apply adds the
+        # strict AST dependency test (LLD-01 §8 DoD item 8).
+        acl-adapter-boundary:
+          files:
+            - "**/internal/telephony/domain/**"
+            - "**/internal/telephony/application/**"
+            - "**/internal/shared/**"
+          deny:
+            - pkg: atsap-api/internal/telephony/acl/ari
+              desc: "Asterisk ARI adapters stay inside telephony/acl (HLD 01 §1.2, LLD-01 §2)"
+            - pkg: atsap-api/internal/telephony/acl/ami
+              desc: "Asterisk AMI adapters stay inside telephony/acl (HLD 01 §1.2, LLD-01 §2)"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: atsap-api

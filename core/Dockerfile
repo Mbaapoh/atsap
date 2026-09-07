@@ -4,10 +4,25 @@
 # enabled by default in a standard build; --with-pjproject-bundled and
 # --with-jansson-bundled make sure their dependencies (SIP stack, JSON)
 # are available regardless of what's packaged for this Debian release.
+#
+# ASTERISK_VERSION is PINNED (never `-current`) and verified by SHA-256 at
+# build time so two builds a week apart produce the same engine. The
+# documented baseline is Asterisk 22.x LTS (docs/hld/README.md §2, TRD).
+#
+# To upgrade: change ASTERISK_VERSION and ASTERISK_SHA256 together, and
+# verify the checksum first, e.g.:
+#   curl -fL -O https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-<VERSION>.tar.gz
+#   sha256sum asterisk-<VERSION>.tar.gz   # must equal ASTERISK_SHA256 below
+# (the downloads.asterisk.org *.sha256 sidecars are intermittently 404;
+# the asterisk/asterisk GitHub release page for the tag lists the digest.
+# Older point releases live under releases/, the -current alias does not.)
 
 FROM debian:bookworm-slim
 
-ARG ASTERISK_MAJOR=21
+ARG ASTERISK_VERSION=22.8.2
+# Verified 2026-09-06 against the official releases/asterisk-22.8.2.tar.gz
+# (26,523,526 bytes; sha256sum of a local download).
+ARG ASTERISK_SHA256=8dd373ce0771a9ed40bb54a72a889ccdd14c0cee458ed68da9ce913a668e4b22
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
@@ -18,10 +33,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       pkg-config
 
 WORKDIR /usr/src
-RUN wget -q "https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-${ASTERISK_MAJOR}-current.tar.gz" \
-    && tar zxf "asterisk-${ASTERISK_MAJOR}-current.tar.gz" \
-    && rm "asterisk-${ASTERISK_MAJOR}-current.tar.gz" \
-    && mv asterisk-${ASTERISK_MAJOR}.* asterisk
+RUN set -eux; \
+    wget -q -O "asterisk-${ASTERISK_VERSION}.tar.gz" \
+      "https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${ASTERISK_VERSION}.tar.gz"; \
+    echo "${ASTERISK_SHA256}  asterisk-${ASTERISK_VERSION}.tar.gz" | sha256sum -c -; \
+    tar -xzf "asterisk-${ASTERISK_VERSION}.tar.gz"; \
+    rm "asterisk-${ASTERISK_VERSION}.tar.gz"; \
+    mv "asterisk-${ASTERISK_VERSION}" asterisk
 
 WORKDIR /usr/src/asterisk
 RUN contrib/scripts/install_prereq install -y \
