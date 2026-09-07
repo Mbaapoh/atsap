@@ -203,6 +203,44 @@ and the authoritative HLD DDL:**
   `m.Migrate(1)` (schema only) instead of `m.Up()` when the seed is
   disabled.
 
+- **`ports.MediaGateway` had no adapter yet.** Task 9.2 needed a real
+  `MediaGateway` to wire into `application.Service` — task 5's work built
+  `acl/ari.Client`'s REST methods (`Originate`, `CreateBridge`,
+  `AddChannelToBridge`, `DestroyBridge`, `GetChannelVariable`/
+  `SetChannelVariable`) but nothing implemented the port interface itself.
+  Added `acl/mediagateway.go`'s `MediaGatewayAdapter`, a thin wrapper
+  translating `ports.MediaGateway`'s calls onto `*ari.Client` 1:1 — no new
+  behavior, just the adapter boundary the ports/ACL split requires.
+  `StartSnoop` returns an explicit not-implemented error rather than a
+  fake success: this change's scope has no snoop/monitor use case, and a
+  silent no-op would be worse than a clear error if something ever called
+  it. 100% coverage via `mediagateway_test.go` against an `httptest`
+  server.
+- **`server.New`/`NewWithChecks` had no way to mount the ConnectRPC
+  handler.** Both built a fixed mux with only `/healthz`/`/readyz`. Task
+  9.2 needs the app's public API on the same listener (one HTTP server,
+  one health surface, per the package doc's own stated intent) rather
+  than a second listener with no liveness story. Added
+  `NewWithHandlers(addr, checkers, handlers map[string]http.Handler)`,
+  which `NewWithChecks` now delegates to with `nil` handlers — no
+  behavior change for existing callers, additive only.
+- **`api/Dockerfile`'s final stage never copied `migrations/`.** Found
+  while wiring `main.go`'s `corepostgres.MigrateUp(cfg.DatabaseURL,
+  "migrations", ...)` — the distroless final stage copied the binary but
+  not the `migrations` directory the binary reads at the relative path
+  `"migrations"` at startup, which would have failed immediately on
+  container start (`open migrations: no such file or directory`), never
+  caught locally because `mise run run`'s cwd already has `migrations/`
+  next to it. Fixed by adding `WORKDIR /app` and `COPY migrations
+  ./migrations` to the final stage, matching `mise run run`'s relative
+  layout so the same code path needs no dev/prod branching. Not yet
+  verified via an actual image rebuild — deferred to the OpenCode-driven
+  rebuild per the user's instruction to save Docker rebuilds for that
+  harness; the fix was verified by inspection and by confirming the
+  identical relative-path behavior works when the binary runs directly
+  against the same `migrations/` layout (§9.2's live-binary verification
+  above).
+
 **`ports.CallStore` has a fourth method beyond HLD 04 §1's exact shape.**
 Task 4.1 says "matching docs/hld/04-bounded-contexts.md §1 exactly," but
 `CallStore` here also declares `RecordUsageTicks` — HLD's `CallStore` has
