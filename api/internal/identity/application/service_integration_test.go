@@ -222,8 +222,11 @@ func TestLive_AuthorizeDenyByDefault(t *testing.T) {
 	require.NoError(t, err)
 	other, err := svc.ProvisionTenant(ctx, application.SystemActor(), "Other", "EU")
 	require.NoError(t, err)
+	// Provisioned with no role, so it genuinely holds no binding — a
+	// principal provisioned WITH a role now carries the matching one,
+	// which would make this assertion vacuous.
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, "alice", "alice@example.test", "correct horse battery", "AGENT")
+		tenant.ID, "alice", "alice@example.test", "correct horse battery", "")
 	require.NoError(t, err)
 
 	assert.ErrorIs(t, svc.AuthorizeAction(ctx, principal.ID, "call.read", tenant.ID.String()),

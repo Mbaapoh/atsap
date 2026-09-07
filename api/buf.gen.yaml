@@ -15,5 +15,8 @@ plugins:
   - remote: buf.build/community/sudorandom-connect-openapi:v0.19.1
     out: ../docs/api
     opt:
-      - services=atsapbx.v1.IdentityService
+      # No `services=` filter: the document describes every service this
+      # server exposes. Filtering it to IdentityService left GetCall —
+      # listed as exposed in docs/API.md §1 — absent from the published
+      # spec, so "documented API" (US-05.1) was only half true.
       - path=openapi.yaml

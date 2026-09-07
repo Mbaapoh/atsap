@@ -335,6 +335,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.ListAuditResponse'
+  /atsapbx.v1.TelephonyService/GetCall:
+    post:
+      tags:
+        - atsapbx.v1.TelephonyService
+      summary: GetCall
+      description: GetCall returns a Call's current state and participants.
+      operationId: atsapbx.v1.TelephonyService.GetCall
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetCallRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetCallResponse'
 components:
   schemas:
     atsapbx.v1.PrincipalStatus:
@@ -922,3 +958,11 @@ tags:
        credential failure is the same Unauthenticated result whatever its
        cause, and a resource in another tenant answers as though it did not
        exist (INV-10).
+  - name: atsapbx.v1.TelephonyService
+    description: |-
+      TelephonyService exposes telephony-core's public Call/Participant
+       state. It never exposes an Asterisk channel identifier, or any other
+       telephony-engine-internal identifier, anywhere in its contract —
+       docs/hld/01-architecture.md §1.2 rule 3; spec requirement "No
+       infrastructure channel identifier is ever exposed"
+       (openspec/changes/telephony-core-originate-bridge-hangup/specs/telephony-core/call-lifecycle/spec.md).

@@ -483,9 +483,24 @@ func TestAuthorizeAction(t *testing.T) {
 	ctx := context.Background()
 	tenant, principal := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 
+	// A principal provisioned with a role now carries the matching
+	// binding, so "no binding" needs one provisioned without a role —
+	// otherwise this asserts nothing.
 	t.Run("denied with no binding", func(t *testing.T) {
-		err := h.svc.AuthorizeAction(ctx, principal.ID, "call.read", tenant.ID.String())
+		unbound, err := h.svc.ProvisionPrincipal(ctx, application.SystemActor(),
+			tenant.ID, "unbound", "unbound@example.test", "unbound-password-1", "")
+		require.NoError(t, err)
+
+		err = h.svc.AuthorizeAction(ctx, unbound.ID, "call.read", tenant.ID.String())
 		assert.ErrorIs(t, err, ports.ErrPermissionDenied, "deny by default")
+	})
+
+	// The converse of the above, and the reason the binding is created:
+	// a principal provisioned WITH a role must actually hold it, rather
+	// than carrying a role column that authorizes nothing.
+	t.Run("a provisioned role is real authority", func(t *testing.T) {
+		assert.NoError(t, h.svc.AuthorizeAction(ctx, principal.ID, "call.read", tenant.ID.String()),
+			"seeded principal has role AGENT, which grants call.read")
 	})
 
 	require.NoError(t, h.svc.GrantRole(ctx, application.SystemActor(), tenant.ID, principal.ID, "AGENT", domain.ScopeTenant))

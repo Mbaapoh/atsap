@@ -93,9 +93,15 @@ func (s *Service) ProvisionTenant(ctx context.Context, actor Actor, name, reside
 		return domain.Tenant{}, errors.New("residency zone is required and cannot be blank")
 	}
 
+	// CreatedAt is set here and inserted explicitly rather than left to
+	// the column default: the value returned to the caller must be the
+	// value stored. Relying on DEFAULT NOW() meant the response carried
+	// the zero time (0001-01-01), which a client would parse as a real
+	// date.
 	tenant := domain.Tenant{
 		ID: shareddomain.NewTenantID(), Name: name,
 		Status: domain.TenantActive, ResidencyZone: residencyZone,
+		CreatedAt: s.now().UTC(),
 	}
 	if err := s.tenants.CreateTenant(ctx, tenant); err != nil {
 		return domain.Tenant{}, fmt.Errorf("provision tenant: %w", err)
@@ -121,9 +127,26 @@ func (s *Service) ProvisionPrincipal(ctx context.Context, actor Actor, tenantID 
 		ID: shareddomain.NewPrincipalID(), TenantID: tenantID,
 		Username: username, Email: email, PasswordHash: hash,
 		Role: role, Status: domain.PrincipalActive,
+		CreatedAt: s.now().UTC(),
 	}
 	if err := s.principals.CreatePrincipal(ctx, principal); err != nil {
 		return domain.Principal{}, err
+	}
+
+	// Create the binding the role names, so `role` is authority rather
+	// than a label. Without this a principal provisioned as
+	// "TENANT_ADMIN" holds no bindings and is denied everything, which
+	// is a trap for anyone reading the field and expecting it to mean
+	// something. Authorization still consults bindings only — this makes
+	// the two agree instead of making the column authoritative.
+	if role != "" {
+		binding := domain.RoleBinding{
+			PrincipalID: principal.ID, TenantID: tenantID,
+			Role: role, Scope: domain.ScopeTenant, CreatedAt: principal.CreatedAt,
+		}
+		if err := s.bindings.CreateRoleBinding(ctx, binding); err != nil {
+			return domain.Principal{}, fmt.Errorf("bind provisioned role: %w", err)
+		}
 	}
 
 	// The audit record names the account and its role. It carries no
@@ -483,10 +506,16 @@ func (s *Service) rolesFor(ctx context.Context, tenantID shareddomain.TenantID, 
 	if err != nil {
 		return nil, fmt.Errorf("load role bindings: %w", err)
 	}
-	roles := make([]string, 0, len(bindings)+1)
-	if principal.Role != "" {
-		roles = append(roles, principal.Role)
-	}
+	// Bindings only — principal.Role is deliberately NOT included.
+	//
+	// Authorization consults bindings and nothing else, so putting the
+	// principal.Role column in the token's roles claim advertised
+	// authority the caller did not have: a token could read
+	// "TENANT_ADMIN" while every action was denied, and a portal reading
+	// that claim would show administrative UI to a powerless account.
+	// One source of truth; ProvisionPrincipal creates the binding that
+	// makes the role real.
+	roles := make([]string, 0, len(bindings))
 	for _, b := range bindings {
 		roles = append(roles, b.Role)
 	}

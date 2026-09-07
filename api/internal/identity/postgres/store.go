@@ -64,9 +64,9 @@ func (s *Store) HasTenants(ctx context.Context) (bool, error) {
 // CreateTenant inserts a tenant.
 func (s *Store) CreateTenant(ctx context.Context, tenant domain.Tenant) error {
 	_, err := s.pool.Unwrap().Exec(ctx, `
-		INSERT INTO tenants (id, name, status, residency_zone)
-		VALUES ($1, $2, $3, $4)
-	`, tenant.ID.String(), tenant.Name, string(tenant.Status), tenant.ResidencyZone)
+		INSERT INTO tenants (id, name, status, residency_zone, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, tenant.ID.String(), tenant.Name, string(tenant.Status), tenant.ResidencyZone, tenant.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert tenant: %w", err)
 	}
@@ -119,9 +119,9 @@ func (s *Store) SetTenantStatus(ctx context.Context, id shareddomain.TenantID, s
 func (s *Store) CreatePrincipal(ctx context.Context, p domain.Principal) error {
 	return s.pool.WithTenant(ctx, p.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-		`, p.ID.String(), p.TenantID.String(), p.Username, p.Email, p.PasswordHash, p.Role, string(p.Status))
+			INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`, p.ID.String(), p.TenantID.String(), p.Username, p.Email, p.PasswordHash, p.Role, string(p.Status), p.CreatedAt)
 		if isUniqueViolation(err) {
 			return fmt.Errorf("username %q: %w", p.Username, ports.ErrUsernameTaken)
 		}
