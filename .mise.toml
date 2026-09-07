@@ -48,6 +48,23 @@ description = "Run golangci-lint"
 dir = "api"
 run = "golangci-lint run ./..."
 
+# buf.yaml has configured lint and breaking rules since LLD-01, but
+# nothing ever ran them — the proto contract was unguarded while
+# docs/API.md claimed otherwise. A reshape of an RPC that already has a
+# consumer now fails here rather than in a partner's client.
+#
+# Compared against origin/develop, the integration branch, rather than
+# main: main still predates the protos entirely (it has no .proto files
+# at all), so it cannot serve as a baseline yet. Move this to main once
+# develop is promoted and main carries the contract.
+[tasks.proto]
+description = "Lint protos and check for breaking changes against the integration branch"
+dir = "api"
+run = [
+  "buf lint",
+  "buf breaking --against '../.git#branch=origin/develop,subdir=api'",
+]
+
 [tasks.tidy]
 description = "Tidy go modules"
 dir = "api"

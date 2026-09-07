@@ -112,10 +112,37 @@ Campaign and list management, pacing controls, agent state. R2-gated.
 
 ## 4. Compatibility
 
-- `buf breaking` runs against every proto change. Once an RPC has a
-  consumer, its request/response shape is a contract.
+- `mise run proto` runs `buf lint` and `buf breaking` (against `main`).
+  Once an RPC has a consumer, its request/response shape is a contract,
+  and the gate is what keeps that true.
 - Versioning is in the package path (`atsapbx.v1`). A breaking change
   means `v2` alongside `v1`, never a silent reshape of `v1`.
 - No infrastructure identifier — Asterisk channel IDs above all — appears
   in any response, ever. `telephony-core`'s spec makes this a
   requirement with an automated scan behind it, not a convention.
+
+## 5. Machine-readable specification
+
+The `.proto` files under `api/proto/` **are** the specification: for a
+gRPC/Connect API they are the design-first contract in the same way an
+OpenAPI document is for REST, and they are what generates the server
+interfaces, the clients, and the breaking-change gate.
+
+A generated **OpenAPI v3 document is still owed to partners**, and is
+scheduled with `identity-api` rather than now — see §3. Reasons for the
+timing, not an excuse for skipping it:
+
+- Today's surface is one RPC with no external consumer. A published spec
+  describing `GetCall` alone documents nothing anyone can use.
+- `identity-api` is the first change with real external consumers
+  (portal, partner developers), and US-05.1's "documented API" becomes
+  due at exactly that point.
+
+When it lands it will be **generated from the protos, never
+hand-written** — a hand-maintained OpenAPI file drifts from the contract
+within one change, which is the failure mode `check-docs.sh` check 4
+exists to prevent. The intended route is a `buf` remote plugin producing
+OpenAPI v3 that understands Connect's HTTP semantics (`POST
+/<package>.<Service>/<Method>`, Connect's error model), added to
+`buf.gen.yaml` — no local toolchain install, and vetted through
+TOOLSET §6 like any other dependency.
