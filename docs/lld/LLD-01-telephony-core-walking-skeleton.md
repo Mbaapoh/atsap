@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `telephony-core` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | Proposed — in progress as the OpenSpec change [`telephony-core-originate-bridge-hangup`](../../openspec/changes/telephony-core-originate-bridge-hangup/); not yet archived |
+| **Status** | Implemented & archived — behavior lives in [`openspec/specs/telephony-core/call-lifecycle/spec.md`](../../openspec/specs/telephony-core/call-lifecycle/spec.md); change artifacts under `openspec/changes/archive/2026-09-07-telephony-core-originate-bridge-hangup/` |
 | **Traces to** | BRD FBR-R1-01/§7.1; PRD EPIC-03 (calling only, no IVR yet), PRD §11.1 (Call lifecycle), PRD §11.1/T-5 (participant continuity); TRD Domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md), [04-bounded-contexts.md §1](../hld/04-bounded-contexts.md); DECISIONS D-15–D-20, D-25, D-26, D-32 |
 | **Why this is LLD-01** | D-25 (spike before spec), D-26 (prove the media path before building on assumptions about it). Every other bounded context — `pbx-core` for real routing, `dialer` for the predictive/power dialler, `compliance`, `reporting` — either calls into `telephony-core` or reacts to its events. Nothing else can be honestly specified until a real two-party call has gone `Initiated → Active → Terminated` through this code. |
 
@@ -290,9 +290,11 @@ Verbatim from HLD [`README.md` §5.3](../hld/README.md) (the Walking Skeleton In
 
 ## 10. OpenSpec handoff
 
-This LLD is in progress as the OpenSpec change
-[`telephony-core-originate-bridge-hangup`](../../openspec/changes/telephony-core-originate-bridge-hangup/)
-(`/opsx:apply` in Claude Code, or `/opsx-apply` in OpenCode). `openspec/config.yaml`'s
+This LLD was implemented as the OpenSpec change
+`telephony-core-originate-bridge-hangup` (artifacts archived under
+`openspec/changes/archive/2026-09-07-telephony-core-originate-bridge-hangup/`;
+living spec at `openspec/specs/telephony-core/call-lifecycle/spec.md`).
+`openspec/config.yaml`'s
 `context:` surfaces `docs/hld/`, `docs/TRD.md`, and `docs/DECISIONS.md` to the
 applying agent; this file is the design source. The codebase reorganisation
 that preceded the change already relocated `ari`/`ami` under

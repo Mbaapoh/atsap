@@ -25,7 +25,7 @@ to prevent.
 
 | # | LLD | Bounded context | Status | OpenSpec change (when proposed) |
 |---|---|---|---|---|
-| 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Proposed | [`telephony-core-originate-bridge-hangup`](../../openspec/changes/telephony-core-originate-bridge-hangup/) (in progress) |
+| 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
 | 02 | Identity & Licensing | `identity`, `licensing` | Not started | — |
 | 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started | — |
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started | — |
