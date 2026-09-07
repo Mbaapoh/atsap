@@ -46,13 +46,12 @@ var ErrCallNotFound = errors.New("call not found")
 // this event-driven path does not otherwise carry (correlation only
 // carries string IDs — see ports.CorrelationRegistrar). CallStore is
 // still the durable, authoritative record: every meaningful transition
-// is persisted via persistAndPublish before this method returns.
+// is persisted via saveCall before this method returns.
 type Service struct {
 	mediaGateway ports.MediaGateway
 	callStore    ports.CallStore
 	license      ports.LicenseManager
 	compliance   ports.ComplianceEngine
-	events       ports.EventPublisher
 	registrar    ports.CorrelationRegistrar
 	// timeoutSeconds is the alerting timeout passed to MediaGateway.Originate
 	// (PRD §11.1 Presenting; docs/hld/03-domain-model.md §2.1 default 20s).
@@ -72,7 +71,6 @@ func NewService(
 	callStore ports.CallStore,
 	license ports.LicenseManager,
 	compliance ports.ComplianceEngine,
-	events ports.EventPublisher,
 	registrar ports.CorrelationRegistrar,
 	timeoutSeconds int,
 	logger *slog.Logger,
@@ -82,7 +80,6 @@ func NewService(
 		callStore:      callStore,
 		license:        license,
 		compliance:     compliance,
-		events:         events,
 		registrar:      registrar,
 		timeoutSeconds: timeoutSeconds,
 		logger:         logger,
@@ -119,7 +116,7 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	}
 
 	s.storeCall(call)
-	if err := s.persistAndPublish(ctx, call, call.InitiatedEvent()); err != nil {
+	if err := s.saveCall(ctx, call, call.InitiatedEvent()); err != nil {
 		return shareddomain.CallID{}, err
 	}
 
@@ -140,7 +137,7 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	if err != nil {
 		return shareddomain.CallID{}, fmt.Errorf("apply screening verdict: %w", err)
 	}
-	if err := s.persistAndPublish(ctx, call, screenEvents...); err != nil {
+	if err := s.saveCall(ctx, call, screenEvents...); err != nil {
 		return shareddomain.CallID{}, err
 	}
 	if call.State == domain.CallTerminated {
@@ -154,7 +151,7 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	if err := call.TransitionToPresenting(); err != nil {
 		return shareddomain.CallID{}, fmt.Errorf("transition to presenting: %w", err)
 	}
-	if err := s.persistAndPublish(ctx, call); err != nil {
+	if err := s.saveCall(ctx, call); err != nil {
 		return shareddomain.CallID{}, err
 	}
 
@@ -247,7 +244,7 @@ func (s *Service) ParticipantAnswered(ctx context.Context, _, callIDStr, partici
 		return fmt.Errorf("add channel to bridge: %w", err)
 	}
 
-	return s.persistAndPublish(ctx, call, connectEvents...)
+	return s.saveCall(ctx, call, connectEvents...)
 }
 
 // ParticipantLeft implements the shape acl.EventSink declares. A
@@ -296,7 +293,7 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 	if err != nil {
 		return fmt.Errorf("disconnect participant: %w", err)
 	}
-	if err := s.persistAndPublish(ctx, call, disconnectEvents...); err != nil {
+	if err := s.saveCall(ctx, call, disconnectEvents...); err != nil {
 		return err
 	}
 
@@ -373,7 +370,7 @@ func (s *Service) finalizeTermination(ctx context.Context, call *domain.Call, re
 	if err != nil {
 		return fmt.Errorf("terminate call: %w", err)
 	}
-	if err := s.persistAndPublish(ctx, call, terminateEvents...); err != nil {
+	if err := s.saveCall(ctx, call, terminateEvents...); err != nil {
 		return err
 	}
 
@@ -399,17 +396,14 @@ func (s *Service) recordUsageForParticipant(ctx context.Context, call *domain.Ca
 	return s.callStore.RecordUsageTicks(ctx, ticks)
 }
 
-// persistAndPublish saves the call's current state and publishes any
-// events produced by the transition that led here, in that order.
-func (s *Service) persistAndPublish(ctx context.Context, call *domain.Call, events ...event.DomainEvent) error {
-	if err := s.callStore.SaveCall(ctx, call); err != nil {
+// saveCall persists the call's current state and enqueues any events
+// produced by the transition that led here to the transactional outbox,
+// atomically (CallStore.SaveCall's contract) — there is no separate
+// publish step here; the outbox worker (task 7.2) does that
+// asynchronously, independent of this call ever returning.
+func (s *Service) saveCall(ctx context.Context, call *domain.Call, events ...event.DomainEvent) error {
+	if err := s.callStore.SaveCall(ctx, call, events); err != nil {
 		return fmt.Errorf("save call: %w", err)
-	}
-	if len(events) == 0 {
-		return nil
-	}
-	if err := s.events.Publish(ctx, call.TenantID, call.ID.String(), events); err != nil {
-		return fmt.Errorf("publish events: %w", err)
 	}
 	return nil
 }

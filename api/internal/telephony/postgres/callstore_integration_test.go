@@ -16,6 +16,7 @@ import (
 
 	corepostgres "atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
+	"atsap-api/internal/shared/event"
 	"atsap-api/internal/telephony/domain"
 	"atsap-api/internal/telephony/ports"
 	telephonypostgres "atsap-api/internal/telephony/postgres"
@@ -84,14 +85,14 @@ func TestCallStore_SaveAndGetCall_RoundTrip(t *testing.T) {
 	_, err = call.ApplyScreeningVerdict(true, true, time.Now().UTC())
 	require.NoError(t, err)
 	require.NoError(t, call.TransitionToPresenting())
-	require.NoError(t, store.SaveCall(ctx, call))
+	require.NoError(t, store.SaveCall(ctx, call, nil))
 
 	_, err = call.ConnectParticipant(caller.ID, time.Now().UTC())
 	require.NoError(t, err)
 	events, err := call.ConnectParticipant(callee.ID, time.Now().UTC())
 	require.NoError(t, err)
 	require.NotEmpty(t, events)
-	require.NoError(t, store.SaveCall(ctx, call))
+	require.NoError(t, store.SaveCall(ctx, call, nil))
 
 	got, err := store.GetCall(ctx, tenantID, call.ID)
 	require.NoError(t, err)
@@ -104,6 +105,78 @@ func TestCallStore_SaveAndGetCall_RoundTrip(t *testing.T) {
 		assert.Equal(t, domain.ParticipantConnected, p.State)
 		assert.NotNil(t, p.AnsweredAt)
 	}
+}
+
+// TestCallStore_SaveCall_WritesOutboxTransactionally is task 7.1's
+// positive case: an event passed to SaveCall produces exactly one outbox
+// row, correctly addressed and unpublished, in the same call that
+// persisted the domain state.
+func TestCallStore_SaveCall_WritesOutboxTransactionally(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+	ctx := context.Background()
+
+	pool, err := corepostgres.Open(ctx, databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	tenantID := shareddomain.NewTenantID()
+	seedTenant(t, pool, tenantID)
+
+	store := telephonypostgres.NewCallStore(pool)
+	call, _, _ := newTestCall(t, tenantID)
+
+	require.NoError(t, store.SaveCall(ctx, call, []event.DomainEvent{call.InitiatedEvent()}))
+
+	var eventType, aggregateID string
+	var publishedAt *time.Time
+	err = pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT event_type, aggregate_id, published_at FROM outbox WHERE tenant_id = $1
+		`, tenantID.String()).Scan(&eventType, &aggregateID, &publishedAt)
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "call.initiated", eventType)
+	assert.Equal(t, call.ID.String(), aggregateID)
+	assert.Nil(t, publishedAt, "unpublished until the outbox worker (task 7.2) picks it up")
+}
+
+// unmarshalableEvent has a field encoding/json cannot serialize, used
+// only to force SaveCall's outbox-insert step to fail after the domain
+// writes have already run in the same transaction.
+type unmarshalableEvent struct {
+	Ch chan int
+}
+
+func (unmarshalableEvent) EventType() string { return "test.unmarshalable" }
+
+// TestCallStore_SaveCall_EventFailureRollsBackDomainWrite is task 7.1's
+// core gate: the domain write and the outbox write commit or roll back
+// together. Forcing the outbox insert to fail (a JSON-unmarshalable
+// event payload) after the calls/call_participants upserts have already
+// run in the same transaction proves the whole transaction — including
+// the already-executed domain writes — rolls back, not just the failing
+// statement.
+func TestCallStore_SaveCall_EventFailureRollsBackDomainWrite(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+	ctx := context.Background()
+
+	pool, err := corepostgres.Open(ctx, databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	tenantID := shareddomain.NewTenantID()
+	seedTenant(t, pool, tenantID)
+
+	store := telephonypostgres.NewCallStore(pool)
+	call, _, _ := newTestCall(t, tenantID)
+
+	saveErr := store.SaveCall(ctx, call, []event.DomainEvent{unmarshalableEvent{Ch: make(chan int)}})
+	require.Error(t, saveErr)
+
+	_, getErr := store.GetCall(ctx, tenantID, call.ID)
+	assert.Error(t, getErr, "the call must not exist: a failed outbox write must roll back the domain write in the same transaction")
 }
 
 // TestCallStore_AddChannelHistory proves the ACL audit-trail write path.
@@ -125,7 +198,7 @@ func TestCallStore_AddChannelHistory(t *testing.T) {
 	_, err = call.ApplyScreeningVerdict(true, true, time.Now().UTC())
 	require.NoError(t, err)
 	require.NoError(t, call.TransitionToPresenting())
-	require.NoError(t, store.SaveCall(ctx, call))
+	require.NoError(t, store.SaveCall(ctx, call, nil))
 
 	require.NoError(t, store.AddChannelHistory(ctx, tenantID, caller.ID, ports.ChannelRef("atsa-part-1"), "", "originated"))
 
@@ -161,7 +234,7 @@ func TestCallStore_RecordUsageTicks_ContinuousNoDuplication(t *testing.T) {
 	_, err = call.ApplyScreeningVerdict(true, true, time.Now().UTC())
 	require.NoError(t, err)
 	require.NoError(t, call.TransitionToPresenting())
-	require.NoError(t, store.SaveCall(ctx, call))
+	require.NoError(t, store.SaveCall(ctx, call, nil))
 
 	connectedAt := time.Now().UTC()
 	disconnectedAt := connectedAt.Add(5 * time.Second)

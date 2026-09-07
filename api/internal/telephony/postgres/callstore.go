@@ -6,6 +6,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	corepostgres "atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
+	"atsap-api/internal/shared/event"
 	"atsap-api/internal/telephony/domain"
 	"atsap-api/internal/telephony/ports"
 )
@@ -22,14 +24,21 @@ type CallStore struct {
 	pool *corepostgres.Pool
 }
 
+var _ ports.CallStore = (*CallStore)(nil)
+
 // NewCallStore returns a CallStore backed by pool.
 func NewCallStore(pool *corepostgres.Pool) *CallStore {
 	return &CallStore{pool: pool}
 }
 
-// SaveCall upserts call and every one of its participants in one
-// transaction, tenant-scoped.
-func (s *CallStore) SaveCall(ctx context.Context, call *domain.Call) error {
+// SaveCall upserts call, every one of its participants, and one outbox
+// row per event — all in the same transaction, tenant-scoped. This IS
+// the transactional outbox pattern (docs/hld/01-architecture.md §3.2,
+// task 7.1): the domain write and the outbox write commit or roll back
+// together, so an event can never be silently lost between them. The
+// outbox worker (task 7.2) reads these rows and publishes to NATS
+// asynchronously, entirely independent of this method.
+func (s *CallStore) SaveCall(ctx context.Context, call *domain.Call, events []event.DomainEvent) error {
 	return s.pool.WithTenant(ctx, call.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO calls (id, tenant_id, direction, state, source_number, dest_number, started_at, answered_at, ended_at, termination_reason)
@@ -63,6 +72,20 @@ func (s *CallStore) SaveCall(ctx context.Context, call *domain.Call) error {
 			)
 			if err != nil {
 				return fmt.Errorf("upsert participant %s: %w", p.ID, err)
+			}
+		}
+
+		for _, ev := range events {
+			payload, err := json.Marshal(ev)
+			if err != nil {
+				return fmt.Errorf("marshal event %s: %w", ev.EventType(), err)
+			}
+			_, err = tx.Exec(ctx, `
+				INSERT INTO outbox (id, tenant_id, event_type, aggregate_id, payload)
+				VALUES (gen_random_uuid(), $1, $2, $3, $4)
+			`, call.TenantID.String(), ev.EventType(), call.ID.String(), payload)
+			if err != nil {
+				return fmt.Errorf("insert outbox row for %s: %w", ev.EventType(), err)
 			}
 		}
 		return nil

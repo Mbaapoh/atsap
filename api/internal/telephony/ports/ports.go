@@ -92,7 +92,14 @@ type MediaGateway interface {
 
 // CallStore is telephony-core's outbound persistence port.
 type CallStore interface {
-	SaveCall(ctx context.Context, call *domain.Call) error
+	// SaveCall persists call and enqueues events to the transactional
+	// outbox in the SAME database transaction (docs/hld/01-architecture.md
+	// §3.2) — this is what "transactional outbox" means: the domain
+	// write and the outbox write commit or roll back together. The
+	// outbox worker (a separate background component behind
+	// EventPublisher below, not CallService) publishes queued events to
+	// NATS asynchronously afterward.
+	SaveCall(ctx context.Context, call *domain.Call, events []event.DomainEvent) error
 	GetCall(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.CallID) (*domain.Call, error)
 	AddChannelHistory(ctx context.Context, tenantID shareddomain.TenantID, participantID shareddomain.ParticipantID, channelRef ChannelRef, bridgeID BridgeID, eventType string) error
 	RecordUsageTicks(ctx context.Context, ticks []domain.UsageTick) error
@@ -134,9 +141,10 @@ type CorrelationRegistrar interface {
 	RegisterCorrelation(channelID, tenantID, callID, participantID string)
 }
 
-// EventPublisher is telephony-core's outbound port for domain events,
-// implemented by the transactional outbox writer (internal/postgres,
-// internal/nats).
-type EventPublisher interface {
-	Publish(ctx context.Context, tenantID shareddomain.TenantID, aggregateID string, events []event.DomainEvent) error
-}
+// Publishing events to NATS is not a telephony-core port: CallService
+// only ever calls CallStore.SaveCall, which enqueues events to the
+// outbox transactionally (see CallStore's doc comment above). The
+// worker that reads the outbox and publishes to NATS asynchronously is
+// generic infrastructure serving every future bounded context's outbox
+// rows alike, not telephony-specific — its contract (OutboxWorker,
+// OutboxPublisher) lives in internal/postgres, not here.

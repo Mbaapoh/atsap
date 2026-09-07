@@ -106,6 +106,7 @@ type fakeCallStore struct {
 	saveCount      int
 	channelHistory []channelHistoryEntry
 	usageTicks     []domain.UsageTick
+	savedEvents    []event.DomainEvent // every event ever passed to SaveCall, across all calls
 
 	failSave           error
 	failAddChanHistory error
@@ -116,7 +117,13 @@ func newFakeCallStore() *fakeCallStore {
 	return &fakeCallStore{calls: make(map[string]*domain.Call)}
 }
 
-func (f *fakeCallStore) SaveCall(_ context.Context, call *domain.Call) error {
+// SaveCall stands in for the real transactional-outbox write
+// (internal/telephony/postgres.CallStore.SaveCall persists call and
+// events in one DB transaction; this fake just records both, proving
+// the orchestrator passes events through on every save, not that they
+// commit atomically — that guarantee is proven separately, by the real
+// adapter's integration test).
+func (f *fakeCallStore) SaveCall(_ context.Context, call *domain.Call, events []event.DomainEvent) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.failSave != nil {
@@ -124,6 +131,7 @@ func (f *fakeCallStore) SaveCall(_ context.Context, call *domain.Call) error {
 	}
 	f.calls[call.ID.String()] = call
 	f.saveCount++
+	f.savedEvents = append(f.savedEvents, events...)
 	return nil
 }
 
@@ -163,45 +171,12 @@ func (f *fakeCallStore) get(id shareddomain.CallID) *domain.Call {
 	return f.calls[id.String()]
 }
 
-type publishedBatch struct {
-	tenantID    shareddomain.TenantID
-	aggregateID string
-	events      []event.DomainEvent
-}
-
-type fakeEventPublisher struct {
-	mu        sync.Mutex
-	published []publishedBatch
-	failFrom  error
-}
-
-func (f *fakeEventPublisher) Publish(_ context.Context, tenantID shareddomain.TenantID, aggregateID string, events []event.DomainEvent) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.failFrom != nil {
-		return f.failFrom
-	}
-	f.published = append(f.published, publishedBatch{tenantID, aggregateID, events})
-	return nil
-}
-
-func (f *fakeEventPublisher) allEvents() []event.DomainEvent {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var all []event.DomainEvent
-	for _, b := range f.published {
-		all = append(all, b.events...)
-	}
-	return all
-}
-
 // --- test harness ----------------------------------------------------------
 
 type harness struct {
 	svc       *application.Service
 	mediaGW   *fakeMediaGateway
 	callStore *fakeCallStore
-	publisher *fakeEventPublisher
 	registry  *acl.CorrelationRegistry
 }
 
@@ -209,7 +184,6 @@ func newHarness() *harness {
 	h := &harness{
 		mediaGW:   &fakeMediaGateway{},
 		callStore: newFakeCallStore(),
-		publisher: &fakeEventPublisher{},
 		registry:  acl.NewCorrelationRegistry(),
 	}
 	h.svc = application.NewService(
@@ -217,7 +191,6 @@ func newHarness() *harness {
 		h.callStore,
 		application.NewAlwaysPermitLicense(),
 		application.NewAlwaysPermitCompliance(),
-		h.publisher,
 		h.registry,
 		20,
 		discardLogger(),
@@ -294,9 +267,8 @@ func TestInitiateCall_ReachesActive(t *testing.T) {
 	assert.Len(t, h.mediaGW.addedToBridge, 2, "both legs added to the same bridge")
 	assert.Equal(t, h.mediaGW.addedToBridge[0].bridgeID, h.mediaGW.addedToBridge[1].bridgeID)
 
-	events := h.publisher.allEvents()
 	var sawInitiated, sawActive bool
-	for _, e := range events {
+	for _, e := range h.callStore.savedEvents {
 		switch e.(type) {
 		case domain.CallInitiatedEvent:
 			sawInitiated = true
@@ -315,7 +287,7 @@ func TestInitiateCall_ScreeningRejection(t *testing.T) {
 	h := newHarness()
 	h.svc = application.NewService(
 		h.mediaGW, h.callStore, rejectingLicense{}, application.NewAlwaysPermitCompliance(),
-		h.publisher, h.registry, 20, discardLogger(),
+		h.registry, 20, discardLogger(),
 	)
 
 	callID, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
@@ -358,7 +330,7 @@ func TestInitiateCall_LicenseServiceFailure(t *testing.T) {
 	h := newHarness()
 	h.svc = application.NewService(
 		h.mediaGW, h.callStore, failingLicense{}, application.NewAlwaysPermitCompliance(),
-		h.publisher, h.registry, 20, discardLogger(),
+		h.registry, 20, discardLogger(),
 	)
 	_, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
 		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
@@ -372,7 +344,7 @@ func TestInitiateCall_ComplianceServiceFailure(t *testing.T) {
 	h := newHarness()
 	h.svc = application.NewService(
 		h.mediaGW, h.callStore, application.NewAlwaysPermitLicense(), failingCompliance{},
-		h.publisher, h.registry, 20, discardLogger(),
+		h.registry, 20, discardLogger(),
 	)
 	_, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
 		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
@@ -529,18 +501,6 @@ func TestInitiateCall_SaveCallFailure(t *testing.T) {
 		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
 	})
 	assert.ErrorContains(t, err, "db unavailable")
-}
-
-func TestInitiateCall_PublishFailure(t *testing.T) {
-	h := newHarness()
-	h.publisher.failFrom = errors.New("nats unavailable")
-
-	_, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
-		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
-		SourceNumber: "1000", DestNumber: "1001",
-		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
-	})
-	assert.ErrorContains(t, err, "nats unavailable")
 }
 
 func TestInitiateCall_ChannelHistoryFailure(t *testing.T) {
