@@ -24,23 +24,39 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | RPC | Service | Landed in | Consumer |
 |---|---|---|---|
 | `GetCall` | `atsapbx.v1.TelephonyService` | `telephony-core-originate-bridge-hangup` (LLD-01) | e2e harness; the portal's future call view |
-
-That is the whole wire surface at present. It is thin on purpose for
-LLD-01 (a walking skeleton proves a path before specifying it — D-25),
-and **too thin from LLD-02 onward**, which is what D-43 corrects.
+| `AuthenticateUser` | `atsapbx.v1.IdentityService` | `identity-api` | Portal login; partner developers; the UAT harness after cutover |
+| `ProvisionTenant` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 admin stories; the portal's first screens |
+| `ProvisionPrincipal` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 admin stories; the portal's first screens |
+| `SetTenantStatus` | `atsapbx.v1.IdentityService` | `identity-api` | AC-01.7 — suspend is a console action |
+| `SetPrincipalStatus` | `atsapbx.v1.IdentityService` | `identity-api` | AC-01.5 — disable is a console action |
+| `GrantRole` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 RBAC management |
+| `IssueApiKey` | `atsapbx.v1.IdentityService` | `identity-api` | Partner key self-service (US-05.1) |
+| `RevokeApiKey` | `atsapbx.v1.IdentityService` | `identity-api` | Partner key self-service (US-05.1) |
+| `ListAudit` | `atsapbx.v1.IdentityService` | `identity-api` | Audit review and compliance export (AC-01.3) |
 
 ### Authentication
 
-Not yet enforced. `auth-cutover-connectrpc` (LLD-02 §9) makes
-`Authorization: Bearer <JWT>` mandatory on every RPC. Until then calls
-are unauthenticated and `GetCall` accepts a caller-supplied `tenant_id`
-— a documented, temporary walking-skeleton concession, not the intended
-end state.
+**Two services, two policies** (identity-api design):
 
-After the cutover: a token comes from `AuthenticateUser` (§3), the
-request's `tenant_id` must match the token's, and a resource belonging
-to another tenant returns `not_found` rather than anything that reveals
-it exists (INV-10).
+- **`IdentityService` is authenticated from the moment it exists** —
+  every RPC except `AuthenticateUser` requires
+  `Authorization: Bearer <JWT>`. That one method is exempt by its exact
+  procedure name, because a caller cannot hold a token before obtaining
+  one. `ProvisionTenant` additionally requires **platform (system)
+  scope**, so a customer's own administrator cannot create tenants.
+- **`TelephonyService` remains unauthenticated** until
+  `auth-cutover-connectrpc` — its risk is breaking callers that exist
+  today (the e2e suite, the UAT rig). Until then `GetCall` accepts a
+  caller-supplied `tenant_id`; a documented, temporary concession.
+
+For an authenticated request, the body's `tenant_id` must match the
+token's (system-scoped callers excepted), and a resource belonging to
+another tenant returns `not_found` rather than anything that reveals it
+exists (INV-10).
+
+The first tenant and its platform administrator are created off the
+network by `atsap-api bootstrap` (identity-api 3.3), never by a seeded
+default credential.
 
 ---
 
@@ -67,21 +83,16 @@ What each LLD is expected to put on the wire. This is a plan, not a
 promise: a capability arrives here only when it has a named consumer,
 and the owning change is where that is decided and recorded.
 
-### LLD-02 — identity & licensing
+### LLD-02 — licensing (identity landed)
 
-Change `identity-api`, sequenced **before** `auth-cutover-connectrpc`
-and required by it: without a wire-level `AuthenticateUser` there is no
-way to obtain a token in production, so enforcing JWTs would lock every
-caller out.
+`identity-api` shipped the identity surface (§1) ahead of
+`auth-cutover-connectrpc`, which it requires: without a wire-level
+`AuthenticateUser` there was no way to obtain a token in production, so
+enforcing JWTs would have locked every caller out. Licensing RPCs remain
+pending until the `licensing` context exists.
 
 | RPC | Service | Consumer |
 |---|---|---|
-| `AuthenticateUser` | `IdentityService` | Portal login; partner developers; the UAT harness after cutover |
-| `ProvisionTenant`, `ProvisionPrincipal` | `IdentityService` | EPIC-01 admin stories; the portal's first screens |
-| `SetTenantStatus`, `SetPrincipalStatus` | `IdentityService` | AC-01.5/01.7 — suspend and disable are console actions |
-| `GrantRole` | `IdentityService` | EPIC-01 RBAC management |
-| `IssueAPIKey`, `RevokeAPIKey` | `IdentityService` | Partner key self-service (US-05.1) |
-| `ListAudit` | `IdentityService` | Audit review and compliance export (AC-01.3) |
 | `ApplyLicenseKey`, `GetLicenseStatus` | `LicensingService` | Partner licence application and entitlement display (EPIC-06); `licensing-apply-key` |
 
 ### LLD-03 — pbx-core
@@ -128,21 +139,13 @@ gRPC/Connect API they are the design-first contract in the same way an
 OpenAPI document is for REST, and they are what generates the server
 interfaces, the clients, and the breaking-change gate.
 
-A generated **OpenAPI v3 document is still owed to partners**, and is
-scheduled with `identity-api` rather than now — see §3. Reasons for the
-timing, not an excuse for skipping it:
-
-- Today's surface is one RPC with no external consumer. A published spec
-  describing `GetCall` alone documents nothing anyone can use.
-- `identity-api` is the first change with real external consumers
-  (portal, partner developers), and US-05.1's "documented API" becomes
-  due at exactly that point.
-
-When it lands it will be **generated from the protos, never
-hand-written** — a hand-maintained OpenAPI file drifts from the contract
-within one change, which is the failure mode `check-docs.sh` check 4
-exists to prevent. The intended route is a `buf` remote plugin producing
-OpenAPI v3 that understands Connect's HTTP semantics (`POST
-/<package>.<Service>/<Method>`, Connect's error model), added to
-`buf.gen.yaml` — no local toolchain install, and vetted through
-TOOLSET §6 like any other dependency.
+A generated **OpenAPI v3 document is shipped with `identity-api`** —
+**generated from the protos, never hand-written**, so it cannot drift
+from the contract. It lives at [`docs/api/openapi.yaml`](api/openapi.yaml)
+and is produced by `buf generate` via the pinned
+`sudorandom-connect-openapi` remote plugin, which understands Connect's
+HTTP semantics (`POST /<package>.<Service>/<Method>`, Connect's error
+model) rather than grpc-gateway routes this server does not serve.
+`TelephonyService` (`GetCall`) is not in the published document yet — it
+has no external consumer today, and adding it would document a surface
+nothing outside this repo calls.
