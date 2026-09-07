@@ -254,6 +254,31 @@ either `RecordUsageTicks` moves to a `UsageRecorder` port there, or this
 note is updated to say why it stayed. Don't refactor it as part of
 finishing this change; that's its own later decision.
 
+- **Task 10.2's answering UAs run as a `sipua` sidecar container
+  (`cmd/sip-ua`), not host-resident in-process UAs.** A host-resident UA
+  is unreachable in this environment: ufw drops UDP from the compose
+  `voip` network into host-published ports (confirmed directly — an
+  Asterisk INVITE to `host.docker.internal:5070` never arrived; a raw
+  `nc` probe from the `voip` network into the host timed out the same
+  way). The sidecar registers as 1000/1001 and auto-answers with a
+  minimal valid SDP; it has no hangup control surface. The e2e test hangs
+  up both legs directly through ARI instead (list channels, match by the
+  `ATSA_CALL_ID` correlation variable, hang each up) — standing in for
+  the remote end hanging up, and keeping the test CI-portable (no host
+  networking dependency).
+- **Two real bugs only surfaced once task 10.2 ran against real
+  Asterisk**, neither reachable by task 5.6's scripted-fake-event
+  integration test: `ChannelStateChange(Up)` fires before `StasisStart`
+  for an ARI-originated channel, and reacting to it (plus lazily
+  creating the bridge on first connect) lost the race against Asterisk's
+  own SDP-completion deadline — it hung the channel up itself before
+  `AddChannelToBridge` landed. Fixed by triggering `ParticipantAnswered`
+  on `StasisStart` and creating the bridge up front in `InitiateCall`.
+  Separately, `outbox`'s poll query did `ORDER BY id`, but `id` is
+  `gen_random_uuid()` — publish order was effectively random, not
+  chronological; NATS delivered `call.active` before `call.initiated`.
+  Fixed to `ORDER BY created_at, id`.
+
 ## Migration Plan
 
 No live system exists yet, so this is schema bring-up, not a cutover:
