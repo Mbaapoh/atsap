@@ -13,6 +13,7 @@
 |---|---|
 | 2026-09-07 | Initial draft. |
 | 2026-09-07 | Amendment: dev-token three-layer guardrails (§5.2); distributed-capacity future direction (§8); change table with propose order (§9); Security & Compliance Invariants (§10); critical-path sequence diagrams (§11); DoD items 9–11. |
+| 2026-09-07 | Review fixes: resolved the `ValidateCapacity` signature contradicting "zero telephony-core changes" (§4); `AuditEntry` shape now matches HLD 03 §5 exactly (§3); HLD 03 §5 gained `role_bindings`/`api_keys`/`licensing_state` DDL, closing the "not a new schema" gap (§5.1); DoD item 8 now states the `licensing_state` tenant_id exception explicitly; JWT implementation (stdlib-only, TTL, algorithm pinning) and Argon2id parameters specified (§5.3, §10.7); INV-10 reasoning added for the tenant-mismatch check (§4); failed-authentication logging added (§10.8); §11.1/§11.1a diagrams no longer imply `GetCall` triggers a capacity check; OWASP Top 10 (2021) traceability added (§10.9); DoD item 12. |
 
 ## 1. Scope
 
@@ -88,15 +89,23 @@ type ApiKey struct {
     RevokedAt   *time.Time
 }
 type AuditEntry struct {
-    ID         int64 // BIGSERIAL, append-only
-    TenantID   shared.TenantID
-    ActorID    string
-    ActorType  string
-    Action     string
-    Resource   string
-    BeforeJSON []byte // nullable
-    AfterJSON  []byte // nullable
-    CreatedAt  time.Time
+    ID           int64 // BIGSERIAL, append-only
+    TenantID     shared.TenantID
+    ActorID      uuid.UUID // HLD 03 §5: actor_id UUID NOT NULL. System-
+                           // initiated entries (e.g. the daily entitlement
+                           // worker) use a well-known sentinel
+                           // (systemActorID, all-zero UUID) rather than
+                           // NULL — ActorType distinguishes "principal"
+                           // from "system".
+    ActorType    string
+    Action       string
+    ResourceType string // HLD splits resource into type + id; kept split here
+    ResourceID   string
+    IPAddress    net.IP // nullable (HLD: ip_address INET) — absent for
+                         // system-initiated entries
+    BeforeJSON   []byte // nullable
+    AfterJSON    []byte // nullable
+    CreatedAt    time.Time
 }
 ```
 
@@ -148,10 +157,24 @@ type IdentityService interface {
 // RLS (SET LOCAL app.tenant_id) and audit. Produced only by ValidateToken
 // or API-key validation — never hand-constructed by callers.
 
-// licensing/ports — exactly HLD 04 §4 (all four methods; LLD-01 §5.1's
-// single-method stub port is retired by this LLD, not extended beside it)
+// licensing/ports — HLD 04 §4's four methods; LLD-01 §5.1's single-method
+// stub port is retired by this LLD, not extended beside it.
+//
+// ValidateCapacity keeps LLD-01's explicit tenantID parameter rather
+// than adopting HLD 04 §4's literal 2-arg signature verbatim: dropping
+// it would require editing ports.LicenseManager AND its one call site in
+// telephony/application/service.go's InitiateCall — both live under
+// internal/telephony/, which trips this LLD's own "zero telephony-core
+// changes" tripwire (§1). InitiateCallCommand already carries TenantID
+// explicitly (the walking skeleton's established pattern of threading
+// tenant_id through Go signatures, not just DB rows — D-24 seam 1 applied
+// to code, not only schema); a ctx-carried TenantContext would be a
+// second, redundant source of truth for the same value, not a
+// simplification. Deliberate, documented deviation from HLD 04 §4's
+// exact text — same category of divergence as LLD-01's CallStore
+// gaining RecordUsageTicks beyond HLD 04 §1's exact shape.
 type LicenseManager interface {
-    ValidateCapacity(ctx context.Context, requestedChannels int) (CapacityVerdict, error)
+    ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, requestedChannels int) (CapacityVerdict, error)
     ReleaseCapacity(ctx context.Context, channels int) error
     ApplyLicenseKey(ctx context.Context, signedPayload []byte) error
     VerifyDailyEntitlement(ctx context.Context) (EntitlementStatus, error)
@@ -165,26 +188,47 @@ and body-tenant/JWT-tenant mismatch (`InvalidArgument`). `rpc/handler.go`
 reads the tenant from context (falls back to body field only when no
 auth context exists — i.e. in handler unit tests, never in production).
 
+`InvalidArgument` here does not violate INV-10/AC-01.1's "no leak via
+error messages, including to a caller who names another tenant" rule:
+the caller already asserted that `tenant_id` themselves in their own
+request body, so the response confirms nothing they didn't already
+claim — no oracle for tenant existence is created. This is distinct from
+(and does not replace) resource-level isolation: a request for a
+`call_id` belonging to a different tenant than the authenticated one
+returns a generic `not_found` via RLS filtering (established in LLD-01),
+never a code that reveals the resource exists elsewhere.
+
 ## 5. Data model
 
 ### 5.1 Migration scope (`api/migrations/0003_identity.up.sql`, `golang-migrate`)
 
 Exactly the HLD [03-domain-model.md §5](../hld/03-domain-model.md) tables
-this LLD owns — **not a new schema**, the agreed one, same as LLD-01 §6.1:
+this LLD owns — **not a new schema**, the agreed one, same as LLD-01 §6.1.
+`role_bindings`, `api_keys`, and `licensing_state` had no DDL there until
+this LLD amended §5 to add them (their aggregates were already approved
+in HLD 04 §§4/7 — RoleBinding, ApiKey, and licensing's own aggregates —
+only the exact columns were missing); the claim is accurate as of that
+amendment, not before it:
 
 - `principals` (as HLD DDL: `id`, `tenant_id`, `username`, `email`,
   `password_hash`, `role`, `status`, `UNIQUE(tenant_id, username)`)
-- `role_bindings`, `api_keys` (new tables, same column conventions)
-- `audit_logs` (as HLD DDL: BIGSERIAL, actor/action/resource,
-  before/after JSONB — **no UPDATE/DELETE policy path by construction**;
-  RLS enabled + `tenant_isolation_audit` policy per the HLD-03 rule that
-  no RLS table ships without its policy)
-- `licensing_state` (new, minimal: `instance_id` PK, `fingerprint`
-  JSONB, `edition`, `capacity`, `entitlement` status, `last_confirmed_at`,
+- `role_bindings` (as HLD DDL: `principal_id`, `tenant_id`, `role`,
+  `scope`, `PRIMARY KEY (principal_id, role, scope)`)
+- `api_keys` (as HLD DDL: `id`, `tenant_id`, `principal_id`, `key_hash`,
+  `expires_at`, `revoked_at`)
+- `audit_logs` (as HLD DDL: BIGSERIAL, `actor_id` UUID, `actor_type`,
+  `action`, `resource_type`+`resource_id`, `before_state`/`after_state`
+  JSONB, `ip_address` INET — **no UPDATE/DELETE policy path by
+  construction**; RLS enabled + `tenant_isolation_audit` policy per the
+  HLD-03 rule that no RLS table ships without its policy)
+- `licensing_state` (as HLD DDL: `instance_id` PK, `fingerprint` JSONB,
+  `edition`, `capacity`, `entitlement_status`, `last_confirmed_at`,
   `grace_started_at`) — the only durable licensing state; counters stay
-  in memory
+  in memory. **No `tenant_id`, and never gains RLS**: installation-scoped
+  by design (T-1), not tenant-scoped — see the table's own HLD comment.
 - RLS enabled + `FORCE ROW LEVEL SECURITY` + `tenant_isolation_*`
-  policies on every new table (the LLD-01 RLS lesson, now the house rule)
+  policies on every new table **except `licensing_state`** (the LLD-01
+  RLS lesson, now the house rule)
 
 ### 5.2 Deletions and dev bootstrap
 
@@ -211,6 +255,46 @@ this LLD owns — **not a new schema**, the agreed one, same as LLD-01 §6.1:
   All three must fail together for a leak — defense in depth, not a
   single gate. The UAT runbook's `curl GetCall` examples gain the
   `Authorization: Bearer` header at that point.
+
+### 5.3 Cryptographic parameters (closes TOOLSET §6 and OWASP A02/A07 gaps)
+
+- **Password hashing (Argon2id, `golang.org/x/crypto/argon2`)**: memory
+  19 MiB (19456 KiB), 2 iterations, 1 degree of parallelism — the current
+  OWASP Password Storage Cheat Sheet minimum for Argon2id. Minimum
+  password length 8 characters, maximum 64 (accepted as-is, no forced
+  composition rules — NIST SP 800-63B §5.1.1.2: length beats complexity
+  rules, which push predictable patterns). No breach-corpus check in R1
+  (a `HaveIBeenPwned`-style lookup is a legitimate future hardening, not
+  a blocker here — D-08: nothing over-built for year-three scale before
+  R1 needs it).
+- **JWT: hand-rolled on stdlib, no new dependency.** `crypto/ed25519` for
+  signing/verification (same primitive as the licence token, T-1) +
+  `encoding/json` + `encoding/base64` for the compact serialization —
+  TOOLSET.md names no JWT library, and none is needed: a JWT is header +
+  claims + Ed25519 signature, not a protocol requiring a framework. This
+  closes the dependency-approval gap identified in review; if a future
+  LLD needs JWKS rotation or OIDC federation, that is a new, separately
+  proposed and TOOLSET §6-vetted dependency, not an extension of this
+  code.
+- **Algorithm pinning (OWASP A02/A07 — "alg confusion"/downgrade)**: the
+  validator accepts exactly one algorithm, `EdDSA` (Ed25519), read from a
+  fixed expectation — **never from the token's own `alg` header**. A
+  token asserting `alg: none` or any other algorithm is rejected before
+  signature verification even runs. There is no algorithm negotiation to
+  attack because there is no algorithm choice at validation time.
+- **Token lifetime**: access tokens are short-lived, 15 minutes, with no
+  refresh-token flow in this LLD — re-authenticate on expiry. Machine
+  clients (UAT scripts, the e2e suite) re-authenticate cheaply; a
+  refresh-token rotation/revocation scheme is deferred to whichever LLD
+  first has a human-facing session that needs one (the portal, HLD 12) —
+  building it now for no current consumer is exactly the over-building
+  D-08 rules out.
+- **API key hashing stays SHA-256, not Argon2id**: unlike a password, an
+  API key is a high-entropy, machine-generated random token (not a
+  human-chosen, guessable secret) — slow hashing defends against
+  brute-forcing a low-entropy secret, which does not apply here. SHA-256
+  is the correct, fast, standard primitive for this shape (HLD 04 §7 already
+  specifies "API keys stored as SHA-256 hashes").
 
 ## 6. ConnectRPC surface (this LLD: auth on existing methods + identity methods)
 
@@ -249,8 +333,12 @@ method is recorded in the proposing change, not smuggled in.)
    disabled (AC-06.4/06.5); daily worker covered by test with injected
    clock.
 8. `go-arch-lint`/AST + `depguard` green with the two new contexts
-   present; RLS isolation test extended to the new tables; `tenant_id`
-   absent from no new row, event, or log (D-24 seam 1, D-39).
+   present; RLS isolation test extended to every new tenant-scoped table
+   (`principals`, `role_bindings`, `api_keys`, `audit_logs`); `tenant_id`
+   absent from no new row, event, or log except `licensing_state`, whose
+   absence of `tenant_id` is itself asserted by a test — it is
+   installation-scoped by design (T-1), the one deliberate exception to
+   D-24 seam 1, not a gap in it (D-39).
 9. **Security invariants verified**: `AuthorizeAction` is deny-by-default
    (no-match tuple test); no audit row contains `password_hash` or
    `key_hash` (constructor-redaction test); all SQL in the two new
@@ -264,6 +352,13 @@ method is recorded in the proposing change, not smuggled in.)
 11. **Rate-limiting readiness**: the auth interceptor documents the
     extension point where a limiter wraps it — documentation only, no
     stub limiter ships with this LLD.
+12. **OWASP-driven checks (§10.7–10.9)**: a token with `alg: none` or any
+    non-`EdDSA` value is rejected before signature verification runs
+    (algorithm-pinning test); a failed `AuthenticateUser`/`ValidateToken`
+    call produces exactly one `WARN`-level structured log entry
+    containing no password material (failed-auth-visibility test);
+    Argon2id is invoked with the §5.3 parameters, asserted directly
+    against the hasher call, not inferred from behavior.
 
 ## 8. Known limitations of this LLD (carried, not introduced)
 
@@ -350,9 +445,42 @@ thereafter. Actual storage routing lives at the deployment layer and is
 enforced by a future LLD, not here — this LLD guarantees the field
 exists, is carried in `TenantContext`, and can never be blanked.
 
+### 10.7 Authentication algorithm and credential parameters
+JWT validation accepts only `EdDSA`, read from a fixed expectation, never
+from the token's own header (§5.3) — closes the "alg confusion"/downgrade
+class of JWT vulnerability at the design level, not by convention.
+Argon2id parameters (19 MiB / 2 iterations / parallelism 1) and password
+length bounds (8–64) are specified in §5.3 rather than left to whatever
+defaults a library ships with.
+
+### 10.8 Failed-authentication visibility
+Every `AuthenticateUser` and `ValidateToken` failure is logged at `WARN`
+via the existing structured-logging path (D-39) — principal/tenant
+identifiers only, never the attempted password — even though it is not
+an `audit_logs` row (that table is for admin *mutations* on resources,
+per HLD 04 §7's invariant; a failed login mutates nothing). Without this,
+credential-stuffing and brute-force patterns are invisible until §10.5's
+rate limiter lands in a later LLD; this is the minimum visibility that
+should exist before then, not a substitute for that limiter.
+
+### 10.9 OWASP Top 10 (2021) traceability
+Not every category applies to this LLD's scope (e.g. A06 Vulnerable
+Components is a `govulncheck`/CI concern, not a design one — `mise run
+vuln`, unchanged by this LLD). The categories this LLD's design bears on:
+
+| Category | How this LLD addresses it |
+|---|---|
+| A01 Broken Access Control | §10.1 deny-by-default `AuthorizeAction`; RLS tenant scoping (HLD 03 §5) makes cross-tenant resource access return `not_found`, never a partial-access response |
+| A02 Cryptographic Failures | Argon2id (§5.3) for passwords, SHA-256 for high-entropy API keys (§5.3, HLD 04 §7), Ed25519 for JWT + licence tokens (T-1), algorithm pinning (§10.7) |
+| A03 Injection | §10.4 mandatory parameterized queries, review-enforced |
+| A04 Insecure Design | Dev-token minting's three independent, must-all-fail-together layers (§5.2) is this LLD's worked example of defense in depth, not a one-off |
+| A07 Identification & Authentication Failures | §5.3 password/token parameters; §10.2 two-layer session invalidation; §10.5 rate-limiting extension point; §10.8 failed-auth logging |
+| A08 Software & Data Integrity Failures | Ed25519 signature verification on every licence key application (§11.2) rejects a tampered payload before any parsing happens |
+| A09 Security Logging & Monitoring Failures | §10.3 immutable, redacted audit log for mutations; §10.8 failed-auth visibility for non-mutating attempts |
+
 ## 11. Critical Path Sequence Diagrams
 
-### 11.1 Auth & capacity check (call setup)
+### 11.1 Auth check (every authenticated RPC, illustrated with `GetCall`)
 
 ```mermaid
 sequenceDiagram
@@ -360,32 +488,49 @@ sequenceDiagram
     participant ConnectRPC as ConnectRPC ingress
     participant Auth as identity/application (JWT)
     participant RLS as PostgreSQL (RLS)
-    participant Lic as licensing/application
     participant PBX as telephony-core
 
     Agent->>ConnectRPC: GetCall (tenant_id, call_id) + Bearer JWT
     ConnectRPC->>Auth: ValidateToken(token)
-    Auth->>Auth: Verify Ed25519 signature, check exp/nbf
+    Auth->>Auth: Verify Ed25519 signature, check exp/nbf, check alg == EdDSA
     Auth->>Auth: Check principal + tenant rows Active
     Auth-->>ConnectRPC: TenantContext (principal_id, tenant_id, roles)
 
     ConnectRPC->>ConnectRPC: Compare body tenant_id vs context tenant_id
     alt Mismatch
         ConnectRPC-->>Agent: InvalidArgument (tenant mismatch)
+        Note over ConnectRPC,Agent: Safe per §4: caller already asserted this tenant_id themselves
     end
 
     ConnectRPC->>RLS: SET LOCAL app.tenant_id = context tenant_id
     ConnectRPC->>PBX: Forward RPC with tenant context
+    PBX-->>Agent: Call record (domain state, never channel handles)
+```
 
-    PBX->>Lic: ValidateCapacity(tenant_id, requested_channels)
+### 11.1a Capacity check (call setup — `InitiateCall`, not yet a wire RPC)
+
+`GetCall` above is read-only and never calls `ValidateCapacity`; this
+diagram is illustrative of the port call `application.Service.InitiateCall`
+already makes today (in-process, no ConnectRPC method exists for it in
+this LLD — see LLD-01 §8 and this LLD's §6), so the shape below is what
+this LLD's `LicenseManager` implementation must satisfy, not a wire
+sequence that exists yet:
+
+```mermaid
+sequenceDiagram
+    participant Caller as application.Service.InitiateCall
+    participant Lic as licensing/application
+    participant PBX as telephony-core (Call/Participant)
+
+    Caller->>Lic: ValidateCapacity(ctx, tenant_id, requested_channels)
     Lic->>Lic: Check atomic counter + burst allowance
     alt Capacity exceeded
-        Lic-->>PBX: CapacityVerdict not permitted with reason
-        PBX-->>Agent: ResourceExhausted (telemetry code BR-05)
+        Lic-->>Caller: CapacityVerdict not permitted with reason
+        Caller-->>PBX: Call moves to Terminated (screening rejection, LLD-01)
     else Capacity available
         Lic->>Lic: Increment used channels atomically
-        Lic-->>PBX: CapacityVerdict permitted
-        PBX-->>Agent: Call record (domain state, never channel handles)
+        Lic-->>Caller: CapacityVerdict permitted
+        Caller-->>PBX: Call proceeds to Routing
     end
 ```
 
