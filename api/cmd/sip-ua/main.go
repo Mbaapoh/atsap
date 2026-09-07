@@ -212,7 +212,15 @@ func renewRegistrations(ctx context.Context, client *sipgo.Client, sipServer, lo
 					logger.Warn("re-registration failed, will retry", "extension", ext, "error", err)
 					continue
 				}
-				logger.Debug("re-registered", "extension", ext)
+				// Info, not Debug: this line is the only external
+				// evidence that renewal is working at all. Asterisk
+				// exposes no per-contact expiry to cross-check against,
+				// so a silent success is indistinguishable from a
+				// ticker that never fired — which is exactly how this
+				// went unverifiable the first time. Two extensions
+				// every 15 minutes is 8 lines an hour; the cost of
+				// making it observable is nil.
+				logger.Info("re-registered", "extension", ext)
 			}
 		}
 	}
