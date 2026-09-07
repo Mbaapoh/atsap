@@ -36,6 +36,10 @@ type Config struct {
 	DatabaseWorkerURL string
 	// NATSURL is the JetStream connection string.
 	NATSURL string
+	// JWTPrivateKeyHex is the hex-encoded 32-byte Ed25519 seed the token
+	// issuer signs with (identity context). Required whenever the process
+	// serves IdentityService or bootstraps. Never logged, never echoed.
+	JWTPrivateKeyHex string
 }
 
 // Load reads configuration from environment variables, applying sane
@@ -55,6 +59,7 @@ func Load() (Config, error) {
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 		DatabaseWorkerURL: getEnv("DATABASE_WORKER_URL", ""),
 		NATSURL:           getEnv("NATS_URL", ""),
+		JWTPrivateKeyHex:  getEnv("ATSAPBX_JWT_KEY", ""),
 	}
 
 	if cfg.ARIPassword == "" {
@@ -71,6 +76,9 @@ func Load() (Config, error) {
 	}
 	if cfg.NATSURL == "" {
 		return cfg, fmt.Errorf("NATS_URL is required")
+	}
+	if cfg.JWTPrivateKeyHex == "" {
+		return cfg, fmt.Errorf("ATSAPBX_JWT_KEY is required")
 	}
 
 	return cfg, nil

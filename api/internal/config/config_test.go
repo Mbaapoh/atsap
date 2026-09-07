@@ -14,7 +14,12 @@ func setRequired(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://atsapbx_app:pw@postgres:5432/atsapbx?sslmode=disable")
 	t.Setenv("DATABASE_WORKER_URL", "postgres://atsap_outbox_worker:pw@postgres:5432/atsapbx?sslmode=disable")
 	t.Setenv("NATS_URL", "nats://nats:4222")
+	t.Setenv("ATSAPBX_JWT_KEY", testKeyHex)
 }
+
+// testKeyHex is 64 hex chars = a 32-byte Ed25519 seed, clearly a test
+// fixture (LLD-02 §5.2 dev-token guardrails: never a real key).
+const testKeyHex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 
 func TestLoad_Defaults(t *testing.T) {
 	setRequired(t)
@@ -37,6 +42,7 @@ func TestLoad_Defaults(t *testing.T) {
 		DatabaseURL:       "postgres://atsapbx_app:pw@postgres:5432/atsapbx?sslmode=disable",
 		DatabaseWorkerURL: "postgres://atsap_outbox_worker:pw@postgres:5432/atsapbx?sslmode=disable",
 		NATSURL:           "nats://nats:4222",
+		JWTPrivateKeyHex:  testKeyHex,
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)

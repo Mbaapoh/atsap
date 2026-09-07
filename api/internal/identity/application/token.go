@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -68,6 +69,21 @@ type TokenIssuer struct {
 	publicKey  ed25519.PublicKey
 	lifetime   time.Duration
 	now        func() time.Time
+}
+
+// TokenKeyFromHex decodes a hex-encoded 32-byte Ed25519 seed into the
+// private key the issuer signs with. The seed travels as configuration
+// (ATSAPBX_JWT_KEY), never in code; an invalid or wrong-length value
+// fails here rather than at first use.
+func TokenKeyFromHex(s string) (ed25519.PrivateKey, error) {
+	raw, err := hex.DecodeString(strings.TrimSpace(s))
+	if err != nil {
+		return nil, fmt.Errorf("decode token key hex: %w", err)
+	}
+	if len(raw) != ed25519.SeedSize {
+		return nil, fmt.Errorf("token key seed must be %d bytes (hex), got %d", ed25519.SeedSize, len(raw))
+	}
+	return ed25519.NewKeyFromSeed(raw), nil
 }
 
 // NewTokenIssuer returns an issuer signing with privateKey.

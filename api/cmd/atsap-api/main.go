@@ -15,11 +15,15 @@ import (
 	"syscall"
 	"time"
 
+	connectrpc "connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	natsgo "github.com/nats-io/nats.go"
 
 	"atsap-api/internal/config"
 	atsapbxv1connect "atsap-api/internal/genproto/atsapbx/v1/atsapbxv1connect"
+	identityapp "atsap-api/internal/identity/application"
+	identitypostgres "atsap-api/internal/identity/postgres"
+	identityrpc "atsap-api/internal/identity/rpc"
 	"atsap-api/internal/logging"
 	atsapnats "atsap-api/internal/nats"
 	corepostgres "atsap-api/internal/postgres"
@@ -47,7 +51,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// `atsap-api bootstrap` creates the first tenant and administrator of
+	// an empty installation. It is the one operator-only path that exists
+	// outside the API's token cycle (identity-api task 3.3).
+	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
+		os.Exit(runBootstrap(cfg))
+	}
+
 	logger := logging.New(cfg.LogLevel)
+
+	key, err := identityapp.TokenKeyFromHex(cfg.JWTPrivateKeyHex)
+	if err != nil {
+		logger.Error("invalid ATSAPBX_JWT_KEY", "error", err)
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -142,6 +159,30 @@ func main() {
 	telephonyHandler := rpc.NewTelephonyHandler(callStore)
 	rpcPath, rpcHandler := atsapbxv1connect.NewTelephonyServiceHandler(telephonyHandler)
 
+	// TelephonyService is deliberately mounted WITHOUT the auth
+	// interceptor: the e2e suite and UAT rig call GetCall with no token.
+	// auth-cutover-connectrpc makes it mandatory — never here.
+	// (identity-api task 3.2 asserts this by test.)
+	handlers := map[string]http.Handler{rpcPath: rpcHandler}
+
+	// IdentityService is mounted WITH the interceptor: it carries mutating
+	// operations, so it is authenticated from the moment it exists.
+	// AuthenticateUser is exempt by its exact procedure name.
+	identityStore := identitypostgres.NewStore(appPool)
+	identityIssuer, err := identityapp.NewTokenIssuer(key, identityapp.DefaultTokenLifetime)
+	if err != nil {
+		logger.Error("failed to build token issuer", "error", err)
+		os.Exit(1)
+	}
+	identitySvc := identityapp.NewService(identityStore, identityStore, identityStore, identityStore,
+		identityStore, identityapp.NewPasswordHasher(), identityIssuer, logger)
+	identityHandler := identityrpc.NewIdentityHandler(identitySvc)
+	authInterceptor := identityapp.NewAuthInterceptor(identitySvc, identityrpc.TenantID).
+		ExemptProcedure(identityapp.AuthenticateUserProcedure)
+	identityPath, identityRPC := atsapbxv1connect.NewIdentityServiceHandler(identityHandler,
+		connectrpc.WithInterceptors(authInterceptor))
+	handlers[identityPath] = identityRPC
+
 	checkers := []server.Checker{
 		{Name: "postgres", Check: func(ctx context.Context) error { return appPool.Unwrap().Ping(ctx) }},
 		{Name: "nats", Check: func(context.Context) error {
@@ -152,9 +193,7 @@ func main() {
 		}},
 	}
 
-	httpSrv := server.NewWithHandlers(cfg.HTTPAddr, checkers, map[string]http.Handler{
-		rpcPath: rpcHandler,
-	})
+	httpSrv := server.NewWithHandlers(cfg.HTTPAddr, checkers, handlers)
 	go func() {
 		logger.Info("http server listening", "addr", cfg.HTTPAddr)
 		if err := httpSrv.ListenAndServe(); err != nil {
