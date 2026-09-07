@@ -136,3 +136,26 @@ func TestShutdown(t *testing.T) {
 		t.Fatal("Serve() did not return after Shutdown()")
 	}
 }
+
+func TestNewWithHandlers_MountsExtraRoutes(t *testing.T) {
+	extra := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("rpc"))
+	})
+	srv := NewWithHandlers(":0", nil, map[string]http.Handler{"/atsapbx.v1.TelephonyService/": extra})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/atsapbx.v1.TelephonyService/GetCall", nil)
+	srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "rpc" {
+		t.Errorf("extra route: status=%d body=%q, want 200/\"rpc\"", rec.Code, rec.Body.String())
+	}
+
+	// /healthz still works alongside the extra route.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("/healthz with extra routes mounted: status=%d, want 200", rec.Code)
+	}
+}

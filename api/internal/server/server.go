@@ -38,6 +38,15 @@ func New(addr string) *http.Server {
 // 200 while serving) and readiness (/readyz, 200 only when every
 // registered Checker passes, 503 otherwise).
 func NewWithChecks(addr string, checkers []Checker) *http.Server {
+	return NewWithHandlers(addr, checkers, nil)
+}
+
+// NewWithHandlers is NewWithChecks plus additional routes (e.g. the
+// ConnectRPC API mount from cmd/atsap-api) on the same mux — every
+// route this process serves lives on one HTTP server and one health
+// surface, never a second listener with its own liveness story. handlers
+// maps a URL pattern (as passed to http.ServeMux.Handle) to its handler.
+func NewWithHandlers(addr string, checkers []Checker, handlers map[string]http.Handler) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -46,6 +55,9 @@ func NewWithChecks(addr string, checkers []Checker) *http.Server {
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		writeReadiness(w, r, checkers)
 	})
+	for pattern, h := range handlers {
+		mux.Handle(pattern, h)
+	}
 
 	return &http.Server{
 		Addr:              addr,
