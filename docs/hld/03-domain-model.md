@@ -220,11 +220,30 @@ CREATE TABLE IF NOT EXISTS principals (
     tenant_id UUID NOT NULL REFERENCES tenants(id),
     username VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL, -- Argon2id (LLD-02 §5.3 params), never plaintext (INV-11)
     role VARCHAR(50) NOT NULL DEFAULT 'AGENT',
     status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, username)
+);
+
+CREATE TABLE IF NOT EXISTS role_bindings (
+    principal_id UUID NOT NULL REFERENCES principals(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    role VARCHAR(50) NOT NULL,
+    scope VARCHAR(100) NOT NULL DEFAULT 'tenant', -- "tenant" or "department:<id>"
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (principal_id, role, scope)
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    principal_id UUID NOT NULL REFERENCES principals(id) ON DELETE CASCADE,
+    key_hash VARCHAR(64) NOT NULL, -- SHA-256 hex digest; raw key shown once at creation
+    expires_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Call & Participant Aggregates
@@ -375,6 +394,21 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Licensing state: installation-scoped, not tenant-scoped (T-1 — one
+-- license token per installed instance, not per tenant sub-account).
+-- Deliberately has NO tenant_id column, so RLS does not and must not
+-- apply here — the one exception to "every table has tenant_id" (D-24
+-- seam 1), and it is an exception by construction, not an oversight.
+CREATE TABLE IF NOT EXISTS licensing_state (
+    instance_id UUID PRIMARY KEY,
+    fingerprint JSONB NOT NULL,
+    edition VARCHAR(50) NOT NULL,
+    capacity INTEGER NOT NULL,
+    entitlement_status VARCHAR(50) NOT NULL DEFAULT 'VALID',
+    last_confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    grace_started_at TIMESTAMPTZ
+);
+
 -- Transactional Outbox
 CREATE TABLE IF NOT EXISTS outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -448,10 +482,12 @@ CREATE POLICY tenant_isolation_outbox ON outbox
 > and documented wherever the role is created.
 >
 > Tables enabled for RLS but without a policy above (`principals`,
-> `carrier_trunks`, `carrier_routes`, `extensions`, `ivr_flows`,
-> `flow_versions`) gain their `tenant_isolation_*` policies in the migration
-> owned by the LLD that introduces them — never ship an RLS-enabled table
-> with no policy.
+> `role_bindings`, `api_keys`, `carrier_trunks`, `carrier_routes`,
+> `extensions`, `ivr_flows`, `flow_versions`) gain their `tenant_isolation_*`
+> policies in the migration owned by the LLD that introduces them — never
+> ship an RLS-enabled table with no policy. `licensing_state` is the one
+> table that never gains one: it has no `tenant_id` by design (see its
+> own comment above).
 
 ---
 
