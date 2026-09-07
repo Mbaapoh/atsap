@@ -155,6 +155,17 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 		return shareddomain.CallID{}, err
 	}
 
+	// Create the bridge before originating anyone: against real
+	// Asterisk, the window between a channel's StasisStart and its own
+	// SDP-completion deadline is tight (observed directly — see
+	// EventLoop's doc comment), and ensureBridge's ARI round trip on the
+	// first participant's StasisStart was, by itself, consistently too
+	// slow to make it. Creating the bridge here means StasisStart's
+	// handler only ever needs one ARI call (AddChannelToBridge), not two.
+	if _, err := s.ensureBridge(ctx, callID); err != nil {
+		return shareddomain.CallID{}, fmt.Errorf("create bridge: %w", err)
+	}
+
 	for _, p := range call.Participants {
 		if err := s.originateParticipant(ctx, cmd.TenantID, callID, p); err != nil {
 			return shareddomain.CallID{}, fmt.Errorf("originate participant %s: %w", p.ID, err)

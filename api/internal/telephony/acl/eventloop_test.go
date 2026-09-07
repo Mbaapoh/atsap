@@ -50,6 +50,12 @@ func (s *domainSink) ParticipantLeft(_ context.Context, _, _, participantID stri
 
 var fixedEventTime = time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 
+func stasisStartEvent(t *testing.T, channelID string) ari.Event {
+	t.Helper()
+	raw := fmt.Sprintf(`{"type":"StasisStart","channel":{"id":%q,"state":"Up"}}`, channelID)
+	return ari.Event{Type: "StasisStart", Raw: []byte(raw)}
+}
+
 func channelStateChangeEvent(t *testing.T, channelID, state string) ari.Event {
 	t.Helper()
 	raw := fmt.Sprintf(`{"type":"ChannelStateChange","channel":{"id":%q,"state":%q}}`, channelID, state)
@@ -92,10 +98,10 @@ func TestEventLoop_HappyPathProgression(t *testing.T) {
 	loop := acl.NewEventLoop(registry, &domainSink{call: call}, discardLogger())
 	ctx := context.Background()
 
-	loop.Handle(ctx, channelStateChangeEvent(t, "chan-caller", "Up"))
+	loop.Handle(ctx, stasisStartEvent(t, "chan-caller"))
 	assert.Equal(t, domain.CallPresenting, call.State, "one participant answered is not enough for Active")
 
-	loop.Handle(ctx, channelStateChangeEvent(t, "chan-callee", "Up"))
+	loop.Handle(ctx, stasisStartEvent(t, "chan-callee"))
 	assert.Equal(t, domain.CallActive, call.State, "both participants answered: Active")
 
 	loop.Handle(ctx, channelDestroyedEvent(t, "chan-caller"))
@@ -110,17 +116,19 @@ func TestEventLoop_HappyPathProgression(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// TestEventLoop_IgnoresNonUpStateChanges covers Ringing and other
-// intermediate states not treated as an answer.
-func TestEventLoop_IgnoresNonUpStateChanges(t *testing.T) {
+// TestEventLoop_ChannelStateChange_NoSinkCall covers that
+// ChannelStateChange (Ringing, Up, or any other state) is not acted on
+// at all: ParticipantAnswered fires on StasisStart instead (see
+// EventLoop's doc comment for why).
+func TestEventLoop_ChannelStateChange_NoSinkCall(t *testing.T) {
 	call, caller, _ := newPresentingTwoPartyCall(t)
 	registry := acl.NewCorrelationRegistry()
 	registry.Register("chan-caller", acl.Correlation{CallID: call.ID.String(), ParticipantID: caller.ID.String()})
 
 	loop := acl.NewEventLoop(registry, &domainSink{call: call}, discardLogger())
-	loop.Handle(context.Background(), channelStateChangeEvent(t, "chan-caller", "Ringing"))
+	loop.Handle(context.Background(), channelStateChangeEvent(t, "chan-caller", "Up"))
 
-	assert.Equal(t, domain.ParticipantInvited, caller.State, "Ringing must not connect the participant")
+	assert.Equal(t, domain.ParticipantInvited, caller.State, "ChannelStateChange must not connect the participant")
 }
 
 // TestEventLoop_UnregisteredChannel_NoSinkCall covers an event for a
@@ -131,23 +139,24 @@ func TestEventLoop_UnregisteredChannel_NoSinkCall(t *testing.T) {
 	sink := &recordingSink{}
 	loop := acl.NewEventLoop(registry, sink, discardLogger())
 
-	loop.Handle(context.Background(), channelStateChangeEvent(t, "unknown-chan", "Up"))
+	loop.Handle(context.Background(), stasisStartEvent(t, "unknown-chan"))
 	loop.Handle(context.Background(), channelDestroyedEvent(t, "unknown-chan"))
 
 	assert.Zero(t, sink.answeredCalls)
 	assert.Zero(t, sink.leftCalls)
 }
 
-// TestEventLoop_UnhandledEventType_NoSinkCall covers StasisStart and any
-// other event type: this loop deliberately does not act on them (see
-// EventLoop's doc comment).
+// TestEventLoop_UnhandledEventType_NoSinkCall covers event types this
+// loop deliberately does not act on (e.g. Dial, ChannelVarset — the
+// many bookkeeping events real Asterisk sends alongside the ones this
+// loop cares about).
 func TestEventLoop_UnhandledEventType_NoSinkCall(t *testing.T) {
 	registry := acl.NewCorrelationRegistry()
 	registry.Register("chan1", acl.Correlation{CallID: "call-1", ParticipantID: "participant-1"})
 	sink := &recordingSink{}
 	loop := acl.NewEventLoop(registry, sink, discardLogger())
 
-	loop.Handle(context.Background(), ari.Event{Type: "StasisStart", Raw: []byte(`{"channel":{"id":"chan1"}}`)})
+	loop.Handle(context.Background(), ari.Event{Type: "ChannelVarset", Raw: []byte(`{"channel":{"id":"chan1"}}`)})
 
 	assert.Zero(t, sink.answeredCalls)
 	assert.Zero(t, sink.leftCalls)
@@ -158,7 +167,7 @@ func TestEventLoop_DecodeError_NoSinkCall(t *testing.T) {
 	sink := &recordingSink{}
 	loop := acl.NewEventLoop(registry, sink, discardLogger())
 
-	loop.Handle(context.Background(), ari.Event{Type: "ChannelStateChange", Raw: []byte("not json")})
+	loop.Handle(context.Background(), ari.Event{Type: "StasisStart", Raw: []byte("not json")})
 	loop.Handle(context.Background(), ari.Event{Type: "ChannelDestroyed", Raw: []byte("not json")})
 
 	assert.Zero(t, sink.answeredCalls)
@@ -174,7 +183,7 @@ func TestEventLoop_SinkError_Logged(t *testing.T) {
 	loop := acl.NewEventLoop(registry, sink, discardLogger())
 
 	assert.NotPanics(t, func() {
-		loop.Handle(context.Background(), channelStateChangeEvent(t, "chan1", "Up"))
+		loop.Handle(context.Background(), stasisStartEvent(t, "chan1"))
 	})
 	assert.Equal(t, 1, sink.answeredCalls)
 
@@ -194,7 +203,7 @@ func TestEventLoop_ParticipantAnswered_PassesChannelID(t *testing.T) {
 	sink := &recordingSink{}
 	loop := acl.NewEventLoop(registry, sink, discardLogger())
 
-	loop.Handle(context.Background(), channelStateChangeEvent(t, "chan-42", "Up"))
+	loop.Handle(context.Background(), stasisStartEvent(t, "chan-42"))
 
 	assert.Equal(t, "chan-42", sink.lastAnsweredChan)
 }

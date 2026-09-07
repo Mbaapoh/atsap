@@ -263,7 +263,7 @@ func TestInitiateCall_ReachesActive(t *testing.T) {
 	saved = h.callStore.get(callID)
 	require.NotNil(t, saved)
 	assert.Equal(t, domain.CallActive, saved.State)
-	assert.Equal(t, 1, h.mediaGW.bridgesCreated, "one bridge, created on first connect")
+	assert.Equal(t, 1, h.mediaGW.bridgesCreated, "one bridge, created up front by InitiateCall")
 	assert.Len(t, h.mediaGW.addedToBridge, 2, "both legs added to the same bridge")
 	assert.Equal(t, h.mediaGW.addedToBridge[0].bridgeID, h.mediaGW.addedToBridge[1].bridgeID)
 
@@ -536,18 +536,24 @@ func TestParticipantAnswered_BadParticipantID(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestParticipantAnswered_BridgeCreateFailure(t *testing.T) {
+// TestInitiateCall_BridgeCreateFailure: the bridge is created inside
+// InitiateCall itself, before either leg is originated (real-Asterisk
+// SDP timing — see EventLoop's doc comment), so a bridge-create failure
+// surfaces there, not later from ParticipantAnswered.
+func TestInitiateCall_BridgeCreateFailure(t *testing.T) {
 	h := newHarness()
-	callID := initiateTestCall(t, h)
 	h.mediaGW.failCreateBridge = errors.New("bridge create failed")
 
-	req := h.mediaGW.originateCalls[0]
-	corr, ok := h.registry.Lookup(req.ChannelID)
-	require.True(t, ok)
-
-	err := h.svc.ParticipantAnswered(context.Background(), corr.TenantID, corr.CallID, corr.ParticipantID, req.ChannelID)
+	_, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID:          shareddomain.NewTenantID(),
+		Direction:         domain.Outbound,
+		SourceNumber:      "1000",
+		DestNumber:        "1001",
+		SourceEndpointURI: "PJSIP/1000",
+		DestEndpointURI:   "PJSIP/1001",
+	})
 	assert.ErrorContains(t, err, "bridge create failed")
-	_ = callID
+	assert.Empty(t, h.mediaGW.originateCalls, "must not originate either leg once the bridge can't be created")
 }
 
 func TestParticipantAnswered_AddToBridgeFailure(t *testing.T) {

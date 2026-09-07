@@ -30,16 +30,26 @@ type EventSink interface {
 // EventLoop dispatches raw ARI events through a CorrelationRegistry
 // lookup to an EventSink (docs/hld/01-architecture.md §2; LLD-01 §4.4).
 //
-// StasisStart is deliberately not handled here: in this change, both
-// legs of a call are originated by us (InitiateCall), so correlation is
-// registered synchronously right after Originate returns — the
-// orchestrator already knows the CallID/ParticipantID before the channel
-// exists, it does not need to learn them from StasisStart. StasisStart's
-// only other possible job here (answering an alerting channel) is not
-// needed either: Asterisk answers an originated channel automatically
-// when the destination picks up, reported via ChannelStateChange(Up),
-// which this loop does handle. A later change (real inbound calls
-// through pbx-core) is what gives StasisStart a job.
+// ParticipantAnswered fires on StasisStart, not ChannelStateChange(Up).
+// Both legs of a call are originated by us (InitiateCall), so
+// correlation is registered synchronously right after Originate returns
+// — this loop does not need StasisStart to learn the CallID/
+// ParticipantID. It needs StasisStart for timing instead: against real
+// Asterisk, an ARI-originated channel reaches Up (the underlying dial
+// answers) *before* Stasis takes control of it, and Asterisk expects the
+// SDP offer/answer cycle for the Stasis-controlled channel to complete
+// essentially immediately once that handover happens. Bridging on
+// ChannelStateChange(Up) instead was tried first and observed to lose
+// that race against real Asterisk: the extra round trip (event decode +
+// ensureBridge + AddChannelToBridge) was consistently too slow, and
+// Asterisk hung up the channel itself with cause 127 ("Interworking,
+// unspecified"), BYE Reason "SDP offer/answer incomplete", before our
+// bridge-add call ever landed (task 10.2's e2e test surfaced this — the
+// task 5.6 unit test's scripted event sequence never modeled Asterisk's
+// actual StasisStart-after-Up ordering or this timing pressure).
+// StasisStart fires once per channel and only after Up, so reacting to
+// it alone is both simpler and faster than also watching
+// ChannelStateChange.
 type EventLoop struct {
 	registry *CorrelationRegistry
 	sink     EventSink
@@ -57,8 +67,8 @@ func NewEventLoop(registry *CorrelationRegistry, sink EventSink, logger *slog.Lo
 // ari.Client.StreamEvents callback.
 func (l *EventLoop) Handle(ctx context.Context, ev ari.Event) {
 	switch ev.Type {
-	case "ChannelStateChange":
-		l.handleChannelStateChange(ctx, ev)
+	case "StasisStart":
+		l.handleStasisStart(ctx, ev)
 	case "ChannelDestroyed", "ChannelHangupRequest":
 		l.handleChannelGone(ctx, ev)
 	}
@@ -71,19 +81,16 @@ type channelPayload struct {
 	} `json:"channel"`
 }
 
-func (l *EventLoop) handleChannelStateChange(ctx context.Context, ev ari.Event) {
+func (l *EventLoop) handleStasisStart(ctx context.Context, ev ari.Event) {
 	var payload channelPayload
 	if err := json.Unmarshal(ev.Raw, &payload); err != nil {
-		l.logger.Warn("acl: failed to decode ChannelStateChange", "error", err)
-		return
-	}
-	if payload.Channel.State != "Up" {
+		l.logger.Warn("acl: failed to decode StasisStart", "error", err)
 		return
 	}
 
 	corr, ok := l.registry.Lookup(payload.Channel.ID)
 	if !ok {
-		l.logger.Warn("acl: ChannelStateChange for unregistered channel", "channel_id", payload.Channel.ID)
+		l.logger.Warn("acl: StasisStart for unregistered channel", "channel_id", payload.Channel.ID)
 		return
 	}
 
