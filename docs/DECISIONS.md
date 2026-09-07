@@ -447,6 +447,70 @@ monolith), D-24 (API-first)
 
 ---
 
+**D-42 · `identity` stays in-process; the port seam preserves the split
+option (2026-09-07).**
+
+**Decision:** `identity` is a bounded context inside the modular
+monolith, not a separate service — now or at R1. The ports-and-adapters
+seam keeps extraction possible later; nothing is built now to enable it.
+If a context is ever extracted first, it will not be this one.
+
+**Context:** Asked directly whether `identity` is "the user service" and
+whether it could become a microservice. It is narrower than a user
+service (tenants, principals, credentials, RBAC, audit — not extensions,
+agents or queues; a principal signs into the portal, an extension
+registers a phone, and conflating them is a modelling error the schema
+already avoids) and the split question is worth answering once rather
+than repeatedly.
+
+The code is genuinely standalone today: `identity` imports zero other
+bounded contexts, everything crosses a port interface, and `tenant_id`
+plus tenant-partitioned NATS subjects mean distributed tenancy needs no
+retrofit. The coupling that would actually bite is not in the code:
+
+- **The shared database.** `identity` and `telephony-core` share
+  `atsapbx` and both rely on `SET LOCAL app.tenant_id`. Splitting means
+  splitting the schema, and the moment `calls.tenant_id` cannot be a
+  foreign key to `tenants.id`, a database-enforced invariant becomes an
+  eventually-consistent one. Port discipline does not avoid this.
+- **`ValidateToken` reads the database per request** — deliberately, so
+  disabling an account takes effect immediately rather than at token
+  expiry. Across a network boundary that becomes an RPC on every call,
+  and the caches that fix it reintroduce the window the design closed.
+
+**Alternatives:**
+- Extract `identity` as a service now: rejected — pays distributed-system
+  cost (schema split, per-request RPC, an auth outage that takes down
+  everything rather than one feature) against no current scale need
+  (D-08: 50,000 concurrent is a year-three point).
+- Merge identity into telephony-core to avoid the seam entirely:
+  rejected — the seam is what makes the option cheap to keep, and
+  Tier-1 contexts all need tenant context (HLD 04 §10.1).
+- Design for eventual extraction now (dual-write, service registry,
+  etc.): rejected — over-building for year-three scale, D-08.
+
+**Consequences:**
+- Identity is the *last* context to extract, not the first: everything
+  depends on it, so making it a network hop converts a local failure into
+  a platform-wide one. The likelier first candidates are `ai-pipeline`
+  (different scaling profile, external providers, fails safe by INV-04)
+  or `dialer` (bursty, CPU-bound pacing).
+- Known ceilings, recorded rather than discovered later: Argon2id cost is
+  bounded by login *rate*, not user count (that is the defence working);
+  `ValidateToken` throughput is bounded by Postgres reads; and licensing's
+  capacity counter is per-process today (LLD-02 §8) — the first genuine
+  multi-node blocker, and a licensing concern rather than an identity one.
+- Revisit when a real driver appears: independent scaling need, a
+  separate compliance boundary, or a second product sharing identity.
+
+**Related Decisions:** D-08 (year-three scale, do not over-build), D-20
+(modular monolith), D-24 (tenant_id everywhere, API-first), D-26
+(dependency-first ordering), D-31 (scaled-down DDD)
+**Traceability:** PRD EPIC-01, INV-10; HLD `01-architecture.md` §1.2,
+`04-bounded-contexts.md` §§7/10.1; LLD-02 §§8/10
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
