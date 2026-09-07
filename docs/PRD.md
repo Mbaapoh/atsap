@@ -23,9 +23,10 @@ This document contains no technology choices and no vendor names — those belon
 1. **The API is the product.** A capability that exists only in our interface is unfinished. Our console calls the same endpoints a partner would.
 2. **The agent screen and the admin console are two different products.** One is optimised for speed under pressure; the other for clarity and safety. Never make one look like the other.
 3. **No engineer required for a business change.** If a partner's customer must raise a ticket to change a menu, add a queue or adjust a route, the feature is incomplete.
-4. **Never lie about state.** Stale data is visibly marked. A silently dead call is the worst outcome this product can produce.
-5. **Compliance is enforced, never advised.** The platform prevents the unlawful call; it does not warn the agent and hope.
-6. **Nothing we do to enforce a licence may harm a working phone system.** Degrade, never disable. Never touch an active call. Never touch an emergency call.
+4. **Asterisk is an implementation detail, never a user-facing one.** Every configuration is made in the console — extensions, call flows, IVR, auto-attendant, queues, trunks, routing, recording — exactly as VitalPBX and 3CX set the expectation. No customer edits a configuration file, opens a CLI, or needs to know Asterisk is there. No dialplan context, endpoint identifier, channel name or filename appears in any interface, API response, or error a user can see. The platform speaks in extensions, queues and call flows; the engine's vocabulary stays inside the engine.
+5. **Never lie about state.** Stale data is visibly marked. A silently dead call is the worst outcome this product can produce.
+6. **Compliance is enforced, never advised.** The platform prevents the unlawful call; it does not warn the agent and hope.
+7. **Nothing we do to enforce a licence may harm a working phone system.** Degrade, never disable. Never touch an active call. Never touch an emergency call.
 
 ---
 
@@ -371,8 +372,26 @@ These hold in every release, every configuration and every failure mode. A featu
 
 ---
 
-### EPIC-10 · Partner Portal
-**BRD:** §12.1 · **Priority:** M
+### EPIC-10 · Console — Administration and Partner Portal
+**BRD:** §12.1, §16 · **Priority:** M
+
+**Purpose.** The single web application through which the platform is
+configured and commercially managed. One product, one login, one
+permission model: what a person sees is decided by their role and scope,
+not by which application they opened. A partner engineer sees their
+customers' configuration and their own licences; a tenant administrator
+sees only their own organisation.
+
+**This is the interface every non-agent user works in.** No customer of
+AtsaPBX edits an Asterisk configuration file, uses the Asterisk CLI, or
+is expected to know Asterisk exists — the same expectation VitalPBX and
+3CX set. Everything a running system needs is configured here:
+extensions and users, call flows and IVR menus, auto-attendant and
+business hours, queues and contact-centre setup, SIP trunks and routing,
+recording policy, and licences.
+
+*(The agent workspace remains a separate product — principle 2. This
+epic is the administration and partner surface, not the agent's screen.)*
 
 | ID | User story |
 |---|---|
@@ -382,12 +401,23 @@ These hold in every release, every configuration and every failure mode. A featu
 | US-10.4 | As a partner, I receive a free demonstration licence. |
 | US-10.5 | As a partner, I raise a support ticket and see its status against my entitlement. |
 | US-10.6 | As a partner, my staff take certification and I see who is certified. |
+| US-10.7 | As a tenant administrator, I create and manage users, extensions and their permissions, without an engineer. |
+| US-10.8 | As a tenant administrator, I configure call flows, IVR menus, auto-attendant and business hours visually, and see what a caller will experience before I publish. |
+| US-10.9 | As a tenant administrator, I set up queues, agents and contact-centre behaviour for my business. |
+| US-10.10 | As a partner engineer, I configure SIP trunks and routing for a customer and see immediately whether the trunk registered. |
+| US-10.11 | As a tenant administrator, I set recording, retention and consent policy for my organisation. |
+| US-10.12 | As any user, I see only what my role permits, and an action I may not perform is not offered rather than refused after the fact. |
 
 **Acceptance criteria**
 - AC-10.1 A partner issues a licence to their own customer without contacting us.
 - AC-10.2 Deal registration prevents a second partner registering the same customer, and both are told what happened.
 - AC-10.3 Response-time commitments are shown per tier and tracked against actual response.
 - AC-10.4 A partner sees only their own customers' licences — verified by test, like any other isolation boundary.
+- AC-10.5 **A complete working deployment — extensions, trunk, IVR, queue, recording policy — is configured entirely through this console, with no file edited and no command run on the server.** This is the acceptance test for the whole epic.
+- AC-10.6 **Nothing in the console reveals Asterisk.** No dialplan context, endpoint identifier, channel name or configuration filename appears in any screen, error message or export. A user who has never heard of Asterisk configures the system successfully.
+- AC-10.7 Every console action is performed through the public API, verified by test — a console-only capability is a defect, not a limitation (AC-05.1).
+- AC-10.8 Permissions are enforced server-side and reflected in the interface: an action the user's role does not permit is not shown, and is refused by the API even if the request is made directly.
+- AC-10.9 A configuration change that is accepted but not yet live is shown as pending, never as applied. The console never reports success for something the platform has not actually done.
 
 ---
 

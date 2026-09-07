@@ -42,6 +42,35 @@ does not list, so the inventory cannot rot quietly.
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
 | 06 | Dialer (R2 — power dial, then predictive) | `dialer` | Not started (R2-gated) | — |
+| 07 | Console — administration and partner portal (`portal/`) | — (frontend; consumes the public API only) | Not started — **R1.0 scope, and the largest unbuilt piece** | — |
+
+### The console is R1.0 scope and depends on nearly everything
+
+PRD EPIC-10 covers one web application for both tenant administration and
+partner commerce, and PRD principle 4 fixes what it must hide: **no
+customer edits an Asterisk file or needs to know Asterisk exists** — the
+expectation VitalPBX and 3CX set. Everything is configured in the
+console: extensions, call flows, IVR, auto-attendant, queues,
+contact-centre setup, trunks, routing, recording, licences.
+
+It sits last in the order because it consumes APIs the earlier LLDs
+provide, and by D-43 it may use *only* public endpoints — a console-only
+back door is a defect (AC-05.1, AC-10.7):
+
+| Needs | From |
+|---|---|
+| Login, users, roles, permissions | `identity` (LLD-02) — already landed |
+| Extensions, trunks, routing, IVR flows | `pbx-core` (LLD-03) |
+| Call detail, usage, quality views | `reporting` (LLD-04) |
+| Licence display and activation | `licensing` (LLD-02) |
+| Campaign management | `dialer` (LLD-06, R2) |
+
+Two consequences worth stating before anyone plans a date. It cannot be
+built in parallel with LLD-03 in any meaningful way, because the
+configuration APIs it drives do not exist yet. And it is a substantial
+product in its own right — an IVR builder alone carries AC-03.6 ("a
+non-engineer builds a two-level IVR unaided in under 30 minutes"), which
+is a usability bar, not a screen.
 
 ### Open before LLD-03 is written
 
