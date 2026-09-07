@@ -1,5 +1,6 @@
 // Package domain defines the identifier types shared across every
-// AtsaPBX bounded context: TenantID, CallID, and ParticipantID.
+// AtsaPBX bounded context: TenantID, CallID, ParticipantID, PrincipalID,
+// and ApiKeyID.
 package domain
 
 import (
@@ -88,4 +89,61 @@ func (id ParticipantID) String() string {
 // IsZero reports whether id is the zero value.
 func (id ParticipantID) IsZero() bool {
 	return id == ParticipantID{}
+}
+
+// PrincipalID identifies a Principal (a user account within a tenant).
+// The zero value is invalid.
+type PrincipalID uuid.UUID
+
+// NewPrincipalID generates a new random PrincipalID.
+func NewPrincipalID() PrincipalID {
+	return PrincipalID(uuid.New())
+}
+
+// ParsePrincipalID parses s as a PrincipalID.
+func ParsePrincipalID(s string) (PrincipalID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return PrincipalID{}, fmt.Errorf("parse principal id: %w", err)
+	}
+	return PrincipalID(id), nil
+}
+
+// String returns the canonical UUID string form.
+func (id PrincipalID) String() string {
+	return uuid.UUID(id).String()
+}
+
+// IsZero reports whether id is the zero value.
+func (id PrincipalID) IsZero() bool {
+	return id == PrincipalID{}
+}
+
+// ApiKeyID identifies an API key record. It never identifies the key
+// material itself — the raw key is shown once at creation and stored
+// only as a digest.
+type ApiKeyID uuid.UUID
+
+// NewApiKeyID generates a new random ApiKeyID.
+func NewApiKeyID() ApiKeyID {
+	return ApiKeyID(uuid.New())
+}
+
+// ParseApiKeyID parses s as an ApiKeyID.
+func ParseApiKeyID(s string) (ApiKeyID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return ApiKeyID{}, fmt.Errorf("parse api key id: %w", err)
+	}
+	return ApiKeyID(id), nil
+}
+
+// String returns the canonical UUID string form.
+func (id ApiKeyID) String() string {
+	return uuid.UUID(id).String()
+}
+
+// IsZero reports whether id is the zero value.
+func (id ApiKeyID) IsZero() bool {
+	return id == ApiKeyID{}
 }
