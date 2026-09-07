@@ -167,6 +167,27 @@ func (c *Client) DestroyBridge(ctx context.Context, bridgeID string) error {
 	return err
 }
 
+// ListChannels returns the IDs of every channel currently known to
+// Asterisk, used by callers that need to find a channel by its
+// correlation variable rather than by an ID they already hold.
+func (c *Client) ListChannels(ctx context.Context) ([]string, error) {
+	body, err := c.do(ctx, http.MethodGet, "/channels", nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("ari: decode list channels response: %w", err)
+	}
+	ids := make([]string, len(resp))
+	for i, ch := range resp {
+		ids[i] = ch.ID
+	}
+	return ids, nil
+}
+
 // GetChannelVariable reads a channel variable, used to re-derive
 // correlation after a brief ARI WebSocket reconnect
 // (docs/hld/01-architecture.md §2.1).

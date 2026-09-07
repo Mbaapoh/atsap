@@ -20,13 +20,17 @@ var forbiddenImports = []string{
 }
 
 // exemptPackagePrefixes are package paths allowed to import
-// forbiddenImports: the ACL itself (and its subpackages), and cmd/ (the
+// forbiddenImports: the ACL itself (and its subpackages), cmd/ (the
 // composition root that wires concrete adapters together, plus
 // cmd/ari-playground, a dev tool that talks to ARI/AMI directly by
-// design) — the same exemption .golangci.yml's depguard rule documents.
+// design — the same exemption .golangci.yml's depguard rule documents),
+// and internal/telephony/e2e (task 10.2's walking-skeleton test, which
+// composes telephony-core the same way cmd/atsap-api's main.go does, to
+// drive and verify a real call against live Asterisk).
 var exemptPackagePrefixes = []string{
 	"atsap-api/internal/telephony/acl",
 	"atsap-api/cmd",
+	"atsap-api/internal/telephony/e2e",
 }
 
 // Violation is one forbidden import found in one package.

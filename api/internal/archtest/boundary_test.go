@@ -26,6 +26,7 @@ func TestCheckImport(t *testing.T) {
 		{"acl/ari importing ami is exempt (both under acl)", "atsap-api/internal/telephony/acl/ari", "atsap-api/internal/telephony/acl/ami", false},
 		{"cmd importing ari is exempt (composition root)", "atsap-api/cmd/atsap-api", "atsap-api/internal/telephony/acl/ari", false},
 		{"cmd/ari-playground importing ami is exempt (dev tool)", "atsap-api/cmd/ari-playground", "atsap-api/internal/telephony/acl/ami", false},
+		{"e2e importing ari is exempt (walking-skeleton test composition)", "atsap-api/internal/telephony/e2e", "atsap-api/internal/telephony/acl/ari", false},
 		{"unrelated import is never a violation", "atsap-api/internal/telephony/domain", "atsap-api/internal/shared/event", false},
 	}
 	for _, tt := range tests {
