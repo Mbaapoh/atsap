@@ -41,24 +41,24 @@ sequenceDiagram
     Client->>ConnectRPC: InitiateCall + Idempotency-Key + JWT
     ConnectRPC->>ConnectRPC: Validate JWT, inject tenant context
     ConnectRPC->>CallSvc: InitiateCall(cmd)
-    CallSvc->>Postgres: BEGIN; INSERT calls state=Initiated
+    CallSvc->>Postgres: BEGIN, INSERT calls state=Initiated
     CallSvc->>CallSvc: Screening — LicenseManager + ComplianceEngine ports
     alt Screening rejects (capacity / compliance / suspension)
-        CallSvc->>Postgres: UPDATE calls state=Terminated + reason; INSERT outbox; COMMIT
+        CallSvc->>Postgres: UPDATE calls state=Terminated + reason, INSERT outbox, COMMIT
         CallSvc-->>Client: RPC error (RESOURCE_EXHAUSTED / PERMISSION_DENIED)
     else Screening passes
         CallSvc->>CallSvc: Routing — resolve callee endpoint
         CallSvc->>ARI: POST /channels (endpoint, channelId=atsa-part-ids, ATSA_PARTICIPANT_ID var)
         alt ARI allocation fails
-            CallSvc->>Postgres: ROLLBACK; slog error fields per D-39
+            CallSvc->>Postgres: ROLLBACK, slog error fields per D-39
             CallSvc-->>Client: RPC error (INTERNAL)
         else ARI allocation succeeds
-            CallSvc->>Postgres: INSERT participants + channel_history + outbox (event.call.initiated); UPDATE calls state=Routing; COMMIT
+            CallSvc->>Postgres: INSERT participants + channel_history + outbox (event.call.initiated), UPDATE calls state=Routing, COMMIT
             CallSvc->>CallSvc: Presenting — callee alerted (20s default timeout)
             ARI-->>CallSvc: WS StasisStart (carries ATSA_PARTICIPANT_ID)
             ARI-->>CallSvc: WS ChannelStateChange Up (answered)
             CallSvc->>ARI: POST /bridges + addChannel (both legs)
-            CallSvc->>Postgres: BEGIN; UPDATE calls state=Active + answered_at; INSERT outbox (event.call.active); COMMIT
+            CallSvc->>Postgres: BEGIN, UPDATE calls state=Active + answered_at, INSERT outbox (event.call.active), COMMIT
             CallSvc-->>Client: InitiateCall returns call_id (participants observable via GetCall)
             par Media plane
                 ARI-->>CallSvc: WS events drive participant Connected / Disconnected

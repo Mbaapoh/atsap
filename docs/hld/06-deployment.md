@@ -77,7 +77,7 @@ sequenceDiagram
     else Upgrade Failure Detected (Rollback Triggered)
         Ops->>CoreOld: Start v1.0 container (Rollback image)
         Ops->>CoreNew: Stop v1.1 container
-        Ops->>DB: golang-migrate down (only if required; expand schema is backward-compatible)
+        Ops->>DB: golang-migrate down (only if required, expand schema is backward-compatible)
         Note over Ops: Full rollback completes in <30 minutes with zero data loss (AC-09.4).
     end
 ```

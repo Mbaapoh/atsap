@@ -74,6 +74,13 @@ run = "go mod tidy"
 description = "Run documentation wiring checks (HLD markers, decision refs, internal links)"
 run = "./scripts/check-docs.sh"
 
+[tasks.diagrams]
+description = "Render every mermaid diagram in docs/ and fail if one does not parse"
+# Not in `ci`: unlike check-docs.sh this needs mermaid-cli and a Chromium
+# binary, which the CI image does not carry yet. Run it whenever a
+# diagram changes; wiring it into Jenkins means adding chromium there.
+run = "./scripts/check-diagrams.sh"
+
 [tasks.vuln]
 description = "Run govulncheck (pinned, matches CI GOVULNCHECK_VERSION) on the Go module"
 dir = "api"

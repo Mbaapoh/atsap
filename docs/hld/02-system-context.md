@@ -144,7 +144,7 @@ sequenceDiagram
     Tel->>Outbox: INSERT INTO outbox ('event.call.active')
     
     par Continuous Audio & Telemetry
-        Caller<-->>Agent: Two-Way Bidirectional RTP Media
+        Caller<<->>Agent: Two-Way Bidirectional RTP Media
         Ast->>ACL: RTCP-XR Quality Reports (per participant)
         ACL->>DB: Batched INSERT INTO usage_seconds
     end
