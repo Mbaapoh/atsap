@@ -62,7 +62,19 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh 'cd api && "$MISE_BIN" x -- go test ./... -race -cover'
+                // JUnit XML + coverage profile are published below (stage
+                // post): per-build test history and trends live in CI,
+                // never as committed files (D-28).
+                sh '''
+                    mkdir -p test-results coverage
+                    cd api && "$MISE_BIN" x -- gotestsum --junitfile ../test-results/unit.xml -- -race -coverprofile=../coverage/unit.out ./...
+                '''
+            }
+            post {
+                always {
+                    junit 'test-results/unit.xml'
+                    archiveArtifacts artifacts: 'coverage/unit.out', allowEmptyArchive: true
+                }
             }
         }
 

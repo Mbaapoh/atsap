@@ -5,5 +5,9 @@
 .env.local
 .DS_Store
 
+# CI/local test report artifacts (published by CI per build, never committed)
+test-results/
+coverage/
+
 # mise/go local state
 .mise/

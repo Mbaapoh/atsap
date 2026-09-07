@@ -83,3 +83,47 @@ stages in the same order, then builds images and scans them (Trivy). The `integr
 suites run in their own stages once they exist — the walking skeleton's
 tasks 2.x/5.6/6.3/7.x (integration) and 10.2 (e2e, local rig **and** CI)
 are the first occupants.
+
+## 6. Reproducing any suite
+
+Same commands locally and in CI — that is the point. Start the services
+first (`docker compose -f deploy/docker-compose.yml up -d postgres nats`
+at minimum; the full stack for `e2e`), then:
+
+| Suite | Command | Services needed | Env overrides (defaults shown) |
+|---|---|---|---|
+| unit | `cd api && go test ./... -race -cover` | none (hermetic by rule §1) | — |
+| integration | `cd api && go test -tags integration ./... -race` | Postgres, NATS | `DATABASE_URL` (`postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable`), `NATS_URL` (`nats://127.0.0.1:4222`) |
+| e2e | `cd api && go test -tags e2e ./internal/telephony/e2e/ -count=1` | full dev stack (Asterisk + Postgres + NATS + app) | above plus ARI `http://127.0.0.1:8088/ari`, SIP `127.0.0.1:5060/udp`, app API `http://127.0.0.1:8080` |
+| automated UAT | `mise run uat:auto` | full dev stack + host baresip phones (script manages them) | — (script owns setup/teardown; see `docs/uat/walking-skeleton.md`) |
+
+`DATABASE_URL`/`NATS_URL` defaults target the compose-published host
+ports, so a default dev stack works with zero extra flags. If a suite
+cannot run hermetically (unit) or against these defaults, that is a
+defect in the suite, not in the machine.
+
+## 7. Results & records
+
+- **Per-run records live in CI, never in git.** The Test stage publishes
+  JUnit XML (`junit` step: per-build history, trends, flake tracking) and
+  archives the coverage profile. Committing test output to git is an
+  anti-pattern: it conflicts, rots daily, and duplicates what CI already
+  versions per build.
+- **Per-task evidence lives in `tasks.md`.** A ticked task keeps its
+  verify proof in parens (command + outcome, e.g. "100% coverage",
+  "Verified via `TestOutboxWorkerRole`"). A tick without evidence is
+  indistinguishable from untested — treat it as such in review.
+- **Per-change traceability lives in the living spec.** At archive, the
+  acceptance-test-authoring skill emits the test → AC → epic table
+  (with the explicit uncovered-AC list) alongside the merged spec. That
+  table — not scattered logs — is how progress is tracked release to
+  release.
+- **The agent feedback loop is therefore:** CI failure (or local red) →
+  reproduce with §6 (same command, same env) → fix → re-run the gate
+  (`mise run ci`, plus the affected suite) → record evidence in
+  `tasks.md`. Findings that change design — not just code — go through
+  `/opsx-update` into proposal/design/specs, so the next session inherits
+  the decision instead of rediscovering the failure. This is how AI
+  agents (or humans) turn any red build into a fix without tribal
+  knowledge: the failing artifact, the reproduction recipe, and the
+  decision trail are all in the repo or one click away in CI.

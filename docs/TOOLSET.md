@@ -150,6 +150,7 @@ All developer environments and CI pipelines execute tools managed strictly by `m
 | **golangci-lint** | `2.13.1` (pinned) | `.mise.toml`, `.golangci.yml` | Strict static analysis, deadcode detection, dependency boundary linting |
 | **govulncheck** | `v1.7.0` (pinned via `GOVULNCHECK_VERSION` in `Jenkinsfile`, mirrored in `mise run vuln`) | CI Pipeline | Continuous scanning for known Go vulnerabilities and CVEs |
 | **buf** | `1.40+` | `api/buf.yaml` | Protocol Buffer compilation, linting, and breaking change detection |
+| **gotestsum** | `1.13.0` (pinned) | `.mise.toml` | JUnit-XML test reporting for CI test history and trends |
 | **docker** | `24+` | Host / CI | Local dev stack (`docker compose`) and production image builds |
 | **trivy** | `0.52.2` (pinned image in `Jenkinsfile`) | CI Pipeline | Container image security scanning for OS-level and binary CVEs |
 | **SIPp** | `3.7+` | Test harness | SIP load testing, CPS burst benchmarks, and WebRTC simulation |
