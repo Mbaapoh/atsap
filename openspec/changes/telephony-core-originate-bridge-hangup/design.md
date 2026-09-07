@@ -145,6 +145,34 @@ and the authoritative HLD DDL:**
   LOCAL` do not accept bind parameters. `WithTenant` uses
   `SELECT set_config('app.tenant_id', $1, true)` instead (the
   parameterized equivalent; the third argument is `is_local`).
+- **`acl.EventSink`/`Correlation` originally took an acl-defined struct
+  type.** Found while starting the orchestrator (task 6.1): a struct
+  parameter type forces the implementer's package to import the type's
+  defining package, which would have made `application` import `acl` —
+  forbidden by `docs/hld/01-architecture.md` §1.2 ("application depends
+  only on domain and ports"). Fixed by changing `EventSink`'s methods to
+  plain strings, so `application.Service` satisfies the interface
+  structurally without ever importing `acl` (Go interfaces don't require
+  the implementer to import the interface's defining package as long as
+  no parameter type comes from it). The correlation-registration
+  direction (application → acl, at origination time) got the same
+  treatment via a new `ports.CorrelationRegistrar` interface, satisfied
+  by `*acl.CorrelationRegistry`.
+- **Usage ticks are batched at disconnect/termination, not streamed every
+  second during the call.** Task 6.3 says "per-second usage-tick
+  scheduling," which could mean a live ticker running for the duration of
+  every connected participant. This change instead computes
+  `domain.GenerateUsageTicks(participant, ..., participant.AnsweredAt,
+  now)` once, when the participant's connected interval ends, and
+  persists the whole batch. *Alternative considered:* a real-time
+  goroutine ticking every second per connected participant. Rejected for
+  this walking skeleton — it adds real concurrency complexity and
+  non-deterministic timing to test, for a benefit (live-updating usage
+  during an in-progress call, e.g. for a billing dashboard) this change
+  has no consumer for yet. The continuity/no-duplication guarantee itself
+  is unaffected either way, since it comes from `GenerateUsageTicks`, not
+  from when the write happens. Real-time streaming remains a legitimate
+  future enhancement, not a gap in this change's own scope.
 - The dev-tenant seed gate (`ATSAPBX_SEED_DEV_TENANT`) cannot live inside
   `0002_dev_tenant_seed.up.sql` itself — a migration file has no way to
   read an environment variable. The gate is implemented in

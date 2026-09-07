@@ -33,9 +33,9 @@
 
 ## 6. Application layer (CallService orchestrator)
 
-- [ ] 6.1 Implement the `CallService` orchestrator wiring domain transitions, ports, and the ACL, including Screening calling `LicenseManager` and `ComplianceEngine`, and verify a unit test drives `InitiateCall` through to `Active` using a fake `MediaGateway`/`CallStore` and the stub adapters
-- [ ] 6.2 Implement `HangupCall` driving `Terminating` → `Terminated` with the record becoming immutable, and verify a unit test asserts a subsequent attempt to mutate a `Terminated` call is rejected
-- [ ] 6.3 Implement per-second usage-tick scheduling for Connected participants, persisted via `CallStore`, and verify an integration test against a real dev Postgres shows continuous, non-duplicated `usage_seconds` rows across a multi-second simulated call
+- [x] 6.1 Implement the `CallService` orchestrator wiring domain transitions, ports, and the ACL, including Screening calling `LicenseManager` and `ComplianceEngine`, and verify a unit test drives `InitiateCall` through to `Active` using a fake `MediaGateway`/`CallStore` and the stub adapters (`application.Service`, 89.4% coverage, 24 tests incl. every realistic failure path. Found and fixed a real layering gap: `acl.EventSink`/`Correlation` originally took an acl-defined struct, which would have forced `application` to import `acl` — HLD 01-architecture.md §1.2 forbids that. Fixed by making `EventSink` use plain strings and adding `ports.CorrelationRegistrar`, so `application` satisfies `acl.EventSink` structurally without ever importing `acl`. Also added the missing `MediaGateway.DestroyBridge` to `ports.go` — declared in the ACL client since 5.4 but never propagated to the port)
+- [x] 6.2 Implement `HangupCall` driving `Terminating` → `Terminated` with the record becoming immutable, and verify a unit test asserts a subsequent attempt to mutate a `Terminated` call is rejected
+- [x] 6.3 Implement per-second usage-tick scheduling for Connected participants, persisted via `CallStore`, and verify an integration test against a real dev Postgres shows continuous, non-duplicated `usage_seconds` rows across a multi-second simulated call (batched at disconnect/termination time from `participant.AnsweredAt`, not streamed every second during the call — a deliberate scope choice, see design.md. New `internal/telephony/postgres.CallStore` adapter; integration tests proved the DB-level `(participant_id, second_ts)` PK backs the domain-level no-duplicate guarantee, including re-recording the same batch being a true no-op)
 
 ## 7. Outbox and NATS
 
