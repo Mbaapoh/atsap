@@ -26,7 +26,7 @@ to prevent.
 | # | LLD | Bounded context | Status | OpenSpec change (when proposed) |
 |---|---|---|---|---|
 | 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
-| 02 | Identity & Licensing | `identity`, `licensing` | Not started | — |
+| 02 | [Identity & Licensing](LLD-02-identity-licensing.md) | `identity`, `licensing` | Draft | — |
 | 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started | — |
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
