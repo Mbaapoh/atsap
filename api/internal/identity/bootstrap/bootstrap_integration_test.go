@@ -18,8 +18,8 @@ import (
 	"atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/bootstrap"
 	identitypostgres "atsap-api/internal/identity/postgres"
-	corepostgres "atsap-api/internal/postgres"
 	"atsap-api/internal/logging"
+	corepostgres "atsap-api/internal/postgres"
 )
 
 // migrationsDir resolves api/migrations from this test file's location.
