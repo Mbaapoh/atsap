@@ -569,6 +569,76 @@ of error; per-change judgement did not.
 
 ---
 
+**D-44 · The platform is tenant-abstracted; the one SaaS blocker is
+licensing's scope, and it is decidable now (2026-09-07).**
+
+**Decision:** Keep building for the self-hosted per-partner model, which
+is what BRD/PRD describe. The tenancy abstractions already in place carry
+over to a hosted multi-tenant SaaS unchanged, with one exception —
+licensing is installation-scoped — and that exception is settled *before*
+licensing is implemented rather than after, because it is the only part
+that would cost months to unpick.
+
+**Context:** Asked whether the design extends to multi-tenant SaaS. An
+audit of what is built says most of it already does:
+
+| Already tenant-abstracted | Where |
+|---|---|
+| `tenant_id` on every row, RLS + FORCE, fails closed | migrations, HLD 03 §5 |
+| Tenant as an aggregate with reversible suspension | `identity/domain` |
+| `residency_zone` per tenant, immutable once set | AC, LLD-02 §10.6 |
+| System scope vs tenant scope — platform operator vs customer admin | `domain.IsAuthorizedSystem` |
+| Usernames unique **per tenant**, not globally | AC-01.2, `UNIQUE(tenant_id, username)` |
+| API keys carry and resolve to their own tenant | `identity-auth-rbac` |
+| Audit per tenant; NATS subjects tenant-partitioned | HLD 03 §5, LLD-01 |
+
+What is not, in rough order of cost to retrofit:
+
+1. **Licensing is installation-scoped.** `licensing_state` is keyed by
+   `instance_id` with no `tenant_id` (T-1, D-42) — correct for a licence
+   installed once per partner deployment, wrong for SaaS where
+   entitlement is per tenant. This is the expensive one, and licensing
+   is **not yet built**, so the moment to keep the option open is now.
+2. **Login needs a tenant UUID.** `AuthenticateUser` takes `tenant_id`,
+   but a SaaS user signs in with an email or a subdomain. Needs a
+   slug/domain → tenant lookup. Additive; a unique `slug` column on a
+   populated table is a migration, not a redesign.
+3. **No self-service signup.** Tenant creation requires system scope
+   today. A public signup path is purely additive.
+4. **Shared connection pool.** Per-tenant quotas and noisy-neighbour
+   controls are infrastructure concerns for whoever operates the hosted
+   plane, not domain ones.
+
+**Alternatives:**
+- Build for SaaS now: rejected — no hosted product is planned, and D-08
+  rules out constructing for a scale point that does not exist. The
+  seams above already make it reachable.
+- Ignore the licensing scope until a SaaS need appears: rejected — that
+  is exactly the retrofit that costs months, and it is avoidable for free
+  while the code is unwritten.
+
+**Consequences:**
+- **Actionable now:** LLD-02's licensing work must not assume
+  installation scope any deeper than the `licensing_state` row. The port
+  seam already helps: `ValidateCapacity(ctx, tenantID, requestedChannels)`
+  carries a tenant, kept during the LLD-02 review for an unrelated reason
+  (avoiding a telephony-core edit) and now the thing that lets capacity
+  become per-tenant without reshaping callers. Keep `tenantID` in that
+  signature even while the implementation ignores it.
+- A hosted plane would add rows to `licensing_state` keyed by tenant, a
+  tenant slug for login, and a signup path — none of which reshape
+  `identity`, `telephony-core`, or the RLS model.
+- Revisit when a hosted offering is actually proposed; this decision
+  records that it is not blocked, not that it is planned.
+
+**Related Decisions:** D-08 (do not over-build for year-three scale),
+D-24 (tenant_id everywhere from commit one), D-42 (identity stays
+in-process), D-43 (API-first consumer test)
+**Traceability:** PRD INV-10, EPIC-01; HLD `03-domain-model.md` §5,
+`11-decisions.md` T-1; LLD-02 §§8/10.6
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
