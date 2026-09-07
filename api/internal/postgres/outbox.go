@@ -73,7 +73,7 @@ func (w *OutboxWorker) PollOnce(ctx context.Context) (published int, err error) 
 		SELECT id, tenant_id, event_type, aggregate_id, payload
 		FROM outbox
 		WHERE published_at IS NULL
-		ORDER BY id
+		ORDER BY created_at, id
 		FOR UPDATE SKIP LOCKED
 		LIMIT $1
 	`, w.batchSize)
