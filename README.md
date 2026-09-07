@@ -55,6 +55,12 @@ cp .env.example .env
 mise run dev         # docker compose up --build: Asterisk + Postgres + the Go app
 ```
 
+**Always run Go commands through mise** (`mise exec -- go ...` / `mise run test` /
+etc.), not a bare `go` on your `$PATH`. `go.mod`'s `go 1.25` directive makes a
+bare `go` on an older version try to download the matching toolchain over the
+network, which can hang for minutes — `mise exec --` puts the pinned version
+first instead.
+
 - Asterisk ARI: http://localhost:8088/ari (basic auth: `voipapp` / `devpassword123`)
 - Asterisk AMI: localhost:5038
 - App health check: http://localhost:8080/healthz
@@ -66,6 +72,11 @@ mise run dev         # docker compose up --build: Asterisk + Postgres + the Go a
   Asterisk's `cdr_pgsql`/`cel_pgsql` backends — schema in
   `deploy/postgres/init/`. Inspect with:
   `docker compose -f deploy/docker-compose.yml exec postgres psql -U asterisk -d asterisk`
+- AtsaPBX app database (`atsapbx`): a separate database on the same
+  Postgres container (`deploy/postgres/init/02-atsapbx.sql`), reachable
+  from the host at `localhost:15432` for the `api/` integration test
+  suite (`docs/TESTING.md`), e.g.
+  `DATABASE_URL=postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable mise exec -- go test ./... -tags integration -race` (run from `api/`)
 
 Other mise tasks:
 

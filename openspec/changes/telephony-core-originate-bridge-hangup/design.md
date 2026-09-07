@@ -152,6 +152,19 @@ and the authoritative HLD DDL:**
   `m.Migrate(1)` (schema only) instead of `m.Up()` when the seed is
   disabled.
 
+**`ports.CallStore` has a fourth method beyond HLD 04 §1's exact shape.**
+Task 4.1 says "matching docs/hld/04-bounded-contexts.md §1 exactly," but
+`CallStore` here also declares `RecordUsageTicks` — HLD's `CallStore` has
+only `SaveCall`/`GetCall`/`AddChannelHistory`; usage recording is HLD's
+`reporting` context's `UsageRecorder.RecordUsageSecond` (04 §5). Deliberate
+deviation, not an oversight: `reporting` is a later Tier-1 context (TRD
+dependency graph) that doesn't exist yet, and D-24's usage-ticking seam
+must work from this first walking skeleton, not wait for it. Noted here
+so the "exactly" claim doesn't silently rot — when `reporting` lands,
+either `RecordUsageTicks` moves to a `UsageRecorder` port there, or this
+note is updated to say why it stayed. Don't refactor it as part of
+finishing this change; that's its own later decision.
+
 ## Migration Plan
 
 No live system exists yet, so this is schema bring-up, not a cutover:
