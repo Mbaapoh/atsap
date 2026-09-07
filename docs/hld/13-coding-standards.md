@@ -110,6 +110,50 @@ rule and `goimports` grouping) must pass; `govulncheck` must report no
 vulnerabilities. CI fails otherwise — review never re-checks what machines
 can check.
 
+## 8. Secure coding rules
+
+Authoritative references, linked never copied (OWASP text is CC BY-SA):
+[OWASP Go Secure Coding Practices Guide](https://owasp.org/www-project-go-secure-coding-practices-guide/)
+(14 topics, Go examples throughout) and the [gosec rule catalog G1xx–G7xx](https://github.com/securego/gosec/blob/master/RULES.md)
+(incl. taint analysis for injection/SSRF/log-injection). House subset,
+mapped to this codebase:
+
+1. **Credentials:** env only with fail-fast on missing, never literals
+   (G101). Test fixtures use obviously-fake values; any `#nosec G101`
+   carries a written justification.
+2. **Crypto allowlist:** Argon2id (passwords), Ed25519 (tokens/JWT),
+   SHA-256 (key hashes), AES-256-GCM (recordings). No MD5/SHA1/DES/RC4,
+   no `InsecureSkipVerify`, TLS ≥1.2 with verified peers (G401–G407).
+3. **Network posture:** explicit bind addresses — no `0.0.0.0` in prod
+   paths without a documented reason (G102); timeouts on every server
+   (`ReadHeaderTimeout` precedent) and context deadlines on every client
+   call; no pprof in prod images (G108/G112/G114).
+4. **Untrusted input:** all SIP/ARI/AMI data arrives tainted — validate
+   and parse strictly at the boundary; never trust channel vars or
+   headers for auth decisions (correlation ≠ authentication);
+   parameterized SQL only, `$n` placeholders, never `Sprintf`/concat
+   (G201/G202/G701).
+5. **Logging:** D-39 redaction plus no log injection — sanitize
+   externally-sourced strings (newlines, control chars) before they
+   reach a log line (G706).
+6. **Filesystem:** restrictive creation perms (`0600` files, `0750`
+   dirs — G301/G302/G306); no predictable tempfiles; migrations dir
+   mounted read-only.
+7. **Processes:** no `os/exec` in production code paths (G204);
+   `scripts/` tooling excepted and reviewed.
+8. **Secrets in structs:** no credential/token/key-hash fields in
+   marshaled structs without explicit redaction (G117) — see LLD-02
+   §10.2/§10.3 for JWT/`ApiKey` handling.
+9. **Suppressions:** `#nosec <RULE> -- justification` is the only allowed
+   form; blanket disables forbidden; each re-checked at review, with
+   periodic `gosec -nosec=true` runs to audit outstanding suppressions.
+
+Enforcement status: this section is review-enforced today. Machine
+enforcement via `gosec` inside the already-pinned `golangci-lint` (zero
+new tools) is approved as the implementation follow-up — trialed
+read-only against this tree with 5 findings (1 real hardening item, 1
+review item, 3 test-hygiene), so the gate is known-green before it lands.
+
 ---
 
 ## Appendix A — Agent role prompt (reference standard, D-40)
@@ -141,6 +185,8 @@ specifications, halt and ask for clarification.
 # 2. Industry Go Coding Standards
 Adhere to the [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments)
 and the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md).
+Apply the secure-coding rules in §8 (credentials, crypto allowlist, taint
+handling, secret redaction); the gosec gate judges this section.
 
 ## Control Flow & "Line of Sight"
 - Happy path strictly left-aligned; check errors/edges immediately and
