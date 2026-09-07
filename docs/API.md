@@ -121,6 +121,127 @@ Campaign and list management, pacing controls, agent state. R2-gated.
 
 ---
 
+## 3a. Conventions
+
+Fixed once, here, so that delivering the API one LLD at a time still
+produces one coherent API. Every LLD from LLD-03 onward follows these;
+where one must deviate, the owning change records why.
+
+They exist because of a specific R1.0 gate (BRD §16): *"every function
+demonstrated through the public API with published documentation, and the
+administration console proven to use only those same endpoints."* The
+console is not a privileged client with a private back door — it is a
+consumer of this API like any partner's own software. In practice **all
+configuration is performed through the portal, which translates it into
+Asterisk configuration**: administration, call flows, IVR, contact-centre
+setup, SIP trunks. So every one of those is an API operation, subject to
+the same authorization as any other, and none of them is a hand-edited
+file on the server.
+
+### Naming
+
+- `Verb` + `Noun`: `ProvisionTenant`, `ListAudit`, `RevokeApiKey`. Use
+  `Get` for one, `List` for many, `Set` for a status transition, and a
+  domain verb where one exists (`Revoke`, `Grant`, `Provision`) rather
+  than a generic `Update`.
+- Request and response messages are `<Rpc>Request` / `<Rpc>Response`,
+  which `buf lint`'s STANDARD rules enforce anyway.
+- Field names are `snake_case` in proto and stay singular unless the
+  field is repeated.
+
+### Identifiers and timestamps
+
+- Every identifier crossing the wire is a UUID rendered as a string.
+  Never an integer, never a database sequence — those leak volume and
+  ordering.
+- Every timestamp is `google.protobuf.Timestamp` in UTC, **set by the
+  server and returned as stored**. Relying on a column default and
+  echoing the pre-insert value produced `0001-01-01` responses once
+  already; the value returned must be the value persisted.
+- `audit_logs.id` is the one exception (BIGSERIAL), because ordering is
+  its purpose.
+
+### Errors
+
+Connect codes, mapped consistently:
+
+| Cause | Code |
+|---|---|
+| No or invalid credentials | `unauthenticated` |
+| Authenticated but not permitted | `permission_denied` |
+| Absent, or belonging to another tenant | `not_found` |
+| Malformed input, or a body tenant that is not the caller's | `invalid_argument` |
+| Uniqueness violated (username, extension number) | `already_exists` |
+| Refused because of current state (suspended tenant, revoked key) | `failed_precondition` |
+| Capacity or licence exhausted | `resource_exhausted` |
+
+Messages are safe to show a user and disclose nothing about other
+tenants. Every authentication failure returns the same code *and the same
+message* whatever its cause — the distinction lives in logs (INV-10).
+
+### Pagination
+
+`List*` returning an unbounded collection takes `page_size` and
+`page_token`, and returns `next_page_token` (empty when exhausted).
+Opaque token, not an offset: offsets skip or repeat rows when the
+underlying set changes between calls.
+
+`ListAudit` currently takes only `limit` — the first `List*` written, and
+before this convention existed. It gains the standard shape when a
+consumer needs more than the newest page; noted here rather than left as
+an inconsistency to be discovered.
+
+### Mutation semantics
+
+- A `Set*` carries the complete new value of what it names, so there is
+  no "was this field omitted or cleared" ambiguity. Avoid partial
+  updates; if one becomes unavoidable, use an explicit field mask and say
+  so in the change.
+- Creates are not idempotent by default. Where a retry must be safe, the
+  request carries a caller-supplied idempotency key — decided per
+  endpoint, never assumed.
+- A mutation that succeeds writes exactly one audit record; a mutation
+  that is refused writes none.
+
+### Tenancy and permissions
+
+- A request naming a tenant must name the caller's own, unless the caller
+  holds `system` scope. The interceptor enforces this before the handler
+  runs.
+- **Every operation authorizes, not merely authenticates.** A valid token
+  is identity, never permission — the handler calls `AuthorizeAction`
+  (or `AuthorizeSystem` for installation-level operations such as
+  creating a tenant). This applies to configuration endpoints exactly as
+  it does to identity ones: who may edit a trunk, publish an IVR flow, or
+  change a queue is a permission question with the same shape.
+- Installation-level operations require `system` scope specifically. A
+  tenant administrator's wildcard must never reach them.
+
+### Configuration endpoints translate to Asterisk
+
+Configuration written through the API becomes live Asterisk state —
+endpoints, trunks, routes, IVR execution. Two consequences for the
+contract:
+
+- The API models the **domain**, not Asterisk. A partner configures an
+  `Extension` and a `CarrierTrunk`; they never see `ps_endpoints`, a
+  dialplan context, or a channel identifier. Same rule as
+  `telephony-core`'s: no infrastructure identifier crosses the wire.
+- Applying configuration is **not assumed to be instantaneous**. Where
+  activation is asynchronous, the response says what was accepted and the
+  resource carries its own applied//pending state, rather than a success
+  that silently means "written to a table, not yet live."
+
+> **Open for LLD-03, and not decided anywhere yet.** *How* a configuration
+> row becomes live Asterisk state — PJSIP Realtime against
+> Asterisk-owned tables (`ps_endpoints`/`ps_auths`/`ps_aors`), generated
+> config plus a reload, or ARI-driven runtime provisioning — is
+> unrecorded in the HLD and TRD. It is not a detail: PJSIP Realtime
+> dictates Asterisk's own table shapes, which would sit alongside the
+> `extensions` and `carrier_trunks` tables HLD 03 §5 already designs with
+> different columns, and something must then own the mapping. LLD-03
+> decides it before writing schema, not after.
+
 ## 4. Compatibility
 
 - `mise run proto` runs `buf lint` and `buf breaking` (against `main`).

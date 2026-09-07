@@ -547,11 +547,29 @@ of error; per-change judgement did not.
 - Expose read paths only: rejected — provisioning and suspension are
   console actions in EPIC-01; a read-only API cannot run a portal.
 
+**Amended 2026-09-07 — the console is a named consumer.** BRD §16's R1.0
+gate requires "every function demonstrated through the public API with
+published documentation, and the administration console proven to use
+only those same endpoints", and all configuration — administration, call
+flows, IVR, contact-centre setup, SIP trunks — is performed through the
+portal, which translates it into Asterisk state. The console therefore
+*is* a named R1.0 consumer for essentially every capability in R1.0
+scope. The consumer test still holds and still refuses speculative
+surface, but the default for an R1.0 capability is now **on the wire**,
+and a port-only decision is the exception that must argue for itself.
+Cross-cutting shape (naming, errors, pagination, mutation semantics,
+tenancy) is fixed once in `docs/API.md` §3a so that delivering the API
+one LLD at a time still yields one coherent API.
+
 **Consequences:**
 - Mechanism stays internal by construction: `ValidateToken`,
   `AuthorizeAction`, and `AuthenticateAPIKey` are what the interceptor
   does *for* a caller, never something a caller invokes. Exposing
   `ValidateToken` would hand out a token-validity oracle.
+- The console gets no privileged back door. If it needs an operation, the
+  operation is public API with the same authorization as any partner's
+  own client would face — which is what makes the R1.0 gate provable
+  rather than asserted.
 - Each LLD's ConnectRPC section states, per capability, wire or port and
   the consumer that justifies it. A capability with no named consumer is
   a port, and saying so is the record.

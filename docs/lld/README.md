@@ -38,10 +38,36 @@ does not list, so the inventory cannot rot quietly.
 |---|---|---|---|---|
 | 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
 | 02 | [Identity & Licensing](LLD-02-identity-licensing.md) | `identity`, `licensing` | Draft | — |
-| 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started | — |
+| 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started — **must first decide how configuration becomes live Asterisk state** (see below) | — |
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
 | 06 | Dialer (R2 — power dial, then predictive) | `dialer` | Not started (R2-gated) | — |
+
+### Open before LLD-03 is written
+
+All configuration is performed through the portal, which translates it
+into Asterisk state — administration, call flows, IVR, contact-centre
+setup, SIP trunks — so no production Asterisk config is hand-edited.
+**How a configuration row becomes live Asterisk state is not decided
+anywhere in the HLD or TRD.** The candidates differ in ways that reach
+the schema, so this is settled at design time, not discovered in
+implementation:
+
+- **PJSIP Realtime** — Asterisk reads endpoints from its own tables
+  (`ps_endpoints`, `ps_auths`, `ps_aors`). Asterisk dictates those
+  shapes, which would sit alongside the `extensions` and `carrier_trunks`
+  tables HLD 03 §5 already designs with different columns, and something
+  must own the mapping between them.
+- **Generated config + reload** — we keep full control of the schema, at
+  the cost of file generation, reload orchestration, and a window where
+  written state is not yet live.
+- **ARI/AMI runtime provisioning** — dynamic, but not everything PJSIP
+  needs is settable at runtime.
+
+Whichever is chosen, `docs/API.md` §3a already fixes the contract-side
+consequence: the API models the domain (an `Extension`, a
+`CarrierTrunk`), never Asterisk's own objects, and activation is not
+assumed instantaneous.
 
 Do not start row *N+1* until row *N* is implemented and its walking-skeleton
 or integration test passes — per D-26 (dependency-first within a release,
