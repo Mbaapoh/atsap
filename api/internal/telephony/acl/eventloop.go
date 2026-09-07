@@ -10,20 +10,21 @@ import (
 
 // EventSink receives the ACL's interpretation of raw Asterisk events,
 // translated from Asterisk-channel terms into Participant terms. The
-// CallService orchestrator implements this; the ACL package itself knows
-// nothing about persistence or domain state beyond the Correlation it
-// already tracks (docs/hld/01-architecture.md §1.2 — no raw telephony
-// concepts leak past this package).
+// CallService orchestrator implements this — using only plain strings
+// (not the acl-defined Correlation type) so application can satisfy this
+// interface structurally without ever importing acl
+// (docs/hld/01-architecture.md §1.2: application depends only on domain
+// and ports).
 type EventSink interface {
 	// ParticipantAnswered is called when a channel backing a participant
-	// reaches the Up state (answered). channelID is passed through (not
-	// just the Correlation) because bridging a newly answered leg into
-	// the call's bridge (MediaGateway.AddChannelToBridge) needs it — the
-	// orchestrator, not this package, decides what to do with it.
-	ParticipantAnswered(ctx context.Context, corr Correlation, channelID string) error
+	// reaches the Up state (answered). channelID is passed through
+	// because bridging a newly answered leg into the call's bridge
+	// (MediaGateway.AddChannelToBridge) needs it — the orchestrator, not
+	// this package, decides what to do with it.
+	ParticipantAnswered(ctx context.Context, tenantID, callID, participantID, channelID string) error
 	// ParticipantLeft is called when a channel backing a participant is
 	// destroyed or hung up.
-	ParticipantLeft(ctx context.Context, corr Correlation) error
+	ParticipantLeft(ctx context.Context, tenantID, callID, participantID string) error
 }
 
 // EventLoop dispatches raw ARI events through a CorrelationRegistry
@@ -85,7 +86,7 @@ func (l *EventLoop) handleChannelStateChange(ctx context.Context, ev ari.Event) 
 		return
 	}
 
-	if err := l.sink.ParticipantAnswered(ctx, corr, payload.Channel.ID); err != nil {
+	if err := l.sink.ParticipantAnswered(ctx, corr.TenantID, corr.CallID, corr.ParticipantID, payload.Channel.ID); err != nil {
 		l.logger.Error("acl: participant-answered handler failed", "error", err,
 			"call_id", corr.CallID, "participant_id", corr.ParticipantID)
 	}
@@ -107,7 +108,7 @@ func (l *EventLoop) handleChannelGone(ctx context.Context, ev ari.Event) {
 	}
 	l.registry.Remove(payload.Channel.ID)
 
-	if err := l.sink.ParticipantLeft(ctx, corr); err != nil {
+	if err := l.sink.ParticipantLeft(ctx, corr.TenantID, corr.CallID, corr.ParticipantID); err != nil {
 		l.logger.Error("acl: participant-left handler failed", "error", err,
 			"call_id", corr.CallID, "participant_id", corr.ParticipantID)
 	}

@@ -25,6 +25,15 @@ func TestCorrelationRegistry_RegisterAndLookup(t *testing.T) {
 	assert.Equal(t, 1, reg.Len())
 }
 
+func TestCorrelationRegistry_RegisterCorrelation(t *testing.T) {
+	reg := acl.NewCorrelationRegistry()
+	reg.RegisterCorrelation("chan1", "tenant-1", "call-1", "participant-1")
+
+	corr, ok := reg.Lookup("chan1")
+	assert.True(t, ok)
+	assert.Equal(t, acl.Correlation{TenantID: "tenant-1", CallID: "call-1", ParticipantID: "participant-1"}, corr)
+}
+
 func TestCorrelationRegistry_Remove(t *testing.T) {
 	reg := acl.NewCorrelationRegistry()
 	reg.Register("chan1", acl.Correlation{CallID: "call-1", ParticipantID: "participant-1"})

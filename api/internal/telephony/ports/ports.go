@@ -84,6 +84,7 @@ type MediaGateway interface {
 	Originate(ctx context.Context, req OriginateRequest) (ChannelRef, error)
 	CreateBridge(ctx context.Context, bridgeType string) (BridgeID, error)
 	AddChannelToBridge(ctx context.Context, bridgeID BridgeID, channelRef ChannelRef) error
+	DestroyBridge(ctx context.Context, bridgeID BridgeID) error
 	StartPlayback(ctx context.Context, channelRef ChannelRef, mediaURI string) error
 	StartSnoop(ctx context.Context, channelRef ChannelRef, snoopReq SnoopRequest) (SnoopRef, error)
 	DestroyChannel(ctx context.Context, channelRef ChannelRef) error
@@ -121,6 +122,16 @@ type ComplianceVerdict struct {
 // a later change replaces the adapter behind this same interface.
 type ComplianceEngine interface {
 	Evaluate(ctx context.Context, tenantID shareddomain.TenantID, destNumber string) (ComplianceVerdict, error)
+}
+
+// CorrelationRegistrar is the narrow slice of the ACL's correlation
+// registry the application layer needs when originating a participant:
+// registering which Asterisk channel now backs it (D-19). Satisfied by
+// *acl.CorrelationRegistry, wired in by the composition root (cmd/) —
+// application depends on this port, never on the acl package itself
+// (docs/hld/01-architecture.md §1.2).
+type CorrelationRegistrar interface {
+	RegisterCorrelation(channelID, tenantID, callID, participantID string)
 }
 
 // EventPublisher is telephony-core's outbound port for domain events,

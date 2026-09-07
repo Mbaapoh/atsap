@@ -30,8 +30,8 @@ type domainSink struct {
 	call *domain.Call
 }
 
-func (s *domainSink) ParticipantAnswered(_ context.Context, corr acl.Correlation, _ string) error {
-	pid, err := shareddomain.ParseParticipantID(corr.ParticipantID)
+func (s *domainSink) ParticipantAnswered(_ context.Context, _, _, participantID, _ string) error {
+	pid, err := shareddomain.ParseParticipantID(participantID)
 	if err != nil {
 		return err
 	}
@@ -39,8 +39,8 @@ func (s *domainSink) ParticipantAnswered(_ context.Context, corr acl.Correlation
 	return err
 }
 
-func (s *domainSink) ParticipantLeft(_ context.Context, corr acl.Correlation) error {
-	pid, err := shareddomain.ParseParticipantID(corr.ParticipantID)
+func (s *domainSink) ParticipantLeft(_ context.Context, _, _, participantID string) error {
+	pid, err := shareddomain.ParseParticipantID(participantID)
 	if err != nil {
 		return err
 	}
@@ -222,13 +222,13 @@ type recordingSink struct {
 	err              error
 }
 
-func (s *recordingSink) ParticipantAnswered(_ context.Context, _ acl.Correlation, channelID string) error {
+func (s *recordingSink) ParticipantAnswered(_ context.Context, _, _, _, channelID string) error {
 	s.answeredCalls++
 	s.lastAnsweredChan = channelID
 	return s.err
 }
 
-func (s *recordingSink) ParticipantLeft(context.Context, acl.Correlation) error {
+func (s *recordingSink) ParticipantLeft(_ context.Context, _, _, _ string) error {
 	s.leftCalls++
 	return s.err
 }

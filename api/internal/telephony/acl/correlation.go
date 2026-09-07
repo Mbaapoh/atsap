@@ -5,9 +5,10 @@ package acl
 
 import "sync"
 
-// Correlation is what one Asterisk channel ID maps to: the domain Call
-// and Participant it currently backs.
+// Correlation is what one Asterisk channel ID maps to: the domain
+// Tenant, Call, and Participant it currently backs.
 type Correlation struct {
+	TenantID      string
 	CallID        string
 	ParticipantID string
 }
@@ -50,6 +51,15 @@ func (r *CorrelationRegistry) Lookup(channelID string) (Correlation, bool) {
 	defer r.mu.RUnlock()
 	corr, ok := r.byChannel[channelID]
 	return corr, ok
+}
+
+// RegisterCorrelation is Register expressed in plain strings so callers
+// outside this package (the application layer, via ports.CorrelationRegistrar)
+// can register a correlation at origination time without importing acl —
+// domain/application must depend only on domain and ports
+// (docs/hld/01-architecture.md §1.2), never directly on an adapter package.
+func (r *CorrelationRegistry) RegisterCorrelation(channelID, tenantID, callID, participantID string) {
+	r.Register(channelID, Correlation{TenantID: tenantID, CallID: callID, ParticipantID: participantID})
 }
 
 // Remove drops channelID's association, once its channel is destroyed.
