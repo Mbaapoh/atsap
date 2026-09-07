@@ -657,6 +657,64 @@ in-process), D-43 (API-first consumer test)
 
 ---
 
+**D-45 · Outbound dialling joins R1.0; predictive stays in R2
+(2026-09-07).**
+
+**Decision:** R1.0 now includes outbound dialling in preview and power
+modes (EPIC-14) together with outbound compliance enforcement (EPIC-15).
+Predictive pacing remains R2. D-27 is unchanged and is the reason for the
+split, not a casualty of it.
+
+**Context:** The MVP was stated as VoIP core *and* contact centre with
+dialling. The PRD had the dialler and its compliance surface deferred
+wholesale to R2 as "a distinct product line", which no longer matches
+what the product is for.
+
+Compliance moves with it and is not optional: a dialler without enforced
+do-not-call, calling hours and opt-out is not a smaller product, it is
+one that places unlawful calls. Principle 6 — compliance is enforced,
+never advised — makes EPIC-15 a release gate the moment any campaign can
+dial.
+
+**Alternatives:**
+- Take predictive into R1.0 as well: rejected — this is exactly what
+  D-27 forbids, and nothing about the MVP framing changes the reasoning.
+  Power dialling proves the whole loop; predictive is a pacing algorithm
+  on top of a loop that already works. Shipping both at once means
+  debugging pacing mathematics and telephony plumbing simultaneously with
+  no way to tell which is broken.
+- Leave the dialler in R2 and sell R1.0 as inbound-only: rejected — it
+  does not match the intended product, and BPO and contact-centre
+  operators are a named target partner (BRD §3.1).
+- Ship the dialler without EPIC-15: rejected outright. Not a scope
+  option; a regulatory one.
+
+**Consequences, stated plainly:**
+- **R1.0 is now nearly the whole platform.** The dialler sits in Tier 2
+  of the dependency graph (HLD 04 §10) and needs `telephony-core`
+  (originate), `compliance` (clearance), `pbx-core` (queues, routing) and
+  `reporting` (usage). Pulling it in pulls LLD-03, LLD-04 and LLD-06 into
+  R1.0 with it, alongside the console (LLD-07) which must now also carry
+  campaign management. What remains outside R1.0 is mobile, emergency
+  location, fax, migration tooling, supervisor tooling, packaged CRM
+  connectors, and the R3 specialist vertical.
+- **The release date moves substantially.** This was accepted knowingly
+  when the scope was set; it is recorded here so nobody later reads the
+  R1.0 date as evidence the plan was optimistic rather than deliberately
+  widened.
+- Build order is unchanged — the graph already sequences the dialler
+  last among Tier 2, and D-26's dependency-first rule still applies.
+  Nothing may be started earlier to compensate for the wider scope.
+- Predictive arriving in R2 lands on a power loop that has run in
+  production, which is the whole point of D-27.
+
+**Related Decisions:** D-26 (dependency-first ordering), D-27 (power
+before predictive), D-43 (API-first consumer test)
+**Traceability:** BRD FBR-R2-01/02/03, §3.1; PRD §4 release plan, §5.2,
+EPIC-14, EPIC-15; HLD `04-bounded-contexts.md` §10
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

@@ -51,9 +51,9 @@ This document contains no technology choices and no vendor names — those belon
 
 | Release | Theme | Definition of success | Priority key |
 |---|---|---|---|
-| **R1.0** | Sellable core | A partner installs, licenses and runs it as a business | **M** must — release blocks without it |
+| **R1.0** | Sellable core, inbound and outbound | A partner installs, licenses and runs it as a business — including an outbound operation dialling in power mode, under enforced compliance (D-45) | **M** must — release blocks without it |
 | **R1.1** | Enterprise edge | A regulated enterprise can adopt it | **S** should |
-| **R2** | Contact centre and CRM | An outbound operation runs on it | **C** could |
+| **R2** | Predictive pacing, supervision and CRM | Predictive dialling, supervisor tooling and packaged integrations on a proven outbound loop | **C** could |
 | **R3** | Specialist and OPI platform | A language-services business runs on it | |
 
 ---
@@ -88,7 +88,7 @@ Aligned to BRD §7 (product scope by release) and BRD §11 (scope). Where this s
 | Emergency calling with dynamic location | R1.1 | Requires a jurisdiction decision and an external location service. **Until delivered, emergency dialling is blocked and the limitation disclosed** — see §6, INV-02 |
 | Fax delivery | R1.1 | Vertical-specific; commercially optional |
 | Bulk migration tooling | R1.1 | Needed for displacement deals, not for a first deployment |
-| Outbound dialling, detection, campaigns, compliance enforcement | R2 | A distinct product line with its own regulatory surface |
+| **Predictive** pacing and abandonment-rate control | R2 | D-27: power dialling proves the loop first. Predictive is a pacing algorithm on top of a loop that already works, and debugging pacing mathematics and telephony plumbing at once means never knowing which is broken |
 | Supervisor coaching tools, wallboards | R2 | Belongs with the contact-centre release |
 | CRM and ERP connectors, embedded call controls | R2 | The API in R1.0 already permits partner-built integrations |
 | Live assistance and automated after-call work | R2 | Depends on the R1.0 AI pipeline being proven |
@@ -480,12 +480,18 @@ epic is the administration and partner surface, not the agent's screen.)*
 ## 9. Epics — Release 2
 
 ### EPIC-14 · Outbound Dialler
-**BRD:** FBR-R2-01, FBR-R2-02 · **Priority:** M
+**BRD:** FBR-R2-01, FBR-R2-02 · **Priority:** M · **R1.0 for preview and power; predictive is R2 (D-27, D-45)**
+
+**Scope split.** R1.0 delivers preview and power dialling — enough to run
+a real outbound operation. Predictive pacing follows in R2, on a loop
+already proven in production. The two are separated because debugging
+pacing mathematics and telephony plumbing simultaneously leaves no way to
+tell which is broken (D-27).
 
 | ID | User story |
 |---|---|
 | US-14.1 | As a campaign manager, I import a contact list and build segments with a visual filter, not a query. |
-| US-14.2 | As a campaign manager, I choose preview, power or predictive dialling per campaign. |
+| US-14.2 | As a campaign manager, I choose preview or power dialling per campaign. *(Predictive is offered from R2.)* |
 | US-14.3 | As an agent, I am connected only to answered calls, with the contact's details already on screen. |
 | US-14.4 | As a campaign manager, voicemails are detected and never passed to agents. |
 | US-14.5 | As an agent, I leave a pre-recorded message with one click and move on. |
@@ -493,7 +499,8 @@ epic is the administration and partner surface, not the agent's screen.)*
 | US-14.7 | As an agent, I schedule a callback in the contact's own time zone. |
 
 **Acceptance criteria**
-- AC-14.1 With 10 agents on a clean list, predictive mode sustains at least 45 minutes of talk time per agent-hour within the abandonment limit, over a two-hour run.
+- AC-14.1 *(R2, predictive)* With 10 agents on a clean list, predictive mode sustains at least 45 minutes of talk time per agent-hour within the abandonment limit, over a two-hour run.
+- AC-14.1a *(R1.0, power)* With 10 agents on a clean list, power mode places calls at the configured ratio, connects only answered calls, and never exceeds the configured concurrent-call limit over a two-hour run.
 - AC-14.2 Answering-machine detection is at least 95% accurate with no more than 2% of humans wrongly classified as machines.
 - AC-14.3 Callbacks are delivered within 5 minutes of the promised time in 95% of cases.
 - AC-14.4 A campaign pauses or stops within 10 seconds, with no new calls placed afterwards.
@@ -502,7 +509,13 @@ epic is the administration and partner surface, not the agent's screen.)*
 ---
 
 ### EPIC-15 · Outbound Compliance
-**BRD:** FBR-R2-03 · **Priority:** M — **release gate**
+**BRD:** FBR-R2-03 · **Priority:** M — **release gate** · **R1.0 (D-45)**
+
+**Why this is R1.0 the moment dialling is.** A dialler without enforced
+do-not-call, calling hours and opt-out is not a lesser product; it is one
+that places unlawful calls. Compliance is enforced, never advised
+(principle 6), so it ships with the first campaign or the campaign does
+not ship.
 
 | ID | User story |
 |---|---|
