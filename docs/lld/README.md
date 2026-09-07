@@ -38,7 +38,7 @@ does not list, so the inventory cannot rot quietly.
 |---|---|---|---|---|
 | 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
 | 02 | [Identity & Licensing](LLD-02-identity-licensing.md) | `identity`, `licensing` | Draft | — |
-| 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started — **must first decide how configuration becomes live Asterisk state** (see below) | — |
+| 03 | PBX Core (extensions, trunks, LCR, IVR) | `pbx-core` | Not started — translation mechanism settled by D-47 (see below) | — |
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started — `compliance` is a **release gate** for LLD-06's dialling (D-45) | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
 | 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |
@@ -91,47 +91,44 @@ product in its own right — an IVR builder alone carries AC-03.6 ("a
 non-engineer builds a two-level IVR unaided in under 30 minutes"), which
 is a usability bar, not a screen.
 
-### Open before LLD-03 is written
+### How configuration reaches Asterisk — settled by D-47
 
 All configuration is performed through the portal, which translates it
 into Asterisk state — administration, call flows, IVR, contact-centre
 setup, SIP trunks — so no production Asterisk config is hand-edited.
-**How a configuration row becomes live Asterisk state is not decided
-anywhere in the HLD or TRD.** The candidates differ in ways that reach
-the schema, so this is settled at design time, not discovered in
-implementation:
+**D-47 settles how**: the ACL projects the domain row into ACL-owned
+`ps_*` tables and Asterisk reads them via **PJSIP Realtime**. No file
+generation, no reload, no "Apply Config" step. Proven on our own
+Asterisk 22.8.2 on 2026-09-07 — a phone completed a real `REGISTER`
+against an extension that existed only as a database row, and deleting
+the row deprovisioned it just as immediately. See D-47 for the full test
+matrix, the rejected alternatives, and the consequences LLD-03 inherits
+(globally unique projected ids, no RLS on `ps_*`, least-privilege grants
+for the Asterisk database role).
 
-- **PJSIP Realtime** — Asterisk reads endpoints from its own tables
-  (`ps_endpoints`, `ps_auths`, `ps_aors`). Asterisk dictates those
-  shapes, which would sit alongside the `extensions` and `carrier_trunks`
-  tables HLD 03 §5 already designs with different columns, and something
-  must own the mapping between them.
-- **Generated config + reload** — we keep full control of the schema, at
-  the cost of file generation, reload orchestration, and a window where
-  written state is not yet live.
-- **ARI dynamic config** — `PUT /ari/asterisk/config/dynamic/{configClass}/{objectType}/{id}`
-  exists, but **tested against our own Asterisk 22.8.2 on 2026-09-07 it
-  returns `403 "Cannot create sorcery objects of type 'endpoint'"`**,
-  because `res_pjsip`'s default sorcery backend is the config file and is
-  read-only for dynamic creation. Making it work means configuring a
-  writable sorcery backend — which is options 1 or 2 underneath anyway —
-  and objects created this way still need our database as the source of
-  truth to survive a restart.
+**Only static registration objects are projected** — endpoints, auths,
+aors, trunks. **No dialplan is generated**: call routing, IVR,
+auto-attendant and queues are interpreted live in Stasis by our own
+application. This is where we diverge from FreePBX, which compiles IVRs
+into `extensions_additional.conf` and needs its reload because of it.
 
 **What ARI does and does not do, since this is easy to conflate.** ARI is
 *call control*: originate, bridge, play, hang up — proven since LLD-01
-and unaffected by this decision. ARI's `/endpoints` resource is
-**read-only** (`GET`, plus messaging and refer); there is no create. So
-"we use ARI" answers how a call is controlled, not how an extension a
-phone can register to comes to exist. That second question is what this
-decision settles, and it lives entirely inside the ACL: the console calls
-our API, our API writes our database, and the ACL makes Asterisk aware.
-No part of the choice is visible to the console, the API, or a partner.
+and unaffected by D-47. ARI's `/endpoints` resource is **read-only**
+(`GET`, plus messaging and refer); there is no create, and
+`PUT /ari/asterisk/config/dynamic/res_pjsip/endpoint/...` returns
+`403 "Cannot create sorcery objects of type 'endpoint'"` on a default
+build. So "we use ARI" answers how a call is controlled, not how an
+extension a phone can register to comes to exist. That second question is
+what D-47 answers, and it lives entirely inside the ACL: the console
+calls our API, our API writes our database, and the ACL makes Asterisk
+aware. No part of the choice is visible to the console, the API, or a
+partner.
 
-Whichever is chosen, `docs/API.md` §3a already fixes the contract-side
-consequence: the API models the domain (an `Extension`, a
-`CarrierTrunk`), never Asterisk's own objects, and activation is not
-assumed instantaneous.
+`docs/API.md` §3a fixes the contract-side consequence, unchanged by the
+outcome: the API models the domain (an `Extension`, a `CarrierTrunk`),
+never Asterisk's own objects, and activation is not assumed
+instantaneous.
 
 Do not start row *N+1* until row *N* is implemented and its walking-skeleton
 or integration test passes — per D-26 (dependency-first within a release,

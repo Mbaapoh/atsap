@@ -782,6 +782,109 @@ EPIC-15; HLD `04-bounded-contexts.md` §10; `docs/lld/README.md`
 
 ---
 
+**D-47 · Configuration reaches Asterisk through PJSIP Realtime, into
+ACL-owned projection tables (2026-09-07).**
+
+**Decision:** Console configuration becomes live Asterisk state through
+**PJSIP Realtime**. Asterisk reads its own `ps_*` tables directly from
+Postgres; there is no file generation, no reload, and no "Apply Config"
+step. Those `ps_*` tables are **projection tables owned by the ACL** —
+they are not the domain model. `extensions` and `carrier_trunks` (HLD 03
+§5) remain the tenant-scoped source of truth, and the ACL projects into
+`ps_*` inside the same transaction that writes the domain row.
+
+**Only static registration objects are projected** — endpoints, auths,
+aors and trunk configuration. **No dialplan is ever generated.** Call
+routing, IVR, auto-attendant and queue behaviour stay in our Go
+application, interpreted live in Stasis over ARI, exactly as proven in
+LLD-01.
+
+**Context:** `docs/lld/README.md` carried three candidates and no
+decision, and D-46 put settling it in Phase A. This was tested against
+our own Asterisk 22.8.2 on 2026-09-07 rather than reasoned about, with
+`res_config_pgsql` and `res_sorcery_realtime` (both already in our
+image) mapped to a minimal `ps_endpoints`/`ps_auths`/`ps_aors` schema:
+
+| Test | Result |
+|---|---|
+| `INSERT` an endpoint row, issue no reload | `pjsip show endpoint 9001` resolves it, transport/auth/aor/codecs all bound |
+| Real SIP `REGISTER` from a UA, digest auth | `401` challenge, then **`200 OK`** — the contact appears under the aor |
+| Same `REGISTER` with a wrong password | `401 Unauthorized` — credentials are genuinely enforced from the row |
+| `DELETE` the rows, issue no reload | `Unable to find object 9001` — deprovisioning is immediate |
+| Existing `pjsip.conf` fixtures 1000/1001 alongside realtime | both keep working and stay registered |
+
+A phone registered to an extension that existed only as a database row.
+The spike was torn down afterwards; the dev environment is unchanged.
+
+**Alternatives:**
+- **Generated config + reload** (FreePBX's approach: its MySQL tables are
+  the truth, `fwconsole reload` regenerates `pjsip.*.conf` and
+  `extensions_additional.conf`, then reloads). Rejected. It buys nothing
+  we need and costs three things: an activation window the API must then
+  model (FreePBX's red "Apply Config" bar is that window made visible);
+  file generation as a failure surface on a path that must not fail; and
+  a reload whose blast radius is the whole node — in a multi-tenant
+  platform (D-08), tenant A editing an extension must not reload tenant
+  B's engine. FreePBX needs the reload because it *compiles IVRs into
+  dialplan*. We do not: our call flow is interpreted in Stasis, so the
+  only thing left to project is a handful of static objects that change
+  rarely and have a stable shape. Removing the reload removes the
+  activation window entirely.
+- **ARI dynamic config.** Rejected on evidence:
+  `PUT /ari/asterisk/config/dynamic/res_pjsip/endpoint/...` returns
+  **`403 "Cannot create sorcery objects of type 'endpoint'"`** (tested
+  2026-09-07), because `res_pjsip`'s default sorcery backend is the
+  config file. Making it work means configuring a writable backend —
+  which is this decision underneath anyway — and objects created that way
+  still need our database to survive a restart. ARI's `/endpoints`
+  resource is read-only besides (`GET`, messaging, refer; no create).
+
+**Consequences:**
+- **Nothing about this is visible above the ACL.** The console calls our
+  API, our API writes our database. Which mechanism the ACL uses is
+  invisible to the console, the API, and any partner — PRD principle 4
+  and the §1.2 package rule both hold unchanged. `docs/API.md` §3a's
+  contract stands: the API models an `Extension`, never a `ps_endpoint`.
+- **The mapping question API.md raised is answered:** the ACL owns it.
+  Domain tables keep their own columns; `ps_*` is a read model for
+  Asterisk, written by the ACL, never read by the domain.
+- **Endpoint IDs must be globally unique, not the extension number.**
+  `ps_*` is a single flat namespace shared by every tenant, so extension
+  1000 in two tenants cannot both be `ps_endpoints.id = '1000'`. The
+  projected id is derived from the extension's UUID; the tenant-local
+  number the user sees stays tenant-local. LLD-03 fixes the exact form.
+- **`ps_*` cannot use tenant RLS.** Asterisk connects as its own database
+  role and cannot set a tenant context, so isolation on these tables is
+  by construction (globally unique ids) rather than by policy. That role
+  gets `SELECT` on `ps_*` only, and no access whatsoever to the domain
+  tables — least privilege is the control here, and it is a Phase A task,
+  not an afterthought.
+- **Driver risk, stated and cheap to reverse.** `res_config_pgsql` is
+  Asterisk *extended* support, not core; `res_config_odbc` is core. If
+  the native driver disappoints, switching to ODBC needs one Debian
+  package in `core/Dockerfile` and a DSN — no schema change, no code
+  change, no decision reopened. Phase A uses the native driver.
+- **Deferred to the multi-node work (D-08):** registration contacts
+  currently land in `astdb`, which is node-local. A cluster maps
+  `ps_contacts` to realtime as well so any node knows where a phone is
+  registered. Single-node Phase A does not need it; the cluster design
+  must not forget it.
+- HLD `03-domain-model.md` §5 gains the projection tables, and
+  `core/conf/` gains `sorcery.conf`, `extconfig.conf` and `res_pgsql.conf`,
+  when LLD-03 is written. **`sorcery.conf` must restate the config-file
+  wizard alongside the realtime one** — adding a realtime wizard alone
+  replaces the default and the file fixtures vanish (observed in the
+  spike).
+
+**Related Decisions:** D-08 (scale to a regional cluster), D-24
+(multi-tenant seams from the start), D-41 (one engine, behind the ACL),
+D-43 (API-first consumer test), D-46 (settle this in Phase A)
+**Traceability:** PRD principle 4, EPIC-03, EPIC-10; HLD
+`01-architecture.md` §1.2, `03-domain-model.md` §5; `docs/API.md` §3a;
+`docs/lld/README.md`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

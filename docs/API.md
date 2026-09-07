@@ -232,15 +232,17 @@ contract:
   resource carries its own applied//pending state, rather than a success
   that silently means "written to a table, not yet live."
 
-> **Open for LLD-03, and not decided anywhere yet.** *How* a configuration
-> row becomes live Asterisk state — PJSIP Realtime against
-> Asterisk-owned tables (`ps_endpoints`/`ps_auths`/`ps_aors`), generated
-> config plus a reload, or ARI-driven runtime provisioning — is
-> unrecorded in the HLD and TRD. It is not a detail: PJSIP Realtime
-> dictates Asterisk's own table shapes, which would sit alongside the
-> `extensions` and `carrier_trunks` tables HLD 03 §5 already designs with
-> different columns, and something must then own the mapping. LLD-03
-> decides it before writing schema, not after.
+> **Settled by D-47.** A configuration row becomes live Asterisk state
+> through **PJSIP Realtime**: the ACL projects the domain row into
+> ACL-owned `ps_*` tables that Asterisk reads directly, with no file
+> generation and no reload. The mapping is owned by the ACL —
+> `extensions` and `carrier_trunks` (HLD 03 §5) stay the source of truth
+> and keep their own columns; `ps_*` is a read model for the engine.
+> None of this reaches the API: a partner still configures an
+> `Extension`, and the two rules above are unaffected. Because there is
+> no reload, activation for these objects is in fact immediate — but the
+> contract deliberately does **not** promise that, since other
+> configuration may not be.
 
 ## 4. Compatibility
 
