@@ -116,5 +116,69 @@ When the AtsaPBX Go monolithic process restarts (e.g. following an upgrade or ho
 2. **AI Hard-Kill Test:** Sends `SIGKILL` to local AI Whisper/Ollama container during an active conversation; verifies primary WebRTC call audio continues with zero jitter spike and agent receives fallback notice within 5s (AC-04.3).
 3. **Capacity Rejection Signal Test:** Drives concurrent load to 100% capacity; asserts incoming SIP INVITE receives `503 Service Unavailable` with `Retry-After: 30` header and distinctly tagged telemetry record (BR-05).
 4. **Outbox Recovery Soak Test:** Simulates 1-hour database outage while Asterisk maintains active calls; verifies that when DB restores, all accrued usage seconds and outbox events are safely committed.
+5. **Backing-Service Kill Test:** Stops Postgres, NATS, Asterisk, and the app one at a time (then all at once); verifies each row of the §6 table — `/readyz` flips to 503 naming the failed check, compose restarts in dependency order, and no event is lost that the outbox had committed.
+
+## 6. Backing-Service Health, Liveness/Readiness & Dependency Map
+
+How the four dev-compose services depend on each other, what each
+failure costs, and which probe catches it. Compose implements this with
+per-service `healthcheck`s, `depends_on` conditions, and
+`restart: unless-stopped` (`deploy/docker-compose.yml`); the app
+implements it with liveness vs readiness split (`internal/server`).
+
+```text
+                        ┌────────────┐
+                        │  Postgres  │◄──────────────────┐
+                        │ 16 + RLS   │                   │ RLS reads/writes (app),
+                        └────────────┘                   │ outbox worker (BYPASSRLS)
+                             ▲                           │
+              CDR/CEL writes │                           │ domain writes + outbox
+              (Asterisk)     │                           │ rows, same transaction
+                             │                           │
+┌──────┐   ARI/AMI control ┌──────────┐   NATS publish ┌──────┐
+│ app  │◄────────────────►│ Asterisk │───────────────►│ NATS │
+│      │  reconnect loops │ 22.x LTS │  fire-and-     │ Jet- │
+└──────┘  on both sockets └──────────┘  forget        │Stream│
+                                                     └──────┘
+Durability lives in Postgres (volume `postgres-data`), not in NATS:
+NATS is intentionally ephemeral (no volume) — a NATS restart only
+delays delivery, it never loses events, because the outbox in Postgres
+is the durable store and the worker republishes from it (INV-06).
+```
+
+**Liveness vs readiness.** `/healthz` answers 200 whenever the process
+serves HTTP — it proves the process is alive, nothing more. `/readyz`
+aggregates one `Checker` per backing dependency (Postgres ping, NATS
+connection, ARI reachable, AMI logged in) and answers 200 only when all
+pass, with a per-check `ok`/`error` body that never leaks secrets
+(D-39). With zero checkers registered it answers 503 `unconfigured`
+rather than a misleading 200. Compose and any orchestrator must probe
+`/readyz` for traffic decisions; `/healthz` is for process liveness
+only. (The app container's own `healthcheck` stanza needs a binary
+probe flag since the image is distroless — it lands with the `main.go`
+wiring in change `telephony-core-originate-bridge-hangup` task 9.2, which
+also registers the four checkers.)
+
+**One service down.**
+
+| Down | Calls in progress | New calls | Events / usage | Caught by |
+|---|---|---|---|---|
+| Postgres | Continue on Asterisk bridges; usage ticks + outbox rows accrue and commit on restore (§5 item 4) | Rejected — no durable record can be created; never half-created (transaction atomicity) | Buffered, then published on recovery | `pg_isready` healthcheck; app `/readyz` postgres check; `atsapbx_outbox_queue_age_seconds` pages |
+| NATS | Fully unaffected (INV-06) | Fully unaffected | Wait in `outbox`; worker retries on recovery | NATS `/varz` healthcheck; outbox age metric |
+| Asterisk | End on that node (accepted limitation) | Fail — nothing to originate or answer on; app reconnect loops with backoff | Transitions stop; outbox holds what was committed | `asterisk -rx` healthcheck; app `/readyz` ARI/AMI checks |
+| App | Asterisk keeps running but new inbound calls reaching Stasis have no controller — no answer, no media until the app returns; alert immediately | Cannot be set up or controlled | Nothing new published; committed outbox rows wait | `/healthz` liveness + (from 9.2) `/readyz`; container restart policy |
+
+**All down / host reboot.** Compose restarts in dependency order
+(Postgres and NATS to healthy, then Asterisk, then app). The only
+durable dev state is the Postgres volume; NATS replays nothing (by
+design — see above); the outbox worker resumes publishing on boot.
+
+**Restart recovery note.** §4 above describes the target
+restart-reconciliation behavior (re-query ARI, re-derive correlation
+from channel vars, re-attach or clean up). It depends on channel
+re-adoption, which is tracked follow-up work (LLD-01 §9) — until that
+lands, a process crash ends in-flight calls per the accepted platform
+limitation, and §4 reads as the design to build toward, not the behavior
+to test today.
 
 

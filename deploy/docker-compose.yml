@@ -17,18 +17,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
     networks:
       - voip
 
   # NATS JetStream: durable domain-event bus for the transactional outbox
   # (event.call.* / event.participant.*). Consumed by the app from the
-  # telephony-core walking skeleton onwards.
+  # telephony-core walking skeleton onwards. Intentionally ephemeral
+  # (no volume): durability lives in the Postgres outbox, NATS is the
+  # transport — a NATS restart only delays delivery (INV-06), it never
+  # loses events.
   nats:
     image: nats:2.10-alpine
     command: ["-js", "-m", "8222"]
     ports:
       - "4222:4222/tcp"   # client connections
       - "8222:8222/tcp"   # monitoring (optional, local debugging)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8222/varz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
     networks:
       - voip
 
@@ -45,6 +56,20 @@ services:
     volumes:
       - asterisk-data:/var/lib/asterisk
       - asterisk-logs:/var/log/asterisk
+    # NOTE: asterisk-data persists /var/lib/asterisk across image rebuilds.
+    # After a major Asterisk version bump, delete it once
+    # (docker volume rm deploy_asterisk-data) — stale xmldoc/astdb files
+    # from the old version abort startup with "Stasis initialization
+    # failed". Dev-only data; safe to drop.
+    healthcheck:
+      # Runs as the container's asterisk user; -rx exits non-zero while
+      # Asterisk is still booting or wedged.
+      test: ["CMD-SHELL", "asterisk -rx 'core show version' > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,8 +87,22 @@ services:
       AMI_ADDR: asterisk:5038
     ports:
       - "8080:8080"
+    # No healthcheck stanza yet: the image is distroless (no shell/curl),
+    # so the probe must be a binary flag (e.g. atsap-api -check-ready
+    # hitting /readyz). That flag lands with the main.go wiring in change
+    # telephony-core-originate-bridge-hangup task 9.2; until then liveness
+    # is the process being up and readiness is unwired by design.
+    # Asterisk is deliberately service_started, not service_healthy: the
+    # app's ARI/AMI reconnect loops tolerate its absence, and starting the
+    # app regardless keeps /healthz debuggable while Asterisk boots.
+    restart: unless-stopped
     depends_on:
-      - asterisk
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      asterisk:
+        condition: service_started
     networks:
       - voip
 
