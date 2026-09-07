@@ -7,6 +7,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"atsap-api/internal/identity/domain"
 	"atsap-api/internal/identity/ports"
 )
 
@@ -14,6 +15,12 @@ import (
 const authorizationHeader = "Authorization"
 
 const bearerPrefix = "Bearer "
+
+// AuthenticateUserProcedure is the full procedure name of the one
+// IdentityService method a caller may invoke before holding a token. It
+// is the exemption wired via AuthInterceptor.ExemptProcedure, matched
+// verbatim.
+const AuthenticateUserProcedure = "/atsapbx.v1.IdentityService/AuthenticateUser"
 
 // tenantContextKey types the context value so no other package can
 // collide with it — or forge one, since the key type is unexported.
@@ -34,6 +41,16 @@ func withTenantContext(ctx context.Context, tc *ports.TenantContext) context.Con
 	return context.WithValue(ctx, tenantContextKey{}, tc)
 }
 
+// WithTenantContext attaches an already-authenticated identity to ctx.
+//
+// It does NOT validate anything — that is the interceptor's job, and this
+// helper exists so handlers and tests can carry a context the
+// interceptor produced into code paths that need one. Treat it as the
+// interceptor's output channel, never as a way to skip authentication.
+func WithTenantContext(ctx context.Context, tc *ports.TenantContext) context.Context {
+	return withTenantContext(ctx, tc)
+}
+
 // TenantMatcher reports the tenant a request body names, if it names one
 // at all. It exists so the interceptor can enforce the body-tenant vs
 // token-tenant rule without importing generated protobuf types — which
@@ -44,15 +61,22 @@ type TenantMatcher func(request any) (tenantID string, ok bool)
 // AuthInterceptor authenticates every RPC and rejects a request whose
 // body names a tenant other than the caller's own.
 //
-// NOTE: this is deliberately NOT installed in cmd/atsap-api by this
-// change. LLD-02 §9 sequences the enforcement cutover last, so providers
-// exist before consumers are forced to use them; wiring it here would
-// break the e2e suite and the UAT rig in the same commit that
-// introduces auth, making any failure ambiguous between "auth is broken"
-// and "callers have no tokens yet". The cutover change installs it.
+// In this change it is installed for IdentityService only: that service
+// carries mutating operations, so it is authenticated from the moment it
+// exists (identity-api design, "Auth is enforced on this service now").
+// TelephonyService stays mounted without it until auth-cutover-connectrpc,
+// whose risk is breaking callers that exist today (the e2e suite, the UAT
+// rig). Exactly one procedure — AuthenticateUser — is exempt, matched by
+// its full name via ExemptProcedure.
 type AuthInterceptor struct {
 	identity ports.IdentityService
 	matcher  TenantMatcher
+	// exemptProcedure, when set, names exactly one full procedure name
+	// (e.g. "/atsapbx.v1.IdentityService/AuthenticateUser") that passes
+	// without a token. Matched verbatim, never by prefix or pattern: an
+	// exemption that could widen is worse than none (identity-api design,
+	// AuthenticateUser "exempt by necessity").
+	exemptProcedure string
 }
 
 // NewAuthInterceptor returns an interceptor validating tokens through
@@ -61,9 +85,33 @@ func NewAuthInterceptor(identity ports.IdentityService, matcher TenantMatcher) *
 	return &AuthInterceptor{identity: identity, matcher: matcher}
 }
 
+// ExemptProcedure marks exactly one procedure as reachable without a
+// token. Subsequent calls replace, never accumulate — the field holds a
+// single exact name by design.
+func (i *AuthInterceptor) ExemptProcedure(procedure string) *AuthInterceptor {
+	i.exemptProcedure = procedure
+	return i
+}
+
+// Exempt returns the currently exempt procedure name ("" when none).
+func (i *AuthInterceptor) Exempt() string {
+	return i.exemptProcedure
+}
+
+// isExempt reports whether procedure is the one exempt method. Exact
+// string equality only: a prefix or pattern match could accidentally
+// exempt a sibling method, and an exemption that can widen is worse than
+// none.
+func (i *AuthInterceptor) isExempt(procedure string) bool {
+	return i.exemptProcedure != "" && i.exemptProcedure == procedure
+}
+
 // WrapUnary implements connect.Interceptor for unary RPCs.
 func (i *AuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		if i.isExempt(req.Spec().Procedure) {
+			return next(ctx, req)
+		}
 		tc, err := i.authenticate(ctx, req.Header().Get(authorizationHeader))
 		if err != nil {
 			return nil, err
@@ -88,6 +136,9 @@ func (i *AuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) 
 // responsibility for each message it reads.
 func (i *AuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		if i.isExempt(conn.Spec().Procedure) {
+			return next(ctx, conn)
+		}
 		tc, err := i.authenticate(ctx, conn.RequestHeader().Get(authorizationHeader))
 		if err != nil {
 			return err
@@ -132,6 +183,14 @@ func (i *AuthInterceptor) checkBodyTenant(tc *ports.TenantContext, request any) 
 		return nil
 	}
 	if bodyTenant != tc.TenantID.String() {
+		// A system-scoped caller acts on tenants other than their own —
+		// that is the definition of platform authority. domain.IsAuthorized
+		// treats system scope as reaching every tenant, so the interceptor
+		// must agree or a platform operator could create a tenant but never
+		// provision its first administrator (identity-api task 3.1a).
+		if tc.HasScope(domain.ScopeSystem) {
+			return nil
+		}
 		return connect.NewError(connect.CodeInvalidArgument,
 			errors.New("tenant_id does not match the authenticated tenant"))
 	}

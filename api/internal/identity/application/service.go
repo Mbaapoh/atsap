@@ -20,11 +20,27 @@ import (
 // pbx-core is what will give roles most of their actions. What is fixed
 // here is the *rule* — a role grants only what is listed, and anything
 // unlisted is denied.
+// IdentityActions are the actions the identity API authorizes, named so
+// they appear in DefaultPermissions verbatim (not only via wildcard) and
+// so a table-driven permission test can iterate the whole set. Each is
+// what the audit trail records for the mutation (service.go record
+// calls), keeping authorization and audit on one vocabulary.
+var IdentityActions = []string{
+	"tenant.create",
+	"tenant.status.set",
+	"principal.create",
+	"principal.status.set",
+	"principal.role.grant",
+	"apikey.issue",
+	"apikey.revoke",
+	"audit.read",
+}
+
 var DefaultPermissions = map[string][]string{
 	"AGENT":          {"call.read"},
 	"SUPERVISOR":     {"call.read", "call.terminate", "principal.read"},
-	"TENANT_ADMIN":   {domain.Wildcard},
-	"PLATFORM_ADMIN": {domain.Wildcard},
+	"TENANT_ADMIN":   append([]string{domain.Wildcard}, IdentityActions...),
+	"PLATFORM_ADMIN": append([]string{domain.Wildcard}, IdentityActions...),
 }
 
 // Service implements ports.IdentityService.
@@ -155,6 +171,26 @@ func (s *Service) SetPrincipalStatus(ctx context.Context, actor Actor, tenantID 
 		map[string]any{"status": string(before.Status)},
 		map[string]any{"status": string(status)})
 	return nil
+}
+
+// RevokeAPIKey makes a key unusable immediately and records the
+// revocation. The key's digest stays in place (history), but the record
+// is no longer usable for authentication.
+func (s *Service) RevokeAPIKey(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, keyID shareddomain.ApiKeyID) error {
+	now := s.now().UTC()
+	if err := s.apiKeys.RevokeApiKey(ctx, tenantID, keyID, now); err != nil {
+		return err
+	}
+	s.record(ctx, actor, tenantID, "apikey.revoke", "api_key", keyID.String(), nil,
+		map[string]any{"revoked_at": now.UTC().Format(time.RFC3339)})
+	return nil
+}
+
+// ListAudit returns the tenant's most recent audit records, newest
+// first. limit is applied by the store; a non-positive limit means the
+// store's default bound.
+func (s *Service) ListAudit(ctx context.Context, tenantID shareddomain.TenantID, limit int) ([]domain.AuditEntry, error) {
+	return s.audit.ListAudit(ctx, tenantID, limit)
 }
 
 // GrantRole binds a role to a principal.
@@ -323,26 +359,65 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*ports
 	return s.tenantContext(ctx, tenantID, principal)
 }
 
-// AuthorizeAction reports whether a principal may perform an action.
+// AuthorizeAction reports whether a principal may perform an action on
+// a resource owned by the tenant its principal belongs to. See
+// AuthorizeSystem for actions that reach beyond one tenant.
 func (s *Service) AuthorizeAction(ctx context.Context, principalID shareddomain.PrincipalID, action, resource string) error {
 	tenantID, err := shareddomain.ParseTenantID(resource)
 	if err != nil {
 		return fmt.Errorf("%w: resource must name the owning tenant: %v", ports.ErrPermissionDenied, err)
 	}
 
-	bindings, err := s.bindings.ListRoleBindings(ctx, tenantID, principalID)
+	return s.authorize(ctx, principalID, tenantID, action, tenantID.String())
+}
+
+// AuthorizeSystem reports whether a principal may perform action through
+// a platform (system-scope) binding, evaluated against the principal's
+// home tenant (where its bindings are stored). Tenant-scoped bindings —
+// however broad their role — never satisfy it.
+func (s *Service) AuthorizeSystem(ctx context.Context, principalID shareddomain.PrincipalID, homeTenant shareddomain.TenantID, action string) error {
+	return s.authorize(ctx, principalID, homeTenant, action, domain.ScopeSystem)
+}
+
+// authorize loads the principal's bindings and applies the rule: either
+// the ordinary tenant-scoped rule against resourceTenant, or — when
+// wantSystemScope is domain.ScopeSystem — the system-scope-only rule.
+func (s *Service) authorize(ctx context.Context, principalID shareddomain.PrincipalID, homeTenant shareddomain.TenantID, action, mode string) error {
+	bindings, err := s.bindings.ListRoleBindings(ctx, homeTenant, principalID)
 	if err != nil {
 		// Failing to load bindings denies rather than permits: an
 		// unavailable store must never widen access.
 		s.logger.Warn("identity: could not load role bindings, denying",
-			"tenant_id", tenantID.String(), "principal_id", principalID.String(), "error", err)
+			"tenant_id", homeTenant.String(), "principal_id", principalID.String(), "error", err)
 		return ports.ErrPermissionDenied
 	}
 
-	if !domain.IsAuthorized(bindings, action, tenantID, s.permissions) {
+	var ok bool
+	if mode == domain.ScopeSystem {
+		ok = domain.IsAuthorizedSystem(bindings, action, s.permissions)
+	} else {
+		resourceTenant, perr := shareddomain.ParseTenantID(mode)
+		if perr != nil {
+			return fmt.Errorf("%w: invalid resource tenant: %v", ports.ErrPermissionDenied, perr)
+		}
+		ok = domain.IsAuthorized(bindings, action, resourceTenant, s.permissions)
+	}
+	if !ok {
 		return ports.ErrPermissionDenied
 	}
 	return nil
+}
+
+// LoadTenant reads a tenant by id. Read-only: handlers use it to build
+// mutation responses from the authoritative store.
+func (s *Service) LoadTenant(ctx context.Context, id shareddomain.TenantID) (domain.Tenant, error) {
+	return s.tenants.GetTenant(ctx, id)
+}
+
+// LoadPrincipal reads a principal within its tenant. Read-only: handlers
+// use it to build mutation responses from the authoritative store.
+func (s *Service) LoadPrincipal(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID) (domain.Principal, error) {
+	return s.principals.GetPrincipal(ctx, tenantID, id)
 }
 
 // RecordAudit writes one audit record.
@@ -423,6 +498,10 @@ func (s *Service) tenantContext(ctx context.Context, tenantID shareddomain.Tenan
 	if err != nil {
 		return nil, err
 	}
+	scopes, err := s.scopesFor(ctx, tenantID, principal)
+	if err != nil {
+		return nil, err
+	}
 	tenant, err := s.tenants.GetTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -431,8 +510,29 @@ func (s *Service) tenantContext(ctx context.Context, tenantID shareddomain.Tenan
 		TenantID:      tenantID,
 		PrincipalID:   principal.ID,
 		Roles:         roles,
+		Scopes:        scopes,
 		ResidencyZone: tenant.ResidencyZone,
 	}, nil
+}
+
+// scopesFor returns the distinct binding scopes a principal holds within
+// a tenant. A principal with no bindings has no scopes: any scope it
+// needs must be granted, it is never assumed.
+func (s *Service) scopesFor(ctx context.Context, tenantID shareddomain.TenantID, principal domain.Principal) ([]string, error) {
+	bindings, err := s.bindings.ListRoleBindings(ctx, tenantID, principal.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load role bindings: %w", err)
+	}
+	seen := map[string]struct{}{}
+	var scopes []string
+	for _, b := range bindings {
+		if _, ok := seen[b.Scope]; ok {
+			continue
+		}
+		seen[b.Scope] = struct{}{}
+		scopes = append(scopes, b.Scope)
+	}
+	return scopes, nil
 }
 
 // warnAuthFailure logs a failed authentication attempt.

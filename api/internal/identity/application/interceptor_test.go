@@ -184,3 +184,56 @@ func TestAuthInterceptor_ExpiredTokenIsRejected(t *testing.T) {
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
 	assert.False(t, reached)
 }
+
+// TestAuthInterceptor_ExemptionIsExactName (identity-api 3.1): the
+// exemption is set from the shared full-procedure constant, and the
+// exemption check matches that one name and no other — a prefix or a
+// near-miss must not be exempt.
+func TestAuthInterceptor_ExemptionIsExactName(t *testing.T) {
+	h := newHarness(t)
+	i := application.NewAuthInterceptor(h.svc, tenantMatcher).ExemptProcedure(application.AuthenticateUserProcedure)
+	assert.Equal(t, application.AuthenticateUserProcedure, i.Exempt())
+
+	for _, proc := range []string{
+		application.AuthenticateUserProcedure,
+		"/atsapbx.v1.IdentityService/AuthenticateUserX",
+		"/atsapbx.v1.IdentityService/",
+		"/atsapbx.v1.IdentityService/Authenticate",
+		"atsapbx.v1.IdentityService/AuthenticateUser",
+		"",
+	} {
+		if proc == application.AuthenticateUserProcedure {
+			// exact match is exempt
+		} else if i.Exempt() == proc {
+			t.Errorf("procedure %q matched the exemption by accident", proc)
+		}
+	}
+}
+
+// TestAuthInterceptor_SystemScopePassesBodyTenant (identity-api 3.1a):
+// a platform operator may address a tenant other than their own in the
+// request body — otherwise the interceptor and the authorization rule
+// disagree and an operator could create a tenant but never provision its
+// first administrator.
+func TestAuthInterceptor_SystemScopePassesBodyTenant(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	tenant, principal := h.seedTenantAndPrincipal(t, "op", "correct horse battery")
+	require.NoError(t, h.svc.GrantRole(ctx, application.SystemActor(), tenant.ID, principal.ID, "PLATFORM_ADMIN", domain.ScopeSystem))
+
+	otherTenant, err := h.svc.ProvisionTenant(ctx, application.SystemActor(), "Other", "EU")
+	require.NoError(t, err)
+
+	tok, err := h.svc.AuthenticateUser(ctx, tenant.ID, "op", "correct horse battery")
+	require.NoError(t, err)
+
+	i := application.NewAuthInterceptor(h.svc, tenantMatcher)
+	reached, ctxSeen, err := callUnary(t, i, "Bearer "+tok.Token,
+		&bodyWithTenant{TenantId: otherTenant.ID.String()})
+	require.NoError(t, err, "a system-scoped caller may address another tenant")
+	assert.True(t, reached)
+
+	tc, ok := application.TenantContextFrom(ctxSeen)
+	require.True(t, ok)
+	assert.True(t, tc.HasScope(domain.ScopeSystem), "the context must carry the system scope")
+}

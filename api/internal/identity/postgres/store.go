@@ -49,6 +49,18 @@ func NewStore(pool *corepostgres.Pool) *Store {
 // policy, so these three methods use the pool directly rather than
 // WithTenant. Every other method in this file is tenant-scoped.
 
+// HasTenants reports whether any tenant exists. Used by the bootstrap
+// command to refuse a second run: provisioning must never begin twice,
+// or a second administrator could be minted outside the intended path.
+// Tenants are not RLS-scoped, so this is a direct pool query.
+func (s *Store) HasTenants(ctx context.Context) (bool, error) {
+	var exists bool
+	if err := s.pool.Unwrap().QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tenants)`).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check for existing tenants: %w", err)
+	}
+	return exists, nil
+}
+
 // CreateTenant inserts a tenant.
 func (s *Store) CreateTenant(ctx context.Context, tenant domain.Tenant) error {
 	_, err := s.pool.Unwrap().Exec(ctx, `

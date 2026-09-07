@@ -57,6 +57,24 @@ type TenantContext struct {
 	PrincipalID   shareddomain.PrincipalID
 	Roles         []string
 	ResidencyZone string
+	// Scopes are the distinct binding scopes the principal holds
+	// (domain.ScopeTenant, domain.ScopeSystem, or narrower). They are
+	// re-derived from the database on every ValidateToken, so they are
+	// never stale for longer than the request that loaded them. The
+	// interceptor consults them to tell a platform operator from a
+	// tenant's own administrator; handlers consult them (and the fresh
+	// binding check in AuthorizeAction) before every mutation.
+	Scopes []string
+}
+
+// HasScope reports whether the context carries scope s.
+func (c *TenantContext) HasScope(s string) bool {
+	for _, scope := range c.Scopes {
+		if scope == s {
+			return true
+		}
+	}
+	return false
 }
 
 // IdentityService is the identity context's inbound port — exactly the

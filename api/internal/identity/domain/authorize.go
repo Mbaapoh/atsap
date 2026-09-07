@@ -43,6 +43,24 @@ func IsAuthorized(bindings []RoleBinding, action string, resourceTenant shareddo
 	return false
 }
 
+// IsAuthorizedSystem reports whether bindings permit action through a
+// platform (system-scope) binding. A tenant-scoped binding never
+// qualifies, no matter how broad its role: creating a tenant is
+// installation authority, and a customer's own administrator must not
+// hold it (LLD-02 §10.1; identity-api spec "Creating a tenant requires
+// authority over the installation").
+func IsAuthorizedSystem(bindings []RoleBinding, action string, permissions map[string][]string) bool {
+	for _, b := range bindings {
+		if b.Scope != ScopeSystem {
+			continue
+		}
+		if roleGrants(permissions, b.Role, action) {
+			return true
+		}
+	}
+	return false
+}
+
 // bindingCoversTenant reports whether a binding reaches the tenant that
 // owns the resource. A tenant-scoped binding reaches only its own
 // tenant — a tenant administrator is still confined to their tenant,
