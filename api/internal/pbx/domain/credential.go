@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
+
+	"github.com/google/uuid"
+
+	shareddomain "atsap-api/internal/shared/domain"
 )
 
 // Credential sizing. 20 random bytes is 160 bits of entropy, encoded as
@@ -17,10 +20,7 @@ import (
 // pasted into provisioning files, so it avoids characters that are
 // case-sensitive-ambiguous or need escaping. It costs a little length
 // and buys far fewer support calls.
-const (
-	secretEntropyBytes   = 20
-	usernameEntropyBytes = 10
-)
+const secretEntropyBytes = 20
 
 // ErrRealmRequired is returned when a credential is generated without a
 // realm. It is not defaultable: the HA1 is computed over the realm, so a
@@ -29,20 +29,29 @@ var ErrRealmRequired = errors.New("sip realm is required to compute a credential
 
 var credentialEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// NewAuthUsername generates the username a device presents to
-// authenticate.
+// EndpointIdentifier is the single identifier an extension has in the
+// media engine. It is simultaneously the engine's object id, the SIP
+// username the device presents, and the username the digest is computed
+// over.
 //
-// Deliberately unrelated to the extension number. If the username were
-// the number, then learning that a tenant runs extensions 1000-1050 —
-// which any internal directory reveals — would tell an attacker exactly
-// what to present, leaving only the secret between them and a registered
-// endpoint (LLD-03 §10.3).
-func NewAuthUsername(rand io.Reader) (string, error) {
-	b := make([]byte, usernameEntropyBytes)
-	if _, err := io.ReadFull(rand, b); err != nil {
-		return "", fmt.Errorf("read random bytes for auth username: %w", err)
-	}
-	return "u" + strings.ToLower(credentialEncoding.EncodeToString(b)), nil
+// It is ONE value rather than two because Asterisk identifies an inbound
+// REGISTER by matching the From user against the endpoint id, not
+// against the auth username. Tested on Asterisk 22.8.2: registering with
+// From set to the auth username returns 401; From set to the endpoint id
+// returns 200 OK. A separately generated username would therefore never
+// be what the device presents, and would additionally force a database
+// lookup on deprovisioning, where only the ExtensionID is in hand.
+//
+// Derived, never stored, so it cannot drift from the extension it names.
+// Deliberately NOT the extension number: `ps_*` is one flat namespace
+// shared by every tenant, so two tenants' extension 1000 would collide
+// and one tenant's phone could register against the other's endpoint.
+// It also means that learning a tenant runs extensions 1000-1050 — which
+// any internal directory reveals — tells an attacker nothing about what
+// to present (LLD-03 §10.3).
+func EndpointIdentifier(id shareddomain.ExtensionID) string {
+	raw := uuid.UUID(id)
+	return "e_" + hex.EncodeToString(raw[:])
 }
 
 // NewExtensionCredential generates a secret and returns it alongside the

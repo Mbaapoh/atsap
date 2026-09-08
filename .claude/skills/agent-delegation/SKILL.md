@@ -81,8 +81,16 @@ carried but never authorized. In each case OpenCode reported success.
 1. **Write the prompt against the spec, not against your memory.** Point
    at the change folder, the LLD section, and the exact task numbers. A
    prompt that paraphrases the requirement invites drift from it.
-2. **State the verification in the prompt.** "Done" means the named
-   command exits zero, not that the agent believes it works.
+2. **State the verification in the prompt** — but know who can run it.
+   OpenCode sandboxes paths outside the project, and `mise`-managed
+   toolchains live in `$HOME`, so `mise exec -- go ...` is silently
+   rejected (`permission requested: external_directory ...;
+   auto-rejecting`) and the run **still exits 0**. Give absolute binary
+   paths instead — `/home/<user>/.local/share/mise/installs/go/<ver>/bin/go`
+   is permitted and tested. Where the agent cannot verify, say so in the
+   brief and have it report what it wrote rather than claiming a pass.
+   **`opencode run`'s exit code is not an acceptance signal**: it returns
+   0 after a rejected permission with nothing run. Read the output.
 3. **Name what must not change.** Boundary rules are invisible to a model
    that has not read the HLD: say "do not edit anything under
    `internal/telephony/`", do not assume it.

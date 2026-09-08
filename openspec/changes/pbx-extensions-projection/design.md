@@ -75,6 +75,39 @@ flat namespace shared by every tenant, so two tenants' extension 1000 would
 collide and one tenant's phone could register against the other's endpoint.
 This is the single most important correctness constraint in the change.
 
+**Amended during apply — one identifier, not two.** D2 originally paired an
+`e_<uuid>` endpoint id with a separately generated random auth username.
+Testing showed that cannot work: Asterisk identifies an inbound REGISTER by
+matching the **From user against the endpoint id**, not against the auth
+username. Proven both ways on Asterisk 22.8.2:
+
+| Device `From:` | Digest username | Result |
+|---|---|---|
+| `utest` (the auth username) | `utest` | **401** |
+| `e_test` (the endpoint id) | `utest` | **200 OK** |
+
+So the device must present the endpoint id regardless. Two identifiers buy
+nothing and cost a lookup — `RemoveExtension` takes only an `ExtensionID` and
+could not derive a randomly generated username without reading the row back.
+
+The identifier is therefore **one derived value**, used as `ps_endpoints.id`,
+`ps_auths.id`, `ps_aors.id`, `ps_auths.username`, and the SIP username the
+device presents:
+
+```
+endpointID = "e_" + hex(extensions.id)
+```
+
+D2's actual requirements are untouched: never the extension number, globally
+unique, derived rather than stored. What changes is its visibility. This value
+is **provisioning material**, returned to the caller as the extension's
+`auth_username` the way the secret is returned — because a device cannot be
+configured without it. It is never a *resource* identifier: no API path, no
+error message, and no console field treats it as the extension's identity.
+PRD principle 4 still holds — the user configures "extension 1005" and the
+platform hands them a credential, which is not the same as leaking an engine
+identifier into the interface.
+
 ### D3: Credentials are stored as the MD5 HA1, not plaintext and not Argon2id
 
 SIP digest authentication requires the server to hold the plaintext or
@@ -126,6 +159,76 @@ role that can create roles can create one more privileged than itself.
 The role is created `NOBYPASSRLS` on purpose. It must never see a domain
 table, so it has no reason to bypass a policy; its isolation from tenant data
 is the *absence of any grant*, not a policy exemption.
+
+**Amended during apply — the engine writes one of the four tables.** "We
+write, the engine reads" is true of `ps_endpoints`, `ps_auths` and `ps_aors`.
+It is **false** of `ps_contacts`: Asterisk creates a contact row itself on
+every registration. Observed:
+
+```
+INSERT INTO ps_contacts (id, via_addr, qualify_timeout, qualify_2xx_only,
+  call_id, reg_server, prune_on_boot, path, endpoint, via_port,
+  authenticate_qualify, uri, qualify_frequency, user_agent, expiration_time,
+  outbound_proxy) VALUES (...)
+ERROR: column "via_addr" of relation "ps_contacts" does not exist
+Unable to bind contact 'sip:e_test@...' to AOR 'e_test'
+```
+
+`asterisk_engine` therefore gets `SELECT, INSERT, UPDATE, DELETE` on
+`ps_contacts` **and on nothing else beyond the three read tables**. The grant
+is still the control; it is simply not uniform across the four tables, and
+pretending otherwise would have produced a schema that silently breaks
+registration.
+
+### D8: `ps_contacts` is mapped now, not deferred to multi-node
+
+D-47 deferred `ps_contacts` on the grounds that contacts live in node-local
+`astdb` and only a cluster needs them shared. That reasoning was incomplete.
+
+Two things force it into this change:
+
+1. **The spec requires observed registration state** ("state reflects a real
+   registration"). With contacts in `astdb` there is nothing for
+   `RegistrationStatus` to read — `astdb` is Asterisk's internal store, not
+   queryable from Go.
+2. **A partially-specified `ps_contacts` corrupts registration silently.** The
+   device receives `200 OK` while the contact fails to bind, so it believes it
+   is registered and cannot be called. A test asserting "REGISTER returns 200"
+   passes. This is strictly worse than not mapping the table at all.
+
+So the table is mapped with Asterisk's **full column set**, not the subset we
+write. The same lesson applies to the read tables: Asterisk queries columns we
+never populate — `SELECT * FROM ps_endpoints WHERE mailboxes != ''` runs at
+every boot and errors without it. **The schema must cover what the engine
+queries, not what we write.**
+
+Mapping it now also delivers the multi-node visibility D-08 wanted, earlier
+and for free.
+
+### D9: `Delete` fails closed on a row it did not delete
+
+`ExtensionStore.Delete` returns `ErrNotFound` when zero rows were affected,
+rather than treating a no-op as success.
+
+This is a security requirement, not tidiness. `ps_*` has no RLS, so the
+projector's `RemoveExtension` is unguarded by the database. If `Delete`
+reported success after RLS silently blocked it, the application would proceed
+to deprovision the projection anyway:
+
+```
+tenant B → DeleteExtension(tenant A's id)
+  store.Delete → RLS blocks, 0 rows, "success"
+  projector.RemoveExtension → no RLS, deletes tenant A's ps_* rows
+  → tenant A's phone stops working; the console still shows the extension
+```
+
+Failing closed at the store means the application never reaches the
+projection. INV-10 is unaffected: `ErrNotFound` is the identical answer a
+genuinely nonexistent id receives, so nothing is revealed.
+
+**The general rule this change adopts:** every projector call is gated by a
+domain operation that RLS actually authorized. The projection has no tenancy
+of its own, so it must never act on the strength of a request alone.
 
 Isolation for `ps_*` is therefore *by construction* (D2's globally unique
 identifiers) and the grant is the enforcement. Because that inverts the usual

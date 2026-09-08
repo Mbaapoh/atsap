@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"atsap-api/internal/pbx/domain"
+	shareddomain "atsap-api/internal/shared/domain"
 )
 
 // TestHA1_MatchesTheSchemeAsterisTests holds the concatenation order and
@@ -78,24 +79,38 @@ func TestNewExtensionCredential_RequiresARealm(t *testing.T) {
 		"an empty realm produces a digest that can never authenticate, so it must fail loudly at generation")
 }
 
-// TestNewAuthUsername_IsNotDerivedFromTheNumber covers task 2.4. The
-// property is negative — the username must not be predictable from the
-// extension number — so it is asserted over many generations rather than
-// one.
-func TestNewAuthUsername_IsNotDerivedFromTheNumber(t *testing.T) {
+// TestEndpointIdentifier_IsNotDerivedFromTheNumber covers task 2.4. The
+// property is negative — the identifier a device presents must not be
+// predictable from the extension number — so it is asserted over many
+// extensions rather than one.
+func TestEndpointIdentifier_IsNotDerivedFromTheNumber(t *testing.T) {
 	const number = "1000"
 
 	seen := make(map[string]struct{}, 128)
 	for range 128 {
-		username, err := domain.NewAuthUsername(rand.Reader)
-		require.NoError(t, err)
+		id := shareddomain.NewExtensionID()
+		identifier := domain.EndpointIdentifier(id)
 
-		assert.NotEqual(t, number, username, "the username must never be the extension number")
-		assert.NotContains(t, username, number,
-			"the username must not contain the extension number: knowing the numbering plan must not reveal it")
+		assert.NotEqual(t, number, identifier, "the identifier must never be the extension number")
+		assert.NotContains(t, identifier, number,
+			"the identifier must not contain the extension number: knowing the numbering plan must not reveal it")
 
-		_, dup := seen[username]
-		require.False(t, dup, "generated usernames must not repeat")
-		seen[username] = struct{}{}
+		_, dup := seen[identifier]
+		require.False(t, dup, "identifiers must be unique across extensions — ps_* is one namespace for every tenant")
+		seen[identifier] = struct{}{}
 	}
+}
+
+// The identifier is derived, not stored, so it must be a pure function of
+// the extension id — otherwise deprovisioning, which holds only the id,
+// could not name the rows it has to remove.
+func TestEndpointIdentifier_IsDerivedAndStable(t *testing.T) {
+	id := shareddomain.NewExtensionID()
+
+	assert.Equal(t, domain.EndpointIdentifier(id), domain.EndpointIdentifier(id),
+		"the same extension id must always yield the same identifier")
+	assert.NotEqual(t, domain.EndpointIdentifier(id), domain.EndpointIdentifier(shareddomain.NewExtensionID()),
+		"different extensions must yield different identifiers")
+	assert.True(t, strings.HasPrefix(domain.EndpointIdentifier(id), "e_"),
+		"the prefix distinguishes extension endpoints from the trunk endpoints a later change adds")
 }

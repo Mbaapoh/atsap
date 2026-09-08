@@ -15,10 +15,10 @@
 
 ## 3. Ports and store
 
-- [ ] 3.1 Define `pbx/ports`: `ConfigService`, `ExtensionStore`, `EndpointProjector` (every method taking `pgx.Tx`), and the view/result types; verify the package compiles with no import of any adapter (`go build ./...`)
-- [ ] 3.2 Implement `pbx/postgres.ExtensionStore` with parameterized queries only, operating within a caller-supplied transaction; verify an integration test creates, reads, updates and deletes an extension under a tenant context
-- [ ] 3.3 Add the unique constraint behaviour for `(tenant_id, extension_number)`; verify an integration test proves a duplicate within one tenant is rejected and the same number in a second tenant succeeds
-- [ ] 3.4 Extend the RLS isolation test to `extensions`; verify a row written under tenant A is invisible under tenant B's context
+- [x] 3.1 Define `pbx/ports`: `ConfigService`, `ExtensionStore`, `EndpointProjector` (every method taking `pgx.Tx`), and the view/result types; verify the package compiles with no import of any adapter (`go build ./...`)
+- [x] 3.2 Implement `pbx/postgres.ExtensionStore` with parameterized queries only, operating within a caller-supplied transaction; verify an integration test creates, reads, updates and deletes an extension under a tenant context
+- [x] 3.3 Add the unique constraint behaviour for `(tenant_id, extension_number)`; verify an integration test proves a duplicate within one tenant is rejected and the same number in a second tenant succeeds
+- [x] 3.4 Extend the RLS isolation test to `extensions`; verify a row written under tenant A is invisible under tenant B's context
 
 ## 4. The Asterisk ACL projector
 

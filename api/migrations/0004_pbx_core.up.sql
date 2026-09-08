@@ -61,6 +61,10 @@ CREATE POLICY tenant_isolation_extensions ON extensions
 -- needs them, never speculatively.
 -- ---------------------------------------------------------------------
 
+-- `mailboxes` is not written by us. Asterisk queries it at every boot
+-- (SELECT * FROM ps_endpoints WHERE mailboxes != '' ORDER BY mailboxes,
+-- for MWI) and errors without it. The schema must cover what the engine
+-- QUERIES, not only what we populate.
 CREATE TABLE IF NOT EXISTS ps_endpoints (
     id VARCHAR(255) PRIMARY KEY,
     transport VARCHAR(40),
@@ -69,7 +73,8 @@ CREATE TABLE IF NOT EXISTS ps_endpoints (
     context VARCHAR(40),
     disallow VARCHAR(200),
     allow VARCHAR(200),
-    direct_media VARCHAR(5)
+    direct_media VARCHAR(5),
+    mailboxes VARCHAR(80)
 );
 
 CREATE TABLE IF NOT EXISTS ps_auths (
@@ -90,6 +95,42 @@ CREATE TABLE IF NOT EXISTS ps_aors (
     qualify_frequency INTEGER
 );
 
+-- ps_contacts is the ONE table Asterisk WRITES. A device registration
+-- creates a contact row; we never insert one. Two consequences, both
+-- learned by testing rather than reading:
+--
+--   1. The column set must be COMPLETE, not the subset we care about.
+--      Asterisk's INSERT names all sixteen columns, and a missing one
+--      fails the write while the REGISTER still returns 200 OK — so the
+--      device believes it is registered, no contact binds, and nothing
+--      can call it. Silent, and it would ship.
+--   2. asterisk_engine needs INSERT/UPDATE/DELETE here, unlike the three
+--      read-only tables above.
+--
+-- Mapping it also makes registration status a plain database read, which
+-- is what the console badge needs, and delivers the multi-node contact
+-- visibility D-08 wanted, earlier and for free.
+CREATE TABLE IF NOT EXISTS ps_contacts (
+    id VARCHAR(255) PRIMARY KEY,
+    uri VARCHAR(511),
+    expiration_time BIGINT,
+    qualify_frequency INTEGER,
+    outbound_proxy VARCHAR(40),
+    path TEXT,
+    user_agent VARCHAR(255),
+    endpoint VARCHAR(255),
+    reg_server VARCHAR(255),
+    authenticate_qualify VARCHAR(5),
+    via_addr VARCHAR(40),
+    via_port INTEGER,
+    call_id VARCHAR(255),
+    prune_on_boot VARCHAR(5),
+    qualify_timeout NUMERIC(10,3),
+    qualify_2xx_only VARCHAR(5)
+);
+
+CREATE INDEX IF NOT EXISTS ps_contacts_endpoint_idx ON ps_contacts (endpoint);
+
 -- ---------------------------------------------------------------------
 -- The engine's database identity.
 --
@@ -103,10 +144,16 @@ CREATE TABLE IF NOT EXISTS ps_aors (
 
 GRANT USAGE ON SCHEMA public TO asterisk_engine;
 
--- Exactly three tables, SELECT only, and nothing else ever. This grant
--- is the isolation control that replaces RLS for the projection, so it
--- is asserted directly by a test that connects as this role and proves
--- reads of extensions, principals and calls all fail.
+-- Four tables and nothing else, ever. This grant is the isolation control
+-- that replaces RLS for the projection, so it is asserted directly by a
+-- test that connects as this role and proves reads of extensions,
+-- principals and calls all fail.
+--
+-- The asymmetry is deliberate: three tables are ours to write and the
+-- engine only reads them, while ps_contacts is the engine's own — it
+-- creates a row per registration — so it needs write access there and
+-- nowhere else.
 GRANT SELECT ON ps_endpoints TO asterisk_engine;
 GRANT SELECT ON ps_auths TO asterisk_engine;
 GRANT SELECT ON ps_aors TO asterisk_engine;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ps_contacts TO asterisk_engine;

@@ -94,7 +94,7 @@ func TestPbxSchema_ProjectionTablesHaveNoTenancy(t *testing.T) {
 
 	ctx := context.Background()
 
-	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors"} {
+	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors", "ps_contacts"} {
 		t.Run(table, func(t *testing.T) {
 			var exists bool
 			require.NoError(t, pool.Unwrap().QueryRow(ctx,
@@ -134,10 +134,34 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 	require.NoError(t, err, "the asterisk_engine role must exist and be able to connect (deploy/postgres/init/02-atsapbx.sql)")
 	defer func() { _ = conn.Close(ctx) }()
 
-	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors"} {
+	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors", "ps_contacts"} {
 		var n int
 		err := conn.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n)
 		assert.NoError(t, err, "the engine must be able to read %s — it is what the engine is for", table)
+	}
+
+	// ps_contacts is the one table the engine WRITES: a registration
+	// creates a contact row, and we never insert one. A missing write
+	// grant here does not fail loudly — the REGISTER still returns 200 OK
+	// while the contact fails to bind, so the device believes it is
+	// registered and cannot be called (design D8). Asserted directly for
+	// that reason.
+	_, err = conn.Exec(ctx,
+		`INSERT INTO ps_contacts (id, endpoint, uri, expiration_time) VALUES ($1, $2, $3, $4)`,
+		"grant-probe", "e_probe", "sip:probe@127.0.0.1:5060", 0)
+	require.NoError(t, err, "the engine must be able to INSERT into ps_contacts, or registration silently fails to bind")
+
+	_, err = conn.Exec(ctx, `DELETE FROM ps_contacts WHERE id = $1`, "grant-probe")
+	require.NoError(t, err, "the engine must be able to DELETE from ps_contacts — expired contacts are its own to remove")
+
+	// The write grant stops at ps_contacts. The three tables we own stay
+	// read-only to the engine.
+	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors"} {
+		_, err := conn.Exec(ctx, `DELETE FROM `+table+` WHERE id = 'never-matches'`)
+		var pgErr *pgconn.PgError
+		require.ErrorAs(t, err, &pgErr, "expected a Postgres error writing %s", table)
+		assert.Equal(t, "42501", pgErr.Code,
+			"the engine must NOT be able to write %s — we own those rows", table)
 	}
 
 	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs"} {
