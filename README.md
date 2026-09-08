@@ -27,6 +27,10 @@ api/                          Go control-plane, image: atsap-api
       domain/ ports/ application/ postgres/
                               tenants, principals, Argon2id credentials,
                               Ed25519 tokens, RBAC, append-only audit log
+    pbx/                      bounded context: pbx-core (Tier 1, in progress)
+      domain/                 extensions, validation, SIP credentials
+      acl/asterisk/           PJSIP Realtime projection (D-47) — the only
+                              package that names ps_endpoints/auths/aors
     postgres/                 pgxpool wiring, RLS tenant-context helper (with telephony-core)
     nats/                     JetStream publisher (with telephony-core)
     config/                   env-based configuration
@@ -36,8 +40,14 @@ deploy/
   docker-compose.prod.yml      single-VPS production stack (pulls built images)
   postgres/init/               CDR/CEL + atsapbx database provisioning
 scripts/check-docs.sh          doc wiring checks (HLD markers, decision refs, links)
+scripts/check-diagrams.sh      renders every mermaid block in docs/ (mise run diagrams)
 Jenkinsfile                  CI: lint, test, vuln-scan, docs, build+scan+push, deploy
 ```
+
+**How work moves through this repo — and how to resume an in-flight
+change — is [`docs/WORKFLOW.md`](docs/WORKFLOW.md).** Start there after a
+break: it names the document chain, the propose → apply → archive loop,
+the gates, and which agent does which work.
 
 `portal/` (the React + TypeScript web dashboard, D-36) doesn't exist yet. Two
 bounded contexts are implemented so far, in the build order fixed by
