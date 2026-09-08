@@ -93,10 +93,21 @@ at minimum; the full stack for `e2e`), then:
 | Suite | Command | Services needed | Env overrides (defaults shown) |
 |---|---|---|---|
 | unit | `cd api && go test ./... -race -cover` | none (hermetic by rule §1) | — |
-| integration | `cd api && go test -tags integration -p 1 ./... -race` | Postgres, NATS | `DATABASE_URL` (`postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable`), `NATS_URL` (`nats://127.0.0.1:4222`) |
+| integration | `cd api && go test -tags integration -p 1 ./... -race` | Postgres, NATS (the **app container competes**, see below) | `DATABASE_URL` (`postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable`), `NATS_URL` (`nats://127.0.0.1:4222`) |
 | e2e (telephony-core) | `cd api && go test -tags e2e ./internal/telephony/e2e/ -count=1` | full dev stack (Asterisk + Postgres + NATS + app) | above plus ARI `http://127.0.0.1:8088/ari`, SIP `127.0.0.1:5060/udp`, app API `http://127.0.0.1:8080` |
 | e2e (pbx-core projection) | `cd api && go test -tags e2e ./internal/pbx/e2e/ -count=1` | full dev stack; the **app container must carry `PbxService`** — rebuild it (`docker compose -f deploy/docker-compose.yml build app && ... up -d app`) after any change to the API, or every call 404s | as above; SIP UAs run in-process (REGISTER only, so ephemeral ports are fine and no firewall change is needed) |
 | automated UAT | `mise run uat:auto` | full dev stack + host baresip phones (script manages them) | — (script owns setup/teardown; see `docs/uat/walking-skeleton.md`) |
+
+> **The integration tier shares its database with the running app.**
+> `deploy-app-1` runs its own outbox worker against the same `outbox`
+> table and continuously claims unpublished rows — measured: 20 rows
+> inserted, 20 unpublished at t+0, **0 unpublished at t+3**, with nothing
+> else polling. It also has the schema reset underneath it by
+> `resetSchema`. So an integration test must assert only what it owns: no
+> test may assume it is the sole consumer of the outbox, and a failure
+> that appears only with the stack up is a rig condition before it is a
+> product one. Stop the app container if a test genuinely needs exclusive
+> access — and say in the test why.
 
 `DATABASE_URL`/`NATS_URL` defaults target the compose-published host
 ports, so a default dev stack works with zero extra flags. If a suite
