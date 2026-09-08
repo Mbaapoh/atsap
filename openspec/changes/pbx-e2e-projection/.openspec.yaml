@@ -1,0 +1,5 @@
+schema: spec-driven
+# Test-only change: the scenarios under test already exist in
+# openspec/specs/pbx-core/endpoint-projection/spec.md, so there is no
+# spec-level behaviour change and therefore no delta to write.
+skip_specs: true
