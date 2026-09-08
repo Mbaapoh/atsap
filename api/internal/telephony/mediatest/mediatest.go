@@ -93,9 +93,9 @@ func Run(t *testing.T, gw ports.MediaGateway, obs WireObserver) {
 		// in the adapter's own tests.
 	})
 
-	t.Run("snoop/unimplemented-until-lld-05", func(t *testing.T) {
+	t.Run("snoop/unimplemented-until-lld-10", func(t *testing.T) {
 		_, err := gw.StartSnoop(ctx, "chan-1", ports.SnoopRequest{Direction: "in"})
-		require.Error(t, err, "StartSnoop is declared but unimplemented in this change; LLD-05 inverts this scenario when ai-pipeline lands")
+		require.Error(t, err, "StartSnoop is declared but unimplemented in this change; LLD-10 inverts this scenario when ai-pipeline lands")
 	})
 }
 

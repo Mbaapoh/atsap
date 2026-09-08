@@ -29,7 +29,7 @@ const (
 	CallPresenting CallState = "Presenting"
 	CallActive     CallState = "Active"
 	// CallDegraded exists as a value so later work (RTCP-XR sampling,
-	// LLD-04/07) does not need a schema or type change to introduce it.
+	// LLD-09) does not need a schema or type change to introduce it.
 	// Nothing in this package transitions a Call into it yet.
 	CallDegraded    CallState = "Degraded"
 	CallTerminating CallState = "Terminating"

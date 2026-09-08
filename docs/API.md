@@ -157,17 +157,26 @@ the call write across two services is awkward; it is recorded as a known
 cost, and consolidation is a Phase B decision taken when the agent UI
 shows which grouping a real client wants.
 
-### LLD-04 — compliance & reporting
+### LLD-04 — compliance
+
+DNC, calling-hours and spend verdicts. Port-only unless a partner-facing
+consumer is named: a client asking "may I dial this number" separately
+from dialling it is the same oracle problem as `ValidateCapacity` above.
+
+### LLD-09 — reporting
 
 `ExportTenantBilling` and usage/CDR queries: US-05.4 is explicitly "pull
 usage records granular enough to rate and invoice my own customers",
 which is a partner-facing API by definition, not a report screen.
 
-### LLD-05 — webhook-delivery & ai-pipeline
+### LLD-05 — webhook-delivery
 
-Webhook subscription management (US-05.2) and the live telemetry stream
-(US-05.3). US-05.3 is a *stream*, so it is the first surface that needs
-ConnectRPC server-streaming rather than unary.
+Webhook subscription management (US-05.2).
+
+### LLD-10 — ai-pipeline
+
+The live telemetry stream (US-05.3). US-05.3 is a *stream*, so it is the
+first surface that needs ConnectRPC server-streaming rather than unary.
 
 ### LLD-06 — dialer (R2)
 

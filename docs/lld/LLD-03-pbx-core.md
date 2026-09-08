@@ -53,7 +53,7 @@ whole context with the phase marked on every part.
 | Deferred | Owning LLD | Why not here |
 |---|---|---|
 | Real DNC / calling hours / spend verdicts | LLD-04 | `stub_compliance.go` stays permit-all; `pbx-core` consumes verdicts, it does not author them |
-| Call detail reporting and quality views | LLD-04 | Reads the rows this LLD writes; no shared code |
+| Call detail reporting and quality views | LLD-09 | Reads the rows this LLD writes; no shared code |
 | Predictive and power dialling | LLD-06 | Tier 2; `dialer` calls `pbx-core`, never the reverse |
 
 ## 2. Go package layout
@@ -526,7 +526,7 @@ residual risk, recorded rather than argued away.
   exists and is stored, and `SelectRoutes` breaks ties on it, but there is
   no rate table, no time-of-day banding, and no per-destination rate
   import. Real least-cost routing needs a rating model that
-  `reporting`/billing (LLD-04) owns; building it here would put a pricing
+  `reporting`/billing (LLD-09) owns; building it here would put a pricing
   engine in the wrong context.
 - **Registration status is read from the engine on demand**, so a large
   extensions list costs one query against engine state per page. Adequate

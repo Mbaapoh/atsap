@@ -7,7 +7,7 @@ import (
 	"atsap-api/internal/telephony/ports"
 )
 
-// alwaysPermitLicense satisfies ports.LicenseManager until LLD-02 lands
+// alwaysPermitLicense satisfies ports.LicenseManager until LLD-08 lands
 // the real licensing bounded context behind this same port. Delete this
 // file (and its wiring in cmd/atsap-api) when that adapter is wired in —
 // do not extend it with real logic here.

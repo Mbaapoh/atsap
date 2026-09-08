@@ -136,7 +136,7 @@ func (c *Call) ConnectParticipant(participantID shareddomain.ParticipantID, when
 // teardown (bridge/channel destruction) is confirmed by the ACL.
 // (Degraded is not checked here: nothing in this package transitions a
 // Call into Degraded yet — see CallDegraded's doc comment — so adding
-// that branch now would be untestable dead code; LLD-04/07 adds it
+// that branch now would be untestable dead code; LLD-09 adds it
 // alongside the RTCP-XR sampling that makes Degraded reachable.)
 func (c *Call) DisconnectParticipant(participantID shareddomain.ParticipantID, when time.Time) ([]event.DomainEvent, error) {
 	if c.State == CallTerminated {

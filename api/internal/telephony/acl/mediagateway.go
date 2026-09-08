@@ -68,7 +68,7 @@ func (a *MediaGatewayAdapter) StartPlayback(ctx context.Context, channelRef port
 	return nil
 }
 
-// StartSnoop is not implemented in this change — ai-pipeline (LLD-05) is
+// StartSnoop is not implemented in this change — ai-pipeline (LLD-10) is
 // its first caller (LLD-01 §4.2).
 func (a *MediaGatewayAdapter) StartSnoop(context.Context, ports.ChannelRef, ports.SnoopRequest) (ports.SnoopRef, error) {
 	return "", errors.New("acl: StartSnoop not implemented in this change")

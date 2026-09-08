@@ -41,8 +41,8 @@ anything under `internal/telephony/`, the seam would have failed.
 | Everything licensing | [LLD-08](LLD-08-licensing.md) | A separate Tier-0 context that shares no code and no table with this one |
 | Real DNC / hours / spend compliance | LLD-04 | `stub_compliance.go` stays permit-all; nothing consumes real verdicts yet |
 | Inbound dial-in handling, emergency-number bypass | LLD-03 `pbx-core` | No inbound path existed when this was written; **delivered** by `pbx-inbound-and-emergency` |
-| Recording, RTCP-XR, `Degraded` transitions | LLD-04/07 | Unchanged from LLD-01 §1 |
-| Webhooks, AI pipeline, dialer | LLD-05, LLD-06 | Tier 1/2 in the dependency graph |
+| Recording, RTCP-XR, `Degraded` transitions | LLD-09 | Unchanged from LLD-01 §1 |
+| Webhooks, AI pipeline, dialer | LLD-05, LLD-10, LLD-06 | Tier 1/2 in the dependency graph |
 
 ## 2. Go package layout
 

@@ -12,7 +12,7 @@
 **In scope (this LLD only):**
 - `Call` and `CallParticipant` aggregates, persisted, RLS-protected.
 - Asterisk Anti-Corruption Layer (ACL): correlation registry, Stasis event loop, bridge management, channel-to-participant mapping across the one transition this skeleton exercises (originate → answer → bridge → hangup — **not** a full attended transfer; that is verified separately once this skeleton is green, still within `telephony-core`, before `pbx-core` starts).
-- Call lifecycle subset: `Initiated → Screening → Routing → Presenting → Active → Terminating → Terminated`. (`Degraded` is a real state in the domain type — see §3 — but nothing transitions into it yet; that needs RTCP-XR sampling, which is LLD-04/07's job.)
+- Call lifecycle subset: `Initiated → Screening → Routing → Presenting → Active → Terminating → Terminated`. (`Degraded` is a real state in the domain type — see §3 — but nothing transitions into it yet; that needs RTCP-XR sampling, which is LLD-09's job.)
 - Per-participant, per-second usage ticks (`usage_seconds`) from the moment a participant is `Connected` — this is D-24 extensibility seam #4, and it must exist from this first walking skeleton, not bolted on later.
 - Outbox → NATS JetStream publishing of `event.call.*` / `event.participant.*`.
 - One ConnectRPC method, `GetCall`, proving the "no channel ID ever leaves the ACL" invariant end-to-end.
@@ -28,9 +28,9 @@
 | Real capacity/fingerprint licensing | LLD-02 (`licensing`) | Stubbed here (§5.3) behind the same port so zero `telephony-core` changes are needed when it lands |
 | Real DNC/hours/spend compliance | LLD-02/04 (`compliance`) | Stubbed here (§5.3), pure-function port unchanged later |
 | Real tenant/RBAC/audit | LLD-02 (`identity`) | A single hardcoded dev tenant is seeded (§6.2), replaced later |
-| Recording, RTCP-XR quality, `Degraded` transitions | LLD-04/07 | Needs its own consent/storage/telemetry design, not required to prove the media path |
+| Recording, RTCP-XR quality, `Degraded` transitions | LLD-09 | Needs its own consent/storage/telemetry design, not required to prove the media path |
 | WebRTC (DTLS-SRTP) ingress specifically | Follow-up inside `telephony-core`, after this lands | The ACL is transport-agnostic (any PJSIP endpoint becomes a Channel identically); proving the domain model against plain PJSIP first isolates WebRTC-specific risk (ICE/DTLS) from domain-model risk |
-| Webhooks, AI pipeline, dialer | LLD-05, LLD-06 | Tier 1/2 in the dependency graph |
+| Webhooks, AI pipeline, dialer | LLD-05, LLD-10, LLD-06 | Tier 1/2 in the dependency graph |
 
 ## 2. Go package layout
 
@@ -113,7 +113,7 @@ type CallParticipant struct {
 
 State transitions are pure functions returning `(newState, []DomainEvent, error)` — e.g. `TransitionCallToActive(call *Call) ([]DomainEvent, error)` enforces "at least 2 connected participants" as an aggregate invariant and refuses the transition otherwise, matching PRD §11.1's Active entry condition. This mirrors D-22's fold pattern without adopting it wholesale — no node-graph here, just guarded transitions, per D-31's "aggregates with invariants" (not "domain services by default").
 
-`Degraded` and its RTCP-XR entry condition are represented in the enum (so LLD-07 doesn't need a migration to add a state value) but no code path produces the transition yet — this is a deliberate speculative-but-cheap seam, not scope creep, because it costs nothing beyond one enum value (contrast with D-24's actual four required seams, which this LLD implements in full).
+`Degraded` and its RTCP-XR entry condition are represented in the enum (so LLD-09 does not need a migration to add a state value) but no code path produces the transition yet — this is a deliberate speculative-but-cheap seam, not scope creep, because it costs nothing beyond one enum value (contrast with D-24's actual four required seams, which this LLD implements in full).
 
 ## 4. Asterisk Anti-Corruption Layer (`internal/telephony/acl`)
 
@@ -163,7 +163,7 @@ func (c *Client) GetChannelVariable(ctx context.Context, channelID, name string)
 func (c *Client) SetChannelVariable(ctx context.Context, channelID, name, value string) error
 ```
 
-`StartSnoop` (already on the HLD's `MediaGateway` port) is **not** implemented in this LLD — it returns `apperrors.ErrNotImplemented` until LLD-05 (`ai-pipeline`). The port method exists now so `telephony-core`'s port contract doesn't change shape later (avoids an interface-breaking edit down the line), but nothing calls it.
+`StartSnoop` (already on the HLD's `MediaGateway` port) is **not** implemented in this LLD — it returns `apperrors.ErrNotImplemented` until LLD-10 (`ai-pipeline`). The port method exists now so `telephony-core`'s port contract doesn't change shape later (avoids an interface-breaking edit down the line), but nothing calls it.
 
 ### 4.3 `ami` package
 

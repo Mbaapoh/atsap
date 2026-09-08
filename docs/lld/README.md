@@ -15,12 +15,20 @@ so `/opsx:propose` for an LLD's change picks this up automatically — an LLD
 doc is written, then proposed, not invented fresh by the agent at propose
 time.
 
-**The `#` column is a stable identifier, not a build order.** LLD-08
-(licensing) is Phase A work that must land before LLD-04 onwards; it took
-the next free number when it was split out of LLD-02 on 2026-09-08,
-because renumbering would have broken citations inside archived,
-immutable changes. Read the order from the dependency graph and the
-delivery-phase table below, never from the number.
+**One LLD covers one bounded context, and the `#` column is a stable
+identifier — not a build order and not a grouping.** Both halves of that
+rule are settled by [[../DECISIONS.md]] D-48, which carries the
+authoritative context → LLD map. Numbers are never reused, never
+renumbered, and never moved to a different context, because they appear
+in archived, immutable changes; new contexts take the next free number
+whatever their tier. So the index below reads 01, 02, 08, 03, 04 … and
+that is correct: LLD-08 (licensing) is Phase A work that must land before
+LLD-04 onwards. Read the order from the dependency graph and the
+delivery-phase table, never from the number.
+
+**07 is permanently vacant.** It was the console, which is not a bounded
+context and cannot hold an LLD number; D-46 retired it as a single unit
+and it is tracked as a slice per phase.
 
 Build order is fixed by the dependency graph in
 [`../hld/04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph).
@@ -28,11 +36,13 @@ LLDs are written and implemented **one at a time, in that order** — writing
 LLD-03 before LLD-01 is built is exactly the scope creep the graph exists
 to prevent.
 
-**One LLD covers one bounded context.** LLD-02 briefly covered two
-(`identity` and `licensing`) on the reasoning that they shared a cutover;
-delivery disproved it, and it was split on 2026-09-08. Two contexts in
-one document hide the fact that one half is finished while the other has
-not started — which is exactly what happened.
+**Why the rule is enforced rather than stated.** LLD-02 briefly covered
+two contexts (`identity` and `licensing`) on the reasoning that they
+shared a cutover; delivery disproved it, and it was split on 2026-09-08.
+Two contexts in one document hide the fact that one half is finished
+while the other has not started — which is exactly what happened, behind
+a single "Draft" status. That split exposed the same defect in two more
+rows (LLD-04 and LLD-05), fixed at the same time under D-48.
 
 **Every LLD states its API surface, and every change that changes that
 surface updates [`../API.md`](../API.md) in the same commit.** Per D-43, a
@@ -53,10 +63,16 @@ does not list, so the inventory cannot rot quietly.
 | 02 | [Identity](LLD-02-identity.md) | `identity` | Implemented & archived | Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`access-control`](../../openspec/specs/identity/access-control/spec.md), [`tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | 08 | [Licensing](LLD-08-licensing.md) | `licensing` | Draft — nothing built; **Phase A work** despite the number | — |
 | 03 | [PBX Core](LLD-03-pbx-core.md) | `pbx-core` | In progress — extensions implemented & archived; trunks, routes, call placement and inbound remain | Living specs [`pbx-core/extension-management`](../../openspec/specs/pbx-core/extension-management/spec.md), [`pbx-core/endpoint-projection`](../../openspec/specs/pbx-core/endpoint-projection/spec.md) |
-| 04 | Compliance & Reporting | `compliance`, `reporting` | Not started — `compliance` is a **release gate** for LLD-06's dialling (D-45) | — |
-| 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
+| 04 | Compliance | `compliance` | Not started — a **release gate** for LLD-06's dialling (D-45), not merely a dependency | — |
+| 05 | Webhook Delivery | `webhook-delivery` | Not started | — |
 | 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |
-| 07 | Console — administration and partner portal (`portal/`) | — (frontend; consumes the public API only) | **Not one LLD.** Delivered as a slice per phase (D-46): A with `pbx-core` basics, B with IVR and reporting, C with campaigns | — |
+| 09 | Reporting | `reporting` | Not started — split out of LLD-04 under D-48 | — |
+| 10 | AI Pipeline | `ai-pipeline` | Not started — split out of LLD-05 under D-48 | — |
+
+The console is deliberately absent: it is not a bounded context, it
+consumes every context and owns none, and D-46 retired it as a single
+LLD. It is delivered as a slice per phase — A with `pbx-core` basics, B
+with IVR and reporting, C with campaigns — described below.
 
 ### Delivery phases (D-46)
 
@@ -65,8 +81,8 @@ be shown, each continuing from what is already implemented:
 
 | Phase | A partner can… | Backend | Console slice |
 |---|---|---|---|
-| **A** | install, licence, and make and receive real calls, configured entirely in the UI | finish LLD-02 licensing; LLD-03 minimal — extensions, a trunk, basic routing | login, users and roles, extensions, trunk, licence status |
-| **B** | run it as a business phone system | LLD-03 completion — IVR, auto-attendant, business hours, queues; LLD-04 `reporting`; recording governance | visual IVR builder, queues, call history, recording policy |
+| **A** | install, licence, and make and receive real calls, configured entirely in the UI | LLD-08 `licensing`; LLD-03 minimal — extensions, a trunk, basic routing | login, users and roles, extensions, trunk, licence status |
+| **B** | run it as a business phone system | LLD-03 completion — IVR, auto-attendant, business hours, queues; LLD-09 `reporting`; recording governance | visual IVR builder, queues, call history, recording policy |
 | **C** | run an outbound operation | LLD-04 `compliance` **first**, then LLD-06 `dialer` (preview and power) | campaigns, contact lists, compliance configuration |
 
 Predictive pacing is R2 (D-27, D-45).
@@ -102,8 +118,8 @@ back door is a defect (AC-05.1, AC-10.7):
 |---|---|
 | Login, users, roles, permissions | `identity` (LLD-02) — already landed |
 | Extensions, trunks, routing, IVR flows | `pbx-core` (LLD-03) |
-| Call detail, usage, quality views | `reporting` (LLD-04) |
-| Licence display and activation | `licensing` (LLD-02) |
+| Call detail, usage, quality views | `reporting` (LLD-09) |
+| Licence display and activation | `licensing` (LLD-08) |
 | Campaign management | `dialer` (LLD-06, R2) |
 
 Two consequences worth stating before anyone plans a date. It cannot be

@@ -80,7 +80,7 @@ type OriginateRequest struct {
 // today implemented by the Asterisk ACL — exactly
 // docs/hld/04-bounded-contexts.md §1's interface. StartSnoop is
 // declared but not implemented in this change (returns an error);
-// ai-pipeline (LLD-05) is its first caller.
+// ai-pipeline (LLD-10) is its first caller.
 //
 // Engine capability contract (DECISIONS D-41): this interface is written
 // in domain capabilities, never engine verbs, so a future engine can
@@ -136,7 +136,7 @@ type CapacityVerdict struct {
 }
 
 // LicenseManager is the Screening-state capacity port. This change wires
-// it to an always-permit stub (application/stub_license.go); LLD-02
+// it to an always-permit stub (application/stub_license.go); LLD-08
 // replaces the adapter behind this same interface.
 type LicenseManager interface {
 	ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, requestedChannels int) (CapacityVerdict, error)

@@ -193,7 +193,7 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
   conformance is fixed: kill the provider mid-call → call provably
   unaffected; stall it past the buffer → frames drop, call provably
   unaffected (INV-04 in executable form). Runnable harness waits for
-  LLD-05 per build order (§10.2) — specified here so the criteria
+  LLD-10 per build order (§10.2) — specified here so the criteria
   predate every implementation.
 
 ---
@@ -322,11 +322,18 @@ fails the Dependency Invariant Test (§6 of [01-architecture.md](01-architecture
 ### 10.2 LLD build sequence derived from this graph
 
 1. **LLD-01 — `telephony-core` walking skeleton** (Tier 0, built first per D-25/D-26): Call/Participant lifecycle + Asterisk ACL, against stub `LicenseManager` and `ComplianceEngine` adapters.
-2. **LLD-02 — `identity` + `licensing` real adapters**: replace the LLD-01 stubs behind the same ports (D-20 seam pays off here — zero changes to `telephony-core`).
+2. **LLD-02 — `identity`** and **LLD-08 — `licensing`** real adapters: replace the LLD-01 stubs behind the same ports (D-20 seam pays off here — zero changes to `telephony-core`). Two Tier-0 peers with no dependency on each other, so the order between them is convenience, not correctness.
 3. **LLD-03 — `pbx-core`**: extensions, trunks, LCR, IVR-as-data, queues — now that real calls exist to route.
-4. **LLD-04 — `compliance` + `reporting`**: real DNC/hours/spend functions; CDR/usage export.
-5. **LLD-05 — `webhook-delivery` + `ai-pipeline`**: round out R1.0 API-first/optional-AI commitments.
-6. **LLD-06 — `dialer` (R2)**: power-dial loop first, predictive pacing second (D-27), only after 1–4 exist.
+4. **LLD-04 — `compliance`**: real DNC/calling-hours/spend functions. A release gate for step 6, not merely a dependency (D-45).
+5. **LLD-09 — `reporting`**: CDR and usage export, quality views.
+6. **LLD-05 — `webhook-delivery`** and **LLD-10 — `ai-pipeline`**: round out R1.0 API-first/optional-AI commitments.
+7. **LLD-06 — `dialer` (R2)**: power-dial loop first, predictive pacing second (D-27), only after the contexts above exist.
+
+**The numbers are identifiers, not this sequence** (D-48): one LLD per
+bounded context, never renumbered, so a context split out later takes the
+next free number rather than displacing anything. Read order from this
+list and §10.1, never from the number. 07 is permanently vacant — it was
+the console, which is not a bounded context (D-46).
 
 This sequence is the scope-creep guard the graph exists for: an LLD is not
 started until every context in its "must depend on" column already has at

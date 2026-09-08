@@ -930,6 +930,91 @@ D-43 (API-first consumer test), D-46 (settle this in Phase A)
 
 ---
 
+**D-48 · One LLD per bounded context; LLD numbers are stable identifiers
+(2026-09-08).**
+
+**Decision:** Every bounded context in HLD 04 §10.1 gets exactly one LLD,
+and every LLD covers exactly one bounded context. The number is an
+identifier, never a build order and never a grouping — once issued it is
+never reused, never renumbered, and never retired onto a different
+context. Build order is read from the §10.1 dependency graph and the D-46
+phase table, nowhere else.
+
+**This is the authoritative context → LLD map.** Where an older entry in
+this log or an archived change cites a different number, that citation
+was accurate when written and this table supersedes it:
+
+| Bounded context (HLD 04 §10.1) | LLD | Tier |
+|---|---|---|
+| `telephony-core` | 01 | 0 |
+| `identity` | 02 | 0 |
+| `pbx-core` | 03 | 1 |
+| `compliance` | 04 | 0 |
+| `webhook-delivery` | 05 | 1 |
+| `dialer` | 06 | 2 |
+| `licensing` | 08 | 0 |
+| `reporting` | 09 | 1 |
+| `ai-pipeline` | 10 | 1 |
+
+**07 is permanently vacant.** It was the console, retired as a single
+unit by D-46; the console is not a bounded context, so under this
+decision it cannot hold an LLD number at all. It is tracked as a slice
+per phase.
+
+**Context:** `docs/lld/README.md` has stated "one LLD covers one bounded
+context" since it was written, while its own index broke that rule in
+three rows: LLD-02 held `identity` + `licensing`, LLD-04 held
+`compliance` + `reporting`, LLD-05 held `webhook-delivery` +
+`ai-pipeline`, and LLD-07 held a frontend that is not a context.
+
+LLD-02 was split on 2026-09-08 and the split is what exposed the rest.
+Its stated justification — the two contexts "share one cutover" — had
+already been disproved by delivery: `identity` shipped three archived
+changes while `licensing` shipped nothing, hidden behind a single "Draft"
+status on one document. That is the failure mode the rule exists to
+prevent, and LLD-04 and LLD-05 were positioned to repeat it.
+
+**Why append rather than renumber.** Splitting `reporting` out of LLD-04
+could have renumbered everything below it into a tidy sequence. Rejected:
+numbers appear in archived, immutable OpenSpec changes and in this log,
+and a renumber silently changes what an old citation means. `reporting`
+therefore takes 09 and `ai-pipeline` takes 10, leaving 04, 05 and 06
+pointing exactly where they always did. The index reads out of order, and
+says so.
+
+**Alternatives:**
+- *Keep the pairs and rely on section headings inside one document.*
+  Rejected — that is what LLD-02 did. Two contexts in one document hide
+  divergent progress and produce a status line that is true of neither.
+- *Renumber into a clean sequence.* Rejected — see above. Stable
+  identifiers are worth more than a tidy column, the same reasoning that
+  keeps decision numbers in this log fixed.
+- *Give the console LLD-07 as a documented exception.* Rejected. The rule
+  is one LLD per bounded context, and the console consumes every context
+  and owns none; D-46 already retired it. An exception written into the
+  rule's own index is how the rule stops being believed.
+
+**Consequences:**
+- LLD-09 and LLD-10 are index entries with no document yet, exactly as
+  LLD-04, 05 and 06 are. Nothing is written before its turn in the graph.
+- Citations that meant the split-off half were repointed in the same
+  commit: `reporting` references from LLD-04 to LLD-09, `ai-pipeline`
+  references from LLD-05 to LLD-10, in `docs/` and in the five Go
+  comments that named them. Earlier entries in this log were left as
+  written — this table is where a stale number is resolved.
+- `docs/lld/LLD-02-identity-licensing.md` was deleted rather than kept as
+  a redirect. Two archived changes link that path and now link nothing;
+  the map above is where that path resolves. An unused file in the spec
+  repo is worse than a dead link in an immutable record.
+- A tenth context added later takes 11, whatever its tier.
+
+**Related Decisions:** D-29 (LLDs live in `docs/`, not OpenSpec), D-45
+(outbound in R1.0), D-46 (three phases; console retired as one LLD)
+**Traceability:** HLD `04-bounded-contexts.md` §10.1/§10.2;
+`docs/lld/README.md`; `docs/API.md` §3
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
