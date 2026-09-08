@@ -38,17 +38,17 @@
 
 ## 6. ConnectRPC surface
 
-- [ ] 6.1 Write `api/proto/atsapbx/v1/pbx.proto` defining `PbxService` with `CreateExtension`, `ListExtensions`, `UpdateExtension`, `DeleteExtension`; the generated secret appears **only** in the create/regenerate response; verify `mise run proto` passes lint and breaking checks
-- [ ] 6.2 Implement `pbx/rpc` handlers with authorization on every method and tenant matching against the token; verify tests cover authorized success, unauthorized refusal, and cross-tenant access returning the same "not found" outcome as a nonexistent identifier (INV-10)
-- [ ] 6.3 Assert no engine identifier crosses the wire; verify a test walks every field of every `PbxService` response and error for an `e_` prefixed value, an engine endpoint name or a routing context, the way LLD-01 asserts it for channel IDs
-- [ ] 6.4 Wire `PbxService` into `cmd/atsap-api` composition; verify the server starts and the four methods are reachable over HTTP+JSON
-- [ ] 6.5 Add the four RPCs to `docs/API.md` §1; verify `mise run docs` passes — check 4 fails if a proto RPC is undocumented
+- [x] 6.1 Write `api/proto/atsapbx/v1/pbx.proto` defining `PbxService` with `CreateExtension`, `ListExtensions`, `UpdateExtension`, `DeleteExtension`; the generated secret appears **only** in the create/regenerate response; verify `mise run proto` passes lint and breaking checks
+- [x] 6.2 Implement `pbx/rpc` handlers with authorization on every method and tenant matching against the token; verify tests cover authorized success, unauthorized refusal, and cross-tenant access returning the same "not found" outcome as a nonexistent identifier (INV-10)
+- [x] 6.3 Assert no engine identifier crosses the wire; verify a test walks every field of every `PbxService` response and error for an `e_` prefixed value, an engine endpoint name or a routing context, the way LLD-01 asserts it for channel IDs
+- [x] 6.4 Wire `PbxService` into `cmd/atsap-api` composition; verify the server starts and the four methods are reachable over HTTP+JSON
+- [x] 6.5 Add the four RPCs to `docs/API.md` §1; verify `mise run docs` passes — check 4 fails if a proto RPC is undocumented
 
 ## 7. Engine configuration
 
 - [ ] 7.1 Add `core/conf/res_pgsql.conf` and `core/conf/extconfig.conf` mapping the three `ps_*` tables; verify `realtime show pgsql status` reports a connection after rebuild
 - [ ] 7.2 Add `core/conf/sorcery.conf` listing **both** the config-file wizard and the realtime wizard for endpoint, auth and aor; verify `pjsip show endpoints` still lists the 1000/1001 fixtures after restart — omitting the config wizard removes them (design D5)
-- [ ] 7.3 Pin the SIP realm in configuration and thread it into credential generation; verify a test asserts the realm used for HA1 generation matches the configured value
+- [x] 7.3 Pin the SIP realm in configuration and thread it into credential generation; verify a test asserts the realm used for HA1 generation matches the configured value
 
 ## 8. Reconcile command
 

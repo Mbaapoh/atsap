@@ -43,6 +43,12 @@ func TestLoad_Defaults(t *testing.T) {
 		DatabaseWorkerURL: "postgres://atsap_outbox_worker:pw@postgres:5432/atsapbx?sslmode=disable",
 		NATSURL:           "nats://nats:4222",
 		JWTPrivateKeyHex:  testKeyHex,
+		// SIP realm and transports default to PJSIP's own defaults, so an
+		// unconfigured platform agrees with an unconfigured engine rather
+		// than silently generating credentials it cannot authenticate.
+		SIPRealm:           "asterisk",
+		SIPTransport:       "transport-udp",
+		SIPWebRTCTransport: "transport-wss",
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)

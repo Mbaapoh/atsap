@@ -33,6 +33,12 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `IssueApiKey` | `atsapbx.v1.IdentityService` | `identity-api` | Partner key self-service (US-05.1) |
 | `RevokeApiKey` | `atsapbx.v1.IdentityService` | `identity-api` | Partner key self-service (US-05.1) |
 | `ListAudit` | `atsapbx.v1.IdentityService` | `identity-api` | Audit review and compliance export (AC-01.3) |
+| `CreateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions screen; the only response carrying a generated secret |
+| `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
+| `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |
+| `UpdateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console rename and device-type change |
+| `DeleteExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console deprovisioning |
+| `RegenerateSecret` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Credential rotation; the second and last place a secret appears |
 
 ### Authentication
 
@@ -44,6 +50,13 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
   procedure name, because a caller cannot hold a token before obtaining
   one. `ProvisionTenant` additionally requires **platform (system)
   scope**, so a customer's own administrator cannot create tenants.
+- **`PbxService` is authenticated on every method.** All six mutate or
+  read tenant configuration, so none is reachable without a token, and
+  the tenant named in a request body must equal the token's — there is no
+  system-scoped path, because a platform operator has no legitimate
+  reason to create an extension inside a customer's tenant. Verified
+  live: an unauthenticated call returns `401`, and a call naming another
+  tenant returns `403` before the application layer is reached.
 - **`TelephonyService` remains unauthenticated** until
   `auth-cutover-connectrpc` — its risk is breaking callers that exist
   today (the e2e suite, the UAT rig). Until then `GetCall` accepts a

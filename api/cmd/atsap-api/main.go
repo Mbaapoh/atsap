@@ -26,6 +26,10 @@ import (
 	identityrpc "atsap-api/internal/identity/rpc"
 	"atsap-api/internal/logging"
 	atsapnats "atsap-api/internal/nats"
+	pbxasterisk "atsap-api/internal/pbx/acl/asterisk"
+	pbxapp "atsap-api/internal/pbx/application"
+	pbxpostgres "atsap-api/internal/pbx/postgres"
+	pbxrpc "atsap-api/internal/pbx/rpc"
 	corepostgres "atsap-api/internal/postgres"
 	"atsap-api/internal/server"
 	"atsap-api/internal/telephony/acl"
@@ -182,6 +186,28 @@ func main() {
 	identityPath, identityRPC := atsapbxv1connect.NewIdentityServiceHandler(identityHandler,
 		connectrpc.WithInterceptors(authInterceptor))
 	handlers[identityPath] = identityRPC
+
+	// PbxService: extension configuration. Mounted WITH the same auth
+	// interceptor — every method mutates or reads tenant configuration,
+	// and none of it is reachable without a token.
+	//
+	// The realm passed here MUST match the engine's: the credential
+	// digest is computed over it (LLD-03 §7.3).
+	pbxSvc := pbxapp.NewService(
+		appPool,
+		pbxpostgres.NewStore(),
+		pbxasterisk.NewProjector(pbxasterisk.Config{
+			Realm:           cfg.SIPRealm,
+			SIPTransport:    cfg.SIPTransport,
+			WebRTCTransport: cfg.SIPWebRTCTransport,
+		}, appPool),
+		identitySvc,
+		identityStore,
+		cfg.SIPRealm,
+	)
+	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
+		connectrpc.WithInterceptors(authInterceptor))
+	handlers[pbxPath] = pbxRPC
 
 	checkers := []server.Checker{
 		{Name: "postgres", Check: func(ctx context.Context) error { return appPool.Unwrap().Ping(ctx) }},

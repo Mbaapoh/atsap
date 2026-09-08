@@ -335,6 +335,234 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.ListAuditResponse'
+  /atsapbx.v1.PbxService/CreateExtension:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: CreateExtension
+      description: |-
+        CreateExtension provisions an extension and makes it registrable by
+         a device. No apply step follows: it is live when this returns.
+      operationId: atsapbx.v1.PbxService.CreateExtension
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CreateExtensionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.CreateExtensionResponse'
+  /atsapbx.v1.PbxService/GetExtension:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: GetExtension
+      description: |-
+        GetExtension reads one extension, including whether a device is
+         currently registered to it.
+      operationId: atsapbx.v1.PbxService.GetExtension
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetExtensionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetExtensionResponse'
+  /atsapbx.v1.PbxService/ListExtensions:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListExtensions
+      description: ListExtensions returns a page of the calling tenant's extensions.
+      operationId: atsapbx.v1.PbxService.ListExtensions
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListExtensionsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListExtensionsResponse'
+  /atsapbx.v1.PbxService/UpdateExtension:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: UpdateExtension
+      description: |-
+        UpdateExtension changes an extension's display name or device type.
+         The number is immutable: renumbering would orphan every device
+         already provisioned against it, so it is a delete plus a create.
+      operationId: atsapbx.v1.PbxService.UpdateExtension
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.UpdateExtensionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.UpdateExtensionResponse'
+  /atsapbx.v1.PbxService/DeleteExtension:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteExtension
+      description: |-
+        DeleteExtension removes an extension and deprovisions it. A device
+         holding its former credential can no longer register, immediately.
+      operationId: atsapbx.v1.PbxService.DeleteExtension
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteExtensionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.DeleteExtensionResponse'
+  /atsapbx.v1.PbxService/RegenerateSecret:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: RegenerateSecret
+      description: |-
+        RegenerateSecret issues a new credential. The previous one stops
+         working the moment this returns — two live credentials for one
+         extension is the state a rotation exists to end.
+      operationId: atsapbx.v1.PbxService.RegenerateSecret
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.RegenerateSecretRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.RegenerateSecretResponse'
   /atsapbx.v1.TelephonyService/GetCall:
     post:
       tags:
@@ -861,6 +1089,202 @@ components:
           additionalProperties: true
       additionalProperties: true
       description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+    atsapbx.v1.DeviceType:
+      type: string
+      title: DeviceType
+      enum:
+        - DEVICE_TYPE_UNSPECIFIED
+        - DEVICE_TYPE_WEBRTC
+        - DEVICE_TYPE_SIP
+      description: DeviceType is how a device attaches to an extension.
+    atsapbx.v1.RegistrationStatus:
+      type: string
+      title: RegistrationStatus
+      enum:
+        - REGISTRATION_STATUS_UNSPECIFIED
+        - REGISTRATION_STATUS_NOT_REGISTERED
+        - REGISTRATION_STATUS_REGISTERED
+      description: |-
+        RegistrationStatus describes the DEVICE, not the configuration. An
+         extension is configured and live from the moment it is created,
+         whether or not anything has registered to it — there is no "pending"
+         state, because there is nothing to apply.
+    atsapbx.v1.CreateExtensionRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        number:
+          type: string
+          title: number
+        displayName:
+          type: string
+          title: display_name
+        deviceType:
+          title: device_type
+          description: |-
+            Note there is no secret field. The platform generates the
+             credential; a caller cannot choose one, because a chosen secret
+             would be the weak link in a digest that is offline-crackable.
+          $ref: '#/components/schemas/atsapbx.v1.DeviceType'
+      title: CreateExtensionRequest
+      additionalProperties: false
+    atsapbx.v1.CreateExtensionResponse:
+      type: object
+      properties:
+        extension:
+          title: extension
+          $ref: '#/components/schemas/atsapbx.v1.Extension'
+        secret:
+          type: string
+          title: secret
+          description: |-
+            The generated secret, returned exactly once. Never logged, never
+             audited, never retrievable by any later call.
+      title: CreateExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.DeleteExtensionRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        extensionId:
+          type: string
+          title: extension_id
+      title: DeleteExtensionRequest
+      additionalProperties: false
+    atsapbx.v1.DeleteExtensionResponse:
+      type: object
+      title: DeleteExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.Extension:
+      type: object
+      properties:
+        extensionId:
+          type: string
+          title: extension_id
+        number:
+          type: string
+          title: number
+          description: |-
+            Tenant-local: two tenants may each have a 1000, and they are
+             unrelated extensions with unrelated credentials.
+        displayName:
+          type: string
+          title: display_name
+        authUsername:
+          type: string
+          title: auth_username
+          description: |-
+            The username a device presents. Generated by the platform and
+             deliberately not derived from the number, so knowing a tenant's
+             numbering plan reveals nothing about what to authenticate as.
+        deviceType:
+          title: device_type
+          $ref: '#/components/schemas/atsapbx.v1.DeviceType'
+        registration:
+          title: registration
+          $ref: '#/components/schemas/atsapbx.v1.RegistrationStatus'
+      title: Extension
+      additionalProperties: false
+      description: |-
+        Extension is what a caller sees. It carries no credential digest and
+         no engine object of any kind.
+    atsapbx.v1.GetExtensionRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        extensionId:
+          type: string
+          title: extension_id
+      title: GetExtensionRequest
+      additionalProperties: false
+    atsapbx.v1.GetExtensionResponse:
+      type: object
+      properties:
+        extension:
+          title: extension
+          $ref: '#/components/schemas/atsapbx.v1.Extension'
+      title: GetExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.ListExtensionsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        offset:
+          type: integer
+          title: offset
+          format: int32
+      title: ListExtensionsRequest
+      additionalProperties: false
+    atsapbx.v1.ListExtensionsResponse:
+      type: object
+      properties:
+        extensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.Extension'
+          title: extensions
+      title: ListExtensionsResponse
+      additionalProperties: false
+    atsapbx.v1.RegenerateSecretRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        extensionId:
+          type: string
+          title: extension_id
+      title: RegenerateSecretRequest
+      additionalProperties: false
+    atsapbx.v1.RegenerateSecretResponse:
+      type: object
+      properties:
+        extension:
+          title: extension
+          $ref: '#/components/schemas/atsapbx.v1.Extension'
+        secret:
+          type: string
+          title: secret
+          description: The new secret, returned exactly once, as at creation.
+      title: RegenerateSecretResponse
+      additionalProperties: false
+    atsapbx.v1.UpdateExtensionRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        extensionId:
+          type: string
+          title: extension_id
+        displayName:
+          type: string
+          title: display_name
+        deviceType:
+          title: device_type
+          $ref: '#/components/schemas/atsapbx.v1.DeviceType'
+      title: UpdateExtensionRequest
+      additionalProperties: false
+    atsapbx.v1.UpdateExtensionResponse:
+      type: object
+      properties:
+        extension:
+          title: extension
+          $ref: '#/components/schemas/atsapbx.v1.Extension'
+      title: UpdateExtensionResponse
+      additionalProperties: false
     atsapbx.v1.GetCallRequest:
       type: object
       properties:
@@ -958,6 +1382,28 @@ tags:
        credential failure is the same Unauthenticated result whatever its
        cause, and a resource in another tenant answers as though it did not
        exist (INV-10).
+  - name: atsapbx.v1.PbxService
+    description: |-
+      PbxService is pbx-core's public contract: the configuration a customer
+       performs in the console, and which a partner may perform directly
+       against the same API (BRD §16 — the console is a consumer of this API,
+       not a privileged client with a private back door).
+
+       Every method requires `Authorization: Bearer <JWT>` and acts only
+       within the caller's own tenant. A resource belonging to another tenant
+       answers exactly as one that does not exist (INV-10).
+
+       **Nothing in this file names the media engine.** No endpoint
+       identifier, dialplan context, transport, table or object of the
+       underlying engine appears in any request, response, or error a caller
+       can see. A customer configures "extension 1005"; how that becomes live
+       engine state is the platform's business (PRD principle 4, DECISIONS
+       D-47).
+
+       The generated secret appears in exactly two responses —
+       CreateExtension and RegenerateSecret — and in no other message, ever.
+       It is shown once and is not retrievable afterwards; an extension whose
+       secret is lost is rotated, not recovered.
   - name: atsapbx.v1.TelephonyService
     description: |-
       TelephonyService exposes telephony-core's public Call/Participant

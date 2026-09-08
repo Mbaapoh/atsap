@@ -40,6 +40,24 @@ type Config struct {
 	// issuer signs with (identity context). Required whenever the process
 	// serves IdentityService or bootstraps. Never logged, never echoed.
 	JWTPrivateKeyHex string
+
+	// SIPRealm is the realm the media engine challenges with, and the
+	// realm every extension credential digest is computed over
+	// (MD5(username:realm:secret)). It MUST match the engine's own
+	// configuration: a mismatch produces credentials that can never
+	// authenticate, and the failure appears only at registration time,
+	// far from the code that generated them.
+	//
+	// Changing it invalidates every stored credential, so it is a
+	// migration rather than a config edit (LLD-03 §7.3).
+	SIPRealm string
+
+	// SIPTransport and SIPWebRTCTransport name transports defined in the
+	// engine's configuration. WebRTC needs a WSS transport that lands
+	// with the engine-config task; until then a WEBRTC extension projects
+	// against a transport that does not exist.
+	SIPTransport       string
+	SIPWebRTCTransport string
 }
 
 // Load reads configuration from environment variables, applying sane
@@ -60,6 +78,12 @@ func Load() (Config, error) {
 		DatabaseWorkerURL: getEnv("DATABASE_WORKER_URL", ""),
 		NATSURL:           getEnv("NATS_URL", ""),
 		JWTPrivateKeyHex:  getEnv("ATSAPBX_JWT_KEY", ""),
+		// "asterisk" is PJSIP's own default realm, so the default here
+		// matches an unconfigured engine rather than silently disagreeing
+		// with one.
+		SIPRealm:           getEnv("SIP_REALM", "asterisk"),
+		SIPTransport:       getEnv("SIP_TRANSPORT", "transport-udp"),
+		SIPWebRTCTransport: getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
 	}
 
 	if cfg.ARIPassword == "" {
