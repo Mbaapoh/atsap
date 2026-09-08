@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -177,12 +178,43 @@ func TestOutboxWorker_ConcurrentPolls_NoDoubleProcessing(t *testing.T) {
 	go func() { defer wg.Done(); _, _ = worker2.PollOnce(ctx) }()
 	wg.Wait()
 
-	total := pub1.count() + pub2.count()
-	assert.Equal(t, n, total, "every row published exactly once across both concurrent workers")
+	// What this test owns is the SKIP LOCKED invariant its name states: no
+	// row is claimed by more than one worker. It deliberately does NOT
+	// assert that the two workers between them saw all n rows.
+	//
+	// The dev stack's app container runs its own outbox worker
+	// (cmd/atsap-api: outboxWorker.Run) against this same table, so on a
+	// running rig it is a third consumer this test cannot see. Proven by
+	// probe: 20 rows inserted, 20 unpublished at t+0, 0 unpublished at
+	// t+3, with nothing but the container polling. Asserting a total made
+	// the test fail whenever the container won the race — a rig condition
+	// reported as a product failure, which is worse than no assertion.
+	//
+	// A row taken by the container is still processed exactly once, which
+	// is the property that matters; it simply is not processed by one of
+	// these two workers.
+	published := append(append([]postgres.OutboxEvent{}, pub1.published...), pub2.published...)
 
 	seen := make(map[string]bool)
-	for _, ev := range append(append([]postgres.OutboxEvent{}, pub1.published...), pub2.published...) {
-		assert.False(t, seen[ev.ID], "row %s claimed by both workers", ev.ID)
+	for _, ev := range published {
+		assert.False(t, seen[ev.ID], "row %s claimed by both workers — SKIP LOCKED did not hold", ev.ID)
 		seen[ev.ID] = true
+	}
+
+	assert.LessOrEqual(t, len(published), n, "the workers cannot publish more rows than were inserted")
+
+	// Whatever the workers did claim must have been marked published, so a
+	// row is never claimed and then lost.
+	//
+	// Read through a worker-role pool, not the app pool: outbox is
+	// RLS-protected and this check spans rows without a tenant context,
+	// which is exactly why the real worker holds BYPASSRLS. An app-pool
+	// read here returns no rows and the check would pass vacuously.
+	verify := openWorkerPool(t)
+	for _, ev := range published {
+		var publishedAt *time.Time
+		require.NoError(t, verify.QueryRow(ctx,
+			`SELECT published_at FROM outbox WHERE id = $1`, ev.ID).Scan(&publishedAt))
+		assert.NotNil(t, publishedAt, "row %s was claimed but never marked published", ev.ID)
 	}
 }
