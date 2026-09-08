@@ -25,14 +25,27 @@ would leave every scenario above passing while the API was open.
 
 Stability: three consecutive runs, zero retries, zero flakes.
 
-## G2 — still open, unchanged
+## G2 — closed
 
-Cross-tenant separation (*identical numbers in two tenants remain
-separate*) remains covered at the database and in the derivation, not
-staged live. This change did not attempt it: the fixture path now exists
-(a tenant can be seeded directly, as `newRig` does), so the earlier
-"cannot bootstrap a second tenant" reasoning no longer holds and G2 is
-now a scope decision rather than a blocked one.
+*Identical numbers in two tenants remain separate* is now staged live in
+`TestG2_IdenticalNumbersInTwoTenantsRemainSeparate`. The earlier blocker —
+"a second tenant cannot be bootstrapped through the API" — was true of
+`bootstrap`, which refuses once a tenant exists, but not of the fixture
+path this suite already uses, so it was a scope decision rather than a
+dependency.
+
+Two tenants each hold extension **8700**. The test asserts they project
+to different engine identifiers, that registering tenant A's device marks
+only A registered and leaves B untouched, that B's own credential then
+works independently without disturbing A, and that **A's secret does not
+authenticate B's endpoint**.
+
+What only a live run shows: that Asterisk resolves two simultaneously
+present endpoints to the right one. `ps_*` is a single flat namespace
+shared by every tenant, so had the projected identifier ever been derived
+from the tenant-local number, one tenant's phone would register against
+the other's endpoint. That is the failure this makes impossible to ship
+unnoticed.
 
 ## G3 — new: deleting an extension leaves an orphaned contact row
 

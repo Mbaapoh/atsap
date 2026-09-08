@@ -13,3 +13,8 @@
 - [x] 2.2 Full tiers green on a restored rig: unit `-race -cover` (17 pkgs), integration `-p 1 -race` (25 pkgs, 0 failures), both e2e suites, lint 0 issues, proto lint+breaking, docs, diagrams
 - [x] 2.3 Confirm no product code changed (`git diff --stat develop` touches `docs/TESTING.md` only, plus the new test package)
 - [x] 2.4 Record G1 as closed and the new finding G3 in `coverage.md`; add the pbx e2e row to `docs/TESTING.md`
+
+## 3. Close G2 as well
+
+- [x] 3.1 Stage *identical numbers in two tenants remain separate* live: two tenants both holding extension 8700, different projected identifiers, registering A leaves B untouched, B's credential works independently, and A's secret does not authenticate B's endpoint
+- [x] 3.2 Record G2 closed in `coverage.md`, noting the earlier blocker was a scope decision rather than a dependency

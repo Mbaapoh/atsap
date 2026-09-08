@@ -404,3 +404,63 @@ func TestG1_UnauthenticatedCreateIsRefused(t *testing.T) {
 	}, nil, http.StatusUnauthorized)
 	assert.Contains(t, strings.ToLower(string(body)), "unauthenticated")
 }
+
+// --- G2: cross-tenant separation, live -------------------------------
+
+// TestG2_IdenticalNumbersInTwoTenantsRemainSeparate closes the second gap
+// the archived change recorded.
+//
+// It was previously covered at the database (the same number in two
+// tenants yields independent rows under real RLS) and in the derivation
+// (identifiers come from the extension UUID, never the number), but never
+// staged against the engine. The stated reason — that a second tenant
+// could not be bootstrapped through the API — was true of `bootstrap`,
+// which refuses once a tenant exists, but not of the fixture path this
+// suite already uses.
+//
+// What only a live run can show: that Asterisk resolves two
+// simultaneously-present endpoints to the right one. `ps_*` is a single
+// flat namespace shared by every tenant, so if the projected identifier
+// were ever derived from the tenant-local number, one tenant's phone
+// would register against the other's endpoint. That is the failure this
+// test exists to make impossible to ship.
+func TestG2_IdenticalNumbersInTwoTenantsRemainSeparate(t *testing.T) {
+	tenantA := newRig(t)
+	tenantB := newRig(t)
+	require.NotEqual(t, tenantA.tenant, tenantB.tenant)
+
+	// The SAME number in both tenants — the whole point.
+	const shared = "8700"
+
+	extA, secretA := tenantA.createExtension(t, shared)
+	extB, secretB := tenantB.createExtension(t, shared)
+
+	assert.Equal(t, shared, extA.Number)
+	assert.Equal(t, shared, extB.Number, "a number is tenant-local; both tenants may hold 8700")
+	require.NotEqual(t, extA.AuthUsername, extB.AuthUsername,
+		"identical numbers must project to different engine identifiers, or one tenant's phone could register against the other's endpoint")
+	require.NotEqual(t, secretA, secretB)
+
+	// Register tenant A's device only.
+	require.Equal(t, http.StatusOK, registerOnce(t, extA.AuthUsername, secretA))
+
+	assert.Equal(t, "REGISTRATION_STATUS_REGISTERED", tenantA.registrationStatus(t, extA.ExtensionID),
+		"tenant A's extension is the one that registered")
+	assert.Equal(t, "REGISTRATION_STATUS_NOT_REGISTERED", tenantB.registrationStatus(t, extB.ExtensionID),
+		"tenant B's identically-numbered extension must be untouched by tenant A's device")
+
+	assert.Equal(t, 1, tenantA.contactCount(t, extA.AuthUsername))
+	assert.Zero(t, tenantB.contactCount(t, extB.AuthUsername),
+		"no contact may be attributed to the tenant whose device never registered")
+
+	// And tenant B's own credential still works — proving B's endpoint is
+	// live and independent, not merely absent.
+	require.Equal(t, http.StatusOK, registerOnce(t, extB.AuthUsername, secretB))
+	assert.Equal(t, "REGISTRATION_STATUS_REGISTERED", tenantB.registrationStatus(t, extB.ExtensionID))
+	assert.Equal(t, "REGISTRATION_STATUS_REGISTERED", tenantA.registrationStatus(t, extA.ExtensionID),
+		"and registering B must not have disturbed A")
+
+	// A's secret must not authenticate B's endpoint.
+	assert.Equal(t, http.StatusUnauthorized, registerOnce(t, extB.AuthUsername, secretA),
+		"one tenant's secret must never authenticate another tenant's endpoint")
+}
