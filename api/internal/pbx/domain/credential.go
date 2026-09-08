@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -21,6 +22,10 @@ import (
 // case-sensitive-ambiguous or need escaping. It costs a little length
 // and buys far fewer support calls.
 const secretEntropyBytes = 20
+
+// extensionPrefix distinguishes extension endpoints from the trunk
+// endpoints a later change adds, in the one flat namespace ps_* provides.
+const extensionPrefix = "e_"
 
 // ErrRealmRequired is returned when a credential is generated without a
 // realm. It is not defaultable: the HA1 is computed over the realm, so a
@@ -51,7 +56,7 @@ var credentialEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 // to present (LLD-03 §10.3).
 func EndpointIdentifier(id shareddomain.ExtensionID) string {
 	raw := uuid.UUID(id)
-	return "e_" + hex.EncodeToString(raw[:])
+	return extensionPrefix + hex.EncodeToString(raw[:])
 }
 
 // NewExtensionCredential generates a secret and returns it alongside the
@@ -97,4 +102,30 @@ func NewExtensionCredential(username, realm string, rand io.Reader) (plaintext, 
 func HA1(username, realm, secret string) string {
 	sum := md5.Sum([]byte(username + ":" + realm + ":" + secret)) //nolint:gosec // See above: mandated by the SIP digest scheme, not chosen.
 	return hex.EncodeToString(sum[:])
+}
+
+// ExtensionIDFromIdentifier is the inverse of EndpointIdentifier.
+//
+// It exists for reconciliation: an engine row is keyed only by its
+// projected identifier, so attributing an orphaned row back to the
+// extension it came from — or proving it belongs to none — requires
+// reading the derivation backwards. Reporting "e_3fa85f64…" and leaving
+// an operator to work out what it was would make the report useless.
+//
+// Returns false for anything not produced by EndpointIdentifier: a
+// hand-written row, or one belonging to a future object kind with a
+// different prefix. Those are reported as unattributable rather than
+// guessed at.
+func ExtensionIDFromIdentifier(identifier string) (shareddomain.ExtensionID, bool) {
+	hexPart, ok := strings.CutPrefix(identifier, extensionPrefix)
+	if !ok {
+		return shareddomain.ExtensionID{}, false
+	}
+	raw, err := hex.DecodeString(hexPart)
+	if err != nil || len(raw) != 16 {
+		return shareddomain.ExtensionID{}, false
+	}
+	var u uuid.UUID
+	copy(u[:], raw)
+	return shareddomain.ExtensionID(u), true
 }

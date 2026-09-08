@@ -16,6 +16,7 @@ package asterisk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -87,7 +88,10 @@ type Projector struct {
 	pool *corepostgres.Pool
 }
 
-var _ ports.EndpointProjector = (*Projector)(nil)
+var (
+	_ ports.EndpointProjector    = (*Projector)(nil)
+	_ ports.ProjectionReconciler = (*Projector)(nil)
+)
 
 // NewProjector returns a Projector writing endpoints for cfg's realm and
 // transports, reading registration state through pool.
@@ -248,4 +252,91 @@ func (p *Projector) RegistrationStatus(ctx context.Context, ids []shareddomain.E
 		return nil, fmt.Errorf("read registration status: %w", err)
 	}
 	return status, nil
+}
+
+// --- reconciliation --------------------------------------------------
+
+// ListProjected reports every endpoint the engine currently holds.
+func (p *Projector) ListProjected(ctx context.Context) (ports.ProjectionInventory, error) {
+	rows, err := p.pool.Unwrap().Query(ctx, `SELECT id FROM ps_endpoints ORDER BY id`)
+	if err != nil {
+		return ports.ProjectionInventory{}, fmt.Errorf("list projected endpoints: %w", err)
+	}
+	defer rows.Close()
+
+	var inv ports.ProjectionInventory
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return ports.ProjectionInventory{}, fmt.Errorf("scan projected endpoint: %w", err)
+		}
+		if extID, ok := domain.ExtensionIDFromIdentifier(id); ok {
+			inv.Extensions = append(inv.Extensions, extID)
+			continue
+		}
+		inv.Unattributable = append(inv.Unattributable, id)
+	}
+	if err := rows.Err(); err != nil {
+		return ports.ProjectionInventory{}, fmt.Errorf("list projected endpoints: %w", err)
+	}
+	return inv, nil
+}
+
+// DiffExtension reports which projected fields disagree with what ext
+// says they should be, naming each one.
+//
+// Presence alone is not agreement: a row edited by hand — a changed
+// context, a blanked credential, a different transport — leaves the
+// extension listed in the console and broken on the phone. The comparison
+// re-derives what the projection ought to be and compares field by field,
+// so the report says what differs rather than merely that something does.
+//
+// An absent row is reported as "missing" rather than as every field
+// differing, because one line an operator can act on beats eight they
+// have to read.
+func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]string, error) {
+	id := domain.EndpointIdentifier(ext.ID)
+
+	var (
+		transport, aors, auth, context_, allow string
+		authType, username, digest, realm      string
+		maxContactsGot                         int
+	)
+
+	err := p.pool.Unwrap().QueryRow(ctx, `
+		SELECT e.transport, e.aors, e.auth, e.context, e.allow,
+		       a.auth_type, a.username, a.md5_cred, a.realm,
+		       r.max_contacts
+		FROM ps_endpoints e
+		JOIN ps_auths a ON a.id = e.id
+		JOIN ps_aors  r ON r.id = e.id
+		WHERE e.id = $1
+	`, id).Scan(&transport, &aors, &auth, &context_, &allow,
+		&authType, &username, &digest, &realm, &maxContactsGot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return []string{"missing"}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read projected extension: %w", err)
+	}
+
+	var drift []string
+	expect := func(field, want, got string) {
+		if want != got {
+			drift = append(drift, field)
+		}
+	}
+	expect("transport", p.transportFor(ext.DeviceType), transport)
+	expect("aors", id, aors)
+	expect("auth", id, auth)
+	expect("context", stasisContext, context_)
+	expect("allow", allowedCodecs, allow)
+	expect("auth_type", "md5", authType)
+	expect("username", id, username)
+	expect("md5_cred", ext.SecretDigest, digest)
+	expect("realm", p.cfg.Realm, realm)
+	if maxContactsGot != maxContacts {
+		drift = append(drift, "max_contacts")
+	}
+	return drift, nil
 }

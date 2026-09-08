@@ -118,6 +118,37 @@ type ExtensionStore interface {
 	List(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, page Page) ([]domain.Extension, error)
 }
 
+// ProjectionInventory is what the engine currently holds, expressed in
+// domain terms wherever possible.
+type ProjectionInventory struct {
+	// Extensions are projected rows whose identifier maps back to an
+	// extension.
+	Extensions []shareddomain.ExtensionID
+	// Unattributable are rows this ACL did not write and cannot explain —
+	// hand-written, or left by a future object kind. Reported, never
+	// repaired: deleting a row nobody can account for is how a reconciler
+	// turns a mystery into an outage.
+	Unattributable []string
+}
+
+// ProjectionReconciler is the diagnostic half of the engine port: what
+// does the engine actually hold, and where does it disagree with us.
+//
+// Separate from EndpointProjector because the audiences differ. Writing a
+// projection is something the ordinary use cases do; interrogating one is
+// something only the reconcile command does, and keeping the two apart
+// stops a handler acquiring the ability to go rummaging in engine state.
+type ProjectionReconciler interface {
+	// ListProjected reports every endpoint the engine currently holds.
+	ListProjected(ctx context.Context) (ProjectionInventory, error)
+
+	// DiffExtension names the projected fields that disagree with ext, or
+	// the single field "missing" when the engine holds nothing for it.
+	// Presence alone is not agreement: a hand-edited row leaves the
+	// extension listed in the console and broken on the phone.
+	DiffExtension(ctx context.Context, ext domain.Extension) ([]string, error)
+}
+
 // EndpointProjector is the outbound port onto the media engine's own
 // configuration state — implemented by pbx/acl/asterisk, which is the
 // only package permitted to name an engine table or identifier (D-41,

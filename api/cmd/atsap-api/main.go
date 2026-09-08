@@ -62,6 +62,13 @@ func main() {
 		os.Exit(runBootstrap(cfg))
 	}
 
+	// `atsap-api pbx reconcile` compares the media engine's configuration
+	// against the platform's records. Operator-invoked, never scheduled
+	// (LLD-03 design D6).
+	if len(os.Args) > 1 && os.Args[1] == "pbx" {
+		os.Exit(runPbx(cfg))
+	}
+
 	logger := logging.New(cfg.LogLevel)
 
 	key, err := identityapp.TokenKeyFromHex(cfg.JWTPrivateKeyHex)

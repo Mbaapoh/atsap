@@ -52,8 +52,8 @@
 
 ## 8. Reconcile command
 
-- [ ] 8.1 Implement `atsap-api pbx reconcile` diffing `ps_*` against `extensions` and reporting divergence; verify a test hand-edits a projection row and confirms the divergence is reported
-- [ ] 8.2 Implement `--fix` repairing the projection from the domain; verify the same test repairs and reports no divergence afterwards, and that without `--fix` nothing is changed
+- [x] 8.1 Implement `atsap-api pbx reconcile` diffing `ps_*` against `extensions` and reporting divergence; verify a test hand-edits a projection row and confirms the divergence is reported
+- [x] 8.2 Implement `--fix` repairing the projection from the domain; verify the same test repairs and reports no divergence afterwards, and that without `--fix` nothing is changed
 
 ## 9. End-to-end verification
 
