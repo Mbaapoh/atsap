@@ -28,18 +28,12 @@ var engineTables = []string{
 // table.
 //
 //   - pbx/acl/asterisk is the ACL itself: naming them is its entire job.
-//   - internal/postgres holds the schema assertions that prove those
-//     tables have no tenant_id, no RLS, and the right grants. A test that
-//     asserts a table's properties cannot avoid naming it, and losing that
-//     assertion to satisfy this rule would trade a real control for a
-//     cosmetic one.
 //   - internal/archtest is this checker, which must name what it checks.
 //
 // The exemption list is deliberately short and deliberately explicit.
 // Adding to it is a decision, not a convenience.
 var engineTableExemptPrefixes = []string{
 	"internal/pbx/acl/asterisk",
-	"internal/postgres",
 	"internal/archtest",
 }
 
@@ -86,6 +80,21 @@ func ScanEngineTableNames(apiRootDir string) ([]EngineTableUse, error) {
 			}
 			rel = filepath.ToSlash(rel)
 			if isEngineTableExempt(rel) {
+				return nil
+			}
+
+			// Test files are exempt. The invariant this protects is that
+			// SHIPPING code outside the ACL never speaks the engine's
+			// vocabulary; a test that verifies the ACL actually wrote the
+			// rows it claims to, or that the schema has the grants it
+			// should, cannot do so without naming them. Tests do not ship,
+			// so no engine coupling escapes this way.
+			//
+			// The alternative — exempting whole packages because they
+			// contain such a test — would have punched much larger holes:
+			// internal/postgres and internal/pbx/application would both
+			// have been waved through entirely, production code included.
+			if strings.HasSuffix(rel, "_test.go") {
 				return nil
 			}
 

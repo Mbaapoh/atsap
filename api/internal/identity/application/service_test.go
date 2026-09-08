@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -145,6 +146,17 @@ func (f *fakeStores) RevokeApiKey(_ context.Context, _ shareddomain.TenantID, _ 
 }
 
 func (f *fakeStores) AppendAudit(_ context.Context, e domain.AuditEntry) error {
+	if f.failAudit != nil {
+		return f.failAudit
+	}
+	f.audit = append(f.audit, e)
+	return nil
+}
+
+// AppendAuditTx records the same way. The fake has no transaction to
+// honour, so tx is ignored — what this test double exists to observe is
+// that an entry was appended, not how it reached the database.
+func (f *fakeStores) AppendAuditTx(_ context.Context, _ pgx.Tx, e domain.AuditEntry) error {
 	if f.failAudit != nil {
 		return f.failAudit
 	}

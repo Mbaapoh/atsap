@@ -13,6 +13,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"atsap-api/internal/identity/domain"
 	shareddomain "atsap-api/internal/shared/domain"
 )
@@ -152,6 +154,18 @@ type ApiKeyStore interface {
 // a method is stronger than immutability enforced by a check.
 type AuditStore interface {
 	AppendAudit(ctx context.Context, entry domain.AuditEntry) error
+
+	// AppendAuditTx writes one record inside a transaction the caller
+	// already owns, so a mutation and the record of it commit together.
+	//
+	// This exists so that other bounded contexts do not have to write
+	// audit_logs themselves to get atomicity. The table belongs to
+	// identity; a cross-context table write would put two contexts in
+	// charge of one schema (HLD 04 §10.1). The caller must have scoped tx
+	// to entry.TenantID already — this method deliberately does not set
+	// the tenant context inside someone else's transaction.
+	AppendAuditTx(ctx context.Context, tx pgx.Tx, entry domain.AuditEntry) error
+
 	ListAudit(ctx context.Context, tenantID shareddomain.TenantID, limit int) ([]domain.AuditEntry, error)
 }
 

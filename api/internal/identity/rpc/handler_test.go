@@ -16,6 +16,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/jackc/pgx/v5"
+
 	atsapbxv1 "atsap-api/internal/genproto/atsapbx/v1"
 	"atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/domain"
@@ -488,6 +490,13 @@ func (m *memStores) RevokeApiKey(_ context.Context, tenantID shareddomain.Tenant
 	k.RevokedAt = &revokedAt
 	m.apiKeys[id.String()] = k
 	return nil
+}
+
+// AppendAuditTx appends the same way; this in-memory double has no
+// transaction to join, and what the tests observe is the entry, not the
+// path it took.
+func (m *memStores) AppendAuditTx(ctx context.Context, _ pgx.Tx, e domain.AuditEntry) error {
+	return m.AppendAudit(ctx, e)
 }
 
 func (m *memStores) AppendAudit(_ context.Context, e domain.AuditEntry) error {

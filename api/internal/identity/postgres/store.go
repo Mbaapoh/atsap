@@ -323,10 +323,32 @@ func (s *Store) RevokeApiKey(ctx context.Context, tenantID shareddomain.TenantID
 
 // --- audit ---------------------------------------------------------
 
-// AppendAudit writes one audit record. There is no counterpart that
-// updates or deletes one, here or on the port — history is append-only
-// by construction (AC-01.4).
+// AppendAudit writes one audit record in its own tenant-scoped
+// transaction. There is no counterpart that updates or deletes one, here
+// or on the port — history is append-only by construction (AC-01.4).
 func (s *Store) AppendAudit(ctx context.Context, e domain.AuditEntry) error {
+	return s.pool.WithTenant(ctx, e.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		return s.AppendAuditTx(ctx, tx, e)
+	})
+}
+
+// AppendAuditTx writes one audit record inside a transaction the caller
+// already owns, so a mutation and its audit entry commit or fail
+// together.
+//
+// It exists for callers in other bounded contexts — pbx-core writing an
+// extension, for instance — whose own write must be atomic with the
+// record of it. Those callers must not touch audit_logs directly: the
+// table belongs to identity, and a cross-context table write would put
+// two contexts in charge of one schema. Handing them a transaction-aware
+// method keeps the table with its owner while still giving them
+// atomicity.
+//
+// The caller is responsible for having scoped tx to e.TenantID (via
+// Pool.WithTenant); this method does not set the tenant context itself,
+// because doing so inside someone else's transaction would silently
+// change the tenant every subsequent statement in that transaction sees.
+func (s *Store) AppendAuditTx(ctx context.Context, tx pgx.Tx, e domain.AuditEntry) error {
 	before, err := marshalState(e.BeforeState)
 	if err != nil {
 		return fmt.Errorf("encode audit before state: %w", err)
@@ -336,18 +358,15 @@ func (s *Store) AppendAudit(ctx context.Context, e domain.AuditEntry) error {
 		return fmt.Errorf("encode audit after state: %w", err)
 	}
 
-	return s.pool.WithTenant(ctx, e.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO audit_logs
-				(tenant_id, actor_id, actor_type, action, resource_type, resource_id, before_state, after_state, ip_address, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		`, e.TenantID.String(), e.ActorID.String(), string(e.ActorType), e.Action,
-			e.ResourceType, e.ResourceID, before, after, nullableIP(e.IPAddress), e.CreatedAt)
-		if err != nil {
-			return fmt.Errorf("insert audit entry: %w", err)
-		}
-		return nil
-	})
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO audit_logs
+			(tenant_id, actor_id, actor_type, action, resource_type, resource_id, before_state, after_state, ip_address, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, e.TenantID.String(), e.ActorID.String(), string(e.ActorType), e.Action,
+		e.ResourceType, e.ResourceID, before, after, nullableIP(e.IPAddress), e.CreatedAt); err != nil {
+		return fmt.Errorf("insert audit entry: %w", err)
+	}
+	return nil
 }
 
 // ListAudit returns a tenant's most recent audit records.

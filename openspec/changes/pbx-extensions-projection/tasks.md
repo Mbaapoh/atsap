@@ -30,11 +30,11 @@
 
 ## 5. Application layer
 
-- [ ] 5.1 Implement `pbx/application` extension creation: authorize via `identity`, validate, generate the credential, then write the domain row, the projection and the audit row in one transaction; verify an integration test confirms all three exist after success
-- [ ] 5.2 Prove atomicity in both directions with injected failures; verify a test asserts a failing projection leaves no `extensions` row, and a failing domain write leaves no `ps_*` row
-- [ ] 5.3 Implement update, delete and credential regeneration with the same transactional shape; verify integration tests cover each, including that regeneration invalidates the previous secret
-- [ ] 5.4 Implement list with registration status attached from the batch read; verify an integration test returns the correct state per extension
-- [ ] 5.5 Redact `secret_digest` and the generated plaintext at the audit-entry constructor; verify a test asserts no audit row for any extension mutation contains either value
+- [x] 5.1 Implement `pbx/application` extension creation: authorize via `identity`, validate, generate the credential, then write the domain row, the projection and the audit row in one transaction; verify an integration test confirms all three exist after success
+- [x] 5.2 Prove atomicity in both directions with injected failures; verify a test asserts a failing projection leaves no `extensions` row, and a failing domain write leaves no `ps_*` row
+- [x] 5.3 Implement update, delete and credential regeneration with the same transactional shape; verify integration tests cover each, including that regeneration invalidates the previous secret
+- [x] 5.4 Implement list with registration status attached from the batch read; verify an integration test returns the correct state per extension
+- [x] 5.5 Redact `secret_digest` and the generated plaintext at the audit-entry constructor; verify a test asserts no audit row for any extension mutation contains either value
 
 ## 6. ConnectRPC surface
 

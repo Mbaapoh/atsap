@@ -261,9 +261,26 @@ func TestAuditStore_ExposesNoMutationPath(t *testing.T) {
 		assert.NotContains(t, lower, "set", "audit method %s implies mutation", name)
 	}
 
+	// Every method on the port must be an append or a read. Counting them
+	// was the original form of this check; it tripped when pbx-core needed
+	// AppendAuditTx to write its audit row inside its own transaction, and
+	// a count cannot tell a legitimate third appender from a smuggled
+	// mutator. Asserting the property directly is what AC-01.4 actually
+	// requires: immutability is the absence of an update or delete path,
+	// not a fixed method count.
 	portType := reflect.TypeOf((*ports.AuditStore)(nil)).Elem()
-	require.Equal(t, 2, portType.NumMethod(),
-		"AuditStore must expose exactly AppendAudit and ListAudit — adding a third method here needs AC-01.4 rethought")
+	require.Positive(t, portType.NumMethod())
+	for i := range portType.NumMethod() {
+		name := portType.Method(i).Name
+		lower := strings.ToLower(name)
+		assert.True(t,
+			strings.HasPrefix(lower, "append") || strings.HasPrefix(lower, "list") || strings.HasPrefix(lower, "get"),
+			"AuditStore method %s is neither an append nor a read — history must stay append-only (AC-01.4)", name)
+		for _, forbidden := range []string{"update", "delete", "set", "remove", "purge", "truncate"} {
+			assert.NotContains(t, lower, forbidden,
+				"AuditStore method %s implies mutation — there must be no path to alter history", name)
+		}
+	}
 }
 
 // TestStore_AuditRowSurvivesUnchanged: having established there is no
