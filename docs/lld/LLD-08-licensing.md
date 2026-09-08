@@ -12,6 +12,7 @@
 | Date | Change |
 |---|---|
 | 2026-09-07 | Written as the licensing half of `LLD-02-identity-licensing.md`. |
+| 2026-09-08 | **§3.1 added, correcting §2.** The inherited text said licensing's port *retires* `telephony/ports.LicenseManager`; that contradicted this LLD's own §1 tripwire and DoD 7, and the obvious way to honour it would have made `licensing` import `telephony/ports` — forbidden by HLD 04 §10.1. Both ports stay; the composition root adapts between them. |
 | 2026-09-08 | **Split into its own LLD.** `docs/lld/README.md` states that an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts, each depending on nothing. LLD-02 §2 had justified combining them as sharing "one cutover (auth + entitlement activate together)". Delivery disproved that: identity shipped in three archived changes (`identity-auth-rbac`, `identity-api`, `auth-cutover-connectrpc`) while licensing shipped nothing. They never activated together and never could have. Content is carried over unchanged except where marked. |
 
 ## 1. Scope
@@ -52,9 +53,9 @@ api/internal/
     │                         #      burst window), GraceTracker (pure
     │                         #      state machine over timestamps)
     ├── ports/                # NEW: the full LicenseManager — HLD 04 §4's
-    │                         #      four methods. LLD-01's single-method
-    │                         #      stub port is RETIRED by this LLD, not
-    │                         #      extended beside it
+    │                         #      four methods, with licensing's own
+    │                         #      CapacityVerdict. It does NOT replace
+    │                         #      telephony's one-method port — §3.1
     ├── application/          # NEW: capacity monitor, daily entitlement
     │                         #      worker, key-apply flow
     └── postgres/             # NEW: licensing_state persistence
@@ -112,6 +113,47 @@ deviation, the same category as LLD-01's `CallStore` gaining
 `RecordUsageTicks` beyond HLD 04 §1's exact shape.
 
 Ed25519 uses stdlib `crypto/ed25519` — no new dependency.
+
+### 3.1 Two ports, deliberately — and why the alternative is forbidden
+
+An earlier draft of this section said LLD-01's single-method port is
+"RETIRED by this LLD, not extended beside it". **That was wrong, and it
+contradicted this LLD's own §1.** Retiring
+`telephony/ports.LicenseManager` means editing
+`api/internal/telephony/ports/ports.go`, which is precisely what the
+zero-changes tripwire forbids and what DoD 7 asserts against.
+
+Both ports stay:
+
+| Port | Owner | Shape | Purpose |
+|---|---|---|---|
+| `telephony/ports.LicenseManager` | the **consumer** | `ValidateCapacity` only | The narrow view `telephony-core` actually needs at Screening |
+| `licensing/ports.LicenseManager` | the **provider** | all four methods | The full contract HLD 04 §4 specifies |
+
+That is the ordinary Go idiom — a consumer declares the smallest
+interface it uses — not duplication to be tidied away later.
+
+**The tempting shortcut is an architecture violation, so it is named
+here before someone reaches for it.** `telephony/ports.LicenseManager`
+returns *telephony's* `CapacityVerdict` (`ports.go:133`). For a licensing
+adapter to satisfy that interface directly, `licensing` would have to
+import `telephony/ports` — a Tier-0 context depending on a Tier-0 peer,
+which HLD 04 §10.1 denies outright ("`licensing` may depend on: nothing").
+
+**The composition root adapts instead.** `cmd/atsap-api` holds a small
+struct wrapping `licensing/application`'s manager and translating one
+verdict type into the other. The composition root is the one place
+permitted to know both contexts, which is what §1's "beyond the
+composition root" carve-out already anticipated. Neither context imports
+the other, and `git diff --stat api/internal/telephony/` stays empty.
+
+**This is gated, not merely written down.** `.golangci.yml` has no rule
+covering `licensing` yet, because the package does not exist. The change
+that creates it adds a `licensing-imports-nothing` depguard rule denying
+`atsap-api/internal/telephony`, `.../pbx` and `.../identity` from
+`**/internal/licensing/**`, and fault-injects it once to prove it fails —
+the same treatment `pbx-acl-boundary` got. A rule that has never rejected
+anything is a rule nobody has tested (D-28).
 
 ## 4. How this context interacts with the others
 
@@ -202,6 +244,9 @@ lands them updates §1 in the same commit.
 8. All SQL uses parameter placeholders. Stated plainly as review-enforced:
    `depguard` matches import paths, not string shapes, so no CI gate
    claims this check (D-28 honesty).
+9. A `licensing-imports-nothing` depguard rule exists and has been
+   fault-injected once to prove it rejects — `licensing` importing
+   `telephony`, `pbx` or `identity` fails the build (§3.1, HLD 04 §10.1).
 
 ## 9. OpenSpec handoff
 
