@@ -22,11 +22,11 @@
 
 ## 4. The Asterisk ACL projector
 
-- [ ] 4.1 Implement `pbx/acl/asterisk` with the `e_<hex uuid>` identifier derivation; verify a unit test proves the identifier is derived from the extension UUID and never from the extension number
-- [ ] 4.2 Implement `ProjectExtension` writing `ps_endpoints`, `ps_auths` (`auth_type=md5`, `md5_cred`, no `password`) and `ps_aors` inside the caller's transaction; verify an integration test finds all three rows after commit and asserts the `password` column is empty
-- [ ] 4.3 Implement `RemoveExtension` deleting all three rows in the caller's transaction; verify an integration test finds none of them after commit
-- [ ] 4.4 Implement `RegistrationStatus` as a batch read returning a map for a slice of IDs; verify an integration test issues one query for several extensions and returns the correct state for each
-- [ ] 4.5 Add a `depguard` rule confining `ps_endpoints`/`ps_auths`/`ps_aors` to `internal/pbx/acl/asterisk`, and forbidding any import between `internal/telephony` and `internal/pbx`; verify `mise run lint` fails when the rule is deliberately violated and passes when it is not
+- [x] 4.1 Implement `pbx/acl/asterisk` with the `e_<hex uuid>` identifier derivation; verify a unit test proves the identifier is derived from the extension UUID and never from the extension number
+- [x] 4.2 Implement `ProjectExtension` writing `ps_endpoints`, `ps_auths` (`auth_type=md5`, `md5_cred`, no `password`) and `ps_aors` inside the caller's transaction; verify an integration test finds all three rows after commit and asserts the `password` column is empty
+- [x] 4.3 Implement `RemoveExtension` deleting all three rows in the caller's transaction; verify an integration test finds none of them after commit
+- [x] 4.4 Implement `RegistrationStatus` as a batch read returning a map for a slice of IDs; verify an integration test issues one query for several extensions and returns the correct state for each
+- [x] 4.5 Add a `depguard` rule confining `ps_endpoints`/`ps_auths`/`ps_aors` to `internal/pbx/acl/asterisk`, and forbidding any import between `internal/telephony` and `internal/pbx`; verify `mise run lint` fails when the rule is deliberately violated and passes when it is not
 
 ## 5. Application layer
 

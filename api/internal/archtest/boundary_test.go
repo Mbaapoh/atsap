@@ -114,3 +114,61 @@ func writeGoFile(t *testing.T, path, content string) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
+
+// --- engine table names (D-41, D-47) --------------------------------
+
+// TestScanEngineTableNames_RealRepoIsClean is the check depguard cannot
+// perform: an engine table appears in a SQL string literal, and no import
+// rule can see a string. Naming ps_endpoints outside the ACL means engine
+// knowledge has leaked upward.
+func TestScanEngineTableNames_RealRepoIsClean(t *testing.T) {
+	uses, err := ScanEngineTableNames(apiRootDir(t))
+	require.NoError(t, err)
+	assert.Empty(t, uses, "engine table names used outside the ACL: %+v", uses)
+}
+
+// TestScanEngineTableNames_DetectsInjectedViolation proves the check can
+// actually fail. A scanner that has only ever returned "clean" is
+// indistinguishable from one that returns "clean" unconditionally.
+func TestScanEngineTableNames_DetectsInjectedViolation(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "pbx", "application", "svc.go"), `
+package application
+
+const q = "SELECT id FROM ps_endpoints WHERE id = $1"
+`)
+
+	uses, err := ScanEngineTableNames(root)
+	require.NoError(t, err)
+	require.Len(t, uses, 1, "a table named outside the ACL must be reported")
+	assert.Equal(t, "ps_endpoints", uses[0].Table)
+	assert.Contains(t, uses[0].File, "application")
+}
+
+// The ACL itself must not be flagged — naming those tables is its job.
+func TestScanEngineTableNames_AclIsExempt(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "pbx", "acl", "asterisk", "p.go"), `
+package asterisk
+
+const q = "DELETE FROM ps_aors WHERE id = $1"
+`)
+
+	uses, err := ScanEngineTableNames(root)
+	require.NoError(t, err)
+	assert.Empty(t, uses, "the ACL is where these names belong")
+}
+
+// A word merely containing a table name is not a use of it.
+func TestScanEngineTableNames_IgnoresSubstringMatches(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "pbx", "domain", "d.go"), `
+package domain
+
+const notATable = "ps_endpoints_archive_summary"
+`)
+
+	uses, err := ScanEngineTableNames(root)
+	require.NoError(t, err)
+	assert.Empty(t, uses, "word-boundary matching must not flag a longer identifier")
+}

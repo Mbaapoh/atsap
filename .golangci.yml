@@ -29,6 +29,41 @@ linters:
             - pkg: atsap-api/internal/telephony/acl/ami
               desc: "Asterisk AMI adapters stay inside telephony/acl (HLD 01 §1.2, LLD-01 §2)"
 
+        # Same invariant, pbx-core's side (D-41, D-47, LLD-03 §2): the
+        # PJSIP Realtime projection is Asterisk's vocabulary and stays
+        # inside pbx/acl/asterisk. Domain, application and rpc reach the
+        # engine only through ports.EndpointProjector.
+        #
+        # depguard matches import paths, not string literals, so it cannot
+        # stop someone typing "ps_endpoints" into a query in the wrong
+        # package. That half is covered by ScanEngineTableNames in
+        # internal/archtest, which parses each file and inspects only
+        # string literals — never comments, because explaining why a
+        # projection exists is good practice, not a leak. Stated here
+        # rather than left implied: a gate believed to cover more than it
+        # does is worse than no gate (D-28).
+        pbx-acl-boundary:
+          files:
+            - "**/internal/pbx/domain/**"
+            - "**/internal/pbx/application/**"
+            - "**/internal/pbx/ports/**"
+            - "**/internal/pbx/rpc/**"
+            - "**/internal/pbx/postgres/**"
+          deny:
+            - pkg: atsap-api/internal/pbx/acl/asterisk
+              desc: "The Asterisk projection stays behind ports.EndpointProjector (D-41, D-47, LLD-03 §2)"
+
+        # Bounded-context separation (HLD 04 §10.1): telephony-core must
+        # not depend on pbx-core in either direction of import. pbx-core
+        # may depend on telephony-core — it is Tier 1 and telephony-core is
+        # Tier 0 — so only this direction is denied.
+        telephony-must-not-import-pbx:
+          files:
+            - "**/internal/telephony/**"
+          deny:
+            - pkg: atsap-api/internal/pbx
+              desc: "telephony-core must not depend on pbx-core (HLD 04 §10.1). Inbound routing inverts the dependency with a port telephony-core owns"
+
 formatters:
   enable:
     - gofmt
