@@ -85,11 +85,27 @@ Run before any commit that touches what they cover:
 | Command | Covers |
 |---|---|
 | `mise run docs` | HLD markers, D-number citations, internal links, every proto RPC documented in `API.md` |
-| `mise run lint` | `golangci-lint`, including the `depguard` bounded-context import rules |
+| `mise run lint` | `golangci-lint` **with `--build-tags integration,e2e`**, including the `depguard` bounded-context import rules |
 | `mise run proto` | `buf lint` and `buf breaking` |
 | `mise run test` | unit, and with tags `integration` / `e2e` |
 | `mise run diagrams` | every mermaid block in `docs/` renders (needs Chromium; not in `ci`) |
 | `mise run ci` | docs, lint, vuln, test in pipeline order |
+
+**The build tags on `lint` are load-bearing.** Without them
+`golangci-lint` never compiles a file behind `//go:build integration` or
+`//go:build e2e`, so the boundary rules skip every integration and e2e
+test in the repo — silently, reporting `0 issues`, which reads like
+coverage rather than absence. Adding the tags on 2026-09-08 surfaced nine
+findings that had been invisible since the suites were written. A gate
+believed to cover more than it does is worse than no gate (D-28): if a
+new suffix or tag is introduced, add it here in the same change.
+
+A tagged integration or e2e test **may** wire concrete adapters — it is a
+composition root, doing on a small scale what `cmd/atsap-api` does, and
+it never ships. Both gates carve that out by file suffix
+(`_integration_test.go`, `_e2e_test.go`) and no wider: an ordinary unit
+test reaching for an ACL adapter is still a failure, and is the signal
+that a port is missing.
 
 Integration tests need the dev stack up (`mise run dev`) and connect over
 host ports, so override the compose hostnames:

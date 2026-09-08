@@ -5,9 +5,9 @@
 // openspec/specs/pbx-core/endpoint-projection/spec.md that were proven by
 // hand against the live engine and never automated.
 //
-//	- "A device registers immediately after creation"
-//	- "A wrong secret is refused"
-//	- "Deletion takes effect immediately"
+//   - "A device registers immediately after creation"
+//   - "A wrong secret is refused"
+//   - "Deletion takes effect immediately"
 //
 // The mechanism under test is PJSIP Realtime projection (D-47): the ACL
 // writes ps_* rows in the same transaction as the domain row and Asterisk
@@ -251,7 +251,7 @@ func registerOnce(t *testing.T, user, secret string) int {
 
 	ua, err := sipgo.NewUA()
 	require.NoError(t, err)
-	defer ua.Close()
+	defer func() { _ = ua.Close() }()
 
 	client, err := sipgo.NewClient(ua, sipgo.WithClientHostname(localIP))
 	require.NoError(t, err)

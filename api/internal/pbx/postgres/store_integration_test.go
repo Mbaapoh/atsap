@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pbxdomain "atsap-api/internal/pbx/domain"
-	pbxpostgres "atsap-api/internal/pbx/postgres"
 	"atsap-api/internal/pbx/ports"
+	pbxpostgres "atsap-api/internal/pbx/postgres"
 	corepostgres "atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
 )
@@ -126,15 +126,15 @@ func newExtension(tenantID shareddomain.TenantID, number, displayName string, de
 	id := shareddomain.NewExtensionID()
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return pbxdomain.Extension{
-		ID:            id,
-		TenantID:      tenantID,
-		Number:        number,
-		DisplayName:   displayName,
-		AuthUsername:  "u" + strings.ReplaceAll(id.String(), "-", ""),
-		SecretDigest:  strings.Repeat("0", 32),
-		DeviceType:    deviceType,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:           id,
+		TenantID:     tenantID,
+		Number:       number,
+		DisplayName:  displayName,
+		AuthUsername: "u" + strings.ReplaceAll(id.String(), "-", ""),
+		SecretDigest: strings.Repeat("0", 32),
+		DeviceType:   deviceType,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 }
 

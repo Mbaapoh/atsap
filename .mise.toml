@@ -44,9 +44,15 @@ dir = "api"
 run = "go test ./... -race -cover"
 
 [tasks.lint]
-description = "Run golangci-lint"
+description = "Run golangci-lint (including tagged integration and e2e files)"
 dir = "api"
-run = "golangci-lint run ./..."
+# --build-tags is not optional. Without it golangci-lint never compiles a
+# file behind //go:build integration or //go:build e2e, so depguard's
+# boundary rules — the architectural gate — silently skipped every
+# integration and e2e test in the repo. That went unnoticed because the
+# untagged run reports "0 issues", which reads like coverage rather than
+# absence. Adding the tags surfaced nine real findings on 2026-09-08.
+run = "golangci-lint run --build-tags integration,e2e ./..."
 
 # buf.yaml has configured lint and breaking rules since LLD-01, but
 # nothing ever ran them — the proto contract was unguarded while

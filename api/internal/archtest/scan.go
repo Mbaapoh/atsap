@@ -18,6 +18,10 @@ const modulePath = "atsap-api"
 // (parser.ImportsOnly — no type-checking, no build-tag evaluation; a
 // literal import path check is all this invariant needs), and returns
 // every ACL-boundary violation found.
+//
+// The one exception is a tagged composition-root test file — see
+// composedInTestSuffixes. Those wire concrete adapters on purpose and
+// never ship.
 func ScanModule(apiRootDir string) ([]Violation, error) {
 	var violations []Violation
 
@@ -31,6 +35,9 @@ func ScanModule(apiRootDir string) ([]Violation, error) {
 				return fmt.Errorf("walk %s: %w", path, err)
 			}
 			if d.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			if isComposedInTest(d.Name()) {
 				return nil
 			}
 

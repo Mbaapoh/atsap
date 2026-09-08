@@ -359,7 +359,7 @@ func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomai
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GetCall status %d", resp.StatusCode)
 	}
@@ -470,7 +470,7 @@ func authenticateFixtureOperator(t *testing.T, ctx context.Context, pool *corepo
 	if err != nil {
 		t.Fatalf("authenticate over http: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("AuthenticateUser status %d", resp.StatusCode)
 	}
@@ -510,7 +510,7 @@ func TestGetCall_RefusesUnauthenticated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated GetCall returned %d, want 401 — the auth interceptor is not mounted on TelephonyService", resp.StatusCode)
@@ -558,7 +558,7 @@ func TestGetCall_RefusesAnotherTenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK {
 		t.Fatal("a caller read a tenant that is not their own")

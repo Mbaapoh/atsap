@@ -46,7 +46,7 @@ func TestBootstrap_EmptyAndAlreadyBootstrapped(t *testing.T) {
 
 	admin, err := pgx.Connect(ctx, adminURL(t))
 	require.NoError(t, err)
-	defer admin.Close(ctx)
+	defer func() { _ = admin.Close(ctx) }()
 
 	// Fresh scratch database, migrated, so this test never depends on the
 	// shared dev database's current tenant state.

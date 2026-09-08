@@ -81,6 +81,69 @@ func main() { _ = ami.Client{} }
 	assert.Empty(t, violations)
 }
 
+// TestScanModule_DetectsInjectedPbxViolation is the same fault injection
+// for pbx-core's projection boundary (D-47). It is a separate test rather
+// than a table case because the pbx entry was added later, on 2026-09-08,
+// and a rule that has never rejected anything is a rule nobody has tested
+// (D-28) — this is the proof that it does.
+func TestScanModule_DetectsInjectedPbxViolation(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "pbx", "application", "violation.go"), `
+package application
+
+import "atsap-api/internal/pbx/acl/asterisk"
+
+var _ = asterisk.Projector{}
+`)
+
+	violations, err := ScanModule(root)
+	require.NoError(t, err)
+	require.Len(t, violations, 1)
+	assert.Equal(t, "atsap-api/internal/pbx/application", violations[0].PackagePath)
+	assert.Equal(t, "atsap-api/internal/pbx/acl/asterisk", violations[0].Import)
+}
+
+// TestIsComposedInTest fixes the narrowness of the test-file carve-out:
+// a tagged composition-root test is exempt, a plain unit test is not.
+// Written as a table so the boundary between the two cannot drift
+// unnoticed — widening it to all _test.go files would silently un-gate
+// every unit test in the module.
+func TestIsComposedInTest(t *testing.T) {
+	for name, tc := range map[string]struct {
+		fileName string
+		want     bool
+	}{
+		"integration test composes adapters": {"service_integration_test.go", true},
+		"e2e test composes adapters":         {"projection_e2e_test.go", true},
+		"plain unit test is still gated":     {"service_test.go", false},
+		"production file is still gated":     {"service.go", false},
+		"substring alone does not exempt":    {"integration_helpers.go", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isComposedInTest(tc.fileName))
+		})
+	}
+}
+
+// TestScanModule_ComposedInTestIsExempt proves the carve-out works
+// through the real scanner, not just the predicate: the identical
+// violating import is reported in a production file and ignored in a
+// tagged integration test beside it.
+func TestScanModule_ComposedInTestIsExempt(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "pbx", "application", "harness_integration_test.go"), `
+package application_test
+
+import "atsap-api/internal/pbx/acl/asterisk"
+
+var _ = asterisk.Projector{}
+`)
+
+	violations, err := ScanModule(root)
+	require.NoError(t, err)
+	assert.Empty(t, violations, "a tagged composition-root test must not trip the boundary gate")
+}
+
 // TestScanModule_RealRepoIsClean is the actual LLD-01 §8 DoD gate: the
 // real api/ module, right now, has zero ACL-boundary violations. This
 // is what "passes once the violation is removed" means in practice —

@@ -64,6 +64,28 @@ linters:
             - pkg: atsap-api/internal/pbx
               desc: "telephony-core must not depend on pbx-core (HLD 04 §10.1). Inbound routing inverts the dependency with a port telephony-core owns"
 
+  # The boundary rules above protect the SHIPPED dependency graph. An
+  # integration or e2e test wiring a real adapter is not part of that
+  # graph: Go links `package application_test` separately, and the file
+  # is behind a build tag that production builds never see. Such a test
+  # is a composition root, doing on a small scale what cmd/atsap-api's
+  # main.go does — which is why internal/archtest already exempts
+  # internal/telephony/e2e by name for exactly this reason.
+  #
+  # Scoped to the two tagged test suffixes, not to _test.go generally:
+  # an ordinary unit test has no business constructing an ACL adapter,
+  # and every non-test file stays matched. Before this exclusion existed
+  # the rule was not passing on these files — it was never run against
+  # them (see .mise.toml's lint task).
+  exclusions:
+    rules:
+      - path: '_integration_test\.go'
+        linters:
+          - depguard
+      - path: '_e2e_test\.go'
+        linters:
+          - depguard
+
 formatters:
   enable:
     - gofmt
