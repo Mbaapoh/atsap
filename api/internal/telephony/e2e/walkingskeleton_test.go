@@ -87,6 +87,16 @@ func TestWalkingSkeleton(t *testing.T) {
 		t.Fatalf("insert tenant: %v", err)
 	}
 
+	// --- an authenticated operator for the public API ---
+	//
+	// TelephonyService now requires a token (auth-cutover-connectrpc).
+	// The token is obtained through the real AuthenticateUser RPC rather
+	// than minted here: a hand-made token would prove this test can reach
+	// the API, not that a caller can. Exempting GetCall for the test's
+	// convenience was the alternative, and it is exactly the concession
+	// the cutover removed.
+	token := authenticateFixtureOperator(t, ctx, appPool, tenantID)
+
 	// --- NATS: subscribe to this tenant's events before anything happens.
 	nc, err := natsgo.Connect(natsURL)
 	if err != nil {
@@ -180,7 +190,7 @@ func TestWalkingSkeleton(t *testing.T) {
 	assertEventSequence(t, sub)
 
 	// --- public API: GetCall via the running app; right state, no channel ID. ---
-	assertPublicGetCall(t, ctx, tenantID, callID)
+	assertPublicGetCall(t, ctx, tenantID, callID, token)
 }
 
 // waitForStasisApp polls ARI's /applications/{name} until Asterisk
@@ -335,7 +345,7 @@ func filterMarkers(evs []string) []string {
 	return out
 }
 
-func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID) {
+func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID, token string) {
 	t.Helper()
 	body := fmt.Sprintf(`{"tenantId":%q,"callId":%q}`, tenantID.String(), callID.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -344,6 +354,7 @@ func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomai
 		t.Fatalf("build getcall request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
@@ -408,4 +419,151 @@ func hangupCallChannels(t *testing.T, ctx context.Context, ariClient *ari.Client
 		t.Fatalf("hangupCallChannels: no channels found for call %s among %d live channels", callID, len(channelIDs))
 	}
 	t.Logf("hung up %d channel(s) for call %s", hungUp, callID)
+}
+
+// fixtureOperatorPassword and fixtureOperatorHash are a synthetic dev-rig
+// operator (D-39: no real credential, no PII). The hash is this
+// repository's own Argon2id output for that password.
+const (
+	fixtureOperatorPassword = "e2e-fixture-operator-password"
+	fixtureOperatorHash     = "$argon2id$v=19$m=19456,t=2,p=1$S2sQSViP/Ztyosl6nREwLg$b1iihB2OK3aZuaArz3DaXKooCO/+VrnoaU2/XFzVhGc"
+)
+
+// authenticateFixtureOperator seeds a TENANT_ADMIN for tenantID and
+// exchanges its credentials for a real token through the public
+// AuthenticateUser RPC.
+//
+// Tenant scope, not system scope: reading one's own call is what an
+// ordinary tenant administrator does, and a system binding reaches every
+// tenant, which would hide a failure affecting ordinary callers.
+func authenticateFixtureOperator(t *testing.T, ctx context.Context, pool *corepostgres.Pool, tenantID shareddomain.TenantID) string {
+	t.Helper()
+
+	principalID := shareddomain.NewPrincipalID()
+	username := fmt.Sprintf("e2e-op-%d", time.Now().UnixNano())
+
+	if err := pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status)
+			 VALUES ($1,$2,$3,$4,$5,'TENANT_ADMIN','ACTIVE')`,
+			principalID.String(), tenantID.String(), username, username+"@e2e.invalid", fixtureOperatorHash); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx,
+			`INSERT INTO role_bindings (principal_id, tenant_id, role, scope)
+			 VALUES ($1,$2,'TENANT_ADMIN','tenant')`,
+			principalID.String(), tenantID.String())
+		return err
+	}); err != nil {
+		t.Fatalf("seed fixture operator: %v", err)
+	}
+
+	body := fmt.Sprintf(`{"tenantId":%q,"username":%q,"password":%q}`,
+		tenantID.String(), username, fixtureOperatorPassword)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		appAPI+"/atsapbx.v1.IdentityService/AuthenticateUser", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build authenticate request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("authenticate over http: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("AuthenticateUser status %d", resp.StatusCode)
+	}
+	var parsed struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		t.Fatalf("decode AuthenticateUser: %v", err)
+	}
+	if parsed.Token == "" {
+		t.Fatal("AuthenticateUser returned an empty token")
+	}
+	return parsed.Token
+}
+
+// TestGetCall_RefusesUnauthenticated is the standing guard for the auth
+// cutover (task 4.1).
+//
+// Mounting the interceptor is one line in main.go, and a revert or a bad
+// merge silently un-mounts it. The archived identity-api change recorded
+// its own guard as "asserted by test"; no such test existed, which is how
+// the concession survived two changes unchallenged. This one exists.
+func TestGetCall_RefusesUnauthenticated(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	body := fmt.Sprintf(`{"tenantId":%q,"callId":%q}`,
+		shareddomain.NewTenantID().String(), shareddomain.NewCallID().String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		appAPI+"/atsapbx.v1.TelephonyService/GetCall", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("getcall over http: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated GetCall returned %d, want 401 — the auth interceptor is not mounted on TelephonyService", resp.StatusCode)
+	}
+}
+
+// TestGetCall_RefusesAnotherTenant covers task 4.2: a valid token does
+// not let a caller read a tenant that is not their own.
+//
+// The refusal must be the tenant-mismatch one, not a "not found" — a
+// not-found would mean the request reached the store and the answer
+// merely happened to be empty, which is a different and weaker property.
+func TestGetCall_RefusesAnotherTenant(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	pool, err := corepostgres.Open(ctx, pgURL)
+	if err != nil {
+		t.Fatalf("open app pool: %v", err)
+	}
+	defer pool.Close()
+
+	mine := shareddomain.NewTenantID()
+	theirs := shareddomain.NewTenantID()
+	for _, id := range []shareddomain.TenantID{mine, theirs} {
+		if _, err := pool.Unwrap().Exec(ctx,
+			`INSERT INTO tenants (id, name, status) VALUES ($1,'e2e-authz','ACTIVE') ON CONFLICT (id) DO NOTHING`,
+			id.String()); err != nil {
+			t.Fatalf("insert tenant: %v", err)
+		}
+	}
+	token := authenticateFixtureOperator(t, ctx, pool, mine)
+
+	body := fmt.Sprintf(`{"tenantId":%q,"callId":%q}`,
+		theirs.String(), shareddomain.NewCallID().String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		appAPI+"/atsapbx.v1.TelephonyService/GetCall", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("getcall over http: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("a caller read a tenant that is not their own")
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("cross-tenant GetCall returned %d, want 400 (tenant mismatch refused before the store) — a 404 would mean the request reached the store", resp.StatusCode)
+	}
 }

@@ -237,3 +237,23 @@ func TestAuthInterceptor_SystemScopePassesBodyTenant(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, tc.HasScope(domain.ScopeSystem), "the context must carry the system scope")
 }
+
+// TestExemptProcedure_IsOnlyAuthenticateUser guards the one hole the API
+// deliberately has.
+//
+// ExemptProcedure takes a single procedure name and replaces whatever was
+// there, so a second call does not accumulate exemptions — but a wrong
+// single call opens the wrong door, silently and permanently. The
+// auth-cutover-connectrpc change closed a concession that survived two
+// changes precisely because nothing asserted it; this asserts the
+// replacement.
+func TestExemptProcedure_IsOnlyAuthenticateUser(t *testing.T) {
+	i := application.NewAuthInterceptor(nil, nil).
+		ExemptProcedure(application.AuthenticateUserProcedure)
+
+	assert.Equal(t, application.AuthenticateUserProcedure, i.Exempt(),
+		"the only unauthenticated procedure is the one that mints a token — a caller cannot hold one before obtaining it")
+	assert.Contains(t, i.Exempt(), "AuthenticateUser")
+	assert.NotContains(t, i.Exempt(), "TelephonyService")
+	assert.NotContains(t, i.Exempt(), "PbxService")
+}

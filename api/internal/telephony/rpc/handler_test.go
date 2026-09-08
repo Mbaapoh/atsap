@@ -165,3 +165,22 @@ func TestGetCall_NoChannelIDInResponseContent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &asMap))
 	assert.NotContains(t, strings.ToLower(string(raw)), "channel")
 }
+
+// TestTenantID covers the matcher the auth interceptor uses to enforce
+// the body-vs-token tenant rule. If it fails to report a tenant the
+// request does carry, the interceptor has nothing to compare and a
+// mismatched tenant passes silently — which is the hole the cutover
+// closes, reopened by omission.
+func TestTenantID(t *testing.T) {
+	want := shareddomain.NewTenantID().String()
+
+	got, ok := rpc.TenantID(&atsapbxv1.GetCallRequest{TenantId: want, CallId: "x"})
+	assert.True(t, ok, "a GetCall request naming a tenant must report it")
+	assert.Equal(t, want, got)
+
+	_, ok = rpc.TenantID(&atsapbxv1.GetCallRequest{})
+	assert.False(t, ok, "a request naming no tenant reports absent, so the interceptor skips the comparison rather than comparing against empty")
+
+	_, ok = rpc.TenantID(&atsapbxv1.AuthenticateUserRequest{TenantId: want})
+	assert.False(t, ok, "this matcher answers only for telephony requests; identity has its own")
+}
