@@ -145,8 +145,8 @@ erDiagram
         varchar extension_number "UNIQUE with tenant_id; tenant-local"
         varchar display_name
         uuid department_id
-        varchar auth_username
-        varchar password_hash
+        varchar auth_username "= the projected endpoint id; not the number"
+        varchar secret_digest "MD5 HA1, never Argon2id — SIP digest cannot use a slow hash"
         varchar device_type "WEBRTC / SIP"
     }
     carrier_trunks {
@@ -278,6 +278,7 @@ erDiagram
     extensions ||..|| ps_endpoints : "projected by the ACL"
     extensions ||..|| ps_auths : "projected by the ACL"
     extensions ||..|| ps_aors : "projected by the ACL"
+    ps_endpoints ||..o{ ps_contacts : "registered by a device"
     carrier_trunks ||..|| ps_endpoints : "projected by the ACL"
 
     ps_endpoints {
@@ -299,6 +300,12 @@ erDiagram
         int max_contacts
         varchar remove_existing
     }
+    ps_contacts {
+        varchar id PK "written by Asterisk, not by us"
+        varchar endpoint "the projected endpoint this contact is for"
+        varchar uri
+        bigint expiration_time "expiry is checked; Asterisk prunes lazily"
+    }
 ```
 
 Four properties of this boundary, each of which is a rule and not a
@@ -316,13 +323,21 @@ preference:
 3. **`ps_*` is not under RLS.** Asterisk connects as its own database
    role and cannot set a tenant context, so a policy would simply hide
    every row from it. Isolation here is by construction — globally
-   unique ids — and the control is the grant: that role gets `SELECT` on
-   `ps_*` only, and nothing at all on the domain tables.
-4. **`ps_contacts` is deliberately absent.** Registration contacts live
-   in `astdb`, which is node-local and sufficient for a single node. The
-   multi-node work (D-08) maps `ps_contacts` to realtime so any node
-   knows where a phone is registered; Phase A does not need it and must
-   not pretend to have solved it.
+   unique ids — and the control is the grant: `SELECT` on the three
+   tables the platform writes, `SELECT/INSERT/UPDATE/DELETE` on
+   `ps_contacts` alone, and nothing at all on the domain tables.
+4. **`ps_contacts` is the one table Asterisk writes.** A device
+   registration creates a contact row; the platform never inserts one.
+   Its column set must therefore be complete rather than the subset we
+   care about — Asterisk's INSERT names sixteen columns, and a missing
+   one fails the write while the `REGISTER` still returns `200 OK`, so
+   the device believes it is registered and nothing can call it.
+
+   Mapping it makes registration state a plain database read, which is
+   what the console's registered/not-registered badge needs. It also
+   makes **registrations database state**: a restore or failover leaves
+   every device unreachable until it re-registers, where node-local
+   `astdb` was previously unaffected by anything happening to Postgres.
 
 ## 7. Cross-cutting tables
 
@@ -369,7 +384,7 @@ state change that produced it.
 | `ps_endpoints`, `ps_auths`, `ps_aors` | **A** | Decided (D-47); LLD-03 |
 | `ivr_flows`, `flow_versions` | **B** | Designed |
 | `recordings` | **B** | Designed |
-| `ps_contacts` | multi-node | Deferred (D-08) |
+| `ps_contacts` | **A** | Decided (D-47, as superseded); LLD-03 |
 
 Phase A therefore adds five tables to a schema that already has ten of
 the seventeen in place.

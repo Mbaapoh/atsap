@@ -396,12 +396,45 @@ CREATE TABLE IF NOT EXISTS ps_aors (
     qualify_frequency INTEGER
 );
 
+-- The one projection table Asterisk WRITES: a device registration creates
+-- a contact row and the engine prunes it on expiry. Its column set must be
+-- complete rather than the subset we read — Asterisk's INSERT names all
+-- sixteen, and a missing one fails the write while the REGISTER still
+-- returns 200 OK, so the device believes it is registered and nothing can
+-- call it. Consequently the engine role holds INSERT/UPDATE/DELETE here
+-- and read-only on the three tables above.
+--
+-- Mapping it makes registration state a plain database read, which is what
+-- the console badge needs. It also makes registrations database state: a
+-- restore leaves every device unreachable until it re-registers.
+CREATE TABLE IF NOT EXISTS ps_contacts (
+    id VARCHAR(255) PRIMARY KEY,
+    uri VARCHAR(511),
+    expiration_time BIGINT,
+    qualify_frequency INTEGER,
+    outbound_proxy VARCHAR(40),
+    path TEXT,
+    user_agent VARCHAR(255),
+    endpoint VARCHAR(255),
+    reg_server VARCHAR(255),
+    authenticate_qualify VARCHAR(5),
+    via_addr VARCHAR(40),
+    via_port INTEGER,
+    call_id VARCHAR(255),
+    prune_on_boot VARCHAR(5),
+    qualify_timeout NUMERIC(10,3),
+    qualify_2xx_only VARCHAR(5)
+);
+
 -- The engine's database identity. Created by the Postgres bootstrap
 -- script (deploy/postgres/init/02-atsapbx.sql) for the same reason
 -- atsap_outbox_worker is — atsapbx_app is deliberately NOCREATEROLE — and
 -- granted narrowly by api/migrations/0004 once the tables exist:
 --     GRANT SELECT ON ps_endpoints, ps_auths, ps_aors TO asterisk_engine;
--- and nothing else, ever. NOBYPASSRLS: it must never see a domain table,
+--     GRANT SELECT, INSERT, UPDATE, DELETE ON ps_contacts TO asterisk_engine;
+-- and nothing else, ever. The asymmetry is deliberate: three tables are
+-- ours to write and the engine only reads them; ps_contacts is the
+-- engine's own. NOBYPASSRLS: it must never see a domain table,
 -- so it has no reason to bypass a policy.
 
 -- IVR Flow as Data

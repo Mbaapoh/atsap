@@ -864,11 +864,27 @@ The spike was torn down afterwards; the dev environment is unchanged.
   the native driver disappoints, switching to ODBC needs one Debian
   package in `core/Dockerfile` and a DSN — no schema change, no code
   change, no decision reopened. Phase A uses the native driver.
-- **Deferred to the multi-node work (D-08):** registration contacts
-  currently land in `astdb`, which is node-local. A cluster maps
-  `ps_contacts` to realtime as well so any node knows where a phone is
-  registered. Single-node Phase A does not need it; the cluster design
-  must not forget it.
+- ~~**Deferred to the multi-node work (D-08):** registration contacts
+  currently land in `astdb`, which is node-local.~~ **Superseded
+  2026-09-08 while implementing `pbx-extensions-projection`.** The
+  deferral was wrong, for a reason this entry did not anticipate: with
+  contacts in `astdb` there is nothing for the platform to read, so the
+  registered/not-registered state the console must show is unobtainable.
+  Worse, a *partially* specified `ps_contacts` corrupts registration
+  silently — Asterisk's INSERT names sixteen columns, a missing one fails
+  the write, and the device still receives `200 OK` while no contact
+  binds. `ps_contacts` is therefore mapped in Phase A with its full
+  column set, which also delivers the multi-node visibility this bullet
+  wanted, earlier.
+
+  Two consequences follow, both real. **Registrations become database
+  state**: a restore or failover leaves every device unreachable until it
+  re-registers, where previously node-local `astdb` was unaffected by
+  anything happening to Postgres. And it is the one projection table
+  Asterisk *writes*, so the engine role holds
+  `SELECT, INSERT, UPDATE, DELETE` there and read-only on the other
+  three — the grant is no longer uniform. See
+  `openspec/changes/archive/*-pbx-extensions-projection/design.md` D8.
 - HLD `03-domain-model.md` §5 gains the projection tables, and
   `core/conf/` gains `sorcery.conf`, `extconfig.conf` and `res_pgsql.conf`,
   when LLD-03 is written. **`sorcery.conf` must restate the config-file

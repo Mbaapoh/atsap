@@ -55,7 +55,6 @@ whole context with the phase marked on every part.
 | Real DNC / calling hours / spend verdicts | LLD-04 | `stub_compliance.go` stays permit-all; `pbx-core` consumes verdicts, it does not author them |
 | Call detail reporting and quality views | LLD-04 | Reads the rows this LLD writes; no shared code |
 | Predictive and power dialling | LLD-06 | Tier 2; `dialer` calls `pbx-core`, never the reverse |
-| Multi-node registration visibility (`ps_contacts` in realtime) | Multi-node work (D-08) | Single node does not need it, and D-47 records the exact gap |
 
 ## 2. Go package layout
 
@@ -317,7 +316,7 @@ the same change (the precedent is LLD-02 adding `role_bindings`):
 `ps_endpoints`, `ps_auths`, `ps_aors` are created by the same migration
 but are **not domain tables** (D-47, [HLD 17 §6](../hld/17-data-model-erd.md)):
 
-- No `tenant_id`, and **no RLS** — Asterisk connects as its own role and
+- No `tenant_id`, and **no RLS** on any of the four — Asterisk connects as its own role and
   cannot set a tenant context, so a policy would hide every row from the
   engine that must read them.
 - Isolation is by construction: `ps_endpoints.id` is derived from
