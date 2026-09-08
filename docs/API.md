@@ -110,7 +110,7 @@ What each LLD is expected to put on the wire. This is a plan, not a
 promise: a capability arrives here only when it has a named consumer,
 and the owning change is where that is decided and recorded.
 
-### LLD-02 — licensing (identity landed)
+### LLD-08 — licensing (identity, LLD-02, is complete)
 
 `identity-api` shipped the identity surface (§1) ahead of
 `auth-cutover-connectrpc`, which required it: without a wire-level
@@ -118,7 +118,7 @@ and the owning change is where that is decided and recorded.
 enforcing JWTs would have locked every caller out. **Both have since
 landed** — the cutover is complete and the whole API is authenticated
 (§1). Licensing RPCs remain pending until the `licensing` context
-exists, and are the only part of LLD-02 still outstanding.
+exists — they are specified in [`lld/LLD-08-licensing.md`](lld/LLD-08-licensing.md) §6, split out of LLD-02 on 2026-09-08 because `identity` and `licensing` are separate bounded contexts. Identity itself is complete.
 
 | RPC | Service | Consumer |
 |---|---|---|

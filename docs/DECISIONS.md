@@ -498,7 +498,7 @@ retrofit. The coupling that would actually bite is not in the code:
 - Known ceilings, recorded rather than discovered later: Argon2id cost is
   bounded by login *rate*, not user count (that is the defence working);
   `ValidateToken` throughput is bounded by Postgres reads; and licensing's
-  capacity counter is per-process today (LLD-02 §8) — the first genuine
+  capacity counter is per-process today (LLD-08 §7 — split out of LLD-02 on 2026-09-08) — the first genuine
   multi-node blocker, and a licensing concern rather than an identity one.
 - Revisit when a real driver appears: independent scaling need, a
   separate compliance boundary, or a second product sharing identity.

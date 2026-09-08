@@ -15,11 +15,24 @@ so `/opsx:propose` for an LLD's change picks this up automatically — an LLD
 doc is written, then proposed, not invented fresh by the agent at propose
 time.
 
+**The `#` column is a stable identifier, not a build order.** LLD-08
+(licensing) is Phase A work that must land before LLD-04 onwards; it took
+the next free number when it was split out of LLD-02 on 2026-09-08,
+because renumbering would have broken citations inside archived,
+immutable changes. Read the order from the dependency graph and the
+delivery-phase table below, never from the number.
+
 Build order is fixed by the dependency graph in
 [`../hld/04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph).
 LLDs are written and implemented **one at a time, in that order** — writing
 LLD-03 before LLD-01 is built is exactly the scope creep the graph exists
 to prevent.
+
+**One LLD covers one bounded context.** LLD-02 briefly covered two
+(`identity` and `licensing`) on the reasoning that they shared a cutover;
+delivery disproved it, and it was split on 2026-09-08. Two contexts in
+one document hide the fact that one half is finished while the other has
+not started — which is exactly what happened.
 
 **Every LLD states its API surface, and every change that changes that
 surface updates [`../API.md`](../API.md) in the same commit.** Per D-43, a
@@ -37,7 +50,8 @@ does not list, so the inventory cannot rot quietly.
 | # | LLD | Bounded context | Status | OpenSpec change (when proposed) |
 |---|---|---|---|---|
 | 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
-| 02 | [Identity & Licensing](LLD-02-identity-licensing.md) | `identity`, `licensing` | Draft | — |
+| 02 | [Identity](LLD-02-identity.md) | `identity` | Implemented & archived | Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`access-control`](../../openspec/specs/identity/access-control/spec.md), [`tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| 08 | [Licensing](LLD-08-licensing.md) | `licensing` | Draft — nothing built; **Phase A work** despite the number | — |
 | 03 | [PBX Core](LLD-03-pbx-core.md) | `pbx-core` | In progress — extensions implemented & archived; trunks, routes, call placement and inbound remain | Living specs [`pbx-core/extension-management`](../../openspec/specs/pbx-core/extension-management/spec.md), [`pbx-core/endpoint-projection`](../../openspec/specs/pbx-core/endpoint-projection/spec.md) |
 | 04 | Compliance & Reporting | `compliance`, `reporting` | Not started — `compliance` is a **release gate** for LLD-06's dialling (D-45) | — |
 | 05 | Webhook Delivery & AI Pipeline | `webhook-delivery`, `ai-pipeline` | Not started | — |
