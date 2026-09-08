@@ -113,10 +113,12 @@ and the owning change is where that is decided and recorded.
 ### LLD-02 — licensing (identity landed)
 
 `identity-api` shipped the identity surface (§1) ahead of
-`auth-cutover-connectrpc`, which it requires: without a wire-level
+`auth-cutover-connectrpc`, which required it: without a wire-level
 `AuthenticateUser` there was no way to obtain a token in production, so
-enforcing JWTs would have locked every caller out. Licensing RPCs remain
-pending until the `licensing` context exists.
+enforcing JWTs would have locked every caller out. **Both have since
+landed** — the cutover is complete and the whole API is authenticated
+(§1). Licensing RPCs remain pending until the `licensing` context
+exists, and are the only part of LLD-02 still outstanding.
 
 | RPC | Service | Consumer |
 |---|---|---|
