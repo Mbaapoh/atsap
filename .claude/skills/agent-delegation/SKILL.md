@@ -76,6 +76,60 @@ carried but never authorized. In each case OpenCode reported success.
   the first — the first one *is* the design.
 - Anything touching credentials, grants, or the bypass paths.
 
+## Two ways to run a delegation
+
+**Inline** — the assistant shells out with `opencode run --agent <name>
+"<brief>"`. Right for short mechanical work: a gate run, a lint pass, a
+formatting sweep. The assistant waits, reads the output, verifies.
+
+**Handoff** — the assistant writes the brief to a file and hands over a
+copy-paste command; the human runs it in their own terminal or the
+opencode TUI. Right for anything that takes real time — a Docker
+rebuild, an e2e rig, a long UAT — and for anything that will hit a
+permission prompt.
+
+Handoff is not a lesser option. It is better wherever it applies:
+
+- **It runs in parallel.** The human keeps their session free; the
+  assistant is not blocked for minutes at a time.
+- **Permission prompts get answered.** Non-interactive runs auto-reject
+  and carry on, which is how a run can exit 0 having done nothing. A
+  human at the terminal simply approves.
+- **The output is watched live**, so a run going the wrong way is
+  stopped in the first minute rather than the tenth.
+- **No timeout gymnastics.** A shelled-out run is capped by the calling
+  harness and has to be backgrounded; a terminal has no such limit.
+
+The cost is that a human must be present, so it is wrong for a
+two-second task: writing the brief exceeds the work.
+
+Either way the verification rule is unchanged — the assistant re-runs the
+gates and reads the diff before the work counts as done.
+
+## Check the echoed line, always
+
+`opencode run` fails **silently**, and returns 0 while doing so. Three
+distinct causes have been observed on this project, all with exit code 0:
+
+| Cause | What happens |
+|---|---|
+| `mode: subagent` | refused, falls back to the default agent and its model |
+| wrong agent name | "agent not found", falls back to the default |
+| permission rejected | the command never runs; the agent continues regardless |
+
+The default agent is `build`, on a **paid** model, so every fallback both
+loses the persona and costs money.
+
+**The first line of output is the only reliable confirmation.** It names
+the agent and the model that actually ran:
+
+```
+> lightning-executor · nemotron-3.5-lightning-free     ← what you asked for
+> build · deepseek-v4-flash                            ← a silent fallback
+```
+
+Read it before accepting anything. The exit code will lie to you.
+
 ## How to delegate well
 
 1. **Write the prompt against the spec, not against your memory.** Point
