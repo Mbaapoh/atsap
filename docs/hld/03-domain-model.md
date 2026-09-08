@@ -341,12 +341,68 @@ CREATE TABLE IF NOT EXISTS extensions (
     extension_number VARCHAR(20) NOT NULL,
     display_name VARCHAR(100) NOT NULL,
     department_id UUID,
+    -- Generated, and deliberately NOT derived from extension_number.
     auth_username VARCHAR(100) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    -- MD5 HA1 — MD5(auth_username:realm:secret) — NOT Argon2id, and never
+    -- the plaintext. Renamed from password_hash by LLD-03 §7.3: SIP digest
+    -- authentication requires the server to hold the plaintext or the HA1,
+    -- so a one-way slow hash cannot answer a challenge and the old name
+    -- described something that cannot be built. Verified on Asterisk
+    -- 22.8.2 — a ps_auths row with an empty password column and md5_cred
+    -- set accepts a real REGISTER.
+    secret_digest VARCHAR(32) NOT NULL,
     device_type VARCHAR(50) NOT NULL DEFAULT 'WEBRTC',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(tenant_id, extension_number)
 );
+
+-- Asterisk ACL projection (D-47). NOT domain tables: the ACL writes these
+-- from `extensions` in the same transaction, and Asterisk reads them
+-- directly through PJSIP Realtime — no file generation, no reload.
+--
+-- No tenant_id and NO row-level security, deliberately. Asterisk connects
+-- as its own role and cannot set app.tenant_id, so a policy would hide
+-- every row from the one reader that needs them. Isolation is by
+-- construction instead: every id is "e_" + hex(extensions.id), so two
+-- tenants' extension 1000 can never collide. The enforcement is the grant,
+-- not a policy — see the asterisk_engine role below. This is a deliberate
+-- exception to "every table has tenant_id", like licensing_state's, and is
+-- asserted by test so it is never mistaken for an oversight.
+CREATE TABLE IF NOT EXISTS ps_endpoints (
+    id VARCHAR(255) PRIMARY KEY,
+    transport VARCHAR(40),
+    aors VARCHAR(255),
+    auth VARCHAR(255),
+    context VARCHAR(40),
+    disallow VARCHAR(200),
+    allow VARCHAR(200),
+    direct_media VARCHAR(5)
+);
+
+CREATE TABLE IF NOT EXISTS ps_auths (
+    id VARCHAR(255) PRIMARY KEY,
+    auth_type VARCHAR(20),
+    username VARCHAR(255),
+    password VARCHAR(255), -- always NULL; the credential lives in md5_cred
+    md5_cred VARCHAR(32),
+    realm VARCHAR(255)
+);
+
+CREATE TABLE IF NOT EXISTS ps_aors (
+    id VARCHAR(255) PRIMARY KEY,
+    max_contacts INTEGER,
+    remove_existing VARCHAR(5),
+    qualify_frequency INTEGER
+);
+
+-- The engine's database identity. Created by the Postgres bootstrap
+-- script (deploy/postgres/init/02-atsapbx.sql) for the same reason
+-- atsap_outbox_worker is — atsapbx_app is deliberately NOCREATEROLE — and
+-- granted narrowly by api/migrations/0004 once the tables exist:
+--     GRANT SELECT ON ps_endpoints, ps_auths, ps_aors TO asterisk_engine;
+-- and nothing else, ever. NOBYPASSRLS: it must never see a domain table,
+-- so it has no reason to bypass a policy.
 
 -- IVR Flow as Data
 CREATE TABLE IF NOT EXISTS ivr_flows (

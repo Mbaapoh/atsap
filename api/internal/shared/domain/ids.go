@@ -147,3 +147,37 @@ func (id ApiKeyID) String() string {
 func (id ApiKeyID) IsZero() bool {
 	return id == ApiKeyID{}
 }
+
+// ExtensionID identifies an Extension (a dialable endpoint within a
+// tenant). The zero value is invalid.
+//
+// This is also the source of the identifier the Asterisk ACL projects
+// into ps_endpoints/ps_auths/ps_aors ("e_" + hex): those tables are one
+// flat namespace shared by every tenant, so the projected identifier
+// must derive from something globally unique and never from the
+// tenant-local extension number (DECISIONS D-47).
+type ExtensionID uuid.UUID
+
+// NewExtensionID generates a new random ExtensionID.
+func NewExtensionID() ExtensionID {
+	return ExtensionID(uuid.New())
+}
+
+// ParseExtensionID parses s as an ExtensionID.
+func ParseExtensionID(s string) (ExtensionID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return ExtensionID{}, fmt.Errorf("parse extension id: %w", err)
+	}
+	return ExtensionID(id), nil
+}
+
+// String returns the canonical UUID string form.
+func (id ExtensionID) String() string {
+	return uuid.UUID(id).String()
+}
+
+// IsZero reports whether id is the zero value.
+func (id ExtensionID) IsZero() bool {
+	return id == ExtensionID{}
+}

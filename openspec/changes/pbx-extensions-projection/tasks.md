@@ -1,17 +1,17 @@
 ## 1. Schema and engine access
 
-- [ ] 1.1 Write `api/migrations/0004_pbx_core.up.sql` creating `extensions` per HLD 03 §5 with the `password_hash` column renamed `secret_digest`, plus `ENABLE` and `FORCE ROW LEVEL SECURITY` and a `tenant_isolation_extensions` policy; verify by running `MigrateUp` against a scratch database and confirming the table, both RLS flags and the policy exist
-- [ ] 1.2 Add `ps_endpoints`, `ps_auths`, `ps_aors` to the same migration with **no** `tenant_id` and **no** RLS; verify with a test asserting each has no `tenant_id` column and `relrowsecurity` is false — the deliberate exception, asserted the way `licensing_state`'s is (D-24, D-39)
-- [ ] 1.3 Add the `asterisk_engine` role to the same migration with `SELECT` on exactly the three `ps_*` tables; verify by connecting as that role and asserting the three reads succeed
-- [ ] 1.4 Write `api/migrations/0004_pbx_core.down.sql` dropping the tables, policy, role and grants; verify a full up → down → up cycle leaves no residue and no error
-- [ ] 1.5 Update HLD `03-domain-model.md` §5 with the column rename, the projection tables and the engine role; verify `mise run docs` passes
+- [x] 1.1 Write `api/migrations/0004_pbx_core.up.sql` creating `extensions` per HLD 03 §5 with the `password_hash` column renamed `secret_digest`, plus `ENABLE` and `FORCE ROW LEVEL SECURITY` and a `tenant_isolation_extensions` policy; verify by running `MigrateUp` against a scratch database and confirming the table, both RLS flags and the policy exist
+- [x] 1.2 Add `ps_endpoints`, `ps_auths`, `ps_aors` to the same migration with **no** `tenant_id` and **no** RLS; verify with a test asserting each has no `tenant_id` column and `relrowsecurity` is false — the deliberate exception, asserted the way `licensing_state`'s is (D-24, D-39)
+- [x] 1.3 Create the `asterisk_engine` role in `deploy/postgres/init/02-atsapbx.sql` (migrations run as `atsapbx_app`, which is deliberately `NOCREATEROLE` — see design D4) and grant it `USAGE` plus `SELECT` on exactly the three `ps_*` tables from the migration; verify by connecting as that role and asserting the three reads succeed
+- [x] 1.4 Write `api/migrations/0004_pbx_core.down.sql` revoking the grants and dropping the tables and policy — **not** the role, which the bootstrap script owns (the division `0001` keeps for `atsap_outbox_worker`); verify a full up → down → up cycle leaves no residue and no error
+- [x] 1.5 Update HLD `03-domain-model.md` §5 with the column rename, the projection tables and the engine role; verify `mise run docs` passes
 
 ## 2. Domain (pure, no I/O)
 
-- [ ] 2.1 Add `ExtensionID` to `api/internal/shared/domain` following the existing `TenantID` pattern; verify it compiles and round-trips through its string form in a unit test
-- [ ] 2.2 Implement `pbx/domain.Extension` and its validation (number form, display name, device type) with an explicit permitted-character allowlist for the number; verify unit tests cover accepted and rejected forms including empty, over-length and non-dialable characters
-- [ ] 2.3 Implement `NewExtensionCredential(username, realm string, rand io.Reader) (plaintext, digest string, err error)` producing a high-entropy secret and its MD5 HA1; verify a unit test with a fixed reader produces the documented HA1 for known inputs, and that two calls with `crypto/rand` never repeat
-- [ ] 2.4 Implement generation of an authentication username that is **not** derived from the extension number; verify a unit test asserts the username for extension "1000" is neither "1000" nor derivable from it
+- [x] 2.1 Add `ExtensionID` to `api/internal/shared/domain` following the existing `TenantID` pattern; verify it compiles and round-trips through its string form in a unit test
+- [x] 2.2 Implement `pbx/domain.Extension` and its validation (number form, display name, device type) with an explicit permitted-character allowlist for the number; verify unit tests cover accepted and rejected forms including empty, over-length and non-dialable characters
+- [x] 2.3 Implement `NewExtensionCredential(username, realm string, rand io.Reader) (plaintext, digest string, err error)` producing a high-entropy secret and its MD5 HA1; verify a unit test with a fixed reader produces the documented HA1 for known inputs, and that two calls with `crypto/rand` never repeat
+- [x] 2.4 Implement generation of an authentication username that is **not** derived from the extension number; verify a unit test asserts the username for extension "1000" is neither "1000" nor derivable from it
 
 ## 3. Ports and store
 

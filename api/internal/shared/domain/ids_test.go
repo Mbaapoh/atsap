@@ -95,3 +95,18 @@ func TestIDTypesAreDistinct(t *testing.T) {
 	assert.NotEqual(t, principal.String(), apiKey.String())
 	assert.NotEqual(t, domain.PrincipalID{}, principal)
 }
+
+func TestExtensionID(t *testing.T) {
+	id := domain.NewExtensionID()
+	assert.False(t, id.IsZero(), "NewExtensionID() should not be zero")
+
+	parsed, err := domain.ParseExtensionID(id.String())
+	require.NoError(t, err)
+	assert.Equal(t, id, parsed)
+
+	_, err = domain.ParseExtensionID("not-a-uuid")
+	assert.Error(t, err)
+
+	var zero domain.ExtensionID
+	assert.True(t, zero.IsZero())
+}

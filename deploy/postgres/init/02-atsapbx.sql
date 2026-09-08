@@ -21,3 +21,17 @@ CREATE DATABASE atsapbx OWNER atsapbx_app;
 -- specifically, once that table exists, and never on any other table.
 CREATE ROLE atsap_outbox_worker LOGIN PASSWORD 'devpassword123' BYPASSRLS NOSUPERUSER NOCREATEROLE NOCREATEDB;
 GRANT CONNECT ON DATABASE atsapbx TO atsap_outbox_worker;
+
+-- Media engine role (D-47): Asterisk reads the ACL's PJSIP Realtime
+-- projection tables directly. Created here for the same reason
+-- atsap_outbox_worker is — atsapbx_app is deliberately NOCREATEROLE, so
+-- a migration running as it cannot create a login role. api/migrations/
+-- 0004 grants the narrow object-level privilege once the tables exist:
+-- SELECT on exactly ps_endpoints, ps_auths and ps_aors, and nothing
+-- else, ever.
+--
+-- Deliberately NOT BYPASSRLS: this role must never see a domain table,
+-- so it has no reason to bypass a policy. Its isolation from tenant data
+-- is the absence of any grant on it, asserted by test.
+CREATE ROLE asterisk_engine LOGIN PASSWORD 'devpassword123' NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS;
+GRANT CONNECT ON DATABASE atsapbx TO asterisk_engine;

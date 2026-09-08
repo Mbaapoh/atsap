@@ -32,6 +32,10 @@ surface is one table.
   and no reload is issued.
 - **A restricted database role** for the engine: `asterisk_engine` gets
   `SELECT` on the three projection tables and no access to any domain table.
+  Created at database bootstrap rather than by the migration, because the
+  migrating role is deliberately `NOCREATEROLE` — the same split the existing
+  `atsap_outbox_worker` role uses. **An existing database needs this role
+  created once, out of band, before the migration applies.**
 - **Registration status** surfaced as a domain-level state on the extension
   resource (`REGISTERED` / `NOT_REGISTERED`) — never an Asterisk one.
 - **`atsap-api pbx reconcile`**: diffs projection against domain and reports,

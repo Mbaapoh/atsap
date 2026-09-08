@@ -108,6 +108,25 @@ and nothing else. This replaces RLS for those tables, which cannot apply:
 Asterisk connects as itself and cannot set a tenant context, so a policy would
 hide every row from the one reader that needs them.
 
+**Corrected during apply.** This decision originally said migration `0004`
+creates the role. It cannot: `atsapbx_app`, the role migrations run as, is
+deliberately `NOCREATEROLE` — `deploy/postgres/init/02-atsapbx.sql` says
+"it must never itself bypass the RLS policies its migrations create" — and
+attempting it fails with `permission denied to create role (SQLSTATE 42501)`.
+
+The repository already solves this exact problem for `atsap_outbox_worker`,
+whose `BYPASSRLS` also requires a superuser: the **bootstrap script creates
+the role**, and the **migration grants narrowly once the tables exist**.
+`asterisk_engine` follows that precedent unchanged.
+
+*Alternative — grant `CREATEROLE` to `atsapbx_app`.* Rejected: it reverses a
+deliberate security decision so that one migration is self-contained, and a
+role that can create roles can create one more privileged than itself.
+
+The role is created `NOBYPASSRLS` on purpose. It must never see a domain
+table, so it has no reason to bypass a policy; its isolation from tenant data
+is the *absence of any grant*, not a policy exemption.
+
 Isolation for `ps_*` is therefore *by construction* (D2's globally unique
 identifiers) and the grant is the enforcement. Because that inverts the usual
 control, it gets a direct test: connect as `asterisk_engine` and prove
@@ -159,18 +178,26 @@ the domain row — storing it would create a second thing that can be stale.
 
 ## Migration Plan
 
-1. `0004_pbx_core.up.sql` creates `extensions` (RLS enabled **and** forced,
+1. **Prerequisite**: the `asterisk_engine` role must exist. Fresh installs get
+   it from `deploy/postgres/init/02-atsapbx.sql` at bootstrap. **An existing
+   database needs it created once, out of band** — the same one-time step
+   `atsap_outbox_worker` required, and a dev stack whose volume predates this
+   change needs it before `0004` will apply (D4).
+2. `0004_pbx_core.up.sql` creates `extensions` (RLS enabled **and** forced,
    tenant isolation policy), the three `ps_*` tables (no RLS, no `tenant_id`,
-   deliberately), the `asterisk_engine` role and its three grants.
-2. `core/conf/` gains `sorcery.conf`, `extconfig.conf`, `res_pgsql.conf`; the
+   deliberately), and grants `USAGE` plus `SELECT` on those three tables to
+   `asterisk_engine`.
+3. `core/conf/` gains `sorcery.conf`, `extconfig.conf`, `res_pgsql.conf`; the
    Asterisk image is rebuilt. Both sorcery wizards are listed (D5).
-3. Deploy is ordered: migration first, then the engine config, then the app.
+4. Deploy is ordered: migration first, then the engine config, then the app.
    The engine reading empty projection tables is harmless; the app writing
    projection rows the engine is not yet reading is not.
-4. **Rollback**: `0004_pbx_core.down.sql` drops the tables, the role and the
-   grants; reverting `core/conf/` and rebuilding restores file-only sorcery.
-   The existing `pjsip.conf` fixtures are untouched throughout, so
-   `telephony-core`'s e2e remains the rollback smoke test.
+5. **Rollback**: `0004_pbx_core.down.sql` revokes the grants and drops the
+   tables. It does **not** drop the role, which is the bootstrap script's to
+   own — the same division `0001` keeps for `atsap_outbox_worker`. Reverting
+   `core/conf/` and rebuilding restores file-only sorcery. The existing
+   `pjsip.conf` fixtures are untouched throughout, so `telephony-core`'s e2e
+   remains the rollback smoke test.
 
 ## Open Questions
 
