@@ -66,5 +66,5 @@
 
 ## 10. Close-out
 
-- [ ] 10.1 Run the full local gate: `mise run docs`, `mise run lint`, `mise run proto`, `mise run test` (unit, integration and e2e tiers) and `mise run diagrams`; verify all pass
-- [ ] 10.2 Verify every scenario in both delta specs has a corresponding passing test, and record any that do not with the reason — an unmapped scenario is a gap, not a formality
+- [x] 10.1 Run the full local gate: `mise run docs`, `mise run lint`, `mise run proto`, `mise run test` (unit, integration and e2e tiers) and `mise run diagrams`; verify all pass
+- [x] 10.2 Verify every scenario in both delta specs has a corresponding passing test, and record any that do not with the reason — an unmapped scenario is a gap, not a formality

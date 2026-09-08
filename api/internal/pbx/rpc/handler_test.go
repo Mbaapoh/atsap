@@ -352,3 +352,79 @@ func TestUnspecifiedDeviceType_IsNotDefaultedSilently(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
+
+// --- structural guarantees, asserted rather than assumed --------------
+//
+// Three spec scenarios are satisfied by the shape of the API rather than
+// by logic: a caller cannot supply a secret, cannot write registration
+// state, and cannot read a secret back. "Impossible by construction" is
+// only true while the construction holds, so these assert the shape.
+
+func fieldNames(m proto.Message) []string {
+	fields := m.ProtoReflect().Descriptor().Fields()
+	names := make([]string, 0, fields.Len())
+	for i := range fields.Len() {
+		names = append(names, string(fields.Get(i).Name()))
+	}
+	return names
+}
+
+// "A caller-supplied secret is not honoured": the request has nowhere to
+// put one. The platform generates it, because a chosen secret would be
+// the weak link in a digest that is offline-crackable.
+func TestRequests_CannotCarryASecret(t *testing.T) {
+	for _, m := range []proto.Message{
+		&atsapbxv1.CreateExtensionRequest{},
+		&atsapbxv1.UpdateExtensionRequest{},
+		&atsapbxv1.RegenerateSecretRequest{},
+	} {
+		names := fieldNames(m)
+		for _, n := range names {
+			assert.NotContains(t, strings.ToLower(n), "secret",
+				"%T must have no secret field — the platform generates credentials, callers never supply them",
+				m)
+			assert.NotContains(t, strings.ToLower(n), "password", "%T must have no password field", m)
+			assert.NotContains(t, strings.ToLower(n), "digest", "%T must have no digest field", m)
+		}
+	}
+}
+
+// "Registration state cannot be written": no request carries it. It
+// describes what a device is doing, and is observed, never set.
+func TestRequests_CannotSetRegistrationState(t *testing.T) {
+	for _, m := range []proto.Message{
+		&atsapbxv1.CreateExtensionRequest{},
+		&atsapbxv1.UpdateExtensionRequest{},
+	} {
+		for _, n := range fieldNames(m) {
+			assert.NotContains(t, strings.ToLower(n), "registration",
+				"%T must not let a caller assert registration state", m)
+		}
+	}
+}
+
+// "Secret is returned once at creation": only the two responses that mint
+// one carry it. A read path that could return a secret would make "shown
+// once" a convention rather than a guarantee.
+func TestOnlyMintingResponsesCarryTheSecret(t *testing.T) {
+	carries := func(m proto.Message) bool {
+		for _, n := range fieldNames(m) {
+			if strings.Contains(strings.ToLower(n), "secret") {
+				return true
+			}
+		}
+		return false
+	}
+
+	assert.True(t, carries(&atsapbxv1.CreateExtensionResponse{}), "creation returns the generated secret")
+	assert.True(t, carries(&atsapbxv1.RegenerateSecretResponse{}), "rotation returns the new secret")
+
+	for _, m := range []proto.Message{
+		&atsapbxv1.GetExtensionResponse{},
+		&atsapbxv1.ListExtensionsResponse{},
+		&atsapbxv1.UpdateExtensionResponse{},
+		&atsapbxv1.Extension{},
+	} {
+		assert.False(t, carries(m), "%T must not carry a secret: it is shown once, at minting, and never read back", m)
+	}
+}

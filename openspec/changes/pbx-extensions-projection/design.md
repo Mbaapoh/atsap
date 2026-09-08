@@ -205,6 +205,30 @@ queries, not what we write.**
 Mapping it now also delivers the multi-node visibility D-08 wanted, earlier
 and for free.
 
+**It is not free of consequence, though, and this surfaced during the
+close-out gate run.** Registrations are now *database* state. Previously
+contacts lived in node-local `astdb` and survived anything that happened
+to Postgres; now dropping or restoring the schema deregisters every
+device until it re-registers of its own accord.
+
+Two things follow, both real:
+
+- **Operationally**, a database restore or failover leaves every phone
+  unreachable until it re-registers — typically within its registration
+  interval, but not instantly. Inbound calls fail in that window. This is
+  the cost of making registration state queryable, and it is the right
+  trade for a platform whose console must show it, but it is a cost.
+- **In the dev workflow**, the integration suite resets the schema on
+  cleanup, which now deregisters the `sip-ua` fixtures. The e2e tier run
+  straight afterwards fails with ARI `500 "Allocation failed"` on
+  `PJSIP/1000` — an error that says nothing about registration and sends
+  you looking in the wrong place. Restart `deploy-sipua-1` (or re-apply
+  migrations and let it re-register) between the two tiers.
+
+Neither changes the decision. Both are recorded because the second one
+cost time to diagnose once already, and the first is the kind of property
+a reader should learn here rather than during an incident.
+
 ### D9: `Delete` fails closed on a row it did not delete
 
 `ExtensionStore.Delete` returns `ErrNotFound` when zero rows were affected,

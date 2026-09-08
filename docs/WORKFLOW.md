@@ -102,6 +102,17 @@ DATABASE_URL="postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslm
 `-p 1` is required: the integration suite resets the schema, so packages
 must not run in parallel.
 
+**Run the e2e tier *after* re-registering the SIP fixtures.** Since
+`ps_contacts` became realtime-backed (D-47, `pbx-extensions-projection`
+design D8), device registrations live in the database, so the integration
+suite's schema reset deregisters `cmd/sip-ua`. The e2e tier then fails
+with ARI `500 "Allocation failed"` on `PJSIP/1000` — an error that names
+neither registration nor the database. Between the tiers:
+
+```bash
+docker restart deploy-sipua-1 && sleep 12
+```
+
 **A gate that cannot check something must not claim to.** Where a rule is
 enforced by review rather than by a machine, the change says so plainly
 (D-28).
