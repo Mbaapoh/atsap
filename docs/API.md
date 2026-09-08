@@ -57,15 +57,29 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
   reason to create an extension inside a customer's tenant. Verified
   live: an unauthenticated call returns `401`, and a call naming another
   tenant returns `403` before the application layer is reached.
-- **`TelephonyService` remains unauthenticated** until
-  `auth-cutover-connectrpc` — its risk is breaking callers that exist
-  today (the e2e suite, the UAT rig). Until then `GetCall` accepts a
-  caller-supplied `tenant_id`; a documented, temporary concession.
+- **`TelephonyService` is authenticated too**, since
+  `auth-cutover-connectrpc`. It previously accepted a caller-supplied
+  `tenant_id` with no token, so anyone who could reach the port could
+  read any tenant's call by naming it — a documented concession from
+  LLD-02, made when no wire-level `AuthenticateUser` existed to mint the
+  e2e suite a token. That is closed: `GetCall` requires a token and the
+  body's tenant must match it.
+
+**The posture is now uniform across the API.** Obtaining a token is the
+only operation reachable without one, in any service. No operation
+derives the tenant it acts on from the request alone — a caller-supplied
+tenant never checked against a token is indistinguishable from no
+tenancy at all.
 
 For an authenticated request, the body's `tenant_id` must match the
 token's (system-scoped callers excepted), and a resource belonging to
 another tenant returns `not_found` rather than anything that reveals it
 exists (INV-10).
+
+Two standing guards, both proven by fault injection: an unauthenticated
+`GetCall` returns `401`, and a valid token naming another tenant is
+refused with `400` rather than a `404` — a `404` would mean the request
+reached the store and merely found nothing.
 
 The first tenant and its platform administrator are created off the
 network by `atsap-api bootstrap` (identity-api 3.3), never by a seeded

@@ -59,8 +59,22 @@ terminated` with **no** `active`; phones see `Cancel Q.850 cause 19`.
 
 ### UC-03 — Record inspection through the public API
 Objective: a partner-equivalent client can read the finished call.
-Steps: `GetCall` for the UC-01/UC-02 call IDs over ConnectRPC JSON;
-inspect `usage_seconds` and `outbox` rows directly.
+Steps: obtain a token first — `GetCall` requires one since
+`auth-cutover-connectrpc`, and an unauthenticated call now returns `401`:
+
+```bash
+TOKEN=$(curl -sS -X POST http://127.0.0.1:8080/atsapbx.v1.IdentityService/AuthenticateUser \
+  -H 'Content-Type: application/json' \
+  -d '{"tenantId":"<tenant>","username":"<operator>","password":"<password>"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+
+curl -sS -X POST http://127.0.0.1:8080/atsapbx.v1.TelephonyService/GetCall \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+  -d '{"tenantId":"<tenant>","callId":"<call>"}'
+```
+
+The tenant in the body must match the token's, so use the operator's own
+tenant. Then inspect `usage_seconds` and `outbox` rows directly.
 Expected: `Terminated` + final billable seconds (UC-01) / no usage
 (UC-02); every outbox row `published`; no `atsa-part-`/channel-shaped
 content in any API response or event payload.

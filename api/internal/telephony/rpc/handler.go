@@ -69,3 +69,22 @@ func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[ats
 	}
 	return connect.NewResponse(resp), nil
 }
+
+// TenantID extracts the tenant_id a request body names, for the
+// AuthInterceptor's body-vs-token tenant rule. It lives here, next to the
+// generated types, so the interceptor never has to import the proto
+// package — the same arrangement identity/rpc.TenantID uses.
+//
+// Before the auth cutover this service was mounted without the
+// interceptor and GetCall took whatever tenant the caller supplied, which
+// meant anyone reaching the port could read any tenant's call. The
+// interceptor now refuses a body tenant that is not the token's, and this
+// is what tells it which field to compare.
+func TenantID(request any) (string, bool) {
+	switch r := request.(type) {
+	case *atsapbxv1.GetCallRequest:
+		return r.GetTenantId(), r.GetTenantId() != ""
+	default:
+		return "", false
+	}
+}

@@ -167,18 +167,17 @@ func main() {
 	}()
 
 	// --- Public API ---
-	telephonyHandler := rpc.NewTelephonyHandler(callStore)
-	rpcPath, rpcHandler := atsapbxv1connect.NewTelephonyServiceHandler(telephonyHandler)
-
-	// TelephonyService is deliberately mounted WITHOUT the auth
-	// interceptor: the e2e suite and UAT rig call GetCall with no token.
-	// auth-cutover-connectrpc makes it mandatory — never here.
-	// (identity-api task 3.2 asserts this by test.)
-	handlers := map[string]http.Handler{rpcPath: rpcHandler}
-
-	// IdentityService is mounted WITH the interceptor: it carries mutating
-	// operations, so it is authenticated from the moment it exists.
-	// AuthenticateUser is exempt by its exact procedure name.
+	//
+	// Every service is mounted WITH the auth interceptor. AuthenticateUser
+	// is the single exempt procedure, by its exact name, because a caller
+	// cannot hold a token before obtaining one.
+	//
+	// TelephonyService was previously mounted without it, taking whatever
+	// tenant the caller put in the request body — so anyone who could
+	// reach the port could read any tenant's call by naming it. That was a
+	// documented concession from LLD-02, made when no wire-level
+	// AuthenticateUser existed to mint the e2e suite a token; it is closed
+	// here (auth-cutover-connectrpc).
 	identityStore := identitypostgres.NewStore(appPool)
 	identityIssuer, err := identityapp.NewTokenIssuer(key, identityapp.DefaultTokenLifetime)
 	if err != nil {
@@ -192,7 +191,20 @@ func main() {
 		ExemptProcedure(identityapp.AuthenticateUserProcedure)
 	identityPath, identityRPC := atsapbxv1connect.NewIdentityServiceHandler(identityHandler,
 		connectrpc.WithInterceptors(authInterceptor))
-	handlers[identityPath] = identityRPC
+
+	// TelephonyService carries its own tenant matcher, so the interceptor
+	// refuses a body tenant that is not the token's rather than trusting
+	// the caller's word for which tenant they are reading.
+	telephonyHandler := rpc.NewTelephonyHandler(callStore)
+	telephonyInterceptor := identityapp.NewAuthInterceptor(identitySvc, rpc.TenantID).
+		ExemptProcedure(identityapp.AuthenticateUserProcedure)
+	rpcPath, rpcHandler := atsapbxv1connect.NewTelephonyServiceHandler(telephonyHandler,
+		connectrpc.WithInterceptors(telephonyInterceptor))
+
+	handlers := map[string]http.Handler{
+		rpcPath:      rpcHandler,
+		identityPath: identityRPC,
+	}
 
 	// PbxService: extension configuration. Mounted WITH the same auth
 	// interceptor — every method mutates or reads tenant configuration,
