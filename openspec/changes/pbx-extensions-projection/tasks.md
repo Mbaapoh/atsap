@@ -46,8 +46,8 @@
 
 ## 7. Engine configuration
 
-- [ ] 7.1 Add `core/conf/res_pgsql.conf` and `core/conf/extconfig.conf` mapping the three `ps_*` tables; verify `realtime show pgsql status` reports a connection after rebuild
-- [ ] 7.2 Add `core/conf/sorcery.conf` listing **both** the config-file wizard and the realtime wizard for endpoint, auth and aor; verify `pjsip show endpoints` still lists the 1000/1001 fixtures after restart — omitting the config wizard removes them (design D5)
+- [x] 7.1 Add `core/conf/res_pgsql.conf` and `core/conf/extconfig.conf` mapping the three `ps_*` tables; verify `realtime show pgsql status` reports a connection after rebuild
+- [x] 7.2 Add `core/conf/sorcery.conf` listing **both** the config-file wizard and the realtime wizard for endpoint, auth and aor; verify `pjsip show endpoints` still lists the 1000/1001 fixtures after restart — omitting the config wizard removes them (design D5)
 - [x] 7.3 Pin the SIP realm in configuration and thread it into credential generation; verify a test asserts the realm used for HA1 generation matches the configured value
 
 ## 8. Reconcile command
@@ -57,12 +57,12 @@
 
 ## 9. End-to-end verification
 
-- [ ] 9.1 Create an extension through the public API and register a real SIP client against it with no reload; verify the registration returns `200 OK` and the extension reports `REGISTERED`
-- [ ] 9.2 Delete that extension and verify the same client can no longer register, with no reload issued
-- [ ] 9.3 Verify a wrong secret is refused with `401` and the extension stays `NOT_REGISTERED`
-- [ ] 9.4 Create extension 1000 in two tenants, register to one, and verify only that tenant's extension becomes registered (design D2's correctness constraint)
-- [ ] 9.5 Connect as `asterisk_engine` and verify `SELECT` fails on `extensions`, `principals` and `calls` while succeeding on the three `ps_*` tables (design D4)
-- [ ] 9.6 Verify `telephony-core`'s existing walking-skeleton e2e still passes unchanged, and that `git diff --stat api/internal/telephony/` is empty — the seam check this change must not break
+- [x] 9.1 Create an extension through the public API and register a real SIP client against it with no reload; verify the registration returns `200 OK` and the extension reports `REGISTERED`
+- [x] 9.2 Delete that extension and verify the same client can no longer register, with no reload issued
+- [x] 9.3 Verify a wrong secret is refused with `401` and the extension stays `NOT_REGISTERED`
+- [x] 9.4 Create extension 1000 in two tenants, register to one, and verify only that tenant's extension becomes registered (design D2's correctness constraint)
+- [x] 9.5 Connect as `asterisk_engine` and verify `SELECT` fails on `extensions`, `principals` and `calls` while succeeding on the three `ps_*` tables (design D4)
+- [x] 9.6 Verify `telephony-core`'s existing walking-skeleton e2e still passes unchanged, and that `git diff --stat api/internal/telephony/` is empty — the seam check this change must not break
 
 ## 10. Close-out
 
