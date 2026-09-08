@@ -885,6 +885,35 @@ The spike was torn down afterwards; the dev environment is unchanged.
   `SELECT, INSERT, UPDATE, DELETE` there and read-only on the other
   three — the grant is no longer uniform. See
   `openspec/changes/archive/*-pbx-extensions-projection/design.md` D8.
+
+- **Deprovisioning deliberately leaves the contact row** (decided
+  2026-09-08, closing finding G3 from `pbx-e2e-projection`). Removing an
+  extension deletes its endpoint, auth and aor; the `ps_contacts` row a
+  device registered survives until Asterisk prunes it at expiry.
+
+  It is inert: a contact is only ever reached through its aor, which is
+  deleted with the endpoint, so an orphaned row cannot route a call or
+  authenticate anything. Volume is bounded by registration expiry and
+  self-heals.
+
+  *Alternative — delete contacts in `RemoveExtension`.* Rejected. It
+  looks tidier and is worse: contacts are the engine's own lifecycle,
+  written on registration and pruned on expiry, and Asterisk holds its
+  own view of them. Deleting rows underneath a running engine makes the
+  platform race the engine's cache to remove something already inert.
+  Completeness of a `DELETE` is not worth introducing a race.
+
+  **The known cost:** `atsap-api pbx reconcile` inventories
+  `ps_endpoints` only, so orphaned contacts are invisible to the one tool
+  whose job is finding engine state that disagrees with the platform.
+  That is accepted rather than fixed — reporting every recently deleted
+  extension until its expiry would fill a signal tool with predictable
+  noise. If contacts ever stop being inert, this is the decision to
+  revisit.
+
+  The e2e deletion test asserts the contact **remains**, so a change to
+  this behaviour fails a test and reopens this decision rather than
+  silently invalidating it.
 - HLD `03-domain-model.md` §5 gains the projection tables, and
   `core/conf/` gains `sorcery.conf`, `extconfig.conf` and `res_pgsql.conf`,
   when LLD-03 is written. **`sorcery.conf` must restate the config-file
