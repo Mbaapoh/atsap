@@ -12,6 +12,18 @@ for nothing.
 **Lens:** the engineering manager staffing a task — right person, right
 job, and the reviewer is never the same person as the doer.
 
+## Where this sits
+
+This is **project policy**, and it outranks the generic routing default in the
+`dispatcher` skill, which says to delegate implementation broadly. The
+dispatcher's §0 precedence defers to a project's own delegation policy for
+exactly this reason: a project knows which of its work is safe to hand out and
+a general orchestrator does not.
+
+So when the dispatcher would route a task to a coder and this file says keep
+it, it is kept — and the task's completion note records why, rather than the
+decision being re-argued each time.
+
 ## The rule
 
 **Claude decides, OpenCode executes; Claude verifies what comes back.**
