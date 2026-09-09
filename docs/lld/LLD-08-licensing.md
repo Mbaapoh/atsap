@@ -12,10 +12,37 @@
 | Date | Change |
 |---|---|
 | 2026-09-07 | Written as the licensing half of `LLD-02-identity-licensing.md`. |
+| 2026-09-09 | **The degradation floor gained a number (D-49).** BRD §10.4's Unregistered tier — 4 channels, 10 extensions, 1 tenant — is both the never-licensed state and the floor every degraded cause falls back to. Added as a scope note in §1; §8 DoD item 5 restated against it. |
 | 2026-09-08 | **§3.1 added, correcting §2.** The inherited text said licensing's port *retires* `telephony/ports.LicenseManager`; that contradicted this LLD's own §1 tripwire and DoD 7, and the obvious way to honour it would have made `licensing` import `telephony/ports` — forbidden by HLD 04 §10.1. Both ports stay; the composition root adapts between them. |
 | 2026-09-08 | **Split into its own LLD.** `docs/lld/README.md` states that an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts, each depending on nothing. LLD-02 §2 had justified combining them as sharing "one cutover (auth + entitlement activate together)". Delivery disproved that: identity shipped in three archived changes (`identity-auth-rbac`, `identity-api`, `auth-cutover-connectrpc`) while licensing shipped nothing. They never activated together and never could have. Content is carried over unchanged except where marked. |
 
 ## 1. Scope
+
+> **Two corrections landed after this document was written. Read them
+> first — they change the shape of the context, not just its numbers.**
+>
+> **The floor has a number (D-49).** Where this document says "a defined
+> reduced level" or "reduced capacity", it means **4 simultaneous
+> calls** — the Free Community floor. Expiry, elapsed grace and tampering
+> are three routes to it, distinguished by reason code, not by three
+> behaviours (BR-LIC-02). Only the **channel** floor is enforced here;
+> the extension cap (10) and tenant cap (`MaxTenants: 1`) are entitlement
+> data this context *publishes*, enforced where extensions and tenants
+> are created. Degrading never removes an already-provisioned tenant or
+> extension (AC-06.13).
+>
+> **There is no unsigned entitlement, and no zero-config tier (D-52).**
+> A never-activated installation is in **Setup**: administration console
+> only, **no call path**, and it is never the target of degradation. The
+> free tier is perpetual and costs nothing but is still an activated,
+> signed token obtained by registering. So this context has **no
+> "missing row means 4 channels" branch** — a missing row means Setup.
+> The `Unregistered*` constants remain, as the degradation floor and as
+> the Free Community entitlement's values, not as a fallback for absence.
+>
+> **The stored entitlement is the signed payload, re-verified on load
+> (D-53).** `licensing_state`'s claim columns are a display cache and are
+> never read to make a decision — see §5.
 
 **In scope:** the full HLD 04 §4 `LicenseManager` port — `ValidateCapacity`,
 `ReleaseCapacity`, `ApplyLicenseKey`, `VerifyDailyEntitlement`. LLD-01
@@ -69,11 +96,13 @@ wiring. `stub_compliance.go` stays — LLD-04 owns that.
 ```go
 // licensing/domain — pure where possible (D-21's shape, applied here)
 type LicenseToken struct {
-    Edition     string
-    Capacity    int       // concurrent channels
-    ExpiresAt   time.Time
-    InstanceID  string
-    Fingerprint [5]string // expected weighted attributes
+    Edition       string
+    Capacity      int       // concurrent channels
+    MaxTenants    int       // D-51: 1 = single-tenant, 0 = unlimited, >1 = that many
+    MaxExtensions int       // D-49: 10 unregistered, 0 = unlimited
+    ExpiresAt     time.Time
+    InstanceID    string
+    Fingerprint   [5]string // expected weighted attributes
 }
 func VerifyToken(payload, signature []byte, pubKey ed25519.PublicKey) (LicenseToken, error) // pure, T-1
 
@@ -113,6 +142,27 @@ deviation, the same category as LLD-01's `CallStore` gaining
 `RecordUsageTicks` beyond HLD 04 §1's exact shape.
 
 Ed25519 uses stdlib `crypto/ed25519` — no new dependency.
+
+**`MaxTenants` and `MaxExtensions` are published, never enforced here**
+(D-49, D-51). This context reads them from the signed payload and exposes
+them on the entitlement; the refusal happens where a tenant or an
+extension is created, because that is the only place that knows how many
+already exist. `licensing` counts channels because channels are transient
+and it holds the counter; it does not count rows in another context's
+tables.
+
+`0` means unlimited in both fields, so an unlicensed installation is
+`MaxTenants: 1, MaxExtensions: 10` and every licensed edition is `0, 0`.
+
+**The zero-value hazard this creates is closed by construction, not by
+care.** `0` meaning unlimited would be dangerous if a zero-valued
+`LicenseToken` could ever reach an entitlement decision — an absent or
+malformed licence would read as unlimited. It cannot: `LicenseToken` is
+only ever produced by `VerifyToken`, so an unverified licence yields *no
+token* rather than an empty one, and the unlicensed path is built from the
+named `Unregistered*` constants instead. A test asserts that a
+zero-valued `LicenseToken` is never accepted as an entitlement, so the
+guarantee survives a later refactor that adds a second constructor.
 
 ### 3.1 Two ports, deliberately — and why the alternative is forbidden
 
@@ -177,8 +227,24 @@ One table, `licensing_state`, whose DDL already exists in
 [HLD 03 §5](../hld/03-domain-model.md#5-comprehensive-relational-schema-postgresql-16)
 but which **no migration has yet created** — this LLD's migration adds it.
 
-`instance_id` PK, `fingerprint` JSONB, `edition`, `capacity`,
-`entitlement_status`, `last_confirmed_at`, `grace_started_at`.
+`instance_id` PK, **`signed_payload` BYTEA, `signature` BYTEA**,
+`fingerprint` JSONB, `edition`, `capacity`, `max_tenants`,
+`max_extensions`, `entitlement_status`, `last_confirmed_at`,
+`grace_started_at`.
+
+**`signed_payload` and `signature` are the entitlement of record
+(D-53).** Everything after them is a denormalised cache for display and
+support and is **never** read to make an entitlement decision. The
+platform runs on the partner's hardware, so they hold the database: if
+`capacity` were trusted, one `UPDATE` would grant any capacity without
+forging a signature or defeating the fingerprint.
+
+The load path is therefore: read the row → verify the signature over
+`signed_payload` → parse → cache the result in memory. Verification
+happens **on load and on `ApplyLicenseKey`, never during call setup**
+(AC-06.3). A row whose signature does not verify degrades to the 4-call
+floor with the tamper reason; it is never honoured and never disables the
+system.
 
 **No `tenant_id`, and it never gains RLS.** Licensing is
 installation-scoped, not tenant-scoped (T-1): one licence token per
@@ -233,9 +299,10 @@ lands them updates §1 in the same commit.
    capacity limit or entitlement failure (INV-03) — asserted with a live
    call across each transition, not inferred.
 5. Grace state machine: unreachable entitlement service → full function
-   with day-2+ warnings → degraded reduced capacity after day 7, **never
-   disabled** (AC-06.4/06.5, D-12). Covered by test with an injected
-   clock.
+   with day-2+ warnings → degraded to the **Unregistered floor of 4
+   channels** after day 7, **never disabled** (AC-06.4/06.5, D-12, D-49).
+   Covered by test with an injected clock, asserting the floor value and
+   that an already-provisioned estate is untouched (AC-06.13).
 6. `licensing_state` is asserted to have **no `tenant_id` and no RLS**,
    deliberately (D-24, D-39) — the exception proven, not assumed.
 7. `stub_license.go` is gone and `telephony-core` runs against the real
@@ -247,6 +314,15 @@ lands them updates §1 in the same commit.
 9. A `licensing-imports-nothing` depguard rule exists and has been
    fault-injected once to prove it rejects — `licensing` importing
    `telephony`, `pbx` or `identity` fails the build (§3.1, HLD 04 §10.1).
+10. **Editing a claim column changes no entitlement decision** (D-53,
+    AC-06.16). Asserted by writing a larger `capacity` and a
+    `max_tenants` of `0` directly to `licensing_state` and showing the
+    entitlement in force is unchanged, and that the row is reported as
+    tampered. This is the test whose absence made the exposure possible.
+11. **Setup is not Degraded** (D-52). A never-activated installation has
+    no call path; a degraded one has 4 channels and live calls. Asserted
+    in both directions, so a later refactor cannot collapse them and
+    silently disable a working system on expiry.
 
 ## 9. OpenSpec handoff
 
@@ -272,6 +348,17 @@ identity's changes is a matter of convenience, not correctness.
 - **Parameterized queries only** in `licensing/*` (OWASP A03).
 - **The vendor public key is embedded, never fetched.** A key retrieved
   at runtime is a key an attacker can substitute.
+- **Verification always runs; only the trusted key set varies** (D-54).
+  There is no flag, variable or build tag that skips verification. A
+  production build trusts one key; a development build additionally
+  trusts a development key injected via `-ldflags`, empty by default so
+  a forgotten flag yields the strict binary. `ATSAP_LICENSE_TOKEN`
+  carries a signed token, never a mode — a development-signed token is
+  rejected by a production binary exactly as a forgery is.
+- **No private key material in the repository** (D-39). Unit tests
+  generate an ephemeral Ed25519 keypair in-process; only the dev stack's
+  pre-signed token is committed, and it is worthless against a
+  production binary.
 - **Degrade, never disable** (D-12): no licence state may produce a
   system that refuses an emergency call. That path is `pbx-core`'s to
   bypass (INV-01), and licensing must never be positioned as able to

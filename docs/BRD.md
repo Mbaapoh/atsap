@@ -124,7 +124,7 @@ Organisations under roughly fifty seats with no technical capability and no part
 | # | Differentiator | Why it is hard to copy |
 |---|---|---|
 | **VP-1** | **One platform for PBX, contact centre and specialist dispatch** | Incumbents are one of the three. Unification is an architectural decision made at the start or never. |
-| **VP-2** | **Capacity-based licensing: strictly per concurrent call channel, with unlimited extensions** | Per-seat pricing is the incumbents' revenue model. They cannot follow without cutting their own revenue. Unlimited extensions removes the most common complaint about the closest comparable product. |
+| **VP-2** | **Capacity-based licensing: strictly per concurrent call channel, with unlimited extensions on every licensed edition** | Per-seat pricing is the incumbents' revenue model. They cannot follow without cutting their own revenue. Unlimited extensions removes the most common complaint about the closest comparable product — which prices per user *on the paid tiers*, where this claim is made and where it competes. The Unregistered tier (§10.4) is capped at 10 extensions precisely so that it reads as an evaluation, not a product. |
 | **VP-3** | **Bring your own trunk, with least-cost routing and no per-minute markup** | Most competitors earn margin on minutes. Neutrality is a business-model choice, not a feature. |
 | **VP-4** | **API-first: 100% of signalling events, call states and channel telemetry exposed via REST, gRPC and webhooks** | Competitors expose a subset of their product because the API came afterwards. Ours is the product. Partners plug in external billing stacks or build custom portals without asking us. |
 | **VP-5** | **AI-native, zero lock-in, fully optional** | The partner chooses the provider and pays them directly. AI is embedded throughout the platform — IVR and call-flow generation, agent assist, summarisation, quality scoring, interpreter matching — all through one consistent media pipeline and API. **The platform is designed AI-first, not AI-dependent.** It operates natively with no AI enabled. AI features are per-tenant and can be enabled, disabled or switched between providers by configuration. We have no margin reason to favour one provider — or to require AI at all. |
@@ -160,7 +160,7 @@ Organisations under roughly fifty seats with no technical capability and no part
 |---|---|---|---|---|
 | Pricing basis | Capital plus maintenance | Per user, per month | Per agent, per month | **Per concurrent channel** |
 | Cost of growth | Hardware steps | Linear with headcount | Linear with agents | **Flat until capacity is reached** |
-| Extension limits | Hardware-bound | Priced per user | Priced per agent | **Unlimited at every tier** |
+| Extension limits | Hardware-bound | Priced per user | Priced per agent | **Unlimited on every licensed edition** (10 on the free Unregistered tier) |
 | Carrier choice | Yours | Usually theirs | Usually theirs | **Yours, several at once, least-cost routed** |
 | AI provider choice | None | Theirs | Theirs | **Yours — open or commercial** |
 | API completeness | Minimal | Partial | Partial | **Complete — the product is the API** |
@@ -193,7 +193,8 @@ The first release a partner can buy, install and run a business on.
 | Tamper-evident call detail records with quality measurement on every call | Partners bill from this data; disputes must be answerable |
 | Optional AI-native platform: IVR generation, agent assist, summarisation, quality scoring through any LLM the partner chooses | **AI is optional, per-tenant and provider-agnostic.** Partners choose their AI provider — open or commercial — or choose none; the platform operates fully without AI. We provide the media pipeline and the API. No lock-in, no platform surcharge. AI is not a separate product; it is woven through the platform for those who want it. |
 | API telemetry, events and webhooks | Partners build portals, billing and automation on top |
-| Cryptographic licensing with capacity enforcement | Protects licence revenue without ever disabling a system |
+| Cryptographic licensing with capacity enforcement, and a permanent free tier | Protects licence revenue without ever disabling a system, and lets an engineer prove an install before anyone buys (§10.4) |
+| Per-tenant module enablement within the installation's entitlement | An operator turns a module on for one customer and not another, without buying twice (BR-17, BR-LIC-03) |
 
 ### 7.2 R1.1 — Enterprise edge
 
@@ -245,14 +246,14 @@ The first release a partner can buy, install and run a business on.
 - **FBR-R1-09 — Recording governance.** Recording shall follow rules set per customer, department and jurisdiction, including any required announcement, with defined retention, permanent deletion, and an audit trail of every access.
 - **FBR-R1-10 — Tamper-evident records and quality measurement.** Every call shall produce a complete, immutable record and a measured quality score for each participant, so that any complaint or billing dispute can be resolved with evidence.
 - **FBR-R1-11 — API-first extensibility.** **100% of core signalling events, call state changes, channel telemetry, usage records, administrative controls and AI-generated flow outputs (where AI is enabled) shall be available through documented REST APIs, gRPC streams and webhooks**, with no capability reachable only through our own interface. Every administrative action — including IVR creation and call-flow generation — is available through the same endpoints our own console uses. Data shall be granular enough for a partner to run their own rating and invoicing — per participant, per second, with direction, destination, duration, answer state, tenant, department and service type — and to drive external billing stacks and ERP workflows. Partners embed these capabilities into their own portals, provisioning systems, customer self-service interfaces and automation. **The API works fully without AI; AI outputs are additional data on top of an already complete API.** *We publish and support the interfaces; we do not build or maintain connectors to specific billing products.*
-- **FBR-R1-12 — Cryptographic licence security.** Licences shall be validated from a cryptographically signed payload bound to a hardware fingerprint, with a daily entitlement check and a defined offline grace period. Full requirement in §10.
+- **FBR-R1-12 — Cryptographic licence security and the Unregistered tier.** Licences shall be validated from a cryptographically signed payload bound to a hardware fingerprint, with a daily entitlement check and a defined offline grace period. An installation with no licence shall run permanently at a capped free floor rather than refusing service, and that same floor shall be where an expired or grace-elapsed licence degrades to. Full requirement in §10, including the tier definition in §10.4.
 - **FBR-R1-13 — Deployment and lifecycle.** The platform shall install on a partner's own infrastructure from documented media, upgrade without loss of configuration or data, roll back a failed upgrade, and produce a diagnostic bundle for remote support.
 
 ### Release 1.1
 
 - **FBR-R1-14 — Mobile applications.** Native applications with reliable push notification, so a mobile device functions as a full extension.
 - **FBR-R1-15 — Emergency calling.** The platform shall route emergency calls with accurate, dynamically maintained location for remote users, in accordance with the obligations of each jurisdiction. Where an obligation cannot be met, emergency dialling shall be blocked and the limitation disclosed prominently. There is no third option, and this is a go-live gate.
-- **FBR-R1-16 — Fax.** Inbound and outbound fax delivered as PDF by email.
+- **FBR-R1-16 — Fax.** Inbound and outbound fax delivered as PDF by email, over T.38 with G.711 fallback and no fax hardware. **Included in every licensed edition, not sold separately** — see §12.4.
 - **FBR-R1-17 — Migration and exit.** Bulk import of users, numbers and routing from a previous system, and export of all data in open formats.
 
 ### Release 2
@@ -300,6 +301,7 @@ The first release a partner can buy, install and run a business on.
 - **BR-14** Live call audio leaves the platform for AI processing only where the customer has explicitly enabled it, and only to a provider they have specified.
 - **BR-15 — Credential isolation.** AI provider keys, carrier credentials and any other secret supplied by a partner or tenant are stored encrypted, scoped strictly to that partner or tenant, and never readable by another tenant, another partner, or by our staff in plain text. They never appear in logs, diagnostic bundles, exports or error messages, and are revocable and rotatable by their owner without our involvement.
 - **BR-16** Every platform capability is reachable through the public API. A function that exists only in our own interface means the API is incomplete and the feature is not finished.
+- **BR-LIC-01 to BR-LIC-03 — the Unregistered tier, its degradation floor, and edition-based module gating.** Stated in full in §10.4, where the market rationale that produced them belongs with them.
 - **BR-17 — AI is optional and per-tenant.** The platform must operate fully and natively with no AI enabled. All core telephony, routing, queuing, recording, reporting and API functionality must work without any LLM installed, AI agent connected, or external AI provider configured. One tenant may use AI while another on the same deployment does not. AI is an enhancement, never a dependency.
 
 ---
@@ -318,9 +320,113 @@ Licence revenue is the entire business. The enforcement mechanism must be strong
 |---|---|
 | Concurrent channels exceeded | New call setup rejected with a standard SIP response and a distinct telemetry reason code. **Active calls continue.** A short burst allowance prevents customers being penalised for a busy hour. |
 | Daily check unreachable | Full function for 7 days, with escalating administrator warnings **from day 2** |
-| Grace expired | Degrade to reduced capacity — **never a full shutdown of a working phone system** |
-| Tampering detected | Log, alert, degrade. Never disable. |
+| Grace expired | Degrade to the **Free Community floor of 4 simultaneous calls** (§10.4) — **never a full shutdown of a working phone system** |
+| Tampering detected — including an edited entitlement row | Log, alert, degrade to the same 4-call floor. Never disable, and never honour what the tampered value claimed (§10.6) |
+| No licence ever applied | **Setup state** (§10.4, §10.5). Administration only, no call path. A pre-provisioning state, not a licence state, and never the target of degradation |
 | **Emergency calls** | **Connect in every licence state — valid, expired, degraded, over-capacity or tampered.** Verified by test in every release. |
+
+### 10.4 The Unregistered tier — a hybrid of the two market benchmarks
+
+The two dominant commercial platforms monetise differently, and each
+solves a problem the other does not. We take the useful half of both.
+
+| Benchmark | Their free tier | Their monetisation | What we take |
+|---|---|---|---|
+| **3CX** | 4 simultaneous calls, capped extensions, no key required | Channel capacity increments plus edition tiers | **The capacity floor.** A zero-configuration install that works out of the box, and a floor to fall back to rather than a shutdown |
+| **VitalPBX** | Core PBX free, channels bound only by hardware | Modular add-ons and feature gating | **Module gating.** Core telephony stays open; advanced modules are unlocked by edition |
+
+**BR-LIC-01 — A perpetual Free Community tier, activated by a signed key
+(D-52).** Every entitlement, **including the free one**, arrives as a
+cryptographically signed token obtained by registering on our portal.
+The **Free Community** tier is perpetual and costs nothing: **4
+simultaneous calls, a maximum of 10 extensions, and a single tenant**.
+
+Before any token is applied the installation is in **Setup**: the
+administration console works and displays the instance ID and hardware
+fingerprint, but there is no call path. Setup is a pre-provisioning
+state, **not a licence state** — see BR-LIC-02.
+
+*Why registration rather than zero-configuration:* the free tier is
+free of charge, not free of contact. Requiring a key for every tier means
+every deployment is a known contact and every upgrade is a new token
+against an instance we already know, rather than a reinstall. The
+comparable product does the same, and the friction is small when key
+issuance is instant and self-service (§10.5).
+
+*Why the caps:* an engineer must be able to prove an install works before
+anyone commits to buying (AC-09.1), and the cap is what keeps that an
+evaluation rather than a product — 4 channels, 10 extensions and one
+tenant cannot run a business, which is the point.
+
+**BR-LIC-02 — Degradation falls back to the Free Community floor, never
+to Setup.** Where a licence expires, its 7-day offline grace elapses, or
+tampering is detected, capacity shall fall back to **4 simultaneous
+calls** rather than disabling telephony. **Calls in progress are never
+dropped** at the transition (BR-05), and **emergency calls always
+connect** (BR-09).
+
+*One cause, one behaviour:* expiry, elapsed grace and tampering are three
+routes to the same floor, distinguished by the reason reported to the
+administrator, not by three different degraded states.
+
+*And one distinction that must never be collapsed (D-52):* **Setup is not
+a degraded state.** A never-activated installation has no phone system to
+protect; a degraded one has a live system with calls in progress. If
+degradation ever fell back to Setup, an expired licence would disable a
+working phone system — the one outcome this product promises never to
+produce. The floor is therefore a fixed 4 simultaneous calls, held
+independently of whether any token was ever applied.
+
+**BR-LIC-03 — Modules are entitled by edition.** Advanced modules shall
+check their entitlement against the edition carried in the signed licence
+payload. Gating is by edition, not by a separate module-key mechanism.
+
+| Gated by edition | Never gated on any licensed edition |
+|---|---|
+| AI media pipeline (AI add-on) | Multi-tenancy |
+| Predictive and power dialling (Contact Centre) | Core call routing and basic IVR |
+| Call recording and webhooks (Contact Centre) | **Emergency calling (BR-09)** |
+| Specialist dispatch (Language Services) | Administration, the API, and data export |
+| White-label and custom branding (Operator) | Fax (FBR-R1-16) |
+
+**Multi-tenancy is never sold as a module and never differs between
+licensed editions.** It is what the product *is* (§1), it is native to
+the engine rather than a bolt-on — one of the few places we differ
+structurally from the module-catalogue benchmark — and the Operator
+pooled-channel licence in §12.2 is sold on it.
+
+**The Unregistered tier is single-tenant.** That is the one boundary
+tenancy carries, and it is deliberate: it makes the free tier an
+evaluation of the product rather than a small operator business run for
+nothing, and it protects the Operator licence, which is the only place
+tenancy is monetised. Every licensed edition, including the smallest, is
+multi-tenant with no tenant count limit.
+
+**The cap is a quantity on the licence, not a feature that can be
+absent** (D-51). The signed payload carries **`MaxTenants`** beside the
+channel count: `1` for Unregistered, `0` for unlimited on every licensed
+edition. Tenant isolation itself is enforced by row-level security on
+every table, in **every** mode including single-tenant — one schema, one
+code path, no single-tenant build. `MaxTenants` constrains who may
+*provision* a tenant; it never changes how isolation works, and it is
+never a reason to omit a `tenant_id`.
+
+**Reaching the cap refuses the creation, not the caller.** The
+administrator has the permission; the installation lacks the entitlement,
+and the refusal says so — reads are unaffected, since a single-tenant
+installation still has one tenant its console must be able to show.
+
+**BR-LIC-03 applies per tenant, within the installation's
+entitlement** (D-50). An operator entitled to a module may switch it on
+for one customer and not another; what they may never do is switch on
+something the installation was not entitled to. That check is answered in
+one place, and it is answered by the service performing the operation —
+never by the console (§16 R-12).
+
+**Administration and the API remain available in every state**, including
+Unregistered and degraded, so that a partner can always resolve the
+situation from the system itself rather than being locked out of the
+thing they need to fix.
 
 ### 10.3 Two operational safeguards that must be designed in
 
@@ -329,6 +435,69 @@ Licence revenue is the entire business. The enforcement mechanism must be strong
 **A 7-day grace makes our entitlement service critical infrastructure.** If it is unreachable for eight days — our outage, their firewall change, a certificate expiry, a DNS fault — every partner in the field begins degrading at once. That is a self-inflicted mass outage, and a far worse business event than some licence leakage. It requires high availability and a public status page for the entitlement service, warnings to administrators from day 2, a documented emergency extension procedure for when the fault is ours, and a **manually issued long-term offline licence** for air-gapped, government and regulated deployments where a 7-day grace is not viable.
 
 **On piracy generally:** enforcement should stop casual over-use, not defeat a determined attacker. Software that runs on a partner's own hardware can eventually be circumvented, and effort spent hardening beyond reasonable measures is effort not spent on product. The durable commercial defences are updates, support, certification and directory listing — the things legitimate partners want and unlicensed users cannot get.
+
+---
+
+### 10.5 Acquisition and activation (D-52)
+
+Registration is required for every tier, and issuance is instant and
+self-service. The path is identical for a free key and a purchased one,
+which is what keeps the free path low-friction and the upgrade path
+trivial.
+
+| Step | Where | What happens |
+|---|---|---|
+| 1 | The deployment | Boots into **Setup**. The console shows the instance ID and hardware fingerprint, and how to register |
+| 2 | Our portal | The administrator registers — name, work email, organisation — and chooses Free Community or a commercial edition |
+| 3 | Our portal | Instance ID and fingerprint are entered; a signed token is issued carrying edition, capacity, `MaxTenants`, `MaxExtensions`, expiry and instance identity |
+| 4 | The deployment | The token is pasted or uploaded. Signature and 3-of-5 fingerprint are verified, and the entitlement takes effect **with no restart** |
+
+**Upgrading is a new token, never a reinstall.** The portal already holds
+the instance ID, so Free → commercial is a key application against a
+system that keeps running.
+
+**Supported deployment artefacts.** R1.0 ships **OCI container images**
+(`atsapbx/*`) run under Docker Compose or Helm — cloud, Kubernetes, and
+DevOps-managed infrastructure. A **turnkey Linux appliance** (ISO, AMI,
+OVA) for on-premises hardware and hypervisors is **R1.1**: an appliance
+build pipeline, an OS patching path and appliance QA are real work and
+are not in §12.3's estimate. Activation is identical on both.
+
+*One consequence worth stating for the appliance case:* a cloud instance
+rebuild changes MAC address and host UUID, so the weighted 3-of-5
+fingerprint tolerance (§10.3) is what stops an AMI redeploy from
+presenting as a different machine. It is load-bearing there, not a
+nicety.
+
+### 10.6 The stored entitlement is the signed token (D-53)
+
+**The entitlement of record is the signed payload itself**, re-verified
+when loaded — not a row of parsed values. The readable claim columns
+exist for display and support, and are never consulted to decide what an
+installation may do.
+
+This closes an exposure that the cryptography otherwise left open. The
+platform runs on the partner's hardware, so they hold the database. If
+the entitlement were a plain row, a single `UPDATE` would grant any
+capacity, any edition and any tenant count — without forging a signature,
+touching a binary, or defeating the fingerprint. Verifying only at the
+moment a key is applied protects the *delivery* of a licence and nothing
+about how it is *kept*.
+
+Consistent with §10.3, this is proportionate rather than an arms race: it
+stops a partner editing a row to take twenty channels, which is the
+realistic behaviour. It does not stop someone patching the binary, and no
+reasonable measure would. A row that fails verification degrades to the
+4-call floor and is reported as tampering — it is never honoured, and it
+never disables the system.
+
+**There is no development or testing bypass** (D-54). Verification runs
+in every build; what differs is which keys a build trusts. A development
+key is compiled into development builds only, so a token that unlocks an
+engineer's laptop is inert against a released binary. This matters
+commercially as much as technically: a "disable licensing" switch of any
+kind, however well hidden, is the first thing found and shared, and it
+would make every other control in this section decorative.
 
 ---
 
@@ -360,6 +529,7 @@ Licence revenue is the entire business. The enforcement mechanism must be strong
 | 2 | **Annual support and maintenance** | Percentage of licence value, by partner tier. Updates, security fixes, tier-2 and tier-3 support. |
 | 3 | **Customisation and professional services** | Day rate — integrations, migrations, bespoke workflows, deployment assistance |
 | 4 | **Certification and training** | Per seat. Not a profit centre; it exists so unqualified partners do not generate support costs exceeding their licence value. |
+| 5 | **Sellable modules** | White-label and branding, the operator switchboard as an add-on to Core, and the AI voice agent by concurrent AI channel. Catalogue and rationale in §12.4. Never core telephony, never tenancy, never security. |
 
 Optional later: the R3 turn-key rating and invoicing module, and metered AI resale within our own limited SaaS only, where the meter is ours.
 
@@ -369,7 +539,34 @@ Optional later: the R3 turn-key rating and invoicing module, and metered AI resa
 
 ### 12.2 Editions and indicative pricing
 
-Four editions, cumulative: **Core** (business PBX), **Contact Centre**, **Language Services**, and an **AI add-on** available with any of them.
+Four editions, cumulative: **Core** (business PBX), **Contact Centre**, **Language Services**, and an **AI add-on** available with any of them. Below them sits **Free Community** (§10.4) — perpetual, costs nothing, still activated by a signed key. **Setup** is not an edition at all: it is the pre-activation state of a freshly booted installation (D-52).
+
+| | Setup | Free Community | Core | Contact Centre | Language Services | AI add-on | Operator |
+|---|---|---|---|---|---|---|---|
+| Licence key | **none yet** | signed, free | signed | signed | signed | signed | signed |
+| Simultaneous calls | **none — no call path** | **4** | purchased | purchased | purchased | — | pooled |
+| Extensions | — | **10** | unlimited | unlimited | unlimited | — | unlimited |
+| Tenants (`MaxTenants`, D-51) | — | **1** | unlimited (`0`) | unlimited (`0`) | unlimited (`0`) | — | unlimited (`0`) |
+| Administration console | **yes** | yes | yes | yes | yes | — | yes |
+| Core routing, basic IVR | — | yes | yes | yes | yes | — | yes |
+| **Emergency calling** | — | **yes** | **yes** | **yes** | **yes** | — | **yes** |
+| Fax (FBR-R1-16) | — | — | yes | yes | yes | — | yes |
+| Trunks | — | single | multi-trunk, failover | + least-cost routing | + least-cost routing | — | + least-cost routing |
+| SIP intrusion protection | yes | yes | yes | yes | yes | — | yes |
+| Recording, webhooks | — | — | — | yes | yes | — | yes |
+| Operator switchboard | — | — | add-on | yes | yes | — | yes |
+| Queue callback | — | — | — | yes | yes | — | yes |
+| Predictive and power dialling | — | — | — | yes | yes | — | yes |
+| Specialist dispatch | — | — | — | — | yes | — | — |
+| AI media pipeline | — | — | — | — | — | yes | add-on |
+| White-label and branding | — | — | — | — | — | — | **yes** |
+
+**Setup has no call path, and that is why it is not the degradation
+floor.** An expired or grace-elapsed licence falls back to Free
+Community's 4 simultaneous calls (BR-LIC-02), never to Setup — a working
+phone system is never disabled by a licence state. The individually
+sellable modules
+in that table are described in §12.4.
 
 **AI add-on.** Provides access to the full AI media pipeline: streaming audio to the partner's chosen provider, and receiving transcription, summarisation, sentiment and generated IVR flows. **The add-on is optional — the platform operates fully without it.** We do not mark up inference; the partner pays their provider directly. What the add-on sells is the *pipeline and orchestration*, not the model. Partners may enable AI for some tenants, all tenants, or none.
 
@@ -382,7 +579,7 @@ Four editions, cumulative: **Core** (business PBX), **Contact Centre**, **Langua
 | 256 | $6,490 | $8,990 | $11,490 | +$3,200 |
 | 512 | $11,900 | $16,900 | $21,900 | +$5,800 |
 
-**Unlimited extensions at every tier.** Partners running many customer organisations buy a flat pooled-channel Operator licence instead — $6,900 for 128 pooled channels through $34,900 for 1,024, with unlimited tenants. Partner discounts run 20–35% by tier with deal registration. Full price list, partner programme and support entitlements are in the Commercial Model annex.
+**Unlimited extensions on every licensed edition.** Partners running many customer organisations buy a flat pooled-channel Operator licence instead — $6,900 for 128 pooled channels through $34,900 for 1,024, with unlimited tenants. Partner discounts run 20–35% by tier with deal registration. Full price list, partner programme and support entitlements are in the Commercial Model annex.
 
 ### 12.3 Investment and returns
 
@@ -398,6 +595,95 @@ Channel-business workstreams — licence issuance and enforcement, installer and
 **Revenue expectation:** 8 partners in year one (~$19k net of discount), 30 in year two (~$92k), 75 in year three (~$270k), plus maintenance renewals at 85–90% retention, services and certification.
 
 **Break-even arrives in year three at roughly 75–110 active partners.** A licensed channel business ramps more slowly than direct sales and compounds far better — partner three costs a fraction of partner one to acquire, and each partner brings many end customers. **Year one revenue will not cover the build. Fund 24–30 months.**
+
+### 12.4 Sellable modules — what we take from the module-catalogue model, and what we refuse
+
+The module-catalogue benchmark (VitalPBX) monetises by unbundling: the
+core PBX is free, and multi-tenancy, recording, branding and a
+switchboard are each a separate paid module. That model funds the product
+but fragments it, and a buyer discovers the real price only after
+assembling the list.
+
+**Our rule: never unbundle the engine; monetise what sits on top of it.**
+
+| Their module | Our position | Why |
+|---|---|---|
+| Multi-tenant | **Native, never sold separately** | It is the product (§1). Tenant isolation is enforced in the database itself, not by an add-on that could be absent — a security property cannot be an optional purchase. Monetised through the Operator licence instead |
+| Call recording | **In Contact Centre** | A compliance obligation for the buyers who need it; pricing it separately prices compliance |
+| Rebranding / white label | **Adopt as a module** | Genuine upsell with high willingness to pay, and it changes nothing about how calls work. §12.1 revenue line 5 |
+| Switchboard console | **Adopt, in Contact Centre** | Extends the R2 supervisor workspace to receptionists and dispatchers |
+| Queue callback | **Adopt, in Contact Centre** | Directly reduces abandon rate; the clearest value story in the catalogue |
+| Geo firewall / intrusion protection | **Native, never sold separately** | Same reasoning as tenancy: a platform that can be brute-forced unless you buy the protection module is not secure, it is negotiable |
+| Virtual fax (T.38) | **Included, already committed** | FBR-R1-16 promises it in R1.1. Charging later for a promised feature is the repackaging partners remember |
+| Real-time AI translation | **Ours; they have nothing comparable** | §12.4.2 |
+
+#### 12.4.1 Modules we will sell
+
+**White-label and branding suite — Operator licence.** Custom domain,
+logo and favicon, theme, notification templates, and softphone skinning,
+so an ITSP or MSP sells the platform as their own. Included with the
+Operator licence and available as an add-on to a single-tenant
+enterprise deployment. It is the natural companion to pooled channels:
+the partners who want many tenants are the partners who want their own
+brand on them.
+
+**Operator switchboard console — Contact Centre, or an add-on to Core.**
+A live console for receptionists, dispatchers and supervisors: call state
+across departments, drag-and-drop blind and attended transfer, queue
+monitor, agent pause, and listen / whisper / barge. The supervisor half
+is already committed in R2 (§7.3); this extends the same console to the
+receptionist role and makes it sellable to a Core customer who needs a
+front desk but not a contact centre.
+
+**Smart queue callback — Contact Centre.** A caller keeps their place in
+the queue and hangs up; the platform dials them back when an agent frees.
+With wait-time triggers and sticky routing back to the agent they last
+spoke to.
+
+**SIP intrusion protection — included, not sold.** Registration
+brute-force detection, rate limiting and geographic restriction, in every
+edition including Unregistered. Listed here because the benchmark sells
+it and we deliberately do not: see the table above.
+
+#### 12.4.2 AI modules — and how they relate to the human specialist business
+
+The AI add-on already covers transcription, summarisation, sentiment and
+generated IVR flows (§12.2). Two additions are worth stating explicitly
+because they are where we have no equivalent competitor.
+
+**Real-time translation pipeline — Language Services with the AI
+add-on.** Bidirectional speech-to-text, translation and speech synthesis
+into a live call, with a running transcript.
+
+**This augments the specialist dispatch business; it does not replace
+it.** The relationship is deliberate and needs to be understood by anyone
+selling either:
+
+- AI **bridges the wait** — a caller is understood from the first second
+  rather than after a specialist is found and connected.
+- AI **covers what dispatch cannot** — rare language pairs where no
+  qualified specialist is available at that moment.
+- The **human remains the product** for regulated, medical, legal and
+  safeguarding work, where accuracy carries liability and a machine
+  transcript is not an acceptable record.
+
+So AI raises the fill rate that §7.4 sells and shortens the gap the
+coordinator model creates. It does not remove the specialist, and the
+per-second margin ledger and availability tiers stay exactly as they are.
+A partner buys Language Services for the specialists and adds AI to make
+the wait for one survivable.
+
+**AI voice agent / virtual receptionist — separate consumption add-on.**
+Conversational intent handling, appointment booking, and API lookups
+during a live call, before or instead of routing to a person. Priced by
+concurrent AI channel rather than by edition, because its cost driver is
+inference concurrency, not the size of the phone system. **It is an
+IVR alternative, never an IVR replacement in the emergency path:** BR-09
+applies unchanged, and an AI agent is never in the way of an emergency
+call.
+
+**All of it remains optional (BR-17).** Every module in §12.4 can be
+absent and the platform is complete without it.
 
 ---
 
@@ -465,6 +751,10 @@ Each item requires qualified legal review in every launch jurisdiction before go
 | R-08 | Partners expect ready-made billing connectors we only expose APIs for | Medium | State the boundary in the partner agreement and sales material; publish reference implementations, not supported connectors | PO |
 | R-09 | Partners route end-user support to us | High | Contractual tier-1 obligation, enforced at the support desk, with professional services priced for those who want us to do it | COO |
 | R-10 | Knowledge concentrated in one engineer | High | Pairing, written decisions and recorded walkthroughs from month one | CTO |
+| R-11 | The free tier cannibalises small paid deals rather than feeding them | Medium | The cap is deliberately below a viable business — 4 calls, 10 extensions, one tenant (§10.4). Track conversion from Unregistered to first licence as a named measure (§13); if installs sit unconverted the cap is too generous, and it is ours to tighten | PO |
+| R-12 | Module gating is enforced in the console but not in the API, so an entitlement is bypassed by calling the endpoint directly | High | Entitlement is checked in the service that performs the operation, never in the interface. AC-06.14 requires the API to refuse with an entitlement reason, and the console shows the same refusal rather than deciding it | Architect |
+| R-13 | Free-tier instance farming — ten free deployments of 4 channels is forty free channels, and the hardware fingerprint does not prevent it because each instance is genuinely a different machine | Medium | The control is **portal-side, not platform-side**: free keys are issued per verified organisation with a published limit, and the portal holds every instance ID it has ever issued against, so concentration is visible. Enforcing it in the platform is impossible by construction — each instance is legitimately licensed. Accept that some farming occurs; §10.3's position is that enforcement stops casual over-use, and a partner assembling ten instances to avoid one licence is a sales conversation, not a technical control | PO |
+| R-14 | The development signing key reaches a production build, making an unlimited licence mintable by anyone holding it | High | The key is injected at build time and empty by default, so the strict binary is what a forgotten flag produces. A test asserts a default build trusts exactly one key and rejects a development-signed token (D-54) | CTO |
 | R-11 | "Zero-cost open-source AI" claim fails on first GPU invoice | Medium | The claim is stated accurately in §4: no fee to us, not free to run | CEO |
 | R-12 | Channel conflict if we sell direct against a partner | High | Direct sales policy decided and written into the partner agreement before the first partner signs | CEO |
 | R-13 | Specialist supply too thin for a 15-second target (R3) | High | Validate supply before building; configurable wave size and tiering; coordinator fallback | PO |

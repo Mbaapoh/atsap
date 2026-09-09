@@ -492,11 +492,26 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 -- Deliberately has NO tenant_id column, so RLS does not and must not
 -- apply here — the one exception to "every table has tenant_id" (D-24
 -- seam 1), and it is an exception by construction, not an oversight.
+-- Installation-scoped, deliberately: no tenant_id and no RLS (T-1, D-24
+-- exception, asserted by test). One licence per installed instance.
+--
+-- signed_payload + signature are the ENTITLEMENT OF RECORD (D-53). They
+-- are re-verified when loaded and cached in memory; verification never
+-- happens in the call path (AC-06.3). Every column below them is a
+-- denormalised cache for display and support, and is never read to
+-- decide what this installation may do — the platform runs on the
+-- partner's hardware, so a row that could be trusted could be edited.
+-- A row failing verification degrades to the 4-call floor and is
+-- reported as tampering (BRD §10.2/§10.6), never honoured.
 CREATE TABLE IF NOT EXISTS licensing_state (
     instance_id UUID PRIMARY KEY,
+    signed_payload BYTEA NOT NULL,
+    signature BYTEA NOT NULL,
     fingerprint JSONB NOT NULL,
-    edition VARCHAR(50) NOT NULL,
-    capacity INTEGER NOT NULL,
+    edition VARCHAR(50) NOT NULL,        -- cache, see above
+    capacity INTEGER NOT NULL,           -- cache
+    max_tenants INTEGER NOT NULL,        -- cache; 1 = single, 0 = unlimited (D-51)
+    max_extensions INTEGER NOT NULL,     -- cache; 0 = unlimited (D-49)
     entitlement_status VARCHAR(50) NOT NULL DEFAULT 'VALID',
     last_confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     grace_started_at TIMESTAMPTZ

@@ -281,6 +281,7 @@ These hold in every release, every configuration and every failure mode. A featu
 
 | ID | User story |
 |---|---|
+| US-06.0 | As an engineer evaluating the platform, I register, receive a free key immediately, and make a real call within minutes of first boot — so I can prove it works before anyone commits to buying anything. |
 | US-06.1 | As a partner, I activate my licence with a key and the system configures its edition and capacity. |
 | US-06.2 | As a partner, my system keeps working through an internet outage. |
 | US-06.3 | As a partner, I see channel usage against my licence so I know when to upgrade. |
@@ -300,6 +301,12 @@ These hold in every release, every configuration and every failure mode. A featu
 - AC-06.8 A capacity upgrade applies within 60 seconds with no interruption to calls in progress.
 - AC-06.9 A partner performs a limited number of self-service reactivations after legitimate infrastructure changes, without contacting us.
 - AC-06.10 The concurrent-channel counter is atomic and correct under simultaneous call setup — verified by a race test at 10× normal setup rate.
+- AC-06.11 A freshly installed system is in **Setup**: the console works and shows the instance ID and hardware fingerprint, and there is no call path. Registering and applying the **free** key takes effect **without a restart**, after which the system places and receives calls capped at 4 simultaneous calls, 10 extensions and 1 tenant, with those limits stated plainly in the console (BR-LIC-01, D-52).
+- AC-06.15 Obtaining the free key is **self-service and immediate** — no conversation with the vendor, no manual approval step — and upgrading from free to a commercial edition is a new key applied to a running system, never a reinstall (BRD §10.5).
+- AC-06.16 Editing the stored entitlement directly in the database changes **no** entitlement decision: the signed token is re-verified on load, and a row that fails verification degrades to the 4-call floor and is reported as tampering rather than honoured (BR §10.6, D-53).
+- AC-06.12 An expired licence, an elapsed grace period and detected tampering all degrade to that same 4-call floor, and the console names **which of the three** applies (BR-LIC-02).
+- AC-06.13 Degrading never removes an already-provisioned tenant or extension; only new call capacity is capped, and the estate is intact when the licence is restored.
+- AC-06.14 A module outside the active edition is visible in the console and clearly marked as unavailable with a route to upgrade, and its API endpoints refuse with an entitlement reason rather than a generic error (BR-LIC-03, US-06.5).
 
 ---
 
@@ -718,11 +725,13 @@ These describe what a user or operator **experiences**, and what the product is 
 
 | State | Entered when | Valid next states | What the administrator sees | Functional restrictions |
 |---|---|---|---|---|
+| **Setup** | First boot; no licence token has ever been applied | Valid (on token application) | The instance ID, the hardware fingerprint, and how to register for a key — free or paid | **No call path at all.** Administration console only. This is a pre-provisioning state, not a licence state, and **degradation never returns here** (BRD §10.4, D-52) |
+| **Free Community** | The free perpetual token is applied | Capacity Warning, Capacity Reached, Entitlement Unverified, Valid (on upgrade) | Normal operation with the free tier's limits stated plainly | Capped at **4 simultaneous calls, 10 extensions, 1 tenant** (BR-LIC-01). Perpetual, not a countdown. Everything else works: routing, IVR, API, administration. **Emergency calls always connect (INV-01)** |
 | **Valid** | Entitlement confirmed and capacity below the warning threshold | Capacity Warning, Entitlement Unverified, Suspended | Normal operation; usage visible against entitlement | None |
 | **Capacity Warning** | Concurrent usage reaches 80% of entitlement | Valid, Capacity Reached | Persistent warning in the console with current usage and a route to upgrade | None. **All functions remain fully available** — this is informational |
 | **Capacity Reached** | Concurrent usage reaches 100% of entitlement | Capacity Warning, Valid | Prominent alert; each rejected call is visible with its reason | New calls are declined with a standard network-level rejection. **Calls in progress continue untouched (INV-03).** A short overflow allowance absorbs busy periods before rejection begins. **Emergency calls always connect (INV-01)** |
 | **Entitlement Unverified** | The daily entitlement confirmation has not succeeded | Valid, Degraded | Warnings escalate from the second day, stating the remaining period and what will change | **No functional restriction during the defined grace period.** Everything works normally |
-| **Degraded** | The grace period elapsed without confirmation | Valid (on confirmation) | Clear explanation of the reduced state and how to restore it | Capacity reduces to a defined minimum. **The system is never fully disabled.** Existing calls continue. Emergency calls always connect. Administration and the API remain available so the situation can be resolved |
+| **Degraded** | The grace period elapsed without confirmation, the licence expired, or tampering was detected | Valid (on confirmation) | Clear explanation of the reduced state, **which of the three causes applies**, and how to restore it | Capacity reduces to the **Unregistered floor** — 4 simultaneous calls (BR-LIC-02) — never to zero. **The system is never fully disabled.** Existing calls continue. Emergency calls always connect. Administration and the API remain available so the situation can be resolved. Tenants and extensions already provisioned are **not** removed; only new call capacity is capped |
 | **Suspended** | Deliberate administrative suspension of a tenant | Valid | Tenant users see a clear service message | New outbound calls declined. Calls in progress continue to completion. Emergency calls always connect. Data remains intact and exportable |
 
 **Open technical question for TRD:** the mechanism of entitlement confirmation, the overflow allowance calculation, and how installation identity is established are technical design decisions and are deliberately not specified here.

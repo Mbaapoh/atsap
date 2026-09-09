@@ -14,6 +14,7 @@
 | 2026-09-07 | Initial draft. |
 | 2026-09-07 | Amendment: dev-token guardrails (§5.2); change table with propose order (§9); Security & Compliance Invariants (§10); critical-path sequence diagram (§11); DoD items 9–11. |
 | 2026-09-07 | Review fixes: `AuditEntry` shape matched to HLD 03 §5 (§3); HLD 03 §5 gained `role_bindings`/`api_keys` DDL (§5.1); JWT implementation (stdlib-only, TTL, algorithm pinning) and Argon2id parameters specified (§5.3, §10.7); INV-10 reasoning for the tenant-mismatch check (§4); failed-authentication logging (§10.8); OWASP Top 10 (2021) traceability (§10.9); DoD item 12. |
+| 2026-09-09 | **§4a.1 added: the `MaxTenants` provisioning cap (D-51).** `CreateTenant` refuses with `FAILED_PRECONDITION` at the cap; reads are never gated; RLS stays mandatory in every mode. The entitlement is passed in through a port `identity` owns, so `identity` still depends on nothing. |
 | 2026-09-08 | **Licensing split out into [LLD-08](LLD-08-licensing.md).** This document was `LLD-02-identity-licensing.md` and covered two bounded contexts. `docs/lld/README.md` states an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts depending on nothing. The merge had been justified as sharing "one cutover (auth + entitlement activate together)"; delivery disproved it — identity shipped in three archived changes while licensing shipped nothing. |
 | 2026-09-08 | Status → implemented. `auth-cutover-connectrpc` landed, closing the unauthenticated-`GetCall` concession §1 deferred; `identity-bootstrap` closed as unnecessary (§5.2, §9). |
 
@@ -167,6 +168,44 @@ keeps the table with its owner while still giving callers atomicity.
 
 **`identity` and `licensing` never call each other.** They are Tier-0
 peers sharing no code and no table — the reason they are two LLDs.
+
+### 4a.1 The tenant cap is enforced here, but not decided here (D-51)
+
+`MaxTenants` lives in the signed licence payload and is published by
+`licensing` (LLD-08 §3). Provisioning a tenant is the only place that
+knows how many tenants already exist, so the refusal happens here — but
+`identity` may not call `licensing` to ask, and must not.
+
+The entitlement is therefore supplied **to** `identity`, not fetched by
+it: `CreateTenant` takes the tenant cap as an input, from a port
+`identity` owns, satisfied at the composition root or by the Tier-1
+`entitlement` context (D-50). The dependency direction is unchanged —
+`identity` still depends on nothing.
+
+| Rule | Behaviour |
+|---|---|
+| `MaxTenants = 1` and one tenant exists | `CreateTenant` refuses with **`FAILED_PRECONDITION`** and an entitlement reason |
+| `MaxTenants = 0` | Unlimited; no check |
+| `MaxTenants = n > 1` | Refuses once `n` tenants exist |
+| **Reads** — `ListTenants`, `GetTenant` | **Never gated.** A single-tenant installation has one tenant and its console must show it |
+
+**Not `PERMISSION_DENIED`.** The caller holds the permission; the
+installation lacks the entitlement. Returning an authorization error for a
+licensing condition would put licence denials into the RBAC audit trail,
+so an access-control investigation would surface events that have nothing
+to do with access control — and it would tell an administrator to check
+their roles when they need to check their licence. AC-06.14 requires a
+distinct entitlement reason.
+
+**Row-level security is unaffected.** RLS stays enabled and forced on
+every tenant-scoped table in every mode, single-tenant included. There is
+no single-tenant schema and no single-tenant build (D-51): `MaxTenants`
+constrains provisioning, never isolation.
+
+**Nothing implemented today is wrong.** No cap is enforced now, so this is
+an addition to `identity/tenant-provisioning`, not a correction of it —
+and the only new refusal occurs on an installation that has no second
+tenant to lose.
 
 ## 5. Data model
 
