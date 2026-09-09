@@ -2,10 +2,12 @@ package domain
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -107,6 +109,43 @@ type LicenseToken struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 	InstanceID    string    `json:"instance_id"`
 	Fingerprint   [5]string `json:"fingerprint"`
+}
+
+// SplitToken decodes the compact form a licence is distributed in:
+//
+//	<base64url(payload)>.<base64url(signature)>
+//
+// One string, because that is what a person pastes into a console field
+// or sets in ATSAPBX_LICENSE_TOKEN. Two separate fields would be two
+// things to copy and one thing to get wrong.
+//
+// This decodes an envelope; it does not interpret a licence. It returns
+// bytes, never a LicenseToken, so VerifyToken remains the only way to
+// hold a verified licence and no caller can reach a claim through here.
+// Padding is omitted (RawURLEncoding) so the token stays free of
+// characters that need escaping in a URL, a shell, or a YAML value.
+func SplitToken(token string) (payload, signature []byte, err error) {
+	encPayload, encSig, found := strings.Cut(token, ".")
+	if !found || encPayload == "" || encSig == "" {
+		return nil, nil, ErrUntrusted
+	}
+	payload, err = base64.RawURLEncoding.DecodeString(encPayload)
+	if err != nil {
+		return nil, nil, ErrUntrusted
+	}
+	signature, err = base64.RawURLEncoding.DecodeString(encSig)
+	if err != nil {
+		return nil, nil, ErrUntrusted
+	}
+	return payload, signature, nil
+}
+
+// EncodeToken is the inverse of SplitToken, for issuing a licence and
+// for building test fixtures. It performs no verification: the caller
+// holds the private key or is a test.
+func EncodeToken(payload, signature []byte) string {
+	return base64.RawURLEncoding.EncodeToString(payload) + "." +
+		base64.RawURLEncoding.EncodeToString(signature)
 }
 
 // VerifyToken checks the signature over payload against every trusted

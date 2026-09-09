@@ -58,6 +58,24 @@ type Config struct {
 	// against a transport that does not exist.
 	SIPTransport       string
 	SIPWebRTCTransport string
+
+	// LicenseToken is a signed licence in the compact form
+	// domain.SplitToken decodes, supplied so a compose stack, a Helm
+	// chart or a CI job can activate an installation without a portal
+	// round trip (D-52 §10.5, D-54).
+	//
+	// It carries a TOKEN, never a mode. There is deliberately no
+	// "licensing off" or "dev licensing" setting: verification always
+	// runs, and what differs between builds is which keys are trusted,
+	// injected at build time and empty by default (D-54). A single
+	// configuration value that disabled licensing would defeat D-11,
+	// D-13, D-14 and D-53 at once, and would be the first thing found
+	// and shared.
+	//
+	// Empty is normal: an installation with no token is in Setup —
+	// administration works, there is no call path — until one is applied
+	// here or through the console.
+	LicenseToken string
 }
 
 // Load reads configuration from environment variables, applying sane
@@ -84,6 +102,7 @@ func Load() (Config, error) {
 		SIPRealm:           getEnv("SIP_REALM", "asterisk"),
 		SIPTransport:       getEnv("SIP_TRANSPORT", "transport-udp"),
 		SIPWebRTCTransport: getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
+		LicenseToken:       getEnv("ATSAPBX_LICENSE_TOKEN", ""),
 	}
 
 	if cfg.ARIPassword == "" {

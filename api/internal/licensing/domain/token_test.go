@@ -254,3 +254,59 @@ func TestNoExportedParseWithoutVerify(t *testing.T) {
 	assert.Equal(t, []string{"VerifyToken"}, producers,
 		"VerifyToken must be the only exported function returning a LicenseToken — anything else is a way to hold an unverified licence")
 }
+
+func TestSplitToken(t *testing.T) {
+	payload, sig, pub := signedToken(t, LicenseToken{Edition: "core", Capacity: 32})
+	compact := EncodeToken(payload, sig)
+
+	t.Run("round-trips through the compact form", func(t *testing.T) {
+		gotPayload, gotSig, err := SplitToken(compact)
+
+		require.NoError(t, err)
+		assert.Equal(t, payload, gotPayload)
+		assert.Equal(t, sig, gotSig)
+
+		tok, err := VerifyToken(gotPayload, gotSig, NewKeySet(pub))
+		require.NoError(t, err)
+		assert.Equal(t, 32, tok.Capacity)
+	})
+
+	t.Run("the compact form is safe to paste anywhere", func(t *testing.T) {
+		// No padding, no '+' or '/': a token must survive a URL, a shell
+		// argument and a YAML scalar without escaping.
+		assert.NotContains(t, compact, "=")
+		assert.NotContains(t, compact, "+")
+		assert.NotContains(t, compact, "/")
+	})
+
+	t.Run("malformed envelopes are refused", func(t *testing.T) {
+		for name, token := range map[string]string{
+			"empty":                 "",
+			"no separator":          "abcdef",
+			"empty payload half":    ".abcdef",
+			"empty signature half":  "abcdef.",
+			"separator only":        ".",
+			"payload not base64":    "!!!.abcdef",
+			"signature not base64":  "abcdef.!!!",
+			"standard base64 chars": "ab+cd/ef.abcdef",
+		} {
+			t.Run(name, func(t *testing.T) {
+				_, _, err := SplitToken(token)
+				assert.ErrorIs(t, err, ErrUntrusted)
+			})
+		}
+	})
+
+	t.Run("a well-formed envelope with a bad signature still fails verification", func(t *testing.T) {
+		// Splitting succeeding proves nothing about trust — the envelope
+		// is encoding, the signature is the control.
+		otherPub, _, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+
+		p, s, err := SplitToken(compact)
+		require.NoError(t, err, "the envelope is well-formed")
+
+		_, err = VerifyToken(p, s, NewKeySet(otherPub))
+		assert.ErrorIs(t, err, ErrUntrusted)
+	})
+}
