@@ -29,6 +29,7 @@ package e2e_test
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -38,7 +39,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	natsgo "github.com/nats-io/nats.go"
+	"github.com/stretchr/testify/require"
 
+	licensingapp "atsap-api/internal/licensing/application"
+	licensingdomain "atsap-api/internal/licensing/domain"
+	licensingpg "atsap-api/internal/licensing/postgres"
 	"atsap-api/internal/logging"
 	corepostgres "atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
@@ -116,10 +121,19 @@ func TestWalkingSkeleton(t *testing.T) {
 	ariClient := ari.New(ariBase, ariUser, ariPass, ariApp)
 	registry := acl.NewCorrelationRegistry()
 	callStore := postgres.NewCallStore(appPool)
+	// The walking skeleton now ACTIVATES rather than bypasses.
+	//
+	// Before D-52 this composed an always-permit licence stub, so the
+	// test proved a call could be placed by a system that had never been
+	// licensed — which is no longer a state that permits calls at all.
+	// Signing a licence in-process with an ephemeral key, and verifying
+	// against that same key, exercises the real intake and verification
+	// path instead of stepping around it (D-54). No key material is
+	// committed anywhere (D-39).
 	svc := application.NewService(
 		acl.NewMediaGatewayAdapter(ariClient),
 		callStore,
-		application.NewAlwaysPermitLicense(),
+		activatedLicenseManager(t, ctx, appPool),
 		application.NewAlwaysPermitCompliance(),
 		registry,
 		20,
@@ -566,4 +580,60 @@ func TestGetCall_RefusesAnotherTenant(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("cross-tenant GetCall returned %d, want 400 (tenant mismatch refused before the store) — a 404 would mean the request reached the store", resp.StatusCode)
 	}
+}
+
+// activatedLicenseManager builds the real licensing service, applies a
+// licence signed here and now, and adapts it to telephony-core's port.
+//
+// It mirrors cmd/atsap-api/licensing.go rather than importing it, for
+// the same reason the rest of this test mirrors main.go: the composition
+// root is a binary, not a library. What matters is that the SAME
+// production code path runs — store, verification, entitlement, counter
+// — with only the key and the token supplied by the test.
+func activatedLicenseManager(t *testing.T, ctx context.Context, pool *corepostgres.Pool) ports.LicenseManager {
+	t.Helper()
+
+	pub, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	payload, err := json.Marshal(licensingdomain.LicenseToken{
+		Edition:    "e2e",
+		Capacity:   16,
+		InstanceID: "00000000-0000-0000-0000-0000000000e2",
+	})
+	require.NoError(t, err)
+
+	svc := licensingapp.NewService(
+		licensingpg.NewStore(pool.Unwrap()),
+		licensingdomain.NewKeySet(pub),
+		logging.New("debug"),
+	)
+	require.NoError(t, svc.ApplyLicenseKey(ctx,
+		licensingdomain.EncodeToken(payload, ed25519.Sign(priv, payload))),
+		"the e2e stack must activate through the real path")
+
+	e, err := svc.Entitlement(ctx)
+	require.NoError(t, err)
+	require.True(t, e.PermitsCalls(),
+		"an activated installation must permit calls — if this fails the licence did not take effect, and no call below could succeed")
+
+	return &e2eLicenseAdapter{inner: svc}
+}
+
+// e2eLicenseAdapter is the same four-line translation cmd/atsap-api
+// performs, and it exists for the same reason: the two contexts define
+// their own CapacityVerdict and neither may import the other
+// (HLD 04 §10.1, LLD-08 §3.1).
+type e2eLicenseAdapter struct{ inner *licensingapp.Service }
+
+func (a *e2eLicenseAdapter) ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, callID string, channels int) (ports.CapacityVerdict, error) {
+	v, err := a.inner.ValidateCapacity(ctx, tenantID, callID, channels)
+	if err != nil {
+		return ports.CapacityVerdict{}, err
+	}
+	return ports.CapacityVerdict{Permitted: v.Permitted, Reason: string(v.Reason)}, nil
+}
+
+func (a *e2eLicenseAdapter) ReleaseCapacity(ctx context.Context, callID string) error {
+	return a.inner.ReleaseCapacity(ctx, callID)
 }

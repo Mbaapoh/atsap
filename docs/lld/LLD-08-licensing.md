@@ -330,8 +330,30 @@ lands them updates §1 in the same commit.
 6. `licensing_state` is asserted to have **no `tenant_id` and no RLS**,
    deliberately (D-24, D-39) — the exception proven, not assumed.
 7. `stub_license.go` is gone and `telephony-core` runs against the real
-   adapter with **no change under `internal/telephony/`** beyond the
-   composition root; `git diff --stat api/internal/telephony/` is empty.
+   adapter, with the change under `internal/telephony/` confined to the
+   **`ports` and `application` packages** and, among production files,
+   to exactly two: `ports/ports.go` (the port it owns) and
+   `application/service.go` (its call sites).
+
+   *Amended 2026-09-09, when the tripwire fired.* This item originally
+   read "no change under `internal/telephony/`; `git diff --stat` is
+   empty", which was unmeetable by the same change that mandates it:
+   deleting `stub_license.go` **is** a change under
+   `internal/telephony/`, and a port signature change necessarily
+   updates the test doubles that implement it. Asserting an empty diff
+   would have failed on its own requirement.
+
+   The rule it was protecting is intact and is what is asserted now:
+   nothing under `acl/`, `domain/`, `postgres/`, `rpc/`, `mediatest/` or
+   `e2e/` changes, `telephony-core` never imports `licensing`, and the
+   composition root is the only place that knows both contexts.
+
+   Two production files, not one, because `ValidateCapacity` also gained
+   a `callID` parameter. Reservation and release must share a key for
+   release to be idempotent rather than a blind decrement (D-58), and
+   the failure direction is why it was worth the wider change:
+   under-counting permits calls that should be refused, which is licence
+   leakage no test notices.
 8. All SQL uses parameter placeholders. Stated plainly as review-enforced:
    `depguard` matches import paths, not string shapes, so no CI gate
    claims this check (D-28 honesty).

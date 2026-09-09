@@ -124,7 +124,7 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 		return shareddomain.CallID{}, fmt.Errorf("transition to screening: %w", err)
 	}
 
-	capVerdict, err := s.license.ValidateCapacity(ctx, cmd.TenantID, 1)
+	capVerdict, err := s.license.ValidateCapacity(ctx, cmd.TenantID, call.ID.String(), 1)
 	if err != nil {
 		return shareddomain.CallID{}, fmt.Errorf("validate capacity: %w", err)
 	}
@@ -383,6 +383,30 @@ func (s *Service) finalizeTermination(ctx context.Context, call *domain.Call, re
 	}
 	if err := s.saveCall(ctx, call, terminateEvents...); err != nil {
 		return err
+	}
+
+	// Return the channel this call reserved at Screening.
+	//
+	// Issued here and nowhere else: finalizeTermination is the single
+	// funnel every termination route reaches, and it is already guarded
+	// by the CallTerminated check above, so a second termination signal
+	// for an already-terminated call never arrives here.
+	//
+	// The correctness of the count does NOT depend on that guard
+	// holding, which is the point of keying the reservation by call
+	// (D-58). A release for a call holding nothing is a no-op, so a
+	// screened-out call that never reserved frees nothing, and a future
+	// termination path added by someone who has not read this comment
+	// cannot double-decrement. Relying on the guard alone would fail in
+	// the expensive direction: under-counting permits calls that should
+	// be refused, which is licence leakage nothing surfaces.
+	//
+	// A failure here is logged rather than returned: the call has
+	// already terminated, its events are persisted, and refusing to
+	// finish teardown over a counter would turn a licensing hiccup into
+	// a stuck call.
+	if err := s.license.ReleaseCapacity(ctx, call.ID.String()); err != nil {
+		s.logger.Error("release capacity on termination", "error", err, "call_id", call.ID)
 	}
 
 	s.removeCall(call.ID)

@@ -178,6 +178,7 @@ type harness struct {
 	mediaGW   *fakeMediaGateway
 	callStore *fakeCallStore
 	registry  *acl.CorrelationRegistry
+	license   *recordingLicense
 }
 
 func newHarness() *harness {
@@ -185,11 +186,16 @@ func newHarness() *harness {
 		mediaGW:   &fakeMediaGateway{},
 		callStore: newFakeCallStore(),
 		registry:  acl.NewCorrelationRegistry(),
+		// The permissive stub this replaced counted nothing, so no test
+		// could observe a reservation. Recording instead means the
+		// reserve/release balance is assertable — the property D-58
+		// protects — without changing what any existing test expects.
+		license: newRecordingLicense(),
 	}
 	h.svc = application.NewService(
 		h.mediaGW,
 		h.callStore,
-		application.NewAlwaysPermitLicense(),
+		h.license,
 		application.NewAlwaysPermitCompliance(),
 		h.registry,
 		20,
@@ -306,14 +312,56 @@ func TestInitiateCall_ScreeningRejection(t *testing.T) {
 
 type rejectingLicense struct{}
 
-func (rejectingLicense) ValidateCapacity(context.Context, shareddomain.TenantID, int) (ports.CapacityVerdict, error) {
+func (rejectingLicense) ValidateCapacity(context.Context, shareddomain.TenantID, string, int) (ports.CapacityVerdict, error) {
 	return ports.CapacityVerdict{Permitted: false, Reason: "over capacity"}, nil
 }
 
+func (rejectingLicense) ReleaseCapacity(context.Context, string) error { return nil }
+
 type failingLicense struct{}
 
-func (failingLicense) ValidateCapacity(context.Context, shareddomain.TenantID, int) (ports.CapacityVerdict, error) {
+func (failingLicense) ValidateCapacity(context.Context, shareddomain.TenantID, string, int) (ports.CapacityVerdict, error) {
 	return ports.CapacityVerdict{}, errors.New("entitlement service unreachable")
+}
+
+func (failingLicense) ReleaseCapacity(context.Context, string) error { return nil }
+
+// recordingLicense observes reservation and release so a test can assert
+// the count returns to where it started, which is the property D-58
+// exists to protect. A plain counter would hide a double release; the
+// per-call map does not.
+type recordingLicense struct {
+	mu        sync.Mutex
+	reserved  map[string]int
+	released  map[string]int
+	permitted bool
+}
+
+func newRecordingLicense() *recordingLicense {
+	return &recordingLicense{reserved: map[string]int{}, released: map[string]int{}, permitted: true}
+}
+
+func (r *recordingLicense) ValidateCapacity(_ context.Context, _ shareddomain.TenantID, callID string, _ int) (ports.CapacityVerdict, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.permitted {
+		return ports.CapacityVerdict{Permitted: false, Reason: "over capacity"}, nil
+	}
+	r.reserved[callID]++
+	return ports.CapacityVerdict{Permitted: true}, nil
+}
+
+func (r *recordingLicense) ReleaseCapacity(_ context.Context, callID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.released[callID]++
+	return nil
+}
+
+func (r *recordingLicense) counts(callID string) (reserved, released int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reserved[callID], r.released[callID]
 }
 
 type failingCompliance struct{}
@@ -343,7 +391,7 @@ func TestInitiateCall_LicenseServiceFailure(t *testing.T) {
 func TestInitiateCall_ComplianceServiceFailure(t *testing.T) {
 	h := newHarness()
 	h.svc = application.NewService(
-		h.mediaGW, h.callStore, application.NewAlwaysPermitLicense(), failingCompliance{},
+		h.mediaGW, h.callStore, h.license, failingCompliance{},
 		h.registry, 20, discardLogger(),
 	)
 	_, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
@@ -649,4 +697,76 @@ func TestUsageTicks_RecordedOnDisconnect(t *testing.T) {
 		seen[key] = true
 		assert.Equal(t, callID, tick.CallID)
 	}
+}
+
+// TestCapacityIsReleasedOnEveryTerminationRoute is task 4.2 and the
+// telephony half of D-58.
+//
+// A call that reserved a channel must return it however it ends. The
+// failure mode this guards is quiet and expensive: a route that forgets
+// to release leaves the count high, so the installation refuses calls it
+// should permit, and nothing indicates why.
+func TestCapacityIsReleasedOnEveryTerminationRoute(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("normal hangup", func(t *testing.T) {
+		h := newHarness()
+		callID := initiateTestCall(t, h)
+
+		require.NoError(t, h.svc.HangupCall(ctx, callID, "caller hung up"))
+
+		reserved, released := h.license.counts(callID.String())
+		assert.Equal(t, 1, reserved)
+		assert.Equal(t, 1, released, "a completed call returns its channel")
+	})
+
+	t.Run("last participant leaves", func(t *testing.T) {
+		h := newHarness()
+		callID := initiateTestCall(t, h)
+		call := h.callStore.get(callID)
+		require.NotNil(t, call)
+
+		for _, p := range call.Participants {
+			_ = h.svc.ParticipantLeft(ctx, "", callID.String(), p.ID.String())
+		}
+
+		_, released := h.license.counts(callID.String())
+		assert.Equal(t, 1, released, "a call ended by its last participant returns its channel")
+	})
+
+	t.Run("terminating twice releases once", func(t *testing.T) {
+		h := newHarness()
+		callID := initiateTestCall(t, h)
+
+		require.NoError(t, h.svc.HangupCall(ctx, callID, "caller hung up"))
+		// A second termination signal for the same call — a duplicate
+		// StasisEnd, a retried hangup, an ACL redelivery.
+		_ = h.svc.HangupCall(ctx, callID, "caller hung up again")
+
+		_, released := h.license.counts(callID.String())
+		assert.Equal(t, 1, released,
+			"terminating twice must free one channel, not two — under-counting permits calls that should be refused")
+	})
+}
+
+// TestScreenedOutCallReleasesNothing: a call refused at Screening never
+// reserved anything, so its termination must not free someone else's
+// channel.
+func TestScreenedOutCallReleasesNothing(t *testing.T) {
+	h := newHarness()
+	h.license.permitted = false
+	h.svc = application.NewService(
+		h.mediaGW, h.callStore, h.license, application.NewAlwaysPermitCompliance(),
+		h.registry, 20, discardLogger(),
+	)
+
+	callID, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
+		SourceNumber: "1000", DestNumber: "1001",
+		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
+	})
+	require.NoError(t, err)
+
+	reserved, _ := h.license.counts(callID.String())
+	assert.Zero(t, reserved, "a refused call consumes no channel")
 }

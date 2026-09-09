@@ -132,11 +132,17 @@ func main() {
 	mediaGateway := acl.NewMediaGatewayAdapter(ariClient)
 	callStore := telephonypostgres.NewCallStore(appPool)
 
+	licenseManager, err := newLicenseManager(ctx, appPool, cfg.LicenseToken, logger)
+	if err != nil {
+		logger.Error("licensing", "error", err)
+		os.Exit(1)
+	}
+
 	callService := application.NewService(
 		mediaGateway,
 		callStore,
-		application.NewAlwaysPermitLicense(),    // LLD-02 replaces this
-		application.NewAlwaysPermitCompliance(), // a later change replaces this
+		licenseManager,
+		application.NewAlwaysPermitCompliance(), // LLD-04 replaces this
 		registry,
 		20, // TimeoutSeconds, PRD §11.1 Presenting default
 		logger,

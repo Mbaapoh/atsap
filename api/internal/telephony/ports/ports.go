@@ -135,11 +135,57 @@ type CapacityVerdict struct {
 	Reason    string
 }
 
-// LicenseManager is the Screening-state capacity port. This change wires
-// it to an always-permit stub (application/stub_license.go); LLD-08
-// replaces the adapter behind this same interface.
+// LicenseManager is the capacity port telephony-core consumes. It is
+// the CONSUMER's narrow view — the two methods this context actually
+// calls — not the provider's full contract, which lives in
+// licensing/ports and has four (LLD-08 §3.1). Keeping them separate is
+// what stops licensing importing telephony/ports for CapacityVerdict,
+// which HLD 04 §10.1 denies; cmd/atsap-api adapts between the two.
+//
+// # Why this interface changed, and why that was allowed
+//
+// LLD-08 §1 originally forbade ANY edit under internal/telephony/. That
+// tripwire fired during licensing-capacity-grace, for a reason no
+// document anticipated: ReleaseCapacity had zero occurrences in the
+// codebase. It was named in HLD 04 §4 and in licensing's port, but this
+// interface declared only ValidateCapacity and nothing anywhere
+// released. LLD-01 built the half of the seam its always-permit stub
+// needed, and a real counter against that code produces a number that
+// only rises — until every call in the installation is refused and none
+// is ever dropped to correct it.
+//
+// The two ways to avoid touching telephony-core are both forbidden by
+// HLD 04 §10.1, which gives licensing "may depend on: nothing":
+// subscribing to call-lifecycle events, or reading telephony-core's
+// tables. Shipping a counter without release is a defect, not a
+// limitation.
+//
+// So the rule was narrowed rather than waived: telephony-core may gain
+// port methods it owns and their call sites, and nothing else. The seam's
+// direction is untouched — this context still calls a port it owns and
+// still never imports licensing, which is what the tripwire actually
+// existed to protect.
 type LicenseManager interface {
-	ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, requestedChannels int) (CapacityVerdict, error)
+	// ValidateCapacity reserves a channel for callID.
+	//
+	// callID is the second half of the same correction. A reservation
+	// keyed by call is what lets ReleaseCapacity be idempotent instead
+	// of a blind decrement (D-58), and the failure direction is why it
+	// matters: a decrement running twice UNDER-counts, so the
+	// installation permits calls it should refuse. That is licence
+	// leakage no test notices, because everything continues to work,
+	// and nothing surfaces until a partner is running more channels
+	// than they bought.
+	ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, callID string, requestedChannels int) (CapacityVerdict, error)
+
+	// ReleaseCapacity returns callID's reservation.
+	//
+	// Idempotent by contract: releasing a call that holds nothing —
+	// because it was refused at Screening, because it already released,
+	// or because a second termination signal arrived — is a no-op and
+	// not an error. Implementations must not rely on the caller
+	// releasing exactly once.
+	ReleaseCapacity(ctx context.Context, callID string) error
 }
 
 // ComplianceVerdict is ComplianceEngine's answer to a compliance check.
