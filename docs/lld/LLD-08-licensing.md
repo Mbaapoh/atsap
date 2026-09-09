@@ -12,7 +12,7 @@
 | Date | Change |
 |---|---|
 | 2026-09-07 | Written as the licensing half of `LLD-02-identity-licensing.md`. |
-| 2026-09-09 | **The degradation floor gained a number (D-49).** BRD §10.4's Unregistered tier — 4 channels, 10 extensions, 1 tenant — is both the never-licensed state and the floor every degraded cause falls back to. Added as a scope note in §1; §8 DoD item 5 restated against it. |
+| 2026-09-09 | **The degradation floor gained a number, then the never-activated case was separated from it.** D-49 set the floor at 4 channels / 10 extensions / 1 tenant. D-52 then established that a never-activated installation is **Setup** with no call path — *not* that floor — and D-53/D-54 changed how the entitlement is stored and verified. See the scope note in §1, which is authoritative over this row. |
 | 2026-09-08 | **§3.1 added, correcting §2.** The inherited text said licensing's port *retires* `telephony/ports.LicenseManager`; that contradicted this LLD's own §1 tripwire and DoD 7, and the obvious way to honour it would have made `licensing` import `telephony/ports` — forbidden by HLD 04 §10.1. Both ports stay; the composition root adapts between them. |
 | 2026-09-08 | **Split into its own LLD.** `docs/lld/README.md` states that an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts, each depending on nothing. LLD-02 §2 had justified combining them as sharing "one cutover (auth + entitlement activate together)". Delivery disproved that: identity shipped in three archived changes (`identity-auth-rbac`, `identity-api`, `auth-cutover-connectrpc`) while licensing shipped nothing. They never activated together and never could have. Content is carried over unchanged except where marked. |
 
@@ -37,8 +37,9 @@
 > free tier is perpetual and costs nothing but is still an activated,
 > signed token obtained by registering. So this context has **no
 > "missing row means 4 channels" branch** — a missing row means Setup.
-> The `Unregistered*` constants remain, as the degradation floor and as
-> the Free Community entitlement's values, not as a fallback for absence.
+> The floor constants remain — named `Free*` — as the degradation floor
+> and as the Free Community entitlement's values, never as a fallback for
+> absence.
 >
 > **The stored entitlement is the signed payload, re-verified on load
 > (D-53).** `licensing_state`'s claim columns are a display cache and are
@@ -55,10 +56,33 @@ with tolerance (D-13), and a 7-day offline grace with day-2 warnings that
 Also in scope: replacing `telephony/application/stub_license.go` by
 wiring the real adapter behind the existing port in `cmd/atsap-api`.
 
-**Zero `telephony-core` changes.** If this LLD requires editing anything
-under `internal/telephony/` beyond deleting the stub's wiring, the seam
-LLD-01 built has failed and work stops. That tripwire is the reason
-`ValidateCapacity` keeps its signature (§3).
+**Near-zero `telephony-core` changes — and the tripwire has already
+fired once.** This rule was originally "zero changes: if this LLD
+requires editing anything under `internal/telephony/` beyond deleting the
+stub's wiring, the seam LLD-01 built has failed and work stops."
+
+It fired during `licensing-capacity-grace`, for a reason no document
+anticipated: **`ReleaseCapacity` had zero occurrences in the codebase.**
+It is named in HLD 04 §4 and in §3's port here, but
+`telephony/ports.LicenseManager` declared only `ValidateCapacity`, and
+nothing anywhere released. LLD-01 built the half of the seam its
+always-permit stub needed. A real counter against that code produces a
+number that only rises, until every call is refused and none is ever
+dropped to correct it.
+
+The two ways to avoid touching `telephony-core` are both forbidden by
+HLD 04 §10.1 (`licensing` may depend on **nothing**): subscribing to
+call-lifecycle events, or reading `telephony-core`'s tables. Shipping
+without release is a defect, not a limitation.
+
+**The narrowed rule:** `telephony-core` may gain *port methods it owns
+and their call sites*, and nothing else. Specifically permitted, once:
+`ReleaseCapacity` on `telephony/ports.LicenseManager` and one call in
+`finalizeTermination`. Everything else under `internal/telephony/`
+remains out of bounds, and DoD 7 asserts the diff lists exactly those two
+files. The seam's direction is untouched — `telephony-core` still calls a
+port it owns and still never imports `licensing`, which is what the
+tripwire actually existed to protect.
 
 **Explicitly out of scope:**
 
@@ -99,12 +123,12 @@ type LicenseToken struct {
     Edition       string
     Capacity      int       // concurrent channels
     MaxTenants    int       // D-51: 1 = single-tenant, 0 = unlimited, >1 = that many
-    MaxExtensions int       // D-49: 10 unregistered, 0 = unlimited
+    MaxExtensions int       // D-49: 10 on the free tier, 0 = unlimited
     ExpiresAt     time.Time
     InstanceID    string
     Fingerprint   [5]string // expected weighted attributes
 }
-func VerifyToken(payload, signature []byte, pubKey ed25519.PublicKey) (LicenseToken, error) // pure, T-1
+func VerifyToken(payload, signature []byte, keys KeySet) (LicenseToken, error) // pure, T-1, D-54
 
 type HardwareFingerprint struct{ Attrs [5]string }
 func (f HardwareFingerprint) Matches(expected [5]string) bool // >=3 of 5 equal, D-13
@@ -124,7 +148,7 @@ func GraceState(now, lastConfirmedAt time.Time) GraceStatus
 // licensing/ports — HLD 04 §4's four methods.
 type LicenseManager interface {
     ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, requestedChannels int) (CapacityVerdict, error)
-    ReleaseCapacity(ctx context.Context, channels int) error
+    ReleaseCapacity(ctx context.Context, callID shareddomain.CallID) error // keyed by call, so idempotent (D-58)
     ApplyLicenseKey(ctx context.Context, signedPayload []byte) error
     VerifyDailyEntitlement(ctx context.Context) (EntitlementStatus, error)
 }
@@ -331,8 +355,16 @@ file as the design source.
 
 | Change ID | Scope | Sequencing |
 |---|---|---|
-| `licensing-capacity-grace` | Full `LicenseManager`, atomic counter with burst, Ed25519 verify, 7-day grace tracker, `licensing_state` migration | First — capacity is what `telephony-core` already calls |
-| `licensing-apply-key` | `ApplyLicenseKey`/`GetLicenseStatus` RPCs and CLI, hardware fingerprint collection and matching | After: keys set the capacity the counter enforces |
+| `licensing-capacity-grace` | `VerifyToken` and the trusted key set, `ApplyLicenseKey` as a domain operation, `ATSAPBX_LICENSE_TOKEN` intake, signed-payload storage with load-time re-verification, atomic counter with burst, 7-day grace tracker, `licensing_state` migration, and the `stub_license.go` cutover | First |
+| `licensing-apply-key` | The `ApplyLicenseKey`/`GetLicenseStatus` **RPCs** and CLI, hardware fingerprint collection and 3-of-5 matching, console licence screen | After: gives the token a portal, an operator interface and machine binding |
+
+**Re-sliced 2026-09-09.** Token intake moved into the first change
+because D-52 removed the unsigned path: with no token applied an
+installation has no call path at all, so a first change without intake
+would have shipped something unable to place a call, with an unmeetable
+Definition of Done and two failing e2e suites. The split is now
+"activate from configuration" then "activate from a portal", and both
+halves remain independently shippable.
 
 No hard dependency on `identity` in either direction. Ordering against
 identity's changes is a matter of convenience, not correctness.

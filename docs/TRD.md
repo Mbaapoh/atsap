@@ -160,6 +160,9 @@ one-participant-equals-one-channel.
 - **compliance** — pure-function do-not-call/hours/abandonment checks,
   called by dialer and by manual-dial paths alike (BR-10 applies to both).
 - **licensing** — capacity entitlement, hardware fingerprint, offline grace.
+- **entitlement** — per-tenant module enablement, bounded by the
+  installation's licence (D-50). The only context depending on both
+  `identity` and `licensing`.
 - **reporting** — CDR/CEL-based usage and billing export, keyed on
   Participant identity per Usage records above.
 
@@ -208,6 +211,7 @@ graph TD
         COMP["compliance<br/>(pure functions)"]
     end
     subgraph T1["Tier 1 — depend on telephony-core / identity"]
+        ENT["entitlement<br/>(identity + licensing)"]
         PBX["pbx-core"]
         REP["reporting"]
         WH["webhook-delivery"]
@@ -227,6 +231,11 @@ graph TD
     COMP -->|BR-10 clearance| DIAL
     PBX -->|queues/routing| DIAL
     REP -->|usage| DIAL
+    ID --> ENT
+    LIC --> ENT
+    ENT -.->|may tenant use module| PBX
+    ENT -.->|may tenant use module| AIP
+    ENT -.->|may tenant use module| DIAL
 ```
 
 `telephony-core` is built first (Tier 0, but risk-first per D-26) against

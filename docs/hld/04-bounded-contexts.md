@@ -250,6 +250,55 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
 
 ---
 
+## 9a. `entitlement` (D-50, D-51, BR-17, BR-LIC-03, EPIC-06)
+
+> **Numbered 9a, not 10, deliberately.** §10 is the dependency graph and
+> is cited 58 times across this repository, three of them inside
+> archived, immutable OpenSpec changes. Section numbers are stable
+> identifiers, never a sequence to be tidied — the same rule D-48 fixed
+> for LLD numbers, applied here.
+
+- **Purpose:** Answers one question — *may tenant T use module M?* — by
+  combining what the installation is **entitled** to (from `licensing`)
+  with what each tenant has **enabled** (from `identity`'s tenant
+  records). It is the only context permitted to depend on both.
+- **Tier:** 1. It depends on two Tier-0 contexts and nothing else, and no
+  Tier-0 context depends on it.
+- **Aggregates:** `TenantModuleGrant` — the per-tenant enablement of one
+  module, valid only while the installation's entitlement covers it.
+- **Port (consumed by `pbx-core`, `reporting`, `webhook-delivery`,
+  `ai-pipeline`, `dialer`):**
+
+```go
+type EntitlementChecker interface {
+    // MayUse reports whether tenantID may use module, and why not when
+    // it may not. The reason distinguishes "the installation is not
+    // entitled" from "this tenant has it switched off" — an operator
+    // needs to know whether to buy something or click something.
+    MayUse(ctx context.Context, tenantID shareddomain.TenantID, module Module) (Verdict, error)
+}
+```
+
+- **Invariants:**
+  - **Enablement never exceeds entitlement.** Enabling a module for a
+    tenant when the installation is not entitled to it fails, and fails
+    here rather than in each consumer (D-50).
+  - **Checked in the service that performs the operation, never in the
+    console** (BRD §16 R-12). A check reachable only through the UI is
+    bypassed by calling the endpoint.
+  - **Never gates an emergency call.** No module verdict can sit between
+    a caller and an emergency number (BR-09, INV-01).
+  - **Reads are not gated by tenancy caps** — `MaxTenants` constrains
+    provisioning only (D-51), and that refusal belongs to `identity`.
+- **Why it is not part of `licensing`:** `licensing_state` is
+  installation-scoped with no `tenant_id` and no RLS, asserted by test
+  (LLD-08 DoD 6). Per-tenant enablement is the opposite — tenant-scoped
+  with RLS enforced. One context holding both scoping rules is how that
+  assertion eventually gets reworded away.
+- **Detail:** [LLD-11](../lld/LLD-11-entitlement.md).
+
+---
+
 ## 10. Bounded Context Build & Dependency Graph
 
 This is the single authoritative build-order reference. Its purpose is to
@@ -281,6 +330,13 @@ waiting for those contexts' real implementations.
                               ▼                  ▼                  ▼                  ▼
      ┌────────────────────────────────────────────────────────────────────────────────────────┐
      │  TIER 1 — depend on telephony-core's Call/Participant + identity's tenant context        │
+     │  ┌───────────────────────────────────────────────────────────────────────────────┐      │
+     │  │  entitlement (D-50)  — the ONLY context depending on both identity and         │      │
+     │  │  licensing. Answers "may tenant T use module M?" so no one else combines       │      │
+     │  │  the two, and holds the rule: enablement never exceeds entitlement.            │      │
+     │  └───────────────────────────────────────────────────────────────────────────────┘      │
+     │         │ asked by each of the four below before gating a paid module                    │
+     │         ▼                                                                                │
      │  ┌─────────────┐   ┌─────────────┐   ┌──────────────────┐   ┌───────────────┐            │
      │  │  pbx-core   │   │  reporting  │   │ webhook-delivery │   │  ai-pipeline  │            │
      │  │ (routes real│   │ (consumes   │   │ (delivers events │   │ (snoops       │            │
@@ -310,11 +366,20 @@ waiting for those contexts' real implementations.
 | `identity` | nothing | every other context |
 | `licensing` | nothing | every other context |
 | `compliance` | nothing (pure functions — no I/O, so no dependency is even possible) | every other context |
-| `pbx-core` | `telephony-core` (Call/Participant), `identity` | `dialer`, `ai-pipeline`, `reporting` |
-| `reporting` | `telephony-core` events (async, NATS) | any synchronous call into another context |
-| `webhook-delivery` | `identity` (signing keys), any context's published events (async) | synchronous calls into any context |
-| `ai-pipeline` | `telephony-core` (Participant + Snoop) | `dialer`, `pbx-core`, billing/reporting internals |
-| `dialer` (R2) | `telephony-core`, `compliance`, `pbx-core`, `reporting` | nothing further (it is the top of the graph) |
+| `entitlement` (D-50) | `licensing` (what the installation is entitled to), `identity` (which tenants have it switched on) — and nothing else | `telephony-core`, `pbx-core`, `reporting`, `dialer`, `ai-pipeline`, `webhook-delivery` |
+| `pbx-core` | `telephony-core` (Call/Participant), `identity`, `entitlement` | `dialer`, `ai-pipeline`, `reporting` |
+| `reporting` | `telephony-core` events (async, NATS), `entitlement` | any synchronous call into another context except `entitlement` |
+| `webhook-delivery` | `identity` (signing keys), `entitlement`, any context's published events (async) | synchronous calls into any context except `entitlement` |
+| `ai-pipeline` | `telephony-core` (Participant + Snoop), `entitlement` | `dialer`, `pbx-core`, billing/reporting internals |
+| `dialer` (R2) | `telephony-core`, `compliance`, `pbx-core`, `reporting`, `entitlement` | nothing further (it is the top of the graph) |
+
+**`entitlement` is the only context that may depend on both `identity`
+and `licensing`, and it exists so that nothing else has to.** The two
+Tier-0 peers may not call each other (rows above), so "may tenant T use
+module M?" cannot be answered by either alone. Combining them in each
+consumer would re-implement the rule "enablement never exceeds
+entitlement" four times, and the first consumer to get it wrong grants a
+module nobody paid for, silently. See D-50 and LLD-11.
 
 A pull request or OpenSpec change that adds an import violating this table
 fails the Dependency Invariant Test (§6 of [01-architecture.md](01-architecture.md)).
@@ -327,7 +392,8 @@ fails the Dependency Invariant Test (§6 of [01-architecture.md](01-architecture
 4. **LLD-04 — `compliance`**: real DNC/calling-hours/spend functions. A release gate for step 6, not merely a dependency (D-45).
 5. **LLD-09 — `reporting`**: CDR and usage export, quality views.
 6. **LLD-05 — `webhook-delivery`** and **LLD-10 — `ai-pipeline`**: round out R1.0 API-first/optional-AI commitments.
-7. **LLD-06 — `dialer` (R2)**: power-dial loop first, predictive pacing second (D-27), only after the contexts above exist.
+7. **LLD-11 — `entitlement`**: per-tenant module enablement, once `licensing` publishes an installation entitlement to combine with. Needed the first time a paid module ships (Phase B), not for Phase A.
+8. **LLD-06 — `dialer` (R2)**: power-dial loop first, predictive pacing second (D-27), only after the contexts above exist.
 
 **The numbers are identifiers, not this sequence** (D-48): one LLD per
 bounded context, never renumbered, so a context split out later takes the

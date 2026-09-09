@@ -124,7 +124,7 @@ Organisations under roughly fifty seats with no technical capability and no part
 | # | Differentiator | Why it is hard to copy |
 |---|---|---|
 | **VP-1** | **One platform for PBX, contact centre and specialist dispatch** | Incumbents are one of the three. Unification is an architectural decision made at the start or never. |
-| **VP-2** | **Capacity-based licensing: strictly per concurrent call channel, with unlimited extensions on every licensed edition** | Per-seat pricing is the incumbents' revenue model. They cannot follow without cutting their own revenue. Unlimited extensions removes the most common complaint about the closest comparable product — which prices per user *on the paid tiers*, where this claim is made and where it competes. The Unregistered tier (§10.4) is capped at 10 extensions precisely so that it reads as an evaluation, not a product. |
+| **VP-2** | **Capacity-based licensing: strictly per concurrent call channel, with unlimited extensions on every licensed edition** | Per-seat pricing is the incumbents' revenue model. They cannot follow without cutting their own revenue. Unlimited extensions removes the most common complaint about the closest comparable product — which prices per user *on the paid tiers*, where this claim is made and where it competes. The Free Community tier (§10.4) is capped at 10 extensions precisely so that it reads as an evaluation, not a product. |
 | **VP-3** | **Bring your own trunk, with least-cost routing and no per-minute markup** | Most competitors earn margin on minutes. Neutrality is a business-model choice, not a feature. |
 | **VP-4** | **API-first: 100% of signalling events, call states and channel telemetry exposed via REST, gRPC and webhooks** | Competitors expose a subset of their product because the API came afterwards. Ours is the product. Partners plug in external billing stacks or build custom portals without asking us. |
 | **VP-5** | **AI-native, zero lock-in, fully optional** | The partner chooses the provider and pays them directly. AI is embedded throughout the platform — IVR and call-flow generation, agent assist, summarisation, quality scoring, interpreter matching — all through one consistent media pipeline and API. **The platform is designed AI-first, not AI-dependent.** It operates natively with no AI enabled. AI features are per-tenant and can be enabled, disabled or switched between providers by configuration. We have no margin reason to favour one provider — or to require AI at all. |
@@ -160,7 +160,7 @@ Organisations under roughly fifty seats with no technical capability and no part
 |---|---|---|---|---|
 | Pricing basis | Capital plus maintenance | Per user, per month | Per agent, per month | **Per concurrent channel** |
 | Cost of growth | Hardware steps | Linear with headcount | Linear with agents | **Flat until capacity is reached** |
-| Extension limits | Hardware-bound | Priced per user | Priced per agent | **Unlimited on every licensed edition** (10 on the free Unregistered tier) |
+| Extension limits | Hardware-bound | Priced per user | Priced per agent | **Unlimited on every licensed edition** (10 on the free tier) |
 | Carrier choice | Yours | Usually theirs | Usually theirs | **Yours, several at once, least-cost routed** |
 | AI provider choice | None | Theirs | Theirs | **Yours — open or commercial** |
 | API completeness | Minimal | Partial | Partial | **Complete — the product is the API** |
@@ -246,7 +246,7 @@ The first release a partner can buy, install and run a business on.
 - **FBR-R1-09 — Recording governance.** Recording shall follow rules set per customer, department and jurisdiction, including any required announcement, with defined retention, permanent deletion, and an audit trail of every access.
 - **FBR-R1-10 — Tamper-evident records and quality measurement.** Every call shall produce a complete, immutable record and a measured quality score for each participant, so that any complaint or billing dispute can be resolved with evidence.
 - **FBR-R1-11 — API-first extensibility.** **100% of core signalling events, call state changes, channel telemetry, usage records, administrative controls and AI-generated flow outputs (where AI is enabled) shall be available through documented REST APIs, gRPC streams and webhooks**, with no capability reachable only through our own interface. Every administrative action — including IVR creation and call-flow generation — is available through the same endpoints our own console uses. Data shall be granular enough for a partner to run their own rating and invoicing — per participant, per second, with direction, destination, duration, answer state, tenant, department and service type — and to drive external billing stacks and ERP workflows. Partners embed these capabilities into their own portals, provisioning systems, customer self-service interfaces and automation. **The API works fully without AI; AI outputs are additional data on top of an already complete API.** *We publish and support the interfaces; we do not build or maintain connectors to specific billing products.*
-- **FBR-R1-12 — Cryptographic licence security and the Unregistered tier.** Licences shall be validated from a cryptographically signed payload bound to a hardware fingerprint, with a daily entitlement check and a defined offline grace period. An installation with no licence shall run permanently at a capped free floor rather than refusing service, and that same floor shall be where an expired or grace-elapsed licence degrades to. Full requirement in §10, including the tier definition in §10.4.
+- **FBR-R1-12 — Cryptographic licence security and the Free Community tier.** Licences shall be validated from a cryptographically signed payload bound to a hardware fingerprint, with a daily entitlement check and a defined offline grace period. A perpetual free tier shall be available to any registered user, activated by a signed key like any other; an installation with no key applied shall present an administration surface but no call path, and an expired or grace-elapsed licence shall degrade to the free tier's floor rather than being disabled. Full requirement in §10, including the tier definitions in §10.4.
 - **FBR-R1-13 — Deployment and lifecycle.** The platform shall install on a partner's own infrastructure from documented media, upgrade without loss of configuration or data, roll back a failed upgrade, and produce a diagnostic bundle for remote support.
 
 ### Release 1.1
@@ -301,7 +301,7 @@ The first release a partner can buy, install and run a business on.
 - **BR-14** Live call audio leaves the platform for AI processing only where the customer has explicitly enabled it, and only to a provider they have specified.
 - **BR-15 — Credential isolation.** AI provider keys, carrier credentials and any other secret supplied by a partner or tenant are stored encrypted, scoped strictly to that partner or tenant, and never readable by another tenant, another partner, or by our staff in plain text. They never appear in logs, diagnostic bundles, exports or error messages, and are revocable and rotatable by their owner without our involvement.
 - **BR-16** Every platform capability is reachable through the public API. A function that exists only in our own interface means the API is incomplete and the feature is not finished.
-- **BR-LIC-01 to BR-LIC-03 — the Unregistered tier, its degradation floor, and edition-based module gating.** Stated in full in §10.4, where the market rationale that produced them belongs with them.
+- **BR-LIC-01 to BR-LIC-03 — Setup and the Free Community tier, the degradation floor, and edition-based module gating.** Stated in full in §10.4, where the market rationale that produced them belongs with them.
 - **BR-17 — AI is optional and per-tenant.** The platform must operate fully and natively with no AI enabled. All core telephony, routing, queuing, recording, reporting and API functionality must work without any LLM installed, AI agent connected, or external AI provider configured. One tenant may use AI while another on the same deployment does not. AI is an enhancement, never a dependency.
 
 ---
@@ -325,7 +325,7 @@ Licence revenue is the entire business. The enforcement mechanism must be strong
 | No licence ever applied | **Setup state** (§10.4, §10.5). Administration only, no call path. A pre-provisioning state, not a licence state, and never the target of degradation |
 | **Emergency calls** | **Connect in every licence state — valid, expired, degraded, over-capacity or tampered.** Verified by test in every release. |
 
-### 10.4 The Unregistered tier — a hybrid of the two market benchmarks
+### 10.4 Setup and the Free Community tier — a hybrid of the two market benchmarks
 
 The two dominant commercial platforms monetise differently, and each
 solves a problem the other does not. We take the useful half of both.
@@ -395,7 +395,7 @@ the engine rather than a bolt-on — one of the few places we differ
 structurally from the module-catalogue benchmark — and the Operator
 pooled-channel licence in §12.2 is sold on it.
 
-**The Unregistered tier is single-tenant.** That is the one boundary
+**The Free Community tier is single-tenant.** That is the one boundary
 tenancy carries, and it is deliberate: it makes the free tier an
 evaluation of the product rather than a small operator business run for
 nothing, and it protects the Operator licence, which is the only place
@@ -404,7 +404,7 @@ multi-tenant with no tenant count limit.
 
 **The cap is a quantity on the licence, not a feature that can be
 absent** (D-51). The signed payload carries **`MaxTenants`** beside the
-channel count: `1` for Unregistered, `0` for unlimited on every licensed
+channel count: `1` for Free Community, `0` for unlimited on every licensed
 edition. Tenant isolation itself is enforced by row-level security on
 every table, in **every** mode including single-tenant — one schema, one
 code path, no single-tenant build. `MaxTenants` constrains who may
@@ -424,7 +424,7 @@ one place, and it is answered by the service performing the operation —
 never by the console (§16 R-12).
 
 **Administration and the API remain available in every state**, including
-Unregistered and degraded, so that a partner can always resolve the
+Setup and degraded, so that a partner can always resolve the
 situation from the system itself rather than being locked out of the
 thing they need to fix.
 
@@ -642,7 +642,7 @@ spoke to.
 
 **SIP intrusion protection — included, not sold.** Registration
 brute-force detection, rate limiting and geographic restriction, in every
-edition including Unregistered. Listed here because the benchmark sells
+edition including Free Community. Listed here because the benchmark sells
 it and we deliberately do not: see the table above.
 
 #### 12.4.2 AI modules — and how they relate to the human specialist business
@@ -751,7 +751,7 @@ Each item requires qualified legal review in every launch jurisdiction before go
 | R-08 | Partners expect ready-made billing connectors we only expose APIs for | Medium | State the boundary in the partner agreement and sales material; publish reference implementations, not supported connectors | PO |
 | R-09 | Partners route end-user support to us | High | Contractual tier-1 obligation, enforced at the support desk, with professional services priced for those who want us to do it | COO |
 | R-10 | Knowledge concentrated in one engineer | High | Pairing, written decisions and recorded walkthroughs from month one | CTO |
-| R-11 | The free tier cannibalises small paid deals rather than feeding them | Medium | The cap is deliberately below a viable business — 4 calls, 10 extensions, one tenant (§10.4). Track conversion from Unregistered to first licence as a named measure (§13); if installs sit unconverted the cap is too generous, and it is ours to tighten | PO |
+| R-11 | The free tier cannibalises small paid deals rather than feeding them | Medium | The cap is deliberately below a viable business — 4 calls, 10 extensions, one tenant (§10.4). Track conversion from Free Community to a paid licence as a named measure (§13); if installs sit unconverted the cap is too generous, and it is ours to tighten | PO |
 | R-12 | Module gating is enforced in the console but not in the API, so an entitlement is bypassed by calling the endpoint directly | High | Entitlement is checked in the service that performs the operation, never in the interface. AC-06.14 requires the API to refuse with an entitlement reason, and the console shows the same refusal rather than deciding it | Architect |
 | R-13 | Free-tier instance farming — ten free deployments of 4 channels is forty free channels, and the hardware fingerprint does not prevent it because each instance is genuinely a different machine | Medium | The control is **portal-side, not platform-side**: free keys are issued per verified organisation with a published limit, and the portal holds every instance ID it has ever issued against, so concentration is visible. Enforcing it in the platform is impossible by construction — each instance is legitimately licensed. Accept that some farming occurs; §10.3's position is that enforcement stops casual over-use, and a partner assembling ten instances to avoid one licence is a sales conversation, not a technical control | PO |
 | R-14 | The development signing key reaches a production build, making an unlimited licence mintable by anyone holding it | High | The key is injected at build time and empty by default, so the strict binary is what a forgotten flag produces. A test asserts a default build trusts exactly one key and rejects a development-signed token (D-54) | CTO |

@@ -517,6 +517,28 @@ CREATE TABLE IF NOT EXISTS licensing_state (
     grace_started_at TIMESTAMPTZ
 );
 
+-- Per-tenant module enablement (D-50, LLD-11). Tenant-scoped with RLS
+-- enabled AND forced, deliberately the opposite of licensing_state above:
+-- entitlement is installation-wide, enablement is per tenant.
+--
+-- A row means "this tenant switched it on", never "this tenant is
+-- allowed". Allowance is this row AND the installation's entitlement,
+-- computed at read time — so a grant for a module the licence no longer
+-- covers goes inert on its own and comes back if the licence is
+-- restored, with no sweep or migration. Absence of a row is denial.
+CREATE TABLE IF NOT EXISTS tenant_module_grants (
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    module VARCHAR(64) NOT NULL,
+    enabled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    enabled_by UUID NOT NULL REFERENCES principals(id),
+    PRIMARY KEY (tenant_id, module)
+);
+
+ALTER TABLE tenant_module_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_module_grants FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation_tenant_module_grants ON tenant_module_grants
+    USING (tenant_id = current_setting('app.tenant_id')::uuid);
+
 -- Transactional Outbox
 CREATE TABLE IF NOT EXISTS outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

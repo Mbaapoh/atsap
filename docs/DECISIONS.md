@@ -955,6 +955,7 @@ was accurate when written and this table supersedes it:
 | `licensing` | 08 | 0 |
 | `reporting` | 09 | 1 |
 | `ai-pipeline` | 10 | 1 |
+| `entitlement` | 11 | 1 |
 
 **07 is permanently vacant.** It was the console, retired as a single
 unit by D-46; the console is not a bounded context, so under this
@@ -1006,7 +1007,7 @@ says so.
   a redirect. Two archived changes link that path and now link nothing;
   the map above is where that path resolves. An unused file in the spec
   repo is worse than a dead link in an immutable record.
-- A tenth context added later takes 11, whatever its tier.
+- A tenth context added later takes 11, whatever its tier. *(It did: `entitlement`, D-50, on 2026-09-09.)*
 
 **Related Decisions:** D-29 (LLDs live in `docs/`, not OpenSpec), D-45
 (outbound in R1.0), D-46 (three phases; console retired as one LLD)
@@ -1023,7 +1024,10 @@ benchmark and refuses the rest.
 
 - **From 3CX — a capacity floor.** An installation with no licence runs
   permanently as the **Unregistered tier**: 4 simultaneous calls, 10
-  extensions, 1 tenant, no key, no activation, no seeding. It is also the
+  extensions, 1 tenant, ~~no key, no activation, no seeding~~
+  (**superseded by D-52, 2026-09-09**: every entitlement including the
+  free one is an activated signed token, and a never-activated
+  installation is Setup with no call path). It is also the
   floor that expiry, elapsed grace and tampering degrade to, so the
   product has one degraded behaviour rather than one per cause.
 - **From VitalPBX — module gating by edition.** Advanced modules check
@@ -1692,6 +1696,67 @@ projection), D-53 (the signed payload is authoritative), D-57 (the broker
 sits behind the outbox)
 **Traceability:** BRD §9 BR-07; `docs/API.md` §3a;
 `api/internal/nats/publisher.go`, `api/internal/postgres/outbox.go`
+
+---
+
+**D-59 · Context-list drift is a gate, not a discipline (2026-09-09).**
+
+**Decision:** `scripts/check-docs.sh` check 5 asserts that every bounded
+context in HLD 04 §10.1's matrix has both a section in that document and
+a row in `docs/lld/README.md`'s index table. A context added to the
+matrix and nowhere else fails CI.
+
+**Context:** ten documents enumerate the bounded contexts — HLD 04's
+ASCII graph, its §10.1 matrix, its per-context sections, its §10.2 build
+sequence, HLD 01's package tree, HLD 03's schema, the TRD's list and
+mermaid view, `docs/lld/README.md`'s index, and D-48's map. Adding
+`entitlement` (D-50) meant touching all ten.
+
+The audit that accompanied it found the predictable result of having no
+gate:
+
+| Drift | Fixed |
+|---|---|
+| `hld/README.md` claimed "all 9 bounded contexts" | → 10 |
+| BRD FBR-R1-12 said an unlicensed install "shall run permanently at a capped free floor rather than refusing service" — **contradicting D-52** | Rewritten |
+| BRD used "Unregistered tier" in five places after §10.4 renamed the states to Setup / Free Community | Aligned |
+| LLD-08 §3 declared `VerifyToken(..., pubKey ed25519.PublicKey)` after D-54 replaced it with a key set | Corrected |
+| LLD-08 §3 declared `ReleaseCapacity(ctx, channels int)` after D-58 keyed it by call | Corrected |
+| LLD-08 §9's handoff table predated the `licensing-capacity-grace` re-slice | Rewritten |
+| LLD-08 §1's "zero `telephony-core` changes" tripwire, after it had already fired | Narrowed and recorded |
+| D-49's "no key, no activation" bullet, superseded by D-52 but unmarked | Struck through, with the pointer |
+
+Every one of those was written by someone who had the correct decision in
+front of them, days or hours earlier. That is what makes it a gate
+problem rather than a care problem.
+
+**What the gate does not claim.** It checks two relationships, not ten.
+Prose counts ("all 9 bounded contexts"), narrative descriptions, and the
+ASCII and mermaid graphs are not machine-checkable, and check 5 does not
+pretend to cover them — a gate believed to cover more than it does is
+worse than no gate (D-28). It covers the two an agent actually reads
+before proposing a change: is there a section describing this context,
+and is there exactly one LLD for it.
+
+**Found by fault injection, and worth recording.** The first version of
+check 5 grepped the whole of `docs/lld/README.md`. Deleting a context's
+index row still passed, because the delivery-phase prose mentions the
+same context. The check now scopes to the index table. A gate's first
+test is whether it can fail, and this one could not — for one of its two
+branches — until it was injected against.
+
+**Alternatives:**
+- *A single generated source of contexts that all ten documents render
+  from.* Rejected for now — the documents are prose for different
+  audiences, and generating them would flatten the reason each mentions a
+  context. Revisit if the count of enumerating documents grows again.
+- *Rely on review.* Rejected — that is what produced the table above.
+
+**Related Decisions:** D-28 (machine gates over review for anything
+checkable), D-48 (one LLD per context; stable identifiers), D-50 (the
+context whose addition prompted this)
+**Traceability:** `scripts/check-docs.sh` check 5;
+`docs/hld/04-bounded-contexts.md` §10.1; `docs/lld/README.md`
 
 ---
 

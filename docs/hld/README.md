@@ -47,7 +47,7 @@ The High-Level Design is partitioned into nineteen modular chapters:
 1. [Architecture & Component Design](01-architecture.md) — Modular monolith structure, Hexagonal ports & adapters, Asterisk Anti-Corruption Layer (ACL), and context propagation.
 2. [System Context & Interfaces](02-system-context.md) — C4 system context, container topology, network boundaries, protocols, and end-to-end scenario sequence diagrams.
 3. [Domain Model & State Machines](03-domain-model.md) — Participant Aggregate pattern, Call & Participant lifecycle state machines, IVR flow-as-data engine, and relational PostgreSQL DDL.
-4. [Bounded Contexts](04-bounded-contexts.md) — Detailed specifications for all 9 bounded contexts: interfaces, domain commands, published events, and dependency rules.
+4. [Bounded Contexts](04-bounded-contexts.md) — Detailed specifications for all 10 bounded contexts: interfaces, domain commands, published events, and dependency rules.
 5. [Security & Isolation](05-security.md) — Tenant isolation via RLS, T-9 crypto-shredding deletion workflow, T-10 recording envelope encryption, and edge fraud prevention.
 6. [Deployment & Infrastructure](06-deployment.md) — Container topology, networking, T-12 zero-downtime expand/contract upgrades, Ansible automation, and support diagnostic bundles.
 7. [Observability & Telemetry](07-observability.md) — T-11 per-participant RTCP-XR quality measurement, Prometheus metrics catalog, structured `slog` logging, OpenTelemetry tracing, and alerting rules.

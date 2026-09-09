@@ -68,6 +68,7 @@ does not list, so the inventory cannot rot quietly.
 | 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |
 | 09 | Reporting | `reporting` | Not started — split out of LLD-04 under D-48 | — |
 | 10 | AI Pipeline | `ai-pipeline` | Not started — split out of LLD-05 under D-48 | — |
+| 11 | [Entitlement](LLD-11-entitlement.md) | `entitlement` | Draft — nothing built. Tier 1; needed the first time a paid module ships (Phase B), not for Phase A | — |
 
 The console is deliberately absent: it is not a bounded context, it
 consumes every context and owns none, and D-46 retired it as a single
@@ -82,7 +83,7 @@ be shown, each continuing from what is already implemented:
 | Phase | A partner can… | Backend | Console slice |
 |---|---|---|---|
 | **A** | install, licence, and make and receive real calls, configured entirely in the UI | LLD-08 `licensing`; LLD-03 minimal — extensions, a trunk, basic routing | login, users and roles, extensions, trunk, licence status |
-| **B** | run it as a business phone system | LLD-03 completion — IVR, auto-attendant, business hours, queues; LLD-09 `reporting`; recording governance | visual IVR builder, queues, call history, recording policy |
+| **B** | run it as a business phone system | LLD-03 completion — IVR, auto-attendant, business hours, queues; LLD-09 `reporting`; LLD-11 `entitlement` (the first paid modules ship here); recording governance | visual IVR builder, queues, call history, recording policy |
 | **C** | run an outbound operation | LLD-04 `compliance` **first**, then LLD-06 `dialer` (preview and power) | campaigns, contact lists, compliance configuration |
 
 Predictive pacing is R2 (D-27, D-45).

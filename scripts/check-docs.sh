@@ -94,6 +94,44 @@ elif [ -d api/proto ]; then
                 | awk '{print $2}' | sort -u)
 fi
 
+# 5. Every bounded context in HLD 04 §10.1 has an LLD row and a section.
+#
+# Ten documents enumerate the bounded contexts (the HLD graph and matrix,
+# the TRD quick view, the architecture package tree, the LLD index, the
+# D-48 map). Adding a context means touching all of them, and on
+# 2026-09-09 adding `entitlement` proved the obvious: without a gate, the
+# ones nobody is looking at go stale — hld/README.md still claimed "9
+# bounded contexts" long after it was wrong.
+#
+# This checks the two that matter for build order — one LLD per context
+# (D-48) and a section describing it — because those are the ones an
+# agent reads before proposing a change. Prose counts elsewhere are not
+# checkable and are not claimed here (D-28).
+echo "== 5. Every bounded context in HLD 04 §10.1 has an LLD =="
+ctxdoc="docs/hld/04-bounded-contexts.md"
+lldindex="docs/lld/README.md"
+if [ -f "$ctxdoc" ] && [ -f "$lldindex" ]; then
+    # The matrix rows look like: | `context` | may depend on | must not |
+    contexts="$(sed -n '/### 10.1 Allowed-dependency matrix/,/^A pull request/p' "$ctxdoc" \
+        | grep -oE '^\| `[a-z-]+`' | grep -oE '[a-z-]+' | grep -v '^$' | sort -u)"
+    if [ -z "$contexts" ]; then
+        note_fail "could not parse any context from $ctxdoc §10.1 — the matrix format changed, and check 5 is now blind"
+    fi
+    # Scope the search to the index TABLE, not the whole file: a context
+    # is mentioned in the delivery-phase prose too, and matching that
+    # would let a deleted index row pass. Found by fault injection —
+    # the first version of this check did exactly that.
+    indextable="$(sed -n '/^## Index/,/^The console is deliberately absent/p' "$lldindex")"
+    for ctx in $contexts; do
+        if ! printf '%s\n' "$indextable" | grep -q "| \`$ctx\` |"; then
+            note_fail "bounded context '$ctx' is in $ctxdoc §10.1 but has no row in $lldindex's Index table (D-48: one LLD per context)"
+        fi
+        if ! grep -qE "^## [0-9a-z]+\. \`$ctx\`" "$ctxdoc"; then
+            note_fail "bounded context '$ctx' is in the §10.1 matrix but has no '## N. \`$ctx\`' section in $ctxdoc"
+        fi
+    done
+fi
+
 if [ "$failures" -ne 0 ]; then
     echo "== $failures documentation check(s) failed =="
     exit 1

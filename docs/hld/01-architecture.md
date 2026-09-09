@@ -83,6 +83,9 @@ api/
 │   ├── webhook/              # bounded context: webhook-delivery
 │   │   ├── domain/           # Subscription, DeliveryAttempt, DLQ
 │   │   └── application/      # Retrying sender with HMAC-SHA256 signature
+│   ├── entitlement/          # bounded context: entitlement (D-50, LLD-11)
+│   │   ├── domain/           # Module, Verdict; enablement AND entitlement
+│   │   └── application/      # MayUse checker, grant/revoke flow
 │   ├── dialer/               # bounded context: dialer (R2/R3 ready)
 │   │   └── domain/           # Campaign, DialList, Pacing, WaveDispatch
 │   ├── server/               # Ingress HTTP/2 ConnectRPC handlers & routing
