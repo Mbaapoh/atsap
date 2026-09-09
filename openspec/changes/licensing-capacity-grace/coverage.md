@@ -104,26 +104,22 @@ Getting there uncovered four defects, none of them in the assertions:
 Each has a regression test. The e2e earned its keep several times over
 before it went green.
 
-**The residual is gone too, and it was never really the container.**
-Asterisk's `http.conf` defaults `sessionlimit` to 100, each session is a
-thread, and ARI consumes them for both WebSockets and REST. At the limit
-Asterisk accepts the TCP connection and never answers — no rejection, no
-log line — so callers see a timeout naming neither Asterisk nor HTTP.
-Confirmed by the thread count sitting at exactly 100.
+**The residual is NOT gone, and my earlier note here claiming it was is
+withdrawn.** Asterisk's `sessionlimit` default of 100 is a real limit and
+is now raised to 500 — verified applied, with thread counts climbing past
+100 where they previously could not. But it was **not** the cause: with
+the limit raised and threads at 111, every e2e run still failed.
 
-`core/conf/http.conf` now sets `sessionlimit = 500` with a 10-second idle
-reclaim. **Four consecutive full e2e runs pass with the thread count flat
-at 84.** Bare metal with the stock defaults would have behaved the same;
-the container only surfaced it sooner. Documented in
-`docs/ASTERISK-INTEGRATION.md` §2.1 with how to recognise it.
+Host-side WebSocket upgrades to the published port hang while the app
+container's in-network stream stays healthy. Root cause unidentified.
+What has been ruled out, and the next step, are in
+`docs/ASTERISK-INTEGRATION.md` §2.1.1.
 
-Two things were tried and rejected on evidence rather than taste. Giving
-each test its own Stasis app name did not help: the limit is on
-registrations, not names. Performing the RFC 6455 closing handshake made
-it **worse** — teardown slowed enough that the next registration arrived
-before Asterisk released the previous one, taking a suite that passed
-three tests down to one. Both are recorded where the code is, so neither
-is re-attempted.
+**This does not weaken G1's result.** The five INV-03 stages were
+observed passing against live Asterisk on a restored rig, repeatedly. The
+open problem is running the suite *repeatedly without a restart*, which
+affects the untouched `TestWalkingSkeleton` identically and predates this
+change.
 
 ### G2 — INV-01 cannot be proven here at all
 

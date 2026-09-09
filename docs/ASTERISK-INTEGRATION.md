@@ -45,38 +45,62 @@ against that; a major upgrade re-verifies this file.
 
 ### 2.1 Sessions are threads, and there are 100 of them by default
 
-**The limit that has bitten us hardest.** `http.conf`'s `sessionlimit`
-defaults to **100**, and Asterisk services each HTTP session on its own
-thread. Both ARI REST calls and ARI WebSockets are HTTP sessions.
+`http.conf`'s `sessionlimit` defaults to **100**, and Asterisk services
+each HTTP session on its own thread. Both ARI REST calls and ARI
+WebSockets are HTTP sessions.
 
-**How it fails:** at the limit, Asterisk **accepts the TCP connection and
-then never answers**. It does not refuse, does not log a rejection, and
-does not close. Clients see a read timeout. Ours saw:
+`core/conf/http.conf` raises it to 500 with a ten-second idle reclaim.
+Raised, not removed: unbounded trades a clear failure for memory
+exhaustion. Verified applied — thread counts now climb past 100, which
+they could not before.
+
+**Read the next section before concluding this explains a failure.**
+
+### 2.1.1 UNRESOLVED: host-side WebSocket upgrades hang
+
+**Status 2026-09-09: root cause not identified. Do not assume it is the
+session limit — that was checked and ruled out.**
+
+**Symptom.** A client on the host, connecting through the published port
+`127.0.0.1:8088`, sends the WebSocket upgrade and receives nothing.
+Asterisk accepts the TCP connection and never answers. Tests report:
 
 ```
-timed out waiting for Stasis app voip-app-e2e to register
-ari: dial event stream: read tcp …:8088: i/o timeout
+timed out waiting for Stasis app <name> to register
+ari: dial event stream: read tcp 127.0.0.1:…->127.0.0.1:8088: i/o timeout
 ```
 
-Neither names Asterisk, HTTP, or a limit. `ari show apps` shows nothing
-registered, which reads like an application bug.
+Plain HTTP through the same port answers `200` normally, so the engine
+looks healthy and its healthcheck passes.
 
-**How to confirm it** — the thread count sitting exactly at the limit is
-the tell:
+**What has been ruled out, with evidence:**
 
-```bash
-docker exec deploy-asterisk-1 sh -c 'ls /proc/$(pgrep -o asterisk)/task | wc -l'
-```
+| Suspected | Evidence against |
+|---|---|
+| Session limit (§2.1) | Raised to 500 and confirmed live; threads reached 111, well under the cap, and every run still failed |
+| Stasis app-name collision | Giving each test a unique app name changed nothing |
+| Abrupt WebSocket close | Adding the RFC 6455 handshake made it **worse** (§2.5) |
+| Goroutine or socket leak in our client | Fixed and asserted; failures persist |
+| File-descriptor exhaustion | Container limit is 65536 |
+| Stasis apps accumulating | `ari show apps` is empty when failing |
+| Missing schema / deregistered devices | Schema present (17 tables), `pjsip show contacts` shows 2 |
 
-**What we did:** `core/conf/http.conf` sets `sessionlimit = 500`, plus
-`session_inactivity = 10000` and `session_keep_alive = 5000` so idle
-sessions are reclaimed in ten seconds rather than thirty. Raised, not
-removed: unbounded trades a clear failure for memory exhaustion.
+**The strongest lead, and it is only a lead.** While host-side upgrades
+hang, the **app container's** ARI stream — established over the Docker
+network rather than the published port — logs zero reconnects. That
+points at the host→container port-publishing path for long-lived
+upgrades rather than at Asterisk. It is *not* proven: an already-
+established stream surviving says nothing about whether a NEW in-network
+upgrade would succeed, and that comparison has not yet been made
+cleanly.
 
-**This is not a container artefact.** The default is sized for a handful
-of long-lived HTTP clients; ARI is neither. Bare metal behaves
-identically. The container only surfaced it sooner because everything is
-short-lived and restarted often.
+**Next step for whoever picks this up:** run the same upgrade probe from
+a container on `deploy_voip` and from the host at the same moment. If
+in-network succeeds while host fails, the fix is in how the e2e reaches
+the engine — not in Asterisk and not in our client.
+
+**Workaround today:** `mise run rig:restore` restarts Asterisk, after
+which a full e2e run passes. Subsequent runs may not.
 
 ### 2.2 The WebSocket client needs bounds the libraries do not give it
 
@@ -125,13 +149,13 @@ the socket goes, so does the registration — and **Asterisk releases it on
 its own schedule, not immediately**.
 
 **Consequence for tests:** every test that composes its own ARI client
-holds a registration. Two tests in one binary is fine; three began
-failing before §2.1 was fixed. Prefer sharing one engine connection
-across related assertions — the same discipline as sharing one database.
+holds a registration. Two tests in one binary behaved better than three,
+so sharing one engine connection across related assertions is the safer
+shape — the same discipline as sharing one database. Whether registration
+count is genuinely the constraint is unproven; see §2.1.1.
 
 **Do not** try to solve this with a unique app name per test. Measured
-2026-09-09: it does not help, because the constraint is on sessions, not
-names.
+2026-09-09: it changes nothing.
 
 **Do not** add the RFC 6455 closing handshake to "release it faster".
 Also measured: it made things **worse**. Teardown slowed enough that the
