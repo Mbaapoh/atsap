@@ -38,6 +38,18 @@ type fakeStores struct {
 
 	failAudit    error
 	failBindings error
+	failRevoke   error
+
+	// revoked records what RevokeApiKey was actually asked to do, so a
+	// test can assert the revocation happened rather than only that no
+	// error came back.
+	revoked []revocation
+}
+
+type revocation struct {
+	TenantID shareddomain.TenantID
+	KeyID    shareddomain.ApiKeyID
+	At       time.Time
 }
 
 func newFakeStores() *fakeStores {
@@ -141,7 +153,11 @@ func (f *fakeStores) GetApiKeyByHash(_ context.Context, tenantID shareddomain.Te
 	return k, nil
 }
 
-func (f *fakeStores) RevokeApiKey(_ context.Context, _ shareddomain.TenantID, _ shareddomain.ApiKeyID, _ time.Time) error {
+func (f *fakeStores) RevokeApiKey(_ context.Context, tenantID shareddomain.TenantID, keyID shareddomain.ApiKeyID, at time.Time) error {
+	if f.failRevoke != nil {
+		return f.failRevoke
+	}
+	f.revoked = append(f.revoked, revocation{TenantID: tenantID, KeyID: keyID, At: at})
 	return nil
 }
 
@@ -598,4 +614,125 @@ func TestFailedAuth_TokenRejectionIsLoggedWithoutTheToken(t *testing.T) {
 	logs := h.logs.String()
 	assert.Contains(t, logs, "token rejected")
 	assert.NotContains(t, logs, tok.Token, "the token is credential material and must not be logged")
+}
+
+// TestRevokeAPIKey covers a path that had no test until 2026-09-09.
+// Revocation is a security operation: the interesting assertions are
+// that it reaches the store, that it is auditable, and that a failure
+// leaves no misleading audit record behind.
+func TestRevokeAPIKey(t *testing.T) {
+	t.Run("revocation reaches the store and is audited", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "admin", "correct-horse-battery-staple")
+		keyID := shareddomain.NewApiKeyID()
+
+		err := h.svc.RevokeAPIKey(context.Background(),
+			application.PrincipalActor(principal.ID, nil), tenant.ID, keyID)
+
+		require.NoError(t, err)
+		require.Len(t, h.stores.revoked, 1, "the revocation must reach the store, not just return nil")
+		assert.Equal(t, keyID, h.stores.revoked[0].KeyID)
+		assert.Equal(t, tenant.ID, h.stores.revoked[0].TenantID,
+			"revocation is tenant-scoped — a key is never revoked across tenants")
+
+		var revokeEntries []domain.AuditEntry
+		for _, e := range h.stores.audit {
+			if e.Action == "apikey.revoke" {
+				revokeEntries = append(revokeEntries, e)
+			}
+		}
+		require.Len(t, revokeEntries, 1, "a successful mutation writes exactly one audit record (API.md §3a)")
+		assert.Equal(t, "api_key", revokeEntries[0].ResourceType)
+		assert.Equal(t, keyID.String(), revokeEntries[0].ResourceID)
+	})
+
+	t.Run("a store failure propagates and writes no audit record", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "admin", "correct-horse-battery-staple")
+		h.stores.failRevoke = errors.New("database unavailable")
+		before := len(h.stores.audit)
+
+		err := h.svc.RevokeAPIKey(context.Background(),
+			application.PrincipalActor(principal.ID, nil), tenant.ID, shareddomain.NewApiKeyID())
+
+		require.Error(t, err)
+		assert.Len(t, h.stores.audit, before,
+			"a refused mutation writes no audit record (API.md §3a) — an audit trail claiming a revocation that did not happen is worse than none")
+		assert.Empty(t, h.stores.revoked)
+	})
+
+	t.Run("the audit record carries no key material", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "admin", "correct-horse-battery-staple")
+
+		require.NoError(t, h.svc.RevokeAPIKey(context.Background(),
+			application.PrincipalActor(principal.ID, nil), tenant.ID, shareddomain.NewApiKeyID()))
+
+		for _, e := range h.stores.audit {
+			raw, err := json.Marshal(e)
+			require.NoError(t, err)
+			assert.NotContains(t, strings.ToLower(string(raw)), "secret",
+				"no credential material in an audit record (LLD-02 §10.3, D-39)")
+			assert.NotContains(t, strings.ToLower(string(raw)), "hash")
+		}
+	})
+}
+
+// TestAuthorizeSystem is the service-level half of the system-scope rule
+// tested in identity/domain. It had no test until 2026-09-09.
+//
+// What it adds over the domain test: that the service loads bindings
+// against the principal's HOME tenant, and that a store failure denies
+// rather than permits — an unavailable binding store must never widen
+// access.
+func TestAuthorizeSystem(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("a system-scoped binding is authorized", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "operator", "correct-horse-battery-staple")
+		h.stores.bindings = append(h.stores.bindings, domain.RoleBinding{
+			PrincipalID: principal.ID, TenantID: tenant.ID,
+			Role: "PLATFORM_ADMIN", Scope: domain.ScopeSystem,
+		})
+
+		assert.NoError(t, h.svc.AuthorizeSystem(ctx, principal.ID, tenant.ID, "tenant.create"))
+	})
+
+	t.Run("a tenant-scoped binding is refused however broad the role", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "tenantadmin", "correct-horse-battery-staple")
+		h.stores.bindings = append(h.stores.bindings, domain.RoleBinding{
+			PrincipalID: principal.ID, TenantID: tenant.ID,
+			Role: "TENANT_ADMIN", Scope: domain.ScopeTenant,
+		})
+
+		err := h.svc.AuthorizeSystem(ctx, principal.ID, tenant.ID, "tenant.create")
+
+		assert.ErrorIs(t, err, ports.ErrPermissionDenied,
+			"a customer's own administrator must never hold installation authority")
+	})
+
+	t.Run("no bindings is refused", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "nobody", "correct-horse-battery-staple")
+
+		assert.ErrorIs(t, h.svc.AuthorizeSystem(ctx, principal.ID, tenant.ID, "tenant.create"),
+			ports.ErrPermissionDenied)
+	})
+
+	t.Run("a binding-store failure denies rather than permits", func(t *testing.T) {
+		h := newHarness(t)
+		tenant, principal := h.seedTenantAndPrincipal(t, "operator", "correct-horse-battery-staple")
+		h.stores.bindings = append(h.stores.bindings, domain.RoleBinding{
+			PrincipalID: principal.ID, TenantID: tenant.ID,
+			Role: "PLATFORM_ADMIN", Scope: domain.ScopeSystem,
+		})
+		h.stores.failBindings = errors.New("database unavailable")
+
+		err := h.svc.AuthorizeSystem(ctx, principal.ID, tenant.ID, "tenant.create")
+
+		assert.ErrorIs(t, err, ports.ErrPermissionDenied,
+			"an unavailable store must never widen access — fail closed")
+	})
 }

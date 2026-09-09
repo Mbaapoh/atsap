@@ -114,3 +114,56 @@ func TestEndpointIdentifier_IsDerivedAndStable(t *testing.T) {
 	assert.True(t, strings.HasPrefix(domain.EndpointIdentifier(id), "e_"),
 		"the prefix distinguishes extension endpoints from the trunk endpoints a later change adds")
 }
+
+// TestExtensionIDFromIdentifier covers the inverse of
+// EndpointIdentifier, which had no test until 2026-09-09 despite being
+// what `atsap-api pbx reconcile` relies on to decide whether a projected
+// endpoint belongs to this platform at all.
+//
+// The consequence of getting it wrong is quiet: an identifier that fails
+// to parse is reported as unattributable, so a real orphan would be
+// filed as "not ours" and never cleaned up — or, worse, a valid
+// extension would be.
+func TestExtensionIDFromIdentifier(t *testing.T) {
+	t.Run("round-trips every identifier EndpointIdentifier produces", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			id := shareddomain.NewExtensionID()
+
+			got, ok := domain.ExtensionIDFromIdentifier(domain.EndpointIdentifier(id))
+
+			require.True(t, ok)
+			assert.Equal(t, id, got)
+		}
+	})
+
+	t.Run("rejects identifiers that are not ours", func(t *testing.T) {
+		valid := domain.EndpointIdentifier(shareddomain.NewExtensionID())
+
+		for name, identifier := range map[string]string{
+			"empty":                    "",
+			"no prefix":                strings.TrimPrefix(valid, "e_"),
+			"wrong prefix":             "x_" + strings.TrimPrefix(valid, "e_"),
+			"prefix only":              "e_",
+			"not hex":                  "e_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+			"too short":                "e_00112233445566778899aabbccddee",
+			"too long":                 valid + "00",
+			"an Asterisk-style name":   "e_1001",
+			"a raw extension number":   "1001",
+			"upper-case prefix":        "E_" + strings.TrimPrefix(valid, "e_"),
+			"embedded null":            "e_00112233445566778899aabbccddee\x00",
+			"a plausible foreign name": "e_someothersystemsendpoint00000",
+		} {
+			t.Run(name, func(t *testing.T) {
+				_, ok := domain.ExtensionIDFromIdentifier(identifier)
+				assert.False(t, ok, "%q must not parse as one of ours", identifier)
+			})
+		}
+	})
+
+	t.Run("an identifier from another platform is unattributable, not misattributed", func(t *testing.T) {
+		// The failure that matters for reconcile: something else's
+		// endpoint must never resolve to one of our extension ids.
+		_, ok := domain.ExtensionIDFromIdentifier("sip-trunk-carrier-a")
+		assert.False(t, ok)
+	})
+}
