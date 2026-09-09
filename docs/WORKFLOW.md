@@ -118,6 +118,27 @@ DATABASE_URL="postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslm
 `-p 1` is required: the integration suite resets the schema, so packages
 must not run in parallel.
 
+**Restore the rig between tiers with `mise run rig:restore`.** Two things
+rot independently, and neither symptom names its cause — which is why
+this is a command rather than a paragraph.
+
+**Asterisk's ARI WebSocket stops accepting event streams** once a
+long-running container has served enough of them. Observed 2026-09-09
+after roughly twenty hours and a day of e2e runs. The HTTP API still
+answers `200`, so Asterisk looks healthy and its healthcheck passes, but
+every event-stream dial times out and the app logs
+`ari: event stream disconnected, retrying` on a growing backoff. The
+test-side symptom is:
+
+```
+timed out waiting for Stasis app voip-app-e2e to register
+```
+
+which names neither Asterisk nor WebSockets, and sends you debugging your
+own test. **The discriminator is to run an e2e test you did not touch**
+— `TestWalkingSkeleton` — before suspecting new code. If that fails too,
+the rig is broken, not the change. Restarting Asterisk clears it.
+
 **Run the e2e tier *after* re-registering the SIP fixtures.** Since
 `ps_contacts` became realtime-backed (D-47, `pbx-extensions-projection`
 design D8), device registrations live in the database, so the integration

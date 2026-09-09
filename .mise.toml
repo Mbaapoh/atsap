@@ -23,6 +23,39 @@ run = "docker compose -f deploy/docker-compose.yml up -d --build app"
 description = "Automated UAT: real baresip phones auto-answer the e2e call; asserts signaling, records, events, and bidirectional media, then restores the rig"
 run = "./scripts/uat-auto.sh"
 
+# Restore the dev rig between test tiers. Two independent things rot, and
+# neither symptom names its cause:
+#
+#   1. The integration tier's cleanup drops the schema (each suite
+#      migrates down on exit), leaving e2e facing a database with no
+#      tables and sip-ua deregistered — since ps_contacts became
+#      realtime-backed, registrations live in Postgres (D-47).
+#
+#   2. Asterisk's ARI WebSocket stops accepting event streams after a
+#      long-running container has served many of them. Observed
+#      2026-09-09 after ~20 hours and a day of e2e runs: the HTTP API
+#      still answers 200, but every stream dial times out, and the app
+#      logs "ari: event stream disconnected, retrying" on a growing
+#      backoff. The test-side symptom is
+#      "timed out waiting for Stasis app voip-app-e2e to register",
+#      which names neither Asterisk nor WebSockets and sends you looking
+#      at your own test. Restarting Asterisk clears it.
+#
+# Order matters: Asterisk first (it owns the ARI listener and the
+# registrations), then the app (it migrates on boot), then sip-ua (it
+# must register against the schema that results).
+[tasks."rig:restore"]
+description = "Restore the dev rig between test tiers (Asterisk ARI, migrations, SIP fixtures)"
+run = """
+docker restart deploy-asterisk-1 >/dev/null
+sleep 18
+docker restart deploy-app-1 >/dev/null
+sleep 8
+docker restart deploy-sipua-1 >/dev/null
+sleep 12
+docker exec deploy-asterisk-1 asterisk -rx 'pjsip show contacts'
+"""
+
 [tasks."dev:logs"]
 description = "Tail logs from the local dev stack"
 run = "docker compose -f deploy/docker-compose.yml logs -f"
