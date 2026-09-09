@@ -1,4 +1,4 @@
-// Package nats implements postgres.OutboxPublisher against NATS
+// Package nats implements ports.OutboxPublisher against NATS
 // JetStream: the outbox worker's only concrete way of actually getting
 // an event onto the wire (docs/hld/01-architecture.md §3.2).
 package nats
@@ -11,7 +11,7 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	corepostgres "atsap-api/internal/postgres"
+	sharedports "atsap-api/internal/shared/ports"
 )
 
 // StreamName is the durable JetStream stream this publisher ensures
@@ -40,12 +40,12 @@ const subjectFilter = "tenant.*.event.>"
 // case; it does not remove the requirement.
 const dedupeWindow = 5 * time.Minute
 
-// Publisher implements corepostgres.OutboxPublisher.
+// Publisher implements sharedports.OutboxPublisher.
 type Publisher struct {
 	js jetstream.JetStream
 }
 
-var _ corepostgres.OutboxPublisher = (*Publisher)(nil)
+var _ sharedports.OutboxPublisher = (*Publisher)(nil)
 
 // NewPublisher connects a JetStream context over nc and ensures
 // StreamName exists (creating it if this is a fresh NATS instance).
@@ -77,7 +77,7 @@ func NewPublisher(ctx context.Context, nc *natsgo.Conn) (*Publisher, error) {
 // The outbox row id is the right key precisely because it is stable
 // across republishes: the row is rewritten only to set published_at, and
 // a redelivery is by definition the same row being drained again.
-func (p *Publisher) Publish(ctx context.Context, ev corepostgres.OutboxEvent) error {
+func (p *Publisher) Publish(ctx context.Context, ev sharedports.OutboxEvent) error {
 	subject := fmt.Sprintf("tenant.%s.event.%s", ev.TenantID, ev.EventType)
 	if _, err := p.js.Publish(ctx, subject, ev.Payload, jetstream.WithMsgID(ev.ID)); err != nil {
 		return fmt.Errorf("nats: publish to %s: %w", subject, err)

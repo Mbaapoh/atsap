@@ -1606,6 +1606,12 @@ gate work and the `pbx-acl-boundary` rule).
   package, and a `broker-stays-behind-the-outbox` depguard rule denies
   `atsap-api/internal/nats` from every `internal/*/application`,
   `domain` and `rpc` package. Fault-injected once to prove it rejects.
+  **Applied 2026-09-09:** the port and `OutboxEvent` now live in
+  `api/internal/shared/ports`, and the rule additionally covers
+  `internal/*/ports` and `internal/shared`. `internal/postgres` is
+  deliberately excluded — it owns `OutboxWorker`, whose whole job is
+  handing rows to a publisher, and it depends on the port rather than on
+  the adapter.
 - **Replacing NATS is then a bounded change**: `internal/nats` plus one
   line in the composition root. Kafka, RabbitMQ or Redis Streams all sit
   behind the same outbox drain, because the durability decision was made

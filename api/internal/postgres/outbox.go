@@ -7,27 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	sharedports "atsap-api/internal/shared/ports"
 )
-
-// OutboxEvent is one row read from the outbox table, ready to publish.
-// Already serialized: the worker reads raw rows from Postgres, never a
-// live domain event Go value — only what was persisted as JSON
-// (CallStore.SaveCall, or any future bounded context's equivalent).
-type OutboxEvent struct {
-	ID          string
-	TenantID    string
-	EventType   string
-	AggregateID string
-	Payload     []byte
-}
-
-// OutboxPublisher is what the worker needs to push one event to the
-// message bus. internal/nats's adapter implements this; the worker
-// itself has no NATS-specific knowledge — it only knows Postgres and
-// this interface (docs/hld/01-architecture.md §3.2).
-type OutboxPublisher interface {
-	Publish(ctx context.Context, ev OutboxEvent) error
-}
 
 // OutboxWorker reads unpublished outbox rows across every tenant and
 // publishes them. It connects with the narrow BYPASSRLS
@@ -37,7 +19,7 @@ type OutboxPublisher interface {
 // credentials, not the app's own atsapbx_app connection.
 type OutboxWorker struct {
 	pool      *pgxpool.Pool
-	publisher OutboxPublisher
+	publisher sharedports.OutboxPublisher
 	logger    *slog.Logger
 	batchSize int
 }
@@ -45,7 +27,7 @@ type OutboxWorker struct {
 // NewOutboxWorker returns a worker with a sane default batch size (100,
 // matching docs/hld/01-architecture.md §3.2's example). pool must be
 // opened with the atsap_outbox_worker role's credentials.
-func NewOutboxWorker(pool *pgxpool.Pool, publisher OutboxPublisher, logger *slog.Logger) *OutboxWorker {
+func NewOutboxWorker(pool *pgxpool.Pool, publisher sharedports.OutboxPublisher, logger *slog.Logger) *OutboxWorker {
 	return &OutboxWorker{pool: pool, publisher: publisher, logger: logger, batchSize: 100}
 }
 
@@ -81,9 +63,9 @@ func (w *OutboxWorker) PollOnce(ctx context.Context) (published int, err error) 
 		return 0, fmt.Errorf("query outbox: %w", err)
 	}
 
-	var batch []OutboxEvent
+	var batch []sharedports.OutboxEvent
 	for rows.Next() {
-		var ev OutboxEvent
+		var ev sharedports.OutboxEvent
 		if err := rows.Scan(&ev.ID, &ev.TenantID, &ev.EventType, &ev.AggregateID, &ev.Payload); err != nil {
 			rows.Close()
 			return 0, fmt.Errorf("scan outbox row: %w", err)

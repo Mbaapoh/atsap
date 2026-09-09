@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	atsapnats "atsap-api/internal/nats"
-	corepostgres "atsap-api/internal/postgres"
+	sharedports "atsap-api/internal/shared/ports"
 )
 
 func natsURL(t *testing.T) string {
@@ -47,7 +47,7 @@ func TestPublisher_PublishesToTenantSubject(t *testing.T) {
 	require.NoError(t, err)
 
 	tenantID := "tenant-1"
-	ev := corepostgres.OutboxEvent{
+	ev := sharedports.OutboxEvent{
 		ID: "outbox-1", TenantID: tenantID, EventType: "call.initiated",
 		AggregateID: "call-1", Payload: []byte(`{"call_id":"call-1"}`),
 	}
@@ -104,7 +104,7 @@ func TestPublisher_RepublishOfTheSameRowIsDeduped(t *testing.T) {
 	require.NoError(t, err)
 
 	tenantID := "tenant-dedupe"
-	ev := corepostgres.OutboxEvent{
+	ev := sharedports.OutboxEvent{
 		ID: "outbox-redelivered", TenantID: tenantID, EventType: "call.initiated",
 		AggregateID: "call-9", Payload: []byte(`{"call_id":"call-9"}`),
 	}
@@ -157,7 +157,7 @@ func TestPublisher_DistinctRowsAreNotDeduped(t *testing.T) {
 
 	tenantID := "tenant-distinct"
 	for _, id := range []string{"outbox-a", "outbox-b"} {
-		require.NoError(t, publisher.Publish(ctx, corepostgres.OutboxEvent{
+		require.NoError(t, publisher.Publish(ctx, sharedports.OutboxEvent{
 			ID: id, TenantID: tenantID, EventType: "call.initiated",
 			AggregateID: "call-9", Payload: []byte(`{"call_id":"call-9"}`),
 		}))

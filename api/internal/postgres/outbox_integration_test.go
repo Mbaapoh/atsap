@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	sharedports "atsap-api/internal/shared/ports"
+
 	"atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
 )
@@ -62,11 +64,11 @@ func insertOutboxRowDirect(t *testing.T, pool *postgres.Pool, tenantID shareddom
 
 type fakePublisher struct {
 	mu        sync.Mutex
-	published []postgres.OutboxEvent
+	published []sharedports.OutboxEvent
 	failAll   error
 }
 
-func (f *fakePublisher) Publish(_ context.Context, ev postgres.OutboxEvent) error {
+func (f *fakePublisher) Publish(_ context.Context, ev sharedports.OutboxEvent) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.failAll != nil {
@@ -193,7 +195,7 @@ func TestOutboxWorker_ConcurrentPolls_NoDoubleProcessing(t *testing.T) {
 	// A row taken by the container is still processed exactly once, which
 	// is the property that matters; it simply is not processed by one of
 	// these two workers.
-	published := append(append([]postgres.OutboxEvent{}, pub1.published...), pub2.published...)
+	published := append(append([]sharedports.OutboxEvent{}, pub1.published...), pub2.published...)
 
 	seen := make(map[string]bool)
 	for _, ev := range published {

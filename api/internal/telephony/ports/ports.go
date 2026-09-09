@@ -170,5 +170,6 @@ type CorrelationRegistrar interface {
 // outbox transactionally (see CallStore's doc comment above). The
 // worker that reads the outbox and publishes to NATS asynchronously is
 // generic infrastructure serving every future bounded context's outbox
-// rows alike, not telephony-specific — its contract (OutboxWorker,
-// OutboxPublisher) lives in internal/postgres, not here.
+// rows alike, not telephony-specific — so OutboxPublisher lives in
+// internal/shared/ports (D-57) and OutboxWorker in internal/postgres,
+// neither of them here.

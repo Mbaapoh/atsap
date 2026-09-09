@@ -64,6 +64,33 @@ linters:
             - pkg: atsap-api/internal/pbx
               desc: "telephony-core must not depend on pbx-core (HLD 04 §10.1). Inbound routing inverts the dependency with a port telephony-core owns"
 
+        # The broker stays behind the outbox (D-57). Application, domain
+        # and rpc code publishes by writing an outbox row inside its own
+        # transaction — it never talks to NATS, and never imports it.
+        #
+        # This is what makes the broker replaceable rather than merely
+        # unreplaced: substituting Kafka, RabbitMQ or Redis Streams is
+        # one adapter package plus one line in the composition root,
+        # because the durability decision belongs to the outbox pattern
+        # and not to NATS. Without this rule that property held only by
+        # habit — internal/nats happened to be imported by exactly one
+        # file, and nothing stopped the second.
+        #
+        # internal/postgres is deliberately absent from this list: it
+        # owns OutboxWorker, which is the one component whose job is to
+        # take rows to a publisher. It depends on the port in
+        # internal/shared/ports, never on internal/nats.
+        broker-stays-behind-the-outbox:
+          files:
+            - "**/internal/*/application/**"
+            - "**/internal/*/domain/**"
+            - "**/internal/*/rpc/**"
+            - "**/internal/*/ports/**"
+            - "**/internal/shared/**"
+          deny:
+            - pkg: atsap-api/internal/nats
+              desc: "Publish by writing an outbox row, not by importing the broker (D-57). The contract is ports.OutboxPublisher in internal/shared/ports; internal/nats is an adapter wired only in cmd/"
+
   # The boundary rules above protect the SHIPPED dependency graph. An
   # integration or e2e test wiring a real adapter is not part of that
   # graph: Go links `package application_test` separately, and the file
