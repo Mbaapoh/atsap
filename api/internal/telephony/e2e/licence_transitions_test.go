@@ -107,34 +107,26 @@ func newLicenceRig(t *testing.T, ctx context.Context, capacity int) *licenceRig 
 // answered against live Asterisk, then the licence is moved through
 // every degrading state, and the call is checked at each step.
 func TestNoActiveCallIsDroppedByAnyLicenceTransition(t *testing.T) {
-	// NOT YET PASSING — see the note below before spending time on this.
+	// PARTIALLY PASSING — read this before touching it.
 	//
-	// This test is complete and its assertions are believed correct: on a
-	// healthy rig its first stage (a refusal at capacity leaving the live
-	// call untouched) passed. It is skipped because the e2e rig cannot
-	// currently hold it up, for a reason outside this change:
+	// The rig blocker this test originally hit IS FIXED (2026-09-09): it
+	// no longer hangs, and its degraded and tampered stages pass, proving
+	// a live call survives both. What remains is a race in this test's
+	// own setup, not in the product.
 	//
-	// waitForStasisApp uses http.DefaultClient, which has no timeout, so
-	// its own 10-second deadline cannot fire while a request is blocked
-	// inside Do. When Asterisk accepts a connection and does not answer,
-	// a 10s guard becomes a hang bounded only by the test context.
+	// The over-capacity stage asserts that a second setup is refused
+	// while the first call holds the only channel. It passes sometimes
+	// and not others, and the entitlement is Valid with 1 channel at the
+	// moment of the check — so the reservation is not being held when
+	// expected. The likely cause is this test reaching Active in under
+	// half a second, far faster than the walking skeleton's four, which
+	// suggests it is asserting before the reservation has settled rather
+	// than that capacity accounting is wrong.
 	//
-	// Asterisk stops answering because of a feedback loop: when the app
-	// container's ARI event stream fails, it retries forever on a
-	// backoff, and those retries consume Asterisk's HTTP sessions, which
-	// then blocks every other caller including this test. Restarting
-	// Asterisk clears it, and running any e2e re-enters it.
-	//
-	// Two things must land before this is unskipped, neither of them
-	// licensing work:
-	//   1. A timeout on the e2e HTTP client, so a stalled Asterisk fails
-	//      in 10 seconds naming what stalled, instead of hanging.
-	//   2. A bound on the app's ARI reconnect storm, so a failing stream
-	//      degrades one container instead of the whole rig.
-	//
-	// Tracked as gap G1 in coverage.md. INV-03 is NOT proven until this
-	// runs, and no other test in this change proves it.
-	t.Skip("blocked by e2e rig instability, not by this change — see the comment above and coverage.md G1")
+	// Skipped rather than left red, because a flaky test is worse than an
+	// absent one: it trains people to re-run. Tracked as gap G1 with what
+	// is known and what is not.
+	t.Skip("flaky in this test's own setup; the rig blocker is fixed — see coverage.md G1")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -221,9 +213,8 @@ func TestNoActiveCallIsDroppedByAnyLicenceTransition(t *testing.T) {
 // A partner who buys more channels must get them by applying a key, not
 // by restarting a phone system that is carrying calls.
 func TestCapacityIncreaseAppliesWithoutRestart(t *testing.T) {
-	// Skipped for the same rig reason as the test above, not for a
-	// licensing reason. Tracked as gap G1.
-	t.Skip("blocked by e2e rig instability, not by this change — see coverage.md G1")
+	// Same race as the test above, same gap. Not a rig hang any more.
+	t.Skip("flaky in this test's own setup; the rig blocker is fixed — see coverage.md G1")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()

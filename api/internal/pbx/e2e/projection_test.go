@@ -173,7 +173,7 @@ func (r *rig) call(t *testing.T, procedure, token string, body, out any, wantSta
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := e2eHTTP.Do(req)
 	require.NoError(t, err, "the app container must be up and serving %s", apiBase)
 	defer func() { _ = resp.Body.Close() }()
 
@@ -464,3 +464,8 @@ func TestG2_IdenticalNumbersInTwoTenantsRemainSeparate(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, registerOnce(t, extB.AuthUsername, secretA),
 		"one tenant's secret must never authenticate another tenant's endpoint")
 }
+
+// e2eHTTP bounds every request this suite makes. http.DefaultClient has
+// no timeout, so a stalled service hangs the test instead of failing it
+// (see the note in internal/telephony/e2e).
+var e2eHTTP = &http.Client{Timeout: 10 * time.Second}

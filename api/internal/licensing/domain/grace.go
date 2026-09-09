@@ -58,12 +58,25 @@ func ShouldWarn(now, lastConfirmedAt time.Time) bool {
 // Only elapsing it degrades, and degrading goes to the floor rather than
 // to zero.
 //
-// A Setup entitlement is returned untouched. Nothing about a system that
-// was never activated is a function of when it last confirmed, and
-// routing it through this would be the first step toward the
-// Setup/Degraded collapse D-52 forbids.
+// Grace can only ever make things worse, never better. Two states are
+// therefore returned untouched:
+//
+//   - StateSetup, because nothing about a system that was never
+//     activated is a function of when it last confirmed, and routing it
+//     through here is the first step toward the Setup/Degraded collapse
+//     D-52 forbids.
+//   - StateDegraded, because it is already at the floor. An expired
+//     licence read two days after expiry is still expired; letting the
+//     grace window promote it back to Unverified would restore full
+//     capacity to a licence that has run out, and would report the wrong
+//     cause to the administrator besides.
+//
+// That second case is not hypothetical: an earlier version of this
+// function overwrote the state unconditionally, so an expired licence
+// inside the grace window came back as Unverified with its capacity
+// restored. Caught on 2026-09-09 by TestExpiryIsReEvaluatedAsTimePasses.
 func ApplyGrace(e Entitlement, now, lastConfirmedAt time.Time) Entitlement {
-	if e.State == StateSetup {
+	if e.State == StateSetup || e.State == StateDegraded {
 		return e
 	}
 	switch GraceState(now, lastConfirmedAt) {

@@ -219,7 +219,7 @@ func waitForStasisApp(t *testing.T, ctx context.Context, appName string) {
 			t.Fatalf("build applications request: %v", err)
 		}
 		req.SetBasicAuth(ariUser, ariPass)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := e2eHTTP.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -369,7 +369,7 @@ func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomai
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := e2eHTTP.Do(req)
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
 	}
@@ -480,7 +480,7 @@ func authenticateFixtureOperator(t *testing.T, ctx context.Context, pool *corepo
 		t.Fatalf("build authenticate request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := e2eHTTP.Do(req)
 	if err != nil {
 		t.Fatalf("authenticate over http: %v", err)
 	}
@@ -520,7 +520,7 @@ func TestGetCall_RefusesUnauthenticated(t *testing.T) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := e2eHTTP.Do(req)
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestGetCall_RefusesAnotherTenant(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := e2eHTTP.Do(req)
 	if err != nil {
 		t.Fatalf("getcall over http: %v", err)
 	}
@@ -637,3 +637,17 @@ func (a *e2eLicenseAdapter) ValidateCapacity(ctx context.Context, tenantID share
 func (a *e2eLicenseAdapter) ReleaseCapacity(ctx context.Context, callID string) error {
 	return a.inner.ReleaseCapacity(ctx, callID)
 }
+
+// e2eHTTP is the HTTP client every request in this suite uses.
+//
+// NEVER http.DefaultClient here. It has no timeout, so a request to a
+// stalled service blocks until the caller's context expires — and a
+// helper's own deadline cannot fire while it is parked inside Do. That
+// is how, on 2026-09-09, waitForStasisApp's ten-second guard became a
+// two-minute hang against an Asterisk that accepted connections and
+// never answered, and how a rig fault came to look like a bug in the
+// change under test.
+//
+// A test that hangs tells you nothing. A test that fails in ten seconds
+// naming what stalled tells you where to look.
+var e2eHTTP = &http.Client{Timeout: 10 * time.Second}

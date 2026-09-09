@@ -146,3 +146,37 @@ func TestApplyGrace_RecoveryRestoresFullCapacity(t *testing.T) {
 	require.Equal(StateValid, recovered.State)
 	require.Equal(64, recovered.Channels, "full capacity returns without a restart")
 }
+
+// TestApplyGrace_NeverPromotesAnAlreadyDegradedEntitlement covers a
+// defect found on 2026-09-09: ApplyGrace overwrote the state
+// unconditionally, so an expired licence read inside the grace window
+// came back as Unverified with its full capacity restored.
+//
+// Grace can only make things worse. An expired licence is expired
+// however recently the entitlement service was reached, and reporting it
+// as merely unverified would tell the administrator to check their
+// network when they need to renew.
+func TestApplyGrace_NeverPromotesAnAlreadyDegradedEntitlement(t *testing.T) {
+	expired := DegradedEntitlement(
+		Entitlement{State: StateValid, Edition: "core", Channels: 64},
+		ReasonExpired,
+	)
+
+	for name, elapsed := range map[string]time.Duration{
+		"confirmed just now":       0,
+		"inside the grace window":  25 * time.Hour,
+		"at the edge of the grace": GracePeriod - time.Nanosecond,
+		"past the grace window":    30 * 24 * time.Hour,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := ApplyGrace(expired, confirmed.Add(elapsed), confirmed)
+
+			assert.Equal(t, StateDegraded, got.State,
+				"grace must never promote an expired licence back to a healthier state")
+			assert.Equal(t, ReasonExpired, got.Reason,
+				"the cause must stay expiry, not become an entitlement-check problem")
+			assert.Equal(t, FreeChannels, got.Channels,
+				"capacity must not be restored to a licence that has run out")
+		})
+	}
+}

@@ -290,3 +290,72 @@ const notATable = "ps_endpoints_archive_summary"
 	require.NoError(t, err)
 	assert.Empty(t, uses, "word-boundary matching must not flag a longer identifier")
 }
+
+// TestScanDefaultHTTPClient_RealRepoIsClean is the gate: no package in
+// this module reaches for an unbounded HTTP client.
+//
+// It exists because of a specific incident. On 2026-09-09 Asterisk began
+// accepting connections without answering them. Every caller hung rather
+// than failing, including an e2e helper using http.DefaultClient whose
+// own ten-second deadline could not fire while it was blocked inside Do.
+// The visible symptom — "timed out waiting for Stasis app" — named
+// neither Asterisk nor HTTP, and sent the reader to debug the change
+// under test instead of the rig.
+//
+// A timeout would have turned two minutes of hanging into ten seconds of
+// a named error.
+func TestScanDefaultHTTPClient_RealRepoIsClean(t *testing.T) {
+	uses, err := ScanDefaultHTTPClient(apiRootDir(t))
+	require.NoError(t, err)
+
+	for _, u := range uses {
+		t.Errorf("%s — %s", u, bannedHTTPSelectors[u.Selector])
+	}
+	assert.Empty(t, uses,
+		"construct an HTTP client with an explicit Timeout; see internal/telephony/acl/ari's newHTTPClient")
+}
+
+// TestScanDefaultHTTPClient_DetectsInjectedUse fault-injects the rule, so
+// it is known to reject rather than merely known to pass.
+func TestScanDefaultHTTPClient_DetectsInjectedUse(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "svc", "violation.go"), `
+package svc
+
+import "net/http"
+
+func fetch(url string) (*http.Response, error) {
+	return http.DefaultClient.Get(url)
+}
+`)
+
+	uses, err := ScanDefaultHTTPClient(root)
+
+	require.NoError(t, err)
+	require.Len(t, uses, 1)
+	assert.Equal(t, "http.DefaultClient", uses[0].Selector)
+	assert.Equal(t, "internal/svc/violation.go", uses[0].File)
+}
+
+// TestScanDefaultHTTPClient_AllowsABoundedClient keeps the rule narrow:
+// it must object to the unbounded forms, not to using net/http.
+func TestScanDefaultHTTPClient_AllowsABoundedClient(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "svc", "ok.go"), `
+package svc
+
+import (
+	"net/http"
+	"time"
+)
+
+var client = &http.Client{Timeout: 10 * time.Second}
+
+func fetch(url string) (*http.Response, error) { return client.Get(url) }
+`)
+
+	uses, err := ScanDefaultHTTPClient(root)
+
+	require.NoError(t, err)
+	assert.Empty(t, uses, "a client with an explicit Timeout is exactly what this rule asks for")
+}

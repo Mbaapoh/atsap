@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Client is a REST client bound to one ARI base URL and credential pair.
@@ -24,6 +26,48 @@ type Client struct {
 	http     *http.Client
 }
 
+// Timeouts for the REST side of ARI.
+//
+// Every value here exists because the zero value is wrong. `&http.Client{}`
+// has NO timeout: a request to an Asterisk that accepts the connection and
+// then never answers blocks until its context expires, and in this process
+// that context is the lifetime of the application. A stalled engine would
+// therefore stall call setup indefinitely rather than failing it.
+//
+// That is not hypothetical — it is what happened on 2026-09-09. Asterisk
+// stopped answering, and callers hung instead of erroring, including a
+// test whose own 10-second deadline could not fire because it was blocked
+// inside Do.
+const (
+	// requestTimeout bounds a whole REST call: dial, write, response,
+	// body. Generous for a local engine; ARI operations are small and fast,
+	// and anything approaching this is a fault rather than slowness.
+	requestTimeout = 10 * time.Second
+
+	// dialTimeout bounds establishing the TCP connection alone, so an
+	// unreachable engine fails fast rather than consuming the whole
+	// request budget.
+	dialTimeout = 3 * time.Second
+
+	// responseHeaderTimeout bounds the wait between sending a request and
+	// the first response byte. This is the one that catches "connection
+	// accepted, nothing written" — the exact failure mode observed —
+	// earlier and more specifically than requestTimeout would.
+	responseHeaderTimeout = 5 * time.Second
+
+	// idleConnTimeout keeps pooled connections from outliving the
+	// engine's own idea of them. Asterisk's HTTP server has a finite
+	// session pool, so holding idle sockets open indefinitely is a way
+	// to exhaust it from the client side.
+	idleConnTimeout = 30 * time.Second
+
+	// maxIdleConnsPerHost raises Go's default of 2. Every ARI call goes
+	// to one host, so with the default the client repeatedly discards and
+	// re-establishes connections under concurrent call setup — churn the
+	// engine pays for in sessions.
+	maxIdleConnsPerHost = 16
+)
+
 // New creates an ARI REST client. baseURL is the ARI root, e.g.
 // "http://asterisk:8088/ari".
 func New(baseURL, username, password, appName string) *Client {
@@ -32,7 +76,26 @@ func New(baseURL, username, password, appName string) *Client {
 		username: username,
 		password: password,
 		appName:  appName,
-		http:     &http.Client{},
+		http:     newHTTPClient(),
+	}
+}
+
+// newHTTPClient returns the HTTP client every ARI REST call uses.
+//
+// It clones http.DefaultTransport rather than building one from scratch,
+// so the settings not named here — proxy handling, HTTP/2, TLS defaults —
+// stay whatever the standard library considers correct, and only the
+// values this client actually needs to differ on are overridden.
+func newHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{Timeout: dialTimeout}).DialContext
+	transport.ResponseHeaderTimeout = responseHeaderTimeout
+	transport.IdleConnTimeout = idleConnTimeout
+	transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
+
+	return &http.Client{
+		Timeout:   requestTimeout,
+		Transport: transport,
 	}
 }
 

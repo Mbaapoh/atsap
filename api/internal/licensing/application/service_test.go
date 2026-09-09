@@ -347,3 +347,123 @@ func TestGraceElapsesToTheFloor(t *testing.T) {
 		})
 	}
 }
+
+// TestGraceIsReEvaluatedAsTimePassesWithoutInvalidation covers a defect
+// that shipped past every other test in this change and was caught by an
+// e2e licence-transition test on 2026-09-09.
+//
+// The first implementation cached the COMPUTED entitlement. Once a Valid
+// one was cached, nothing re-evaluated it: the only invalidations were
+// applying a key and a successful confirmation, neither of which happens
+// while an installation sits disconnected. So a running process whose
+// grace period elapsed would keep serving full capacity indefinitely —
+// the seven-day window silently unbounded, and D-12's degradation
+// unreachable in exactly the situation it exists for.
+//
+// The fix is to cache what is expensive and unchanging (the verified
+// signature) and recompute what is cheap and time-dependent (expiry and
+// grace). This asserts the consequence: the SAME Service instance, with
+// no invalidation and no restart, must degrade when time passes.
+func TestGraceIsReEvaluatedAsTimePassesWithoutInvalidation(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t)
+	require.NoError(t, r.svc.ApplyLicenseKey(ctx, r.sign(licensed(64))))
+
+	// Read once, so the licence is cached and any staleness is real.
+	first, err := r.svc.Entitlement(ctx)
+	require.NoError(t, err)
+	require.Equal(t, domain.StateValid, first.State)
+	require.Equal(t, 64, first.Channels)
+
+	for name, tc := range map[string]struct {
+		elapsed  time.Duration
+		state    domain.State
+		channels int
+	}{
+		"day 3 — unverified, unrestricted": {3 * 24 * time.Hour, domain.StateUnverified, 64},
+		"day 8 — degraded to the floor":    {8 * 24 * time.Hour, domain.StateDegraded, domain.FreeChannels},
+		"day 90 — still degraded":          {90 * 24 * time.Hour, domain.StateDegraded, domain.FreeChannels},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r.svc.WithClock(func() time.Time { return now.Add(tc.elapsed) })
+
+			got, err := r.svc.Entitlement(ctx)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.state, got.State,
+				"the same Service instance must notice time passing, with nothing invalidating a cache")
+			assert.Equal(t, tc.channels, got.Channels)
+		})
+	}
+}
+
+// TestExpiryIsReEvaluatedAsTimePasses is the same property for the other
+// time-dependent field. A licence that expires while the process runs
+// must degrade without anything prompting a re-read.
+func TestExpiryIsReEvaluatedAsTimePasses(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t)
+
+	tok := licensed(64)
+	tok.ExpiresAt = now.Add(24 * time.Hour)
+	require.NoError(t, r.svc.ApplyLicenseKey(ctx, r.sign(tok)))
+
+	before, err := r.svc.Entitlement(ctx)
+	require.NoError(t, err)
+	require.Equal(t, domain.StateValid, before.State)
+
+	r.svc.WithClock(func() time.Time { return now.Add(25 * time.Hour) })
+
+	after, err := r.svc.Entitlement(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.StateDegraded, after.State)
+	assert.Equal(t, domain.ReasonExpired, after.Reason)
+	assert.True(t, after.PermitsCalls(), "expiry degrades, it never disables")
+}
+
+// TestSetupIsNotCached: an installation in Setup must notice the moment a
+// licence is applied. Caching "no licence" would mean a freshly
+// activated system kept refusing calls until something restarted it.
+func TestSetupIsNotCached(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t)
+
+	setup, err := r.svc.Entitlement(ctx)
+	require.NoError(t, err)
+	require.False(t, setup.PermitsCalls())
+
+	require.NoError(t, r.svc.ApplyLicenseKey(ctx, r.sign(licensed(8))))
+
+	after, err := r.svc.Entitlement(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 8, after.Channels, "activation takes effect on the next read, not the next restart")
+}
+
+// TestTamperedLicenceIsNotCached: restoring a good licence must take
+// effect without a restart, so a row that failed verification is
+// re-checked rather than remembered.
+func TestTamperedLicenceIsNotCached(t *testing.T) {
+	ctx := context.Background()
+	r := newRig(t)
+	require.NoError(t, r.svc.ApplyLicenseKey(ctx, r.sign(licensed(64))))
+
+	// Break it behind the service's back.
+	good := r.store.lic.SignedPayload
+	r.store.lic.SignedPayload = []byte(`{"edition":"forged","capacity":99999}`)
+
+	svc := application.NewService(r.store, r.keys, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithClock(func() time.Time { return now })
+	broken, err := svc.Entitlement(ctx)
+	require.NoError(t, err)
+	require.Equal(t, domain.ReasonTampered, broken.Reason)
+
+	// Restore it. The same instance must recover.
+	r.store.lic.SignedPayload = good
+
+	fixed, err := svc.Entitlement(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StateValid, fixed.State,
+		"a repaired licence takes effect on the next read, not the next restart")
+	assert.Equal(t, 64, fixed.Channels)
+}

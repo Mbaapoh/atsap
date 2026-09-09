@@ -27,13 +27,34 @@ type Service struct {
 	counter *domain.Counter
 	now     func() time.Time
 
-	// mu guards cached. The entitlement is verified on load and held in
-	// memory because verifying per call setup would put cryptography in
-	// the call path, which AC-06.3 forbids. It is a cache of VERIFIED
-	// state, which D-56's rule permits — unlike authorization state,
-	// which is never cached.
+	// mu guards cached.
+	//
+	// What is cached is the VERIFIED LICENCE, never the entitlement it
+	// implies. The distinction is the whole point: signature
+	// verification is expensive and its result does not change, so it is
+	// cached to keep cryptography out of the call path (AC-06.3, and
+	// D-56 permits caching verified state). Expiry and the grace period
+	// are cheap arithmetic over the clock and DO change, so they are
+	// recomputed on every read.
+	//
+	// Caching the computed entitlement instead was the first
+	// implementation and it was wrong in a way no unit test caught: once
+	// a Valid entitlement was cached, time could pass without the
+	// installation ever noticing. A process whose grace period elapsed
+	// would keep serving full capacity indefinitely — the 7-day window
+	// silently unbounded, and D-12's degradation unreachable in a
+	// running system. Found by the e2e licence-transition test on
+	// 2026-09-09.
 	mu     sync.RWMutex
-	cached *domain.Entitlement
+	cached *verifiedLicense
+}
+
+// verifiedLicense is a licence whose signature has been checked, held
+// with the confirmation timestamp that drives the grace period. It is
+// what the cache holds; the entitlement is derived from it per read.
+type verifiedLicense struct {
+	token           domain.LicenseToken
+	lastConfirmedAt time.Time
 }
 
 var _ ports.LicenseManager = (*Service)(nil)
@@ -75,45 +96,77 @@ func (s *Service) Entitlement(ctx context.Context) (domain.Entitlement, error) {
 	cached := s.cached
 	s.mu.RUnlock()
 	if cached != nil {
-		return *cached, nil
+		// Verification is reused; expiry and grace are re-evaluated
+		// against the clock, so time passing is enough to degrade this
+		// installation without anything having to invalidate a cache.
+		return s.entitlementAt(*cached, s.now()), nil
 	}
 
-	e, err := s.load(ctx)
+	lic, err := s.load(ctx)
 	if err != nil {
 		return domain.SetupEntitlement(), err
 	}
+	if lic == nil {
+		// No licence, or one that no longer verifies. Neither is cached:
+		// Setup must notice the moment a token is applied, and a
+		// tampered row must be re-read rather than remembered.
+		return s.uncachedEntitlement(ctx)
+	}
 
 	s.mu.Lock()
-	s.cached = &e
+	s.cached = lic
 	s.mu.Unlock()
-	return e, nil
+	return s.entitlementAt(*lic, s.now()), nil
 }
 
-// load reads the stored licence and turns it into an entitlement by
-// verifying it. Never reads a claim column: ports.StoredLicense does not
-// carry them back from Load, so there is nothing to read.
-func (s *Service) load(ctx context.Context) (domain.Entitlement, error) {
-	lic, err := s.store.Load(ctx)
+// entitlementAt derives what the installation may do at a given moment
+// from an already-verified licence. Pure arithmetic over the clock.
+func (s *Service) entitlementAt(lic verifiedLicense, now time.Time) domain.Entitlement {
+	return domain.ApplyGrace(lic.token.Entitlement(now), now, lic.lastConfirmedAt)
+}
+
+// uncachedEntitlement answers for the two states that must never be
+// remembered: no licence at all, and a stored licence that fails
+// verification.
+func (s *Service) uncachedEntitlement(ctx context.Context) (domain.Entitlement, error) {
+	stored, err := s.store.Load(ctx)
 	if errors.Is(err, ports.ErrNoLicense) {
 		return domain.SetupEntitlement(), nil
 	}
 	if err != nil {
 		return domain.SetupEntitlement(), err
 	}
+	if _, verr := domain.VerifyToken(stored.SignedPayload, stored.Signature, s.keys); verr != nil {
+		s.logger.Warn("licensing: stored licence failed verification, degrading",
+			"instance_id", stored.InstanceID)
+		return domain.DegradedEntitlement(domain.Entitlement{}, domain.ReasonTampered), nil
+	}
+	return domain.SetupEntitlement(), nil
+}
 
-	tok, err := domain.VerifyToken(lic.SignedPayload, lic.Signature, s.keys)
+// load reads the stored licence and verifies it, returning nil when
+// there is nothing cacheable — no licence, or one that does not verify.
+// Never reads a claim column: ports.StoredLicense does not carry them
+// back from Load, so there is nothing to read.
+func (s *Service) load(ctx context.Context) (*verifiedLicense, error) {
+	stored, err := s.store.Load(ctx)
+	if errors.Is(err, ports.ErrNoLicense) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	tok, err := domain.VerifyToken(stored.SignedPayload, stored.Signature, s.keys)
 	if err != nil {
 		// The row exists but does not verify: someone edited it, the
 		// keys rotated, or it was written by a build we do not trust.
-		// Degrade and report — never honour what the row claimed, and
-		// never disable (BRD §10.2, D-53).
-		s.logger.Warn("licensing: stored licence failed verification, degrading",
-			"instance_id", lic.InstanceID)
-		return domain.DegradedEntitlement(domain.Entitlement{}, domain.ReasonTampered), nil
+		// Not cached — the next read re-checks, so restoring a good
+		// licence takes effect without a restart.
+		return nil, nil
 	}
 
-	now := s.now()
-	return domain.ApplyGrace(tok.Entitlement(now), now, lic.LastConfirmedAt), nil
+	return &verifiedLicense{token: tok, lastConfirmedAt: stored.LastConfirmedAt}, nil
 }
 
 // ValidateCapacity reserves a channel for callID.

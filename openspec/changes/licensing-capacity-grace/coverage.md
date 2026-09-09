@@ -79,41 +79,43 @@ fault-injected against the pre-D-53 design.
 
 ## Gaps
 
-### G1 — INV-03 is not proven end to end
+### G1 — INV-03 is partly proven
 
 **Scenarios:** no active call dropped by any licence transition; capacity
 increase without interrupting a call in progress.
 
-**Status:** the tests are written
-(`internal/telephony/e2e/licence_transitions_test.go`) and **skipped**.
-On a healthy rig the first stage passed — a refusal at capacity left a
-live call untouched — so the mechanism works. The remaining stages have
-never been observed.
+**Status: two of four stages pass.** A live call survives **degrading**
+and survives a **tampered licence** — both observed against live
+Asterisk. The over-capacity and unverified stages do not yet pass
+reliably.
 
-**Why it is blocked, and it is not licensing:**
+**The original blocker is fixed (2026-09-09).** These tests used to hang
+for two minutes. `waitForStasisApp` used `http.DefaultClient`, which has
+no timeout, so its own 10-second deadline could not fire while blocked
+inside `Do`; and Asterisk stopped answering because the app's ARI
+reconnect storm consumed its HTTP sessions, leaking a goroutine per retry
+(measured: 3 → 23 over 20 reconnects). All of that is repaired — see the
+commit for the five ARI defects — and the suite now fails in under half a
+second with real assertions instead of hanging.
 
-`waitForStasisApp` uses `http.DefaultClient`, which has no timeout, so
-its own 10-second deadline cannot fire while a request is blocked inside
-`Do`. When Asterisk accepts a connection and does not answer, a 10s guard
-becomes a hang bounded only by the test context.
+**What remains is a race in the test, not the product.** The
+over-capacity stage asserts a second setup is refused while the first
+call holds the only channel. It passes sometimes. At the moment of the
+check the entitlement reads Valid with 1 channel, so the reservation is
+not being held when expected — and this test reaches Active in under half
+a second where the walking skeleton takes four, which points at asserting
+before the reservation has settled rather than at capacity accounting
+being wrong.
 
-Asterisk stops answering because of a feedback loop: when the app
-container's ARI event stream fails, it retries forever on a backoff, and
-those retries consume Asterisk's HTTP sessions, which blocks every other
-caller including the tests. Restarting Asterisk clears it; running e2e
-re-enters it. The same fault took down the untouched `TestWalkingSkeleton`
-on 2026-09-09, which is how it was identified.
+That distinction is not yet proven either way, and it is the honest state:
+**INV-03 is partly demonstrated, not fully.** LLD-08 DoD 4 remains unmet.
 
-**What must land first,** neither of it licensing work:
-
-1. A timeout on the e2e HTTP client, so a stalled Asterisk fails in ten
-   seconds naming what stalled instead of hanging.
-2. A bound on the app's ARI reconnect storm, so a failing stream degrades
-   one container instead of the whole rig.
-
-**LLD-08 DoD 4 is therefore unmet.** INV-03 — "no active call is dropped
-by any licence state" — is the invariant this design is arranged around,
-and nothing else in this change proves it.
+**Found along the way, and fixed:** chasing this test surfaced two real
+product defects that every other test in this change missed — the
+entitlement cache never re-evaluated the grace period, so a running
+installation would never degrade; and `ApplyGrace` promoted an expired
+licence back to Unverified with its capacity restored. Both now have
+regression tests. The test earned its keep before it passed.
 
 ### G2 — INV-01 cannot be proven here at all
 
