@@ -1,0 +1,16 @@
+-- Rolls the database back to the pbx-core schema.
+--
+-- No REVOKE needed: 0005 granted nothing. asterisk_engine was
+-- deliberately given no access to licensing_state, and atsapbx_app's
+-- privileges come from the bootstrap script's default grants rather than
+-- from this migration.
+--
+-- Dropping this table discards the signed licence payload, so a
+-- migrate-down followed by migrate-up returns the installation to Setup
+-- (D-52) — administration available, no call path — until a token is
+-- applied again. That is correct rather than unfortunate: the
+-- entitlement lives in the licence, and the licence can be re-applied
+-- from the portal or ATSAPBX_LICENSE_TOKEN. It is called out because the
+-- integration suite resets the schema between runs, so the e2e stack
+-- must re-activate rather than assume capacity survives (D-54).
+DROP TABLE IF EXISTS licensing_state;
