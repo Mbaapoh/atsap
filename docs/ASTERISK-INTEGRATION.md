@@ -94,6 +94,26 @@ established stream surviving says nothing about whether a NEW in-network
 upgrade would succeed, and that comparison has not yet been made
 cleanly.
 
+**Update 2026-09-09 (e2e-wedge troubleshooting):** the port-publishing
+half of the lead is ruled out, and the picture is narrower and stranger.
+Measured on a wedged engine, each item fresh and independent:
+- A WS upgrade aimed directly at the container IP (no NAT involved)
+  hangs identically: 8s, zero bytes.
+- `/` answers 404 in 9ms and bad credentials answer 401 in 8ms, while
+  every **authenticated** `/ari/*` call — REST and WS alike — hangs.
+  TCP, HTTP dispatch and auth are fine; the stall is past auth.
+- Stopping the app container (removing all client retry pressure) does
+  not clear it; 150s of idle does not clear it. Only an Asterisk restart
+  clears it. No TCP pileup (zero sockets on 8088), no taskprocessor
+  backlog, 108 threads against a 500 session limit.
+- Stuck registrations are real and distinct from the stall: a previous
+  run's app name can remain registered (GET returns 200) 40+ minutes
+  after its socket is gone, and unique names per run accumulate one
+  lingering `stasis/m:ari:application/<name>` taskprocessor each.
+  The stall has also been observed with residue as low as 3, so
+  accumulation alone does not explain it — there are either two
+  mechanisms or one whose trigger is not the count.
+
 **Next step for whoever picks this up:** run the same upgrade probe from
 a container on `deploy_voip` and from the host at the same moment. If
 in-network succeeds while host fails, the fix is in how the e2e reaches
@@ -156,6 +176,16 @@ count is genuinely the constraint is unproven; see §2.1.1.
 
 **Do not** try to solve this with a unique app name per test. Measured
 2026-09-09: it changes nothing.
+
+**Do** use one stable name per test plus a release drain. Since 2026-09-09
+the e2e helpers derive `e2e-<test>` (no run-unique suffix) and wait for
+the previous registration to release (404) before subscribing
+(`waitForStasisAppReleased`). Rationale: unique names convert each run's
+registration into permanent server-side residue (one lingering Stasis
+taskprocessor per run, never reclaimed), while the drain covers exactly
+the release lag the suffix used to dodge. Stable names do NOT cure the
+§2.1.1 stall — observed with residue as low as 3 — they only stop
+feeding it names.
 
 **Do not** add the RFC 6455 closing handshake to "release it faster".
 Also measured: it made things **worse**. Teardown slowed enough that the

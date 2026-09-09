@@ -118,6 +118,11 @@ func TestWalkingSkeleton(t *testing.T) {
 	// The answering party (1000/1001) is the `sipua` sidecar container,
 	// already registered by the time this test runs (compose brings it
 	// up alongside asterisk). ---
+	// Drain any previous registration of this name before subscribing:
+	// Asterisk releases on its own schedule, and stacking onto a live
+	// leftover churns the registration (see ariApp comment above).
+	waitForStasisAppReleased(t, ctx, ariApp)
+
 	ariClient := ari.New(ariBase, ariUser, ariPass, ariApp)
 	registry := acl.NewCorrelationRegistry()
 	callStore := postgres.NewCallStore(appPool)
@@ -233,6 +238,38 @@ func waitForStasisApp(t *testing.T, ctx context.Context, appName string) {
 		}
 	}
 	t.Fatalf("timed out waiting for Stasis app %s to register", appName)
+}
+
+// waitForStasisAppReleased polls ARI's /applications/{name} until Asterisk
+// stops reporting it, so the next subscription does not stack onto a
+// registration the previous run has not finished releasing (§2.5:
+// Asterisk releases on its own schedule, not immediately). A name whose
+// previous owner is still registered is a test sequencing hazard, not an
+// engine fault — wait it out here rather than failing later with a
+// timeout that names the wrong cause.
+func waitForStasisAppReleased(t *testing.T, ctx context.Context, appName string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ariBase+"/applications/"+appName, nil)
+		if err != nil {
+			t.Fatalf("build applications request: %v", err)
+		}
+		req.SetBasicAuth(ariUser, ariPass)
+		resp, err := e2eHTTP.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusNotFound {
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("ctx done waiting for Stasis app %s release: %v", appName, ctx.Err())
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	t.Fatalf("timed out waiting for Stasis app %s to release", appName)
 }
 
 func waitFor(t *testing.T, ctx context.Context, want string, probe func() (string, error), match domain.CallState) {

@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +95,10 @@ func newLicenceRig(t *testing.T, ctx context.Context, capacity int) *licenceRig 
 	// sequencing access to it, which is the difference between tests that
 	// are independent and tests that merely usually pass.
 	appName := stasisAppFor(t)
+
+	// Drain any previous registration of this name before subscribing
+	// (see stasisAppFor): Asterisk releases on its own schedule.
+	waitForStasisAppReleased(t, ctx, appName)
 
 	ariClient := ari.New(ariBase, ariUser, ariPass, appName)
 	registry := acl.NewCorrelationRegistry()
@@ -310,13 +313,18 @@ func waitForCondition(t *testing.T, ctx context.Context, what string, cond func(
 	t.Fatalf("timed out after 10s waiting for %s", what)
 }
 
-// stasisAppFor derives a Stasis application name unique to one test.
+// stasisAppFor derives a Stasis application name stable for one test.
 //
-// Asterisk accepts any name; what matters is that two concurrent or
-// consecutive registrations do not collide. The test name makes a
-// failure traceable to its owner in Asterisk's own logs, and the
-// nanosecond suffix keeps repeated runs of the same test from colliding
-// with a registration the previous run has not finished releasing.
+// The name is deliberately NOT unique per run. Asterisk releases a
+// registration on its own schedule after the socket goes (§2.5), and a
+// fresh name per run accumulates server-side residue that is never
+// reclaimed — observed as one lingering
+// stasis/m:ari:application/<name> taskprocessor per run, followed by
+// authenticated ARI calls hanging once enough have piled up. Stable
+// names reuse one registration; the drain in test setup
+// (waitForStasisAppReleased) covers the release lag the nanosecond
+// suffix used to dodge. Distinct names per test keep sequential tests
+// from contending for a single registration.
 func stasisAppFor(t *testing.T) string {
 	t.Helper()
 	safe := strings.Map(func(r rune) rune {
@@ -325,5 +333,5 @@ func stasisAppFor(t *testing.T) string {
 		}
 		return '-'
 	}, t.Name())
-	return fmt.Sprintf("e2e-%s-%d", safe, time.Now().UnixNano())
+	return "e2e-" + safe
 }
