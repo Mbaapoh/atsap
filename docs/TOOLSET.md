@@ -124,6 +124,14 @@ The following libraries represent the **complete, approved, and frozen dependenc
 
 ---
 
+### Engine interfaces: ARI, AMI, Stasis, sorcery
+
+Their documented behaviour, their undocumented limits, and how each one
+fails are in [`ASTERISK-INTEGRATION.md`](ASTERISK-INTEGRATION.md) — read
+it before changing anything that talks to the engine. Every entry there
+is something that cost debugging time once, and each fails in a way that
+names something other than itself.
+
 ## 4. Explicitly Forbidden Dependencies & Anti-Patterns
 
 Any pull request, commit, or agent-generated code containing the following will be **immediately rejected** by automated linters and CI review gates:

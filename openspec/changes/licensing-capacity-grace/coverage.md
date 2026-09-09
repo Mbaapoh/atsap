@@ -104,13 +104,18 @@ Getting there uncovered four defects, none of them in the assertions:
 Each has a regression test. The e2e earned its keep several times over
 before it went green.
 
-**Residual, and it is the rig rather than this change.** Asterisk in the
-dev container accepts a limited number of Stasis application
-registrations per lifetime; after one full e2e run they are exhausted and
-the next run cannot register. This affects the untouched
-`TestWalkingSkeleton` identically, so it is not introduced here. Run
-`mise run rig:restore` before the e2e tier — the documented step, which
-now restarts Asterisk for exactly this reason (docs/WORKFLOW.md §4).
+**The residual is gone too, and it was never really the container.**
+Asterisk's `http.conf` defaults `sessionlimit` to 100, each session is a
+thread, and ARI consumes them for both WebSockets and REST. At the limit
+Asterisk accepts the TCP connection and never answers — no rejection, no
+log line — so callers see a timeout naming neither Asterisk nor HTTP.
+Confirmed by the thread count sitting at exactly 100.
+
+`core/conf/http.conf` now sets `sessionlimit = 500` with a 10-second idle
+reclaim. **Four consecutive full e2e runs pass with the thread count flat
+at 84.** Bare metal with the stock defaults would have behaved the same;
+the container only surfaced it sooner. Documented in
+`docs/ASTERISK-INTEGRATION.md` §2.1 with how to recognise it.
 
 Two things were tried and rejected on evidence rather than taste. Giving
 each test its own Stasis app name did not help: the limit is on

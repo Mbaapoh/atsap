@@ -122,22 +122,18 @@ must not run in parallel.
 rot independently, and neither symptom names its cause — which is why
 this is a command rather than a paragraph.
 
-**Asterisk's ARI WebSocket stops accepting event streams** once a
-long-running container has served enough of them. Observed 2026-09-09
-after roughly twenty hours and a day of e2e runs. The HTTP API still
-answers `200`, so Asterisk looks healthy and its healthcheck passes, but
-every event-stream dial times out and the app logs
-`ari: event stream disconnected, retrying` on a growing backoff. The
-test-side symptom is:
+**Asterisk stops completing WebSocket handshakes** once its HTTP session
+pool is exhausted — each session is a thread, and `http.conf` defaults to
+100. It accepts the TCP connection and never answers, so the HTTP API
+still returns `200` and the healthcheck passes while every event-stream
+dial times out. Root cause and the raised limit are in
+[`ASTERISK-INTEGRATION.md` §2.1](ASTERISK-INTEGRATION.md).
 
-```
-timed out waiting for Stasis app voip-app-e2e to register
-```
-
-which names neither Asterisk nor WebSockets, and sends you debugging your
-own test. **The discriminator is to run an e2e test you did not touch**
-— `TestWalkingSkeleton` — before suspecting new code. If that fails too,
-the rig is broken, not the change. Restarting Asterisk clears it.
+**The discriminator, and it is the step that gets skipped: run an e2e
+test you did not touch** — `TestWalkingSkeleton` — before suspecting new
+code. If that fails too, the rig is broken rather than the change. On
+2026-09-09 several debugging cycles went into a new test while the engine
+was the problem; this check would have shown that in one run.
 
 **Run the e2e tier *after* re-registering the SIP fixtures.** Since
 `ps_contacts` became realtime-backed (D-47, `pbx-extensions-projection`
