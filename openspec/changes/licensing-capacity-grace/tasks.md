@@ -7,9 +7,19 @@ invariants against the live stack.
 
 ## 1. Gate first, so the boundary is enforced before there is code to enforce it
 
-- [ ] 1.1 Add a `licensing-imports-nothing` depguard rule to `.golangci.yml` denying `atsap-api/internal/telephony`, `atsap-api/internal/pbx` and `atsap-api/internal/identity` from `**/internal/licensing/**`, citing HLD 04 §10.1; verify `mise run lint` still reports 0 issues
-- [ ] 1.2 Fault-inject the rule: add the forbidden import to a scratch file under `internal/licensing/`, confirm `mise run lint` fails naming the rule, then remove it — record the observed failure text in this task (LLD-08 DoD 9, D-28)
-- [ ] 1.3 Add `atsap-api/internal/licensing` to `internal/archtest`'s scan as a package that may not import other contexts, with a fault-injection test proving it rejects, mirroring `TestScanModule_DetectsInjectedPbxViolation`; verify `go test ./internal/archtest/...` passes
+- [x] 1.1 Add a `licensing-imports-nothing` depguard rule to `.golangci.yml` denying `atsap-api/internal/telephony`, `atsap-api/internal/pbx` and `atsap-api/internal/identity` from `**/internal/licensing/**`, citing HLD 04 §10.1; verify `mise run lint` still reports 0 issues *(done — rule added before the package exists, deliberately; lint reports 0 issues)*
+- [x] 1.2 Fault-inject the rule: add the forbidden import to a scratch file under `internal/licensing/`, confirm `mise run lint` fails naming the rule, then remove it — record the observed failure text in this task (LLD-08 DoD 9, D-28) *(done — a scratch `internal/licensing/domain` importing all three peers produced **3 issues**, one per deny entry, so each is independently live rather than the first shadowing the rest. Observed:*
+
+  ```
+  internal/licensing/domain/zz_faultinject.go:4:2: import 'atsap-api/internal/identity/domain'
+    is not allowed from list 'licensing-imports-nothing': licensing is Tier 0 and depends on
+    nothing (HLD 04 §10.1). identity and licensing are peers that never call each other …
+  internal/licensing/domain/zz_faultinject.go:5:2: import 'atsap-api/internal/pbx/domain' …
+  internal/licensing/domain/zz_faultinject.go:6:2: import 'atsap-api/internal/telephony/domain' …
+  3 issues:
+  ```
+  *Tree clean again after removal: 0 issues.)*
+- [x] 1.3 Add `atsap-api/internal/licensing` to `internal/archtest`'s scan as a package that may not import other contexts, with a fault-injection test proving it rejects, mirroring `TestScanModule_DetectsInjectedPbxViolation`; verify `go test ./internal/archtest/...` passes *(done — needed a new rule shape, not a list entry: `forbiddenImports` answers "who may import X" and cannot express "X may import nothing", since importing telephony is only wrong* inside *licensing. Added `isolatedContexts` (depending prefix → forbidden prefixes) and `checkIsolation`, kept pure like `checkImport`. Covered by `TestCheckIsolation` (7 cases, including that a context may import its own subpackages and that `licensingx` is unaffected by the `licensing` prefix) and `TestScanModule_DetectsInjectedLicensingViolation` through the real scanner. Adding the other Tier-0 contexts is one line each — see the note below.)*
 
 ## 2. Domain — pure, no I/O, no dependencies
 

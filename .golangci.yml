@@ -64,6 +64,31 @@ linters:
             - pkg: atsap-api/internal/pbx
               desc: "telephony-core must not depend on pbx-core (HLD 04 §10.1). Inbound routing inverts the dependency with a port telephony-core owns"
 
+        # licensing is Tier 0 and depends on NOTHING (HLD 04 §10.1).
+        #
+        # The rule exists before the package does, deliberately: the
+        # first import is the cheapest one to reject, and a boundary
+        # added after the code is a boundary argued about rather than
+        # enforced.
+        #
+        # The pressure this resists is real and will look reasonable at
+        # the time. licensing publishes a tenant cap that identity
+        # enforces (D-51) and a module entitlement that consumers read
+        # (D-50), so "just import identity to check the tenant count"
+        # is the obvious shortcut. It is denied here because the
+        # entitlement flows the other way: licensing publishes, others
+        # consume, and the conjunction is entitlement's job (LLD-11).
+        licensing-imports-nothing:
+          files:
+            - "**/internal/licensing/**"
+          deny:
+            - pkg: atsap-api/internal/telephony
+              desc: "licensing is Tier 0 and depends on nothing (HLD 04 §10.1). telephony-core calls licensing through a port it owns; the composition root adapts between the two verdict types (LLD-08 §3.1)"
+            - pkg: atsap-api/internal/pbx
+              desc: "licensing is Tier 0 and depends on nothing (HLD 04 §10.1). pbx-core consumes the published entitlement; it is never called back into"
+            - pkg: atsap-api/internal/identity
+              desc: "licensing is Tier 0 and depends on nothing (HLD 04 §10.1). identity and licensing are peers that never call each other — combining tenant state with entitlement is the entitlement context's job (D-50, LLD-11)"
+
         # The broker stays behind the outbox (D-57). Application, domain
         # and rpc code publishes by writing an outbox row inside its own
         # transaction — it never talks to NATS, and never imports it.

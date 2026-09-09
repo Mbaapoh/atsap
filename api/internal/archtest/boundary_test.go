@@ -103,6 +103,61 @@ var _ = asterisk.Projector{}
 	assert.Equal(t, "atsap-api/internal/pbx/acl/asterisk", violations[0].Import)
 }
 
+// TestCheckIsolation covers the inverse rule: not "who may import this"
+// but "what may this import". A Tier-0 context depends on nothing
+// (HLD 04 §10.1), which the forbiddenImports shape cannot express —
+// there is nothing wrong with importing telephony in general, only with
+// importing it from inside licensing.
+func TestCheckIsolation(t *testing.T) {
+	for name, tc := range map[string]struct {
+		pkgPath, importPath string
+		want                bool
+	}{
+		"licensing importing telephony is denied": {
+			"atsap-api/internal/licensing/application", "atsap-api/internal/telephony/ports", true},
+		"licensing importing identity is denied": {
+			"atsap-api/internal/licensing/domain", "atsap-api/internal/identity/domain", true},
+		"licensing importing pbx is denied": {
+			"atsap-api/internal/licensing/postgres", "atsap-api/internal/pbx/ports", true},
+		"licensing importing its own subpackage is fine": {
+			"atsap-api/internal/licensing/application", "atsap-api/internal/licensing/domain", false},
+		"licensing importing shared is fine": {
+			"atsap-api/internal/licensing/domain", "atsap-api/internal/shared/domain", false},
+		"telephony importing identity is not this rule's business": {
+			"atsap-api/internal/telephony/application", "atsap-api/internal/identity/domain", false},
+		"a package merely prefixed like licensing is unaffected": {
+			"atsap-api/internal/licensingx/domain", "atsap-api/internal/telephony/ports", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, checkIsolation(tc.pkgPath, tc.importPath))
+		})
+	}
+}
+
+// TestScanModule_DetectsInjectedLicensingViolation is the fault
+// injection for that rule through the real scanner. It exists because a
+// rule that has never rejected anything is a rule nobody has tested
+// (D-28), and this one guards a boundary whose first violation will look
+// entirely reasonable: licensing publishes a tenant cap that identity
+// enforces, so "just import identity to count tenants" is the shortcut
+// waiting to be taken.
+func TestScanModule_DetectsInjectedLicensingViolation(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile(t, filepath.Join(root, "internal", "licensing", "application", "violation.go"), `
+package application
+
+import "atsap-api/internal/identity/domain"
+
+var _ = domain.Tenant{}
+`)
+
+	violations, err := ScanModule(root)
+	require.NoError(t, err)
+	require.Len(t, violations, 1)
+	assert.Equal(t, "atsap-api/internal/licensing/application", violations[0].PackagePath)
+	assert.Equal(t, "atsap-api/internal/identity/domain", violations[0].Import)
+}
+
 // TestIsComposedInTest fixes the narrowness of the test-file carve-out:
 // a tagged composition-root test is exempt, a plain unit test is not.
 // Written as a table so the boundary between the two cannot drift

@@ -46,7 +46,7 @@ func ScanModule(apiRootDir string) ([]Violation, error) {
 				return fmt.Errorf("parse %s: %w", path, err)
 			}
 			for _, imp := range imports {
-				if checkImport(pkgPath, imp) {
+				if checkImport(pkgPath, imp) || checkIsolation(pkgPath, imp) {
 					violations = append(violations, Violation{PackagePath: pkgPath, Import: imp})
 				}
 			}

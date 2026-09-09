@@ -45,6 +45,47 @@ var exemptPackagePrefixes = []string{
 	"atsap-api/internal/pbx/e2e",
 }
 
+// isolatedContexts inverts the question the list above asks.
+//
+// forbiddenImports answers "who may import X" — it protects a package
+// from its consumers. This answers "what may X import" — it protects a
+// context from its own dependencies. A Tier-0 context that depends on
+// nothing (HLD 04 §10.1) cannot be expressed by the first shape at all:
+// nothing about `telephony` is forbidden in general, only its appearance
+// inside `licensing`.
+//
+// Keyed by the depending package prefix; the values are prefixes it may
+// not import. Adding a Tier-0 context here is one line, and doing so is
+// how §10.1's "may depend on: nothing" rows stop being prose.
+var isolatedContexts = map[string][]string{
+	"atsap-api/internal/licensing": {
+		"atsap-api/internal/telephony",
+		"atsap-api/internal/pbx",
+		"atsap-api/internal/identity",
+	},
+}
+
+// checkIsolation reports whether pkgPath importing importPath breaks an
+// isolatedContexts rule. Pure, like checkImport, so it is testable
+// without touching a file system.
+//
+// A context may always import its own subpackages, which the prefix
+// match would otherwise forbid the moment a context's name is a prefix
+// of another's.
+func checkIsolation(pkgPath, importPath string) bool {
+	for ctx, forbidden := range isolatedContexts {
+		if pkgPath != ctx && !strings.HasPrefix(pkgPath, ctx+"/") {
+			continue
+		}
+		for _, f := range forbidden {
+			if importPath == f || strings.HasPrefix(importPath, f+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // composedInTestSuffixes are file names exempt from the boundary check
 // because they are composition roots, not shipped code: an integration
 // or e2e test wires concrete adapters the way cmd/atsap-api's main.go
