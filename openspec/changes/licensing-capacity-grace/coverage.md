@@ -20,9 +20,9 @@ covered by anyone reading the ticks in `tasks.md`.
 | Usage just above entitlement is absorbed | `domain.TestBurstAllowance`, `postgres.TestBurstBehaviourAgainstARealLicence` |
 | Sustained overage refused with its own reason | same, plus `domain.TestRefusalReasonsAreDistinct` |
 | Usage beyond the allowance is refused immediately | `domain.TestBurstAllowance/refuses_immediately_beyond_the_full_allowance` |
-| Reaching capacity leaves active calls untouched | **GAP G1** |
-| Lowering the entitlement below current usage drops nothing | **GAP G1** |
-| More capacity becomes usable promptly | **GAP G1** (written, skipped) |
+| Reaching capacity leaves active calls untouched | `e2e.TestNoActiveCallIsDroppedByAnyLicenceTransition/over_capacity` |
+| Lowering the entitlement below current usage drops nothing | same, `degraded` and `tampered` stages |
+| More capacity becomes usable promptly | same, `a capacity increase applies without a restart` (AC-06.8) |
 | Emergency calls connect at full capacity | **GAP G2** |
 | Emergency calls connect while degraded | **GAP G2** |
 | Emergency calls connect with no licence at all | **GAP G2** |
@@ -47,9 +47,9 @@ covered by anyone reading the ticks in `tasks.md`.
 | No warning on the first day / warnings from the second | `domain.TestWarningTiming` |
 | Capacity reduces once the grace period elapses | `postgres.TestGraceEndToEndAgainstARealLicence/day_8` |
 | Degradation never reaches zero | `domain.TestDegradedNeverDisables` |
-| Degradation does not drop calls in progress | **GAP G1** |
+| Degradation does not drop calls in progress | `e2e.TestNoActiveCallIsDroppedByAnyLicenceTransition/degraded` |
 | The system can be repaired from itself | Observed live (administration available while in Setup) |
-| Recovery from degraded / does not disturb active calls | `postgres.TestGraceEndToEndAgainstARealLicence` (recovery); active-call half is **GAP G1** |
+| Recovery from degraded / does not disturb active calls | `postgres.TestGraceEndToEndAgainstARealLicence`; active-call half by the e2e capacity stage |
 | The same elapsed time yields the same state | `domain.TestGraceStateDependsOnlyOnElapsedTime` |
 | Repeated failures do not accelerate degradation | same |
 | A restart does not reset the grace period | same, and `application.TestApplyLicenseKeyIsIdempotent` |
@@ -79,43 +79,46 @@ fault-injected against the pre-D-53 design.
 
 ## Gaps
 
-### G1 — INV-03 is partly proven
+### G1 — CLOSED. INV-03 is proven.
 
-**Scenarios:** no active call dropped by any licence transition; capacity
-increase without interrupting a call in progress.
+All five stages pass against live Asterisk, with a real call up
+throughout: **over capacity**, **entitlement unverified**, **degraded**,
+**tampered**, and **a capacity increase applying without a restart**
+(AC-06.8). LLD-08 DoD 4 is met.
 
-**Status: two of four stages pass.** A live call survives **degrading**
-and survives a **tampered licence** — both observed against live
-Asterisk. The over-capacity and unverified stages do not yet pass
-reliably.
+Getting there uncovered four defects, none of them in the assertions:
 
-**The original blocker is fixed (2026-09-09).** These tests used to hang
-for two minutes. `waitForStasisApp` used `http.DefaultClient`, which has
-no timeout, so its own 10-second deadline could not fire while blocked
-inside `Do`; and Asterisk stopped answering because the app's ARI
-reconnect storm consumed its HTTP sessions, leaking a goroutine per retry
-(measured: 3 → 23 over 20 reconnects). All of that is repaired — see the
-commit for the five ARI defects — and the suite now fails in under half a
-second with real assertions instead of hanging.
+1. **`Store.Load` picked arbitrarily between rows.** `instance_id` as the
+   primary key stopped one instance being recorded twice but not a second
+   instance joining the first, and `LIMIT 1` then chose. A service
+   holding one key read a row signed by another and reported a perfectly
+   good licence as TAMPERED — silent, and presenting as a security event.
+   Fixed with a singleton unique index and a replacing write.
+2. **The entitlement cache never re-evaluated time**, so a running
+   installation would never degrade.
+3. **`ApplyGrace` promoted an expired licence** back to Unverified with
+   its capacity restored.
+4. **Five ARI client defects**, including an unbounded HTTP client and a
+   goroutine leaked per reconnect.
 
-**What remains is a race in the test, not the product.** The
-over-capacity stage asserts a second setup is refused while the first
-call holds the only channel. It passes sometimes. At the moment of the
-check the entitlement reads Valid with 1 channel, so the reservation is
-not being held when expected — and this test reaches Active in under half
-a second where the walking skeleton takes four, which points at asserting
-before the reservation has settled rather than at capacity accounting
-being wrong.
+Each has a regression test. The e2e earned its keep several times over
+before it went green.
 
-That distinction is not yet proven either way, and it is the honest state:
-**INV-03 is partly demonstrated, not fully.** LLD-08 DoD 4 remains unmet.
+**Residual, and it is the rig rather than this change.** Asterisk in the
+dev container accepts a limited number of Stasis application
+registrations per lifetime; after one full e2e run they are exhausted and
+the next run cannot register. This affects the untouched
+`TestWalkingSkeleton` identically, so it is not introduced here. Run
+`mise run rig:restore` before the e2e tier — the documented step, which
+now restarts Asterisk for exactly this reason (docs/WORKFLOW.md §4).
 
-**Found along the way, and fixed:** chasing this test surfaced two real
-product defects that every other test in this change missed — the
-entitlement cache never re-evaluated the grace period, so a running
-installation would never degrade; and `ApplyGrace` promoted an expired
-licence back to Unverified with its capacity restored. Both now have
-regression tests. The test earned its keep before it passed.
+Two things were tried and rejected on evidence rather than taste. Giving
+each test its own Stasis app name did not help: the limit is on
+registrations, not names. Performing the RFC 6455 closing handshake made
+it **worse** — teardown slowed enough that the next registration arrived
+before Asterisk released the previous one, taking a suite that passed
+three tests down to one. Both are recorded where the code is, so neither
+is re-attempted.
 
 ### G2 — INV-01 cannot be proven here at all
 

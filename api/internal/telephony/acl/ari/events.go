@@ -59,6 +59,23 @@ const (
 	// is accepted and immediately dropped — the failure mode that
 	// produces a storm — does not qualify.
 	stableConnection = 30 * time.Second
+
+	// The RFC 6455 closing handshake is deliberately NOT performed here,
+	// and that is a measurement rather than an oversight.
+	//
+	// Sending a Close frame before dropping the socket is what the
+	// protocol asks for, and Asterisk does log an abrupt close as
+	// "WebSocket connection forcefully closed due to fatal write error".
+	// It was implemented on 2026-09-09 and then removed, because it made
+	// the observable behaviour worse: teardown became slow enough that
+	// the next Stasis registration arrived before Asterisk had released
+	// the previous one, and an e2e suite that passed three tests per run
+	// began passing only the first. Shortening the deadline to 250ms did
+	// not recover it.
+	//
+	// Cleanup that delays the next operation is a serialisation bug
+	// wearing good manners. gorilla's Close() is what ships, and the log
+	// line it produces on the engine is noise we accept.
 )
 
 // StreamEvents connects to the ARI WebSocket for this client's Stasis app

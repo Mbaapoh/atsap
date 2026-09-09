@@ -180,6 +180,18 @@ func (s *Service) ValidateCapacity(ctx context.Context, _ shareddomain.TenantID,
 	return s.counter.Reserve(callID, e, s.now()), nil
 }
 
+// ChannelsInUse reports how many channels currently hold a reservation.
+//
+// US-06.3 — "I see channel usage against my licence so I know when to
+// upgrade" — needs this, and so does the Capacity Warning state at 80%
+// of entitlement (PRD §11.2). It is also what makes a capacity problem
+// diagnosable: without it, "calls are being refused" and "the counter
+// drifted" look identical from outside.
+//
+// Reads the same counter ValidateCapacity writes, under the same lock,
+// so the number is consistent rather than approximate.
+func (s *Service) ChannelsInUse() int { return s.counter.InUse() }
+
 // ReleaseCapacity returns callID's reservation, idempotently (D-58).
 func (s *Service) ReleaseCapacity(_ context.Context, callID string) error {
 	s.counter.Release(callID)

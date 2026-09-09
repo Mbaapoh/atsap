@@ -60,6 +60,27 @@ CREATE TABLE IF NOT EXISTS licensing_state (
     grace_started_at TIMESTAMPTZ
 );
 
+-- ONE licence, one installation. Enforced, not assumed.
+--
+-- instance_id is the primary key, which stops the same instance being
+-- recorded twice but not a second instance being added alongside the
+-- first. Nothing in the domain means two licences: an entitlement is
+-- installation-wide (T-1), and Load reads "the licence" rather than "a
+-- licence".
+--
+-- Without this, Load's LIMIT 1 picks arbitrarily between rows. That is
+-- not a theoretical concern — it happened on 2026-09-09, when two test
+-- fixtures each activated their own instance and the second service read
+-- the first one's row, could not verify it against its own key, and
+-- reported a perfectly good licence as TAMPERED. Silent, and it presents
+-- as a security event.
+--
+-- A unique index on a constant is the standard Postgres idiom for "at
+-- most one row": every row indexes the same key, so the second insert
+-- collides.
+CREATE UNIQUE INDEX IF NOT EXISTS licensing_state_singleton
+    ON licensing_state ((true));
+
 -- No row is seeded, deliberately (D-52). An installation with no row is
 -- in Setup: administration works, there is no call path, and it is NOT
 -- the degradation floor. A seeded row would be an unsigned entitlement

@@ -76,28 +76,47 @@ func (s *Store) Save(ctx context.Context, lic ports.StoredLicense) error {
 		return fmt.Errorf("licensing: encode display fingerprint: %w", err)
 	}
 
-	_, err = s.pool.Exec(ctx, `
+	// Replace the licence rather than upsert on instance_id.
+	//
+	// An installation has one licence (T-1), and applying a new one
+	// SUPERSEDES the old rather than joining it — including when the new
+	// licence carries a different instance identity, which is exactly the
+	// case an upsert keyed on instance_id turns into a second row.
+	//
+	// Two rows are worse than they look. Load reads "the licence" with
+	// LIMIT 1, so it would pick arbitrarily, and a service holding one
+	// key reading a row signed by another reports a perfectly good
+	// licence as TAMPERED — silently, and presenting as a security event.
+	// Observed on 2026-09-09; licensing_state_singleton now makes the
+	// second row impossible, and this write is what keeps it so.
+	//
+	// One transaction, because a window with no licence at all would read
+	// as Setup and refuse calls.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("licensing: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM licensing_state`); err != nil {
+		return fmt.Errorf("licensing: clear previous licence: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO licensing_state (
 			instance_id, signed_payload, signature, fingerprint,
 			edition, capacity, max_tenants, max_extensions,
 			entitlement_status, last_confirmed_at, grace_started_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		ON CONFLICT (instance_id) DO UPDATE SET
-			signed_payload     = EXCLUDED.signed_payload,
-			signature          = EXCLUDED.signature,
-			fingerprint        = EXCLUDED.fingerprint,
-			edition            = EXCLUDED.edition,
-			capacity           = EXCLUDED.capacity,
-			max_tenants        = EXCLUDED.max_tenants,
-			max_extensions     = EXCLUDED.max_extensions,
-			entitlement_status = EXCLUDED.entitlement_status,
-			last_confirmed_at  = EXCLUDED.last_confirmed_at,
-			grace_started_at   = EXCLUDED.grace_started_at`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		lic.InstanceID, lic.SignedPayload, lic.Signature, fingerprint,
 		lic.Display.Edition, lic.Display.Capacity, lic.Display.MaxTenants, lic.Display.MaxExtensions,
-		lic.Display.Status, lic.LastConfirmedAt, lic.GraceStartedAt)
-	if err != nil {
+		lic.Display.Status, lic.LastConfirmedAt, lic.GraceStartedAt,
+	); err != nil {
 		return fmt.Errorf("licensing: save licence: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("licensing: commit licence: %w", err)
 	}
 	return nil
 }

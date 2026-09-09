@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -235,4 +236,76 @@ func TestStore_TouchConfirmedMovesOnlyTheClock(t *testing.T) {
 	assert.Equal(t, lic.SignedPayload, got.SignedPayload,
 		"confirmation says the licence is still ours; it never changes what the licence grants")
 	assert.Equal(t, lic.Signature, got.Signature)
+}
+
+// TestStore_HoldsExactlyOneLicence covers a defect found on 2026-09-09.
+//
+// An installation has one licence (T-1). instance_id being the primary
+// key stops the same instance being recorded twice, but not a SECOND
+// instance being added alongside the first — and Load reads "the
+// licence" with LIMIT 1, so with two rows it picks arbitrarily.
+//
+// The consequence is nastier than a wrong number: a service holding one
+// key reads a row signed by another, fails to verify it, and reports a
+// perfectly good licence as TAMPERED. Silent, and it presents as a
+// security event rather than a data-model mistake. That is exactly what
+// happened when two e2e fixtures each activated their own instance.
+func TestStore_HoldsExactlyOneLicence(t *testing.T) {
+	ctx := context.Background()
+	store, pool := newStore(t)
+
+	first := coreLicence()
+	first.InstanceID = "11111111-1111-1111-1111-111111111111"
+	licA, keysA := signedLicence(t, first)
+	require.NoError(t, store.Save(ctx, licA))
+
+	// A different instance, signed by a different key — the shape that
+	// used to produce a second row.
+	second := coreLicence()
+	second.InstanceID = "22222222-2222-2222-2222-222222222222"
+	second.Capacity = 128
+	licB, keysB := signedLicence(t, second)
+	require.NoError(t, store.Save(ctx, licB))
+
+	var rows int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM licensing_state`).Scan(&rows))
+	assert.Equal(t, 1, rows, "applying a licence supersedes the previous one; it never joins it")
+
+	got, err := store.Load(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, licB.SignedPayload, got.SignedPayload, "the licence in force is the one most recently applied")
+
+	// And it verifies against the key that signed it, rather than
+	// reporting as tampered.
+	tok, err := domain.VerifyToken(got.SignedPayload, got.Signature, keysB)
+	require.NoError(t, err, "the stored licence must verify against its own key")
+	assert.Equal(t, 128, tok.Capacity)
+
+	_, err = domain.VerifyToken(got.SignedPayload, got.Signature, keysA)
+	assert.Error(t, err, "and must not verify against the superseded licence's key")
+}
+
+// TestStore_SingletonConstraintRejectsASecondRow proves the database
+// enforces it, not only the write path. A future writer that inserts
+// directly must fail rather than quietly create the ambiguity Load
+// cannot resolve.
+func TestStore_SingletonConstraintRejectsASecondRow(t *testing.T) {
+	ctx := context.Background()
+	store, pool := newStore(t)
+	lic, _ := signedLicence(t, coreLicence())
+	require.NoError(t, store.Save(ctx, lic))
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO licensing_state (
+			instance_id, signed_payload, signature, fingerprint,
+			edition, capacity, max_tenants, max_extensions,
+			entitlement_status, last_confirmed_at)
+		VALUES ('33333333-3333-3333-3333-333333333333', '\x00', '\x00', '[]',
+			'core', 1, 0, 0, 'VALID', NOW())`)
+
+	require.Error(t, err, "the schema must refuse a second licence row")
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, "23505", pgErr.Code,
+		"expected unique_violation from licensing_state_singleton, got %s (%s)", pgErr.Code, pgErr.Message)
 }
