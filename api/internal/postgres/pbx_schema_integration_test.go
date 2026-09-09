@@ -180,3 +180,43 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 			table, pgErr.Code, pgErr.Message)
 	}
 }
+
+// TestPbxSchema_PsAorsCarriesStaticContactColumn covers 0006: Asterisk
+// polls AoRs itself with
+//     SELECT * FROM ps_aors WHERE contact != '' ORDER BY contact
+// and our original four-column subset had no `contact`, so every poll
+// failed with `column "contact" does not exist` while nothing
+// user-visible broke. The added columns are Asterisk's own alembic set
+// for ps_aors; all stay NULL (we never use permanent contacts), which
+// makes that scan return the empty set it was always meant to return.
+func TestPbxSchema_PsAorsCarriesStaticContactColumn(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	pool, err := postgres.Open(context.Background(), databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	ctx := context.Background()
+
+	for _, column := range []string{"contact", "default_expiration", "minimum_expiration",
+		"maximum_expiration", "mailboxes", "authenticate_qualify",
+		"outbound_proxy", "support_path", "qualify_timeout"} {
+		var exists bool
+		require.NoError(t, pool.Unwrap().QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+			 WHERE table_name = 'ps_aors' AND column_name = $1)`, column,
+		).Scan(&exists))
+		assert.True(t, exists, "ps_aors must carry %s: Asterisk's own AoR poll references it", column)
+	}
+
+	// The exact statement Asterisk issues on its ~25s AoR poll. Before
+	// 0006 this failed with 42703 (undefined_column); it must now
+	// succeed and return no rows.
+	rows, err := pool.Unwrap().Query(ctx,
+		`SELECT * FROM ps_aors WHERE contact != '' ORDER BY contact`)
+	require.NoError(t, err, "Asterisk's AoR poll must succeed against our schema")
+	defer rows.Close()
+	assert.False(t, rows.Next(), "no permanent contacts are configured, so the poll returns empty")
+	require.NoError(t, rows.Err())
+}

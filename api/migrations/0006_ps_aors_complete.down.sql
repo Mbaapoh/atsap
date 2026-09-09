@@ -1,0 +1,9 @@
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS qualify_timeout;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS support_path;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS outbound_proxy;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS authenticate_qualify;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS mailboxes;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS maximum_expiration;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS minimum_expiration;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS default_expiration;
+ALTER TABLE ps_aors DROP COLUMN IF EXISTS contact;
