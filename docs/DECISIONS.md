@@ -1015,6 +1015,602 @@ says so.
 
 ---
 
+**D-49 · Hybrid licensing: a permanent free floor from 3CX, module
+gating from VitalPBX, and neither one's unbundling (2026-09-09).**
+
+**Decision:** The commercial model takes the useful half of each market
+benchmark and refuses the rest.
+
+- **From 3CX — a capacity floor.** An installation with no licence runs
+  permanently as the **Unregistered tier**: 4 simultaneous calls, 10
+  extensions, 1 tenant, no key, no activation, no seeding. It is also the
+  floor that expiry, elapsed grace and tampering degrade to, so the
+  product has one degraded behaviour rather than one per cause.
+- **From VitalPBX — module gating by edition.** Advanced modules check
+  entitlement against the edition in the signed payload. Gating is by
+  edition; there is no separate module-key mechanism.
+- **From neither — unbundling the engine.** Multi-tenancy and SIP
+  intrusion protection are native and never sold separately.
+
+Recorded in BRD §10.4 (BR-LIC-01 to BR-LIC-03), §12.2's entitlement
+matrix and §12.4's module catalogue; PRD §11.2 gains an `Unregistered`
+state and EPIC-06 gains AC-06.11 to AC-06.14.
+
+**Context:** the BRD had no free tier at all — editions started at 16
+channels and nothing described an unlicensed install. That was not a
+deliberate omission so much as an unasked question, and it surfaced while
+proposing `licensing-capacity-grace`: deleting the always-permit stub
+makes "what happens with no licence" a behaviour that must exist, and
+nothing in BRD, PRD or the decision log answered it.
+
+**Why these two are not arbitrary security exceptions:**
+
+- **Multi-tenancy** is enforced by PostgreSQL row-level security, in the
+  database, on every table. A tenant-isolation guarantee that is absent
+  unless purchased is not a guarantee. It is also the product's identity
+  (BRD §1) and the basis of the Operator pooled-channel licence, which is
+  where tenancy *is* monetised.
+- **SIP intrusion protection** is the same argument: a platform that can
+  be brute-forced unless the customer buys the protection module is not
+  secure, it is negotiable.
+
+**Alternatives:**
+- *No free tier (the BRD as written).* Rejected — it forces a
+  conversation with us before an engineer can prove an install works
+  (AC-09.1), and it leaves the degraded floor undefined, which is what
+  started this.
+- *Free tier with unlimited extensions.* Rejected — many small
+  deployments never exceed 4 concurrent calls, so with no extension cap
+  the free tier becomes a product rather than an evaluation.
+- *Free tier that is multi-tenant.* Rejected. Every licensed edition is
+  multi-tenant with no tenant limit, but an unlicensed multi-tenant
+  install is a small operator business run for nothing, and it undercuts
+  the one licence that monetises tenancy.
+- *Standard / Enterprise tiers replacing the four editions.* Rejected —
+  it would invalidate §12.2's price table, the Operator licence and the
+  Language Services line to gain a naming convention.
+- *Fax as a paid add-on.* Rejected — FBR-R1-16 already promises it in
+  R1.1. Charging later for a promised feature is the repackaging partners
+  remember.
+
+**Consequences:**
+- **VP-2's "unlimited extensions" is now qualified** as "on every
+  licensed edition", in §4, §6's competitive table and §12.2. The claim
+  competes against paid per-user pricing, which is where it is made; the
+  free tier is capped precisely so it reads as an evaluation.
+- **AI translation augments the R3 specialist business, it does not
+  replace it** (BRD §12.4.2). AI bridges the wait before an interpreter
+  joins and covers language pairs with no available specialist; the human
+  remains the product where accuracy carries liability. The per-second
+  margin ledger and availability tiers are unchanged.
+- **Degrading never removes a provisioned tenant or extension** — only
+  new call capacity is capped (AC-06.13). An Operator with fifty tenants
+  that degrades must not lose forty-nine of them.
+- The extension and tenant caps are **entitlement data owned by
+  `licensing` but enforced at provisioning time** by the contexts that
+  create extensions and tenants. `licensing-capacity-grace` lands the
+  channel floor and exposes the caps; enforcing them is a separate change
+  against `pbx-core` and `identity`.
+- New revenue line 5 in §12.1 (sellable modules) and a module catalogue
+  in §12.4. Nothing in that catalogue is core telephony, tenancy, or
+  security.
+
+**Related Decisions:** D-11 to D-14 (licensing mechanism), D-24
+(multi-tenant seams from the start), D-27 (power before predictive), D-45
+(outbound in R1.0), D-46 (three delivery phases)
+**Traceability:** BRD §4 VP-2, §6, §8 FBR-R1-12/FBR-R1-16, §9, §10.4,
+§12.1, §12.2, §12.4; PRD §11.2, EPIC-06 (US-06.0, AC-06.11–06.14);
+`docs/lld/LLD-08-licensing.md`
+
+---
+
+**D-50 · Per-tenant module enablement lives in a Tier-1 `entitlement`
+context, not in `identity` or `licensing` (2026-09-09).**
+
+**Decision:** "May tenant T use module M?" is answered by one new Tier-1
+bounded context, `entitlement`, which depends on `licensing` (what the
+installation is entitled to) and `identity` (which tenants have it
+switched on) and is the only place the two are combined.
+
+Consumers — `pbx-core`, `ai-pipeline`, `dialer`, `reporting` — ask
+`entitlement` a single question. None of them combines the two sources
+itself.
+
+**The invariant it exists to hold: enablement can never exceed
+entitlement.** Switching a module on for a tenant when the installation
+is not entitled to it fails, and it fails in one place rather than in
+four.
+
+**Context:** BR-17 has always required per-tenant AI enablement ("one
+tenant may use AI while another on the same deployment does not"), and
+BRD §12.2 says partners may enable AI for some tenants, all, or none.
+D-49's module catalogue generalises that from AI to every module. But the
+two facts live in two contexts that **may not call each other**: HLD 04
+§10.1 gives both `identity` and `licensing` "may depend on: nothing". So
+the question cannot be answered by either of them alone, and there was
+nowhere for it to be answered at all — no table, no port, no context.
+
+**Alternatives:**
+- *`identity` stores the flags; every consumer ANDs them with
+  `licensing`'s entitlement.* Rejected — the "enablement ≤ entitlement"
+  rule would be re-implemented in four contexts, and the first one to get
+  it wrong grants a module nobody paid for, silently.
+- *`licensing` owns both.* Rejected — it would give `licensing` a
+  tenant-scoped, RLS-protected table beside `licensing_state`, whose
+  defining property is that it is installation-scoped with no `tenant_id`
+  and no RLS, asserted by test (LLD-08 DoD 6). One context holding two
+  opposite scoping rules is how that assertion eventually gets reworded
+  away.
+- *Answer it in the composition root.* Rejected — it is domain logic with
+  an invariant, not wiring, and the composition root is not testable as a
+  unit.
+
+**Consequences:**
+- A tenth bounded context, and **LLD-11** (next free number under D-48;
+  `entitlement` is Tier 1). HLD 04 §10.1 gains a row: `entitlement` may
+  depend on `licensing` and `identity`, and nothing else may depend on
+  those two for this purpose.
+- HLD 03 §5 gains a **tenant-scoped enablement table with RLS enabled and
+  forced**, unlike `licensing_state`. The two scoping rules now sit in two
+  contexts, which is the point.
+- **Gating is enforced in the service that performs the operation, never
+  in the console** (BRD R-12). An entitlement check reachable only through
+  the UI is bypassed by calling the endpoint.
+- It is Phase A work only to the extent Phase A sells a module. The
+  channel floor in `licensing-capacity-grace` does not depend on it.
+
+**Related Decisions:** D-24 (multi-tenant seams), D-43 (API-first
+consumer test), D-48 (one LLD per context), D-49 (hybrid licensing),
+D-51 (tenant count as an entitlement field)
+**Traceability:** BRD §9 BR-17, §12.2, §12.4, §16 R-12; HLD
+`04-bounded-contexts.md` §10.1, `03-domain-model.md` §5
+
+---
+
+**D-51 · Tenant count is an entitlement field (`MaxTenants`), not a
+purchasable module (2026-09-09).**
+
+**Decision:** The signed licence payload carries **`MaxTenants`**
+alongside edition, channel capacity, expiry and instance identity.
+
+| `MaxTenants` | Meaning |
+|---|---|
+| `1` | Single-tenant installation. Additional-tenant provisioning is refused; the default tenant context is implied |
+| `0` | Unlimited — the Operator licence |
+| `> 1` | That many tenants |
+
+An unlicensed installation is `MaxTenants = 1` (D-49, BR-LIC-01). Every
+licensed edition is unlimited.
+
+**Row-level security is mandatory in every mode, including
+single-tenant.** There is one schema, one code path, and no
+single-tenant build. `MaxTenants` constrains *provisioning*; it never
+changes how isolation works, and it is never a reason to skip a
+`tenant_id` or a policy.
+
+**Refusal is `FAILED_PRECONDITION`, not `PERMISSION_DENIED`.** The caller
+has the permission; the installation lacks the entitlement. Returning a
+permission error for a licensing condition makes the RBAC audit trail
+lie — an access-control investigation would find denials that had nothing
+to do with access control — and it tells the administrator to check
+their roles when they need to check their licence. AC-06.14 requires a
+distinct entitlement reason for exactly this reason.
+
+**Only creation is gated.** `CreateTenant` is refused at the cap;
+**reads are not.** A single-tenant installation still has one tenant, and
+its console must be able to list it. Gating the read would break a
+legitimate state to enforce a limit the write already enforces.
+
+**Context:** D-49 settled that the Unregistered tier is single-tenant and
+that tenancy is never sold as a module or differentiated between licensed
+editions. It did not say how the cap is carried or enforced. Naming a
+token field closes that, and it keeps tenancy out of the module
+catalogue: what a partner buys is a tenant *count*, in the same payload
+as their channel count — not a feature that might be absent.
+
+**Alternatives:**
+- *Multi-tenancy as a purchasable module.* Rejected, and this is the
+  distinction worth preserving: tenant isolation is enforced by RLS on
+  every table. A security property that is absent unless purchased is not
+  a property. BRD §10.4 keeps tenancy off the module list; `MaxTenants`
+  is a quantity on the licence, which is a different thing.
+- *A separate single-tenant build or schema.* Rejected outright — two
+  code paths, one of them under-tested, and the under-tested one is the
+  one handling isolation.
+- *`PERMISSION_DENIED` at the cap.* Rejected — see above.
+
+**Consequences:**
+- LLD-08 §3's `LicenseToken` gains `MaxTenants int`, and the entitlement
+  it publishes carries the tenant cap alongside the extension cap
+  (D-49) — both published by `licensing`, both enforced where the thing
+  is created.
+- LLD-02's tenant provisioning gains an entitlement precondition. Nothing
+  implemented today is wrong: no cap is enforced now, so this is additive.
+- The degraded and expired states report `CAPACITY_DEGRADED_EXPIRED` as
+  their reason code, distinct from the unlicensed reason (D-49) and from
+  an over-capacity refusal on a valid licence.
+- BRD §12.2's entitlement matrix states `MaxTenants` per edition.
+
+**Related Decisions:** D-02 (per-channel pricing, unlimited extensions),
+D-12/D-14 (degrade, never disable), D-24 (multi-tenant seams from the
+start), D-49 (hybrid licensing), D-50 (where enablement is answered)
+**Traceability:** BRD §10.4 BR-LIC-01/BR-LIC-03, §12.2; PRD §11.2,
+EPIC-06 AC-06.14; `docs/lld/LLD-08-licensing.md` §3,
+`docs/lld/LLD-02-identity.md`
+
+---
+
+**D-52 · Every entitlement is an activated signed token; a
+never-activated installation is in Setup, which is not a licence state
+(2026-09-09). Supersedes D-49's "no key, no activation step".**
+
+**Decision:** There is no unsigned entitlement. Obtaining a token —
+**including the free one** — requires registering on the central portal,
+which is where lead capture happens.
+
+| State | Reached by | Can place ordinary calls? |
+|---|---|---|
+| **Setup** | First boot, no token ever applied | **No.** Admin console only: instance ID, fingerprint, and how to register |
+| **Free Community** | Applying the free perpetual token | Yes — 4 SC, 10 extensions, `MaxTenants: 1` |
+| Licensed edition | Applying a purchased token | Yes — purchased capacity, unlimited extensions and tenants |
+| **Degraded** | Expiry, elapsed grace, or tampering on a previously valid licence | Yes — **4 SC**, the Free Community floor as a constant |
+
+**Setup and Degraded are not the same state and must never be merged.**
+A never-activated box has no phone system to protect. A degraded box has
+one, in production, with calls in progress — and D-12, BR-09 and INV-03
+forbid disabling it. Degradation therefore falls back to the 4 SC
+constant, **never to Setup**. Collapsing the two would mean an expired
+licence silently disabling a working installation, which is the single
+outcome this product promises never to produce.
+
+**Context:** D-49 described the free tier as zero-configuration — "no
+key, no activation step, and no database seeding" — on the stated
+premise that this matched the 3CX benchmark. **That premise was wrong:**
+3CX issues its free tier as a key obtained after registration. Correcting
+it changes the model rather than a detail, so it is recorded here rather
+than edited into D-49.
+
+**What this buys, beyond accuracy:**
+- **Every entitlement is signed.** There is no "no row means 4 channels"
+  branch, so there is no unsigned path into the capacity decision. The
+  domain gets simpler, not more complex.
+- **Every deployment is a known contact**, including free ones, which is
+  the commercial point of requiring registration at all.
+- **The upgrade path is already wired** — the portal holds the instance
+  ID, so Free → paid is a new token, not a reinstall.
+
+**Alternatives:**
+- *Keep zero-config 4 SC (D-49 as written).* Rejected — it forgoes lead
+  capture on every free deployment, and it keeps an unsigned entitlement
+  path alive purely for first-run convenience.
+- *Time-boxed evaluation, then require a key.* Rejected — it needs a
+  first-boot date that survives restarts and cannot be reset by
+  reinstalling, which is a tamper-resistance problem bought for a
+  convenience.
+
+**Consequences, including the ones that cost us:**
+- **AC-06.11 and US-06.0 are rewritten.** "Places calls with no key" is
+  no longer true; what must stay true is that obtaining and applying the
+  free key is self-service, immediate, and needs no conversation with us.
+- **The dev stack and both e2e suites need a signed fixture token**,
+  since they place real calls. The fixture is signed by a test key that
+  is never the production key (D-39). This is a real cost, and it buys a
+  test path that exercises activation rather than bypassing it.
+- `licensing-capacity-grace` changes before it is applied: the
+  missing-row case becomes Setup (no call path), not a 4-channel floor.
+- **Air-gapped deployments are unaffected** — §10.3's manually issued
+  offline licence already covers them.
+- **R1.0 ships OCI images** (`atsapbx/*`, compose and Helm); the turnkey
+  ISO/AMI/OVA appliance is **R1.1**, because an appliance build pipeline,
+  an OS patching path and appliance QA are not in §12.3's effort
+  estimate. The fingerprint tolerance (3-of-5, D-13) is load-bearing for
+  the AMI case, where a rebuild changes MAC and host UUID.
+
+**Related Decisions:** D-12/D-14 (degrade, never disable), D-13 (weighted
+fingerprint), D-39 (no secrets in fixtures), D-49 (hybrid licensing —
+superseded on this point), D-51 (`MaxTenants`), D-53 (tamper-resistant
+storage)
+**Traceability:** BRD §10.4 BR-LIC-01, §10.5, §12.2; PRD §11.2, EPIC-06
+(US-06.0, AC-06.11); `docs/lld/LLD-08-licensing.md`
+
+---
+
+**D-53 · The stored entitlement is the signed payload, re-verified on
+load — not a row of parsed columns (2026-09-09).**
+
+**Decision:** `licensing_state` stores the **signed licence payload and
+its signature** as the source of truth. The entitlement in force is
+derived by verifying that payload on load and caching the result in
+memory. The parsed columns — edition, capacity, `max_tenants`,
+`max_extensions`, expiry — are a denormalised convenience for display and
+support, and are **never read to make an entitlement decision**.
+
+**Context:** the schema as designed (HLD 03 §5) stored only the parsed
+claims. Ed25519 verification happened once, at apply time, and the proof
+was then discarded. On a self-hosted product the customer owns the
+database, so:
+
+```sql
+UPDATE licensing_state SET capacity = 1000, max_tenants = 0;
+```
+
+defeated licensing completely — without forging a signature, touching a
+binary, or defeating the fingerprint. The cryptography protected the
+*transport* of a licence and nothing about its *storage*, which is the
+half that matters when the licence lives on someone else's hardware.
+
+**This is proportionate, not an arms race.** BRD §10.3 is explicit that
+enforcement should stop casual over-use rather than defeat a determined
+attacker. Re-verification stops the partner who edits a row to get twenty
+channels — the actual threat. It does not stop someone patching the
+binary, and nothing reasonable would.
+
+**Alternatives:**
+- *Re-verify on every entitlement read.* Rejected — capacity is consulted
+  on every call setup, and AC-06.3 forbids putting licence work in the
+  call path. Verify on load and on change; cache in memory.
+- *A checksum or HMAC over the parsed columns.* Rejected — the key would
+  have to live on the same machine as the data it protects.
+- *Accept the exposure and rely on the daily entitlement check.* Rejected
+  — the check is unreachable for 7 days by design (D-14), which is
+  exactly the window an edited row would be used in.
+
+**Consequences:**
+- HLD 03 §5 `licensing_state` gains `signed_payload BYTEA NOT NULL` and
+  `signature BYTEA NOT NULL`; the claim columns remain, explicitly as a
+  cache.
+- **A tampered row fails verification and degrades** to the 4 SC floor
+  with the tamper reason (BRD §10.2) — it never disables, and never
+  silently grants what the row claimed.
+- LLD-08 DoD gains an assertion that editing a claim column changes no
+  entitlement decision, which is the test that would have caught this.
+- Verification cost is paid on load and on `ApplyLicenseKey`, never
+  during call setup.
+
+**Related Decisions:** D-11 (signed licence payloads), D-14 (offline
+grace), D-49, D-51, D-52
+**Traceability:** BRD §10.2, §10.3; HLD `03-domain-model.md` §5;
+`docs/lld/LLD-08-licensing.md` §5, §8
+
+---
+
+**D-54 · Development and test entitlement comes from a separately signed
+token, never a bypass flag (2026-09-09).**
+
+**Decision:** Signature verification **always runs**. There is no
+environment variable, build tag, or configuration value that skips it,
+and no code path in which an entitlement is accepted unverified.
+
+What varies between builds is the **set of trusted public keys**:
+
+| Build | Trusts |
+|---|---|
+| Production (default) | The production public key, only |
+| Development / CI | The production key **and** a development key |
+
+The development public key is injected at build time
+(`-ldflags -X`), and is **empty by default**. A build that forgets the
+flag is the strict build, so the failure mode is fail-safe rather than
+fail-open.
+
+`ATSAP_LICENSE_TOKEN` carries a **signed token**, never a mode. It exists
+so a compose stack, a Helm chart, or a CI job can supply an entitlement
+without a portal round trip, and it is the same variable in every
+environment. A development-signed token pasted into a production binary
+fails verification exactly as a forgery does, because that binary has
+never heard of the key that signed it.
+
+The development token grants unlimited capacity, unlimited tenants and
+extensions, and a far-future expiry — it is committed to the repository,
+because against a production binary it is worthless.
+
+**Context:** the requirement was an environment variable giving
+development an unlimited licence. Implemented as a mode flag
+(`LICENSE_MODE=dev`) that skips verification, it would be a single string
+that disables every layer of D-11, D-13, D-14 and D-53 at once — no
+forgery, no SQL edit, no patched binary required. It would become the
+tampering method, and the mechanism it bypassed would be exercised only
+in production, where it is least safe to be first tested.
+
+Separating keys instead of separating code paths keeps development
+convenient and keeps exactly one verification path under test.
+
+**Alternatives:**
+- *`LICENSE_MODE=dev` skipping verification.* Rejected — see above.
+- *A production-trusted "developer" key with unlimited entitlement.*
+  Rejected — it is the same bypass with a signature on it. Once the key
+  is trusted in production, possessing it is possessing a free unlimited
+  licence, and it cannot be revoked without shipping a new binary.
+- *Committing a development private key so tests can mint tokens.*
+  Rejected (D-39). Unit tests generate an ephemeral Ed25519 keypair
+  in-process and inject the public key, so no private key material exists
+  in the repository at all. Only the dev stack's pre-signed token is
+  committed, and its private key is held offline.
+
+**Consequences:**
+- `licensing/domain` verifies against a **key set**, not a single key, so
+  adding or rotating a key is data rather than a code change.
+- A test asserts that a binary built with no `-ldflags` trusts **exactly
+  one** key, and that a development-signed token is rejected by it. That
+  test is what stops the dev key drifting into a release.
+- The dev stack and both e2e suites gain the committed development token
+  through `ATSAP_LICENSE_TOKEN` (D-52's stated cost), rather than a
+  fixture that bypasses activation. The suites therefore exercise the
+  real activation and verification path.
+- The token is also how an air-gapped or automated deployment applies a
+  licence without the console (§10.5), so this is not development-only
+  machinery.
+
+**Related Decisions:** D-11 (signed payloads), D-13 (fingerprint
+tolerance), D-14 (offline grace), D-39 (no secrets in fixtures), D-52
+(every entitlement is activated), D-53 (tamper-resistant storage)
+**Traceability:** BRD §10.5, §10.6; `docs/lld/LLD-08-licensing.md` §5,
+§10; `docs/TESTING.md`
+
+---
+
+**D-55 · PostgreSQL is not a swappable backing service, and that is a
+deliberate exception to twelve-factor IV (2026-09-09).**
+
+**Decision:** The platform requires PostgreSQL. It is not abstracted
+behind a database-neutral layer, no other engine is supported, and
+"support MySQL" is not a configuration change but a redesign of the
+tenant-isolation model.
+
+**Why, measured rather than asserted.** The migrations currently declare
+**13 tables with `ENABLE` *and* `FORCE ROW LEVEL SECURITY`, 12
+`CREATE POLICY` statements**, and policies written against
+`current_setting('app.tenant_id')::uuid`. Alongside that: `pgx/v5` (not
+`database/sql`), `JSONB`, `gen_random_uuid()`, `SKIP LOCKED` in the
+outbox, and Asterisk's `res_config_pgsql` for the PJSIP Realtime
+projection (D-47).
+
+**MySQL has no row-level security of any kind.** Porting therefore means
+moving tenant isolation out of the database and into application `WHERE`
+clauses — exchanging an invariant the database enforces for one that code
+review enforces, in a product whose central promise is that one tenant
+cannot see another's data (D-24). One forgotten clause is a cross-tenant
+leak, and it would be found by a customer rather than by a test. That is
+not a swap.
+
+**This is the twelve-factor deviation, stated plainly.** Factor IV treats
+backing services as attached resources. We honour it for NATS (D-57) and
+for the media engine (D-41), and we break it here on purpose. A factor is
+a default, not a law; the cost of following it is the security model.
+
+**Alternatives:**
+- *An abstraction layer or ORM for portability.* Rejected twice over —
+  TOOLSET §2.2 already rejects ORMs, and a portability layer must target
+  the intersection of engines, which excludes RLS. It would deliver the
+  weaker model on both engines rather than one.
+- *Application-enforced isolation on any SQL engine.* Rejected — see
+  above.
+- *Keep it undocumented.* Rejected — an undocumented lock-in is
+  discovered by whoever proposes MySQL in a partner conversation, and by
+  then it sounds like an oversight rather than a decision.
+
+**Consequences:**
+- Any partner requirement for a different SQL engine is a **commercial
+  no**, answered from this entry rather than re-derived.
+- Should it ever become necessary, the entry point is not a driver: it is
+  a decision to re-express tenant isolation, and it needs its own
+  decision superseding D-24.
+- Postgres major-version upgrades stay ordinary work; nothing here
+  pins a version.
+
+**Related Decisions:** D-24 (multi-tenant seams enforced by the
+database), D-41 (engine portability by contract — the contrasting case),
+D-47 (PJSIP Realtime via `res_config_pgsql`), D-57 (NATS *is* swappable)
+**Traceability:** `docs/TOOLSET.md` §2.2, §3; HLD `03-domain-model.md`
+§5; `api/migrations/`
+
+---
+
+**D-56 · No distributed cache in R1.0; authorization state is never
+cached, verified state always is (2026-09-09).**
+
+**Decision:** No Redis, Memcached, or equivalent. R1.0 ships with
+PostgreSQL and NATS as its only stateful dependencies.
+
+Where caching does happen, one rule decides it:
+
+| Kind of state | Cached? | Example |
+|---|---|---|
+| **Authorization** — may this caller do this, right now | **Never** | Token validation reads the database per request (D-42), so disabling an account takes effect immediately |
+| **Verified, self-proving** — expensive to derive, cheap to re-check | **Always, in process** | The entitlement is verified once on load and held in memory (D-53), because verifying per call setup would put cryptography in the call path (AC-06.3) |
+
+**Context:** the two existing decisions on this each covered one case and
+neither stated the principle, so "why is there no cache?" had no answer
+to point at. D-42 rejected caching `ValidateToken` because "the caches
+that fix it reintroduce the window the design closed". D-53 requires
+caching the verified entitlement for the opposite reason. Both are right,
+and the rule that reconciles them is above.
+
+**Why no cache service in R1.0:**
+- Deployment is single-node (D-08); an in-process map is faster than a
+  network round trip and has no coherence problem to get wrong.
+- Every cache adds a staleness window, and the two places pressure would
+  push us to add one — authentication and licensing — are exactly where a
+  staleness window is a security defect rather than a latency win.
+- It is **another service the partner must run, back up, secure and
+  patch** on their own hardware. For self-hosted software that cost is
+  theirs, not ours, which makes it easy to underestimate.
+- Nothing has measured PostgreSQL as the bottleneck. Adding a cache
+  before a measurement is guessing with someone else's operational
+  budget.
+
+**Where a cache legitimately belongs later**, none of it R1.0: reporting
+aggregates, IVR flow definitions, and PJSIP realtime lookups on the
+Asterisk side. All read-mostly, none security-critical.
+
+**Alternatives:**
+- *Add Redis now for sessions and rate limiting.* Rejected — sessions are
+  stateless JWTs validated against the database by design, and rate
+  limiting is deferred (LLD-02 §10.5). Neither has a cache-shaped problem
+  yet.
+- *Cache authorization with a short TTL.* Rejected — "revoked but works
+  for another thirty seconds" is the exact behaviour D-42 refused, and a
+  TTL only sets the size of the hole.
+
+**Consequences:**
+- Adding any cache service is a decision that supersedes this one, and it
+  must name what was measured.
+- In-process caches remain fine and are used; they die with the process,
+  which for verified state is correct rather than a limitation.
+- Multi-node work (D-08) revisits this, because an in-process cache of
+  verified state is per-node — correct, but no longer shared.
+
+**Related Decisions:** D-08 (nothing built for year-three scale), D-42
+(identity in-process; no auth caching), D-53 (verified entitlement is
+cached in memory), D-55 (PostgreSQL is the datastore)
+**Traceability:** `docs/TOOLSET.md` §4; `docs/hld/08-performance.md`;
+`docs/lld/LLD-02-identity.md` §10.5
+
+---
+
+**D-57 · Event publishing goes through a port; the broker is confined to
+one package and one wire (2026-09-09).**
+
+**Decision:** Application code publishes domain events through a
+`ports.EventPublisher` interface and the transactional outbox. It never
+imports a broker package. NATS remains the implementation, behind
+`internal/nats`, wired only in `cmd/atsap-api`, and a depguard rule
+enforces that.
+
+**Context:** the broker is *already* confined — `internal/nats` is
+imported by exactly one file, `cmd/atsap-api/main.go`, and application
+code writes to the `outbox` table rather than to NATS. That is the right
+architecture and it happened for a good reason: the outbox is the seam.
+
+But it holds **by accident rather than by contract**. There is no
+interface, and nothing fails if someone imports `internal/nats` from an
+application package tomorrow. A property that is true, valuable, and
+unenforced is a property with a short life (the same reasoning as D-48's
+gate work and the `pbx-acl-boundary` rule).
+
+**Consequences:**
+- A small `EventPublisher` port and a `broker-stays-behind-the-outbox`
+  depguard rule denying `atsap-api/internal/nats` from every
+  `internal/*/application`, `domain` and `rpc` package. Fault-injected
+  once to prove it rejects.
+- **Replacing NATS is then a bounded change**: `internal/nats` plus one
+  line in the composition root. Kafka, RabbitMQ or Redis Streams all sit
+  behind the same outbox drain, because the durability decision was made
+  by the outbox, not by the broker.
+- This is deliberately the opposite of D-55. Where PostgreSQL's
+  substitution cost is the security model, the broker's is a package —
+  so twelve-factor IV is honoured here and knowingly broken there.
+- No behaviour changes. This is a boundary made explicit, not a
+  redesign.
+
+**Related Decisions:** D-41 (engine portability by contract — the same
+pattern for Asterisk), D-48 (gates over stated intentions), D-55
+(PostgreSQL, the contrasting case)
+**Traceability:** `api/internal/nats/`, `api/cmd/atsap-api/main.go`,
+`.golangci.yml`; `docs/TOOLSET.md` §3
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
