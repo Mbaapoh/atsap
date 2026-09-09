@@ -24,7 +24,7 @@ a licensing bug and be diagnosed as one.
 
 | File | Change |
 |---|---|
-| `telephony/ports/ports.go` | `LicenseManager` gains `ReleaseCapacity(ctx, channels int) error` |
+| `telephony/ports/ports.go` | `LicenseManager` gains `ReleaseCapacity(ctx, callID)` — keyed by call so it is idempotent (D3, D-58) |
 | `telephony/application/service.go` | `finalizeTermination` (`:368`) calls it once per released channel |
 
 **What does not change:** the direction of the seam. `telephony-core`
@@ -54,22 +54,33 @@ Merging them requires `licensing` to import `telephony/ports` for the
 denied by HLD 04 §10.1. `cmd/atsap-api` holds a small adapter translating
 between the two verdict types. That is the composition root doing its job.
 
-## D3. Release is idempotent per call, and the call owns the decision
+## D3. Release is keyed by call, so it is idempotent rather than merely guarded
 
-The counter cannot defend itself against a double release: it is a
-number. So the call does.
+**Revised under D-58.** The first draft relied on `finalizeTermination`
+running once per call — the single funnel every termination route
+reaches, guarded by the `CallTerminated` state check. That is
+**at-most-once by guard, not idempotency**, and the distinction matters
+because of which way it fails.
 
-`finalizeTermination` runs once per call — it is the single funnel every
-termination route reaches, already guarded by the `CallTerminated` state
-check. Release is issued there and nowhere else. A second termination
-signal for an already-terminated call returns before reaching it, which
-is existing behaviour this change relies on rather than adds.
+A guard that stops holding decrements a counter twice for one call. The
+count then reads *lower* than reality, so the installation permits calls
+it should refuse — licence leakage that no test notices, because
+everything still works. Nothing surfaces until a partner is running more
+channels than they bought.
+
+So `ReleaseCapacity` takes a **call identifier** rather than a channel
+count, and the counter tracks which calls hold a reservation. A repeat
+release for a call that no longer holds one is a no-op returning success,
+not an error the caller must interpret and not a decrement. The guard
+stays — it is still correct and still cheap — but the invariant no longer
+depends on it, and a future termination path added by someone who has not
+read this file cannot silently break it.
 
 **A screened-out call never reserved anything.** `ValidateCapacity`
 increments only when it permits, so a refusal leaves the counter
-untouched and termination must not release. The condition is therefore
-"did this call leave Screening permitted", not "is this call
-terminating".
+untouched and termination must not release. Keying by call makes this
+fall out for free: there is no reservation under that call id to release.
+
 
 ## D4. Capacity state is in memory; `licensing_state` is not a counter
 

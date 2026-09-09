@@ -114,6 +114,23 @@ Applying a valid token SHALL take effect **without a restart**.
 - **THEN** it is rejected
 - **AND** the entitlement already in force is unchanged
 
+#### Scenario: Applying the same token twice changes nothing
+
+- **GIVEN** an installation activated with a token
+- **WHEN** the identical token is applied again
+- **THEN** the entitlement in force is unchanged
+- **AND** the outcome is success, not an error the caller must interpret
+- **AND** no call in progress is interrupted
+
+#### Scenario: Re-applying a token does not restart the grace clock
+
+- **GIVEN** an installation whose entitlement was last confirmed some
+  time ago
+- **WHEN** the same token is applied again
+- **THEN** the time of last successful confirmation is unchanged
+- **AND** the licence state is what the elapsed time dictates, not
+  refreshed by the re-application
+
 ### Requirement: The stored entitlement is the signed token, re-verified when loaded
 
 The system SHALL store the signed payload and its signature as the

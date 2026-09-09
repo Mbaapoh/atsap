@@ -44,3 +44,10 @@ the reserved count returns to its pre-call value exactly once.
 - **GIVEN** a call that has already terminated and released its channel
 - **WHEN** a further termination signal arrives for the same call
 - **THEN** no further release is performed
+
+#### Scenario: Release is identified by the call, not counted blindly
+- **GIVEN** a call that has released its reserved channel
+- **WHEN** a release is requested again for that same call, by any route
+- **THEN** the reserved count is unchanged
+- **AND** the outcome is the same as if the release had never been
+  requested, rather than an error the caller must handle

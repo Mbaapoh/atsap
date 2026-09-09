@@ -1582,17 +1582,26 @@ imported by exactly one file, `cmd/atsap-api/main.go`, and application
 code writes to the `outbox` table rather than to NATS. That is the right
 architecture and it happened for a good reason: the outbox is the seam.
 
-But it holds **by accident rather than by contract**. There is no
-interface, and nothing fails if someone imports `internal/nats` from an
-application package tomorrow. A property that is true, valuable, and
+> **Correction, 2026-09-09.** This entry as first written said "there is
+> no interface". That was wrong: `postgres.OutboxPublisher` exists
+> (`api/internal/postgres/outbox.go:28`) and `internal/nats.Publisher`
+> asserts conformance to it. The accurate statement is narrower — the
+> port exists but is **owned by the persistence package rather than a
+> `ports` package**, and no gate enforces the boundary. The decision
+> below is unchanged; only its premise was overstated.
+
+What is unenforced is the boundary, not the abstraction: nothing fails if
+someone imports `internal/nats` from an application package tomorrow, and
+the port sits in `internal/postgres`, which is a persistence concern
+owning a messaging contract. A property that is true, valuable, and
 unenforced is a property with a short life (the same reasoning as D-48's
 gate work and the `pbx-acl-boundary` rule).
 
 **Consequences:**
-- A small `EventPublisher` port and a `broker-stays-behind-the-outbox`
-  depguard rule denying `atsap-api/internal/nats` from every
-  `internal/*/application`, `domain` and `rpc` package. Fault-injected
-  once to prove it rejects.
+- `OutboxPublisher` moves out of `internal/postgres` into a ports
+  package, and a `broker-stays-behind-the-outbox` depguard rule denies
+  `atsap-api/internal/nats` from every `internal/*/application`,
+  `domain` and `rpc` package. Fault-injected once to prove it rejects.
 - **Replacing NATS is then a bounded change**: `internal/nats` plus one
   line in the composition root. Kafka, RabbitMQ or Redis Streams all sit
   behind the same outbox drain, because the durability decision was made
@@ -1608,6 +1617,81 @@ pattern for Asterisk), D-48 (gates over stated intentions), D-55
 (PostgreSQL, the contrasting case)
 **Traceability:** `api/internal/nats/`, `api/cmd/atsap-api/main.go`,
 `.golangci.yml`; `docs/TOOLSET.md` §3
+
+---
+
+**D-58 · Idempotency and immutability are named invariants, not
+properties that happen to hold (2026-09-09).**
+
+**Decision:** Two properties the design already depends on are stated
+here, with where each applies and how each is enforced, because until now
+they held in several places for several unrelated reasons and in one
+place did not hold at all.
+
+**Idempotency — required wherever an operation can be retried or
+redelivered:**
+
+| Site | Mechanism |
+|---|---|
+| Outbox → NATS | **At-least-once by construction.** The worker publishes and only then marks the row published; a crash between the two republishes it. The outbox row id is sent as the JetStream message id, so a repeat inside the dedupe window is discarded server-side |
+| Every event consumer | **Must be idempotent.** Dedupe narrows the window, it does not close it — a republish after the window still arrives |
+| `ProjectExtension` (D-47) | Upsert-based; already idempotent |
+| ARI redelivery | Guarded by the `CallTerminated` state check |
+| `ReleaseCapacity` | **Keyed by call id**, so a repeat release is a no-op rather than a decrement |
+| `ApplyLicenseKey` | Applying the same token twice succeeds, changes nothing, and does not refresh `last_confirmed_at` |
+| Public creates | Not idempotent by default; a caller-supplied idempotency key is decided per endpoint (`docs/API.md` §3a) |
+
+**Immutability — required wherever a record is evidence:**
+
+| Site | Why |
+|---|---|
+| `audit_logs` | BR-07. Append-and-read-only, asserted by a tripwire test |
+| Usage ticks and call detail | BR-07 — partners bill from this data, so corrections are separate attributable adjustments, never edits |
+| Outbox rows | Written once; only `published_at` is set afterwards |
+| Residency zone | Fixed at provisioning, asserted (LLD-02) |
+| The signed licence payload | D-53 — the mutable copy exists but is never authoritative |
+
+**Context:** the question "does this design need idempotency and
+immutability" had no single answer to point at. Both were relied upon in
+four or five places each, enforced variously by a database constraint, a
+test, an upsert, or nothing. That is how a property survives until the
+day someone adds a code path that does not know about it.
+
+**The one place it did not hold.** `ReleaseCapacity` as first designed
+was at-most-once by *guard* — correct only while `finalizeTermination`
+remains the single termination funnel. The failure direction is what
+makes it worth fixing rather than documenting: a double release
+under-counts, so the installation permits calls it should refuse. That is
+licence leakage which no test notices, because everything continues to
+work. Keying release by call id makes the invariant independent of the
+guard.
+
+**Alternatives:**
+- *Exactly-once delivery.* Not available, and pursuing it is the classic
+  distributed-systems error. At-least-once plus idempotent consumers is
+  the reachable design; dedupe by message id makes the common case
+  cheap.
+- *Reverse the outbox ordering — mark published, then publish.* Rejected:
+  it trades duplicates for lost events, and a lost usage event is
+  unbillable revenue that nothing can reconstruct.
+- *Leave both properties implicit.* Rejected — that is the state that
+  produced the `ReleaseCapacity` gap.
+
+**Consequences:**
+- The JetStream stream carries a five-minute dedupe window, and a test
+  fault-injected against it (publishing the same row twice delivers one
+  message; removing the message id delivers two).
+- `ReleaseCapacity` takes a call id rather than a channel count.
+- New event consumers state how they are idempotent, in the change that
+  adds them. "The broker handles it" is not an answer past the window.
+- Nothing here changes an existing behaviour; it names what was already
+  required and closes the one case that was not met.
+
+**Related Decisions:** D-24 (multi-tenant seams), D-47 (upsert-based
+projection), D-53 (the signed payload is authoritative), D-57 (the broker
+sits behind the outbox)
+**Traceability:** BRD §9 BR-07; `docs/API.md` §3a;
+`api/internal/nats/publisher.go`, `api/internal/postgres/outbox.go`
 
 ---
 
