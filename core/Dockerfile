@@ -19,10 +19,27 @@
 
 FROM debian:bookworm-slim
 
-ARG ASTERISK_VERSION=22.8.2
-# Verified 2026-09-06 against the official releases/asterisk-22.8.2.tar.gz
-# (26,523,526 bytes; sha256sum of a local download).
-ARG ASTERISK_SHA256=8dd373ce0771a9ed40bb54a72a889ccdd14c0cee458ed68da9ce913a668e4b22
+ARG ASTERISK_VERSION=22.11.0
+# Verified 2026-09-09 against the official releases/asterisk-22.11.0.tar.gz
+# (26,724,408 bytes; sha256sum of a local download).
+#
+# DO NOT DOWNGRADE BELOW 22.11.0. This version is load-bearing for the
+# e2e suite, not a routine currency bump.
+#
+# 22.11.0 carries "res_http_websocket: Unref session when it fails to
+# establish" (#2020): two error paths leaked an ast_websocket session,
+# one reachable when the ARI pre-callback fails. On 22.8.2 that leak
+# wedges the engine after the first e2e run — see
+# docs/ASTERISK-INTEGRATION.md §2.1.1 for the controlled A/B (identical
+# test code and rig, only this ARG changed: 22.8.2 gave 1 pass then 5
+# failures with threads climbing +4 per run; 22.11.0 gave 6 passes with
+# threads flat).
+#
+# Not #1979. That issue (handshake read with no timeout, hanging a
+# thread holding the channel lock) has the right shape but the wrong
+# direction — it is the OUTBOUND client path, and nothing here makes
+# Asterisk dial out over WebSocket. Recorded so it is not re-credited.
+ARG ASTERISK_SHA256=3bd5ee040509a3d3cd9b1ba9520c18e6ec0a7e7981ca68c457dcd36ba3c54d94
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \

@@ -104,22 +104,28 @@ Getting there uncovered four defects, none of them in the assertions:
 Each has a regression test. The e2e earned its keep several times over
 before it went green.
 
-**The residual is NOT gone, and my earlier note here claiming it was is
-withdrawn.** Asterisk's `sessionlimit` default of 100 is a real limit and
-is now raised to 500 — verified applied, with thread counts climbing past
-100 where they previously could not. But it was **not** the cause: with
-the limit raised and threads at 111, every e2e run still failed.
+**The residual is now resolved, and it was never ours.** Root cause:
+Asterisk issue #2020, an inbound websocket session leak in
+`res_http_websocket`, fixed upstream in 22.11.0. The engine is pinned
+there in `core/Dockerfile`; no product code changed.
 
-Host-side WebSocket upgrades to the published port hang while the app
-container's in-network stream stays healthy. Root cause unidentified.
-What has been ruled out, and the next step, are in
-`docs/ASTERISK-INTEGRATION.md` §2.1.1.
+Established by a controlled A/B — identical test code and rig, only the
+`ASTERISK_VERSION` build arg differing, six consecutive runs with no
+restart between them: **22.8.2** passed once then failed five times with
+thread count climbing +4 per run; **22.11.0** passed all six with thread
+count flat. The full table is in `docs/ASTERISK-INTEGRATION.md` §2.1.1.
 
-**This does not weaken G1's result.** The five INV-03 stages were
-observed passing against live Asterisk on a restored rig, repeatedly. The
-open problem is running the suite *repeatedly without a restart*, which
-affects the untouched `TestWalkingSkeleton` identically and predates this
-change.
+Two earlier claims recorded here are superseded, both of which I had
+already withdrawn once: the `sessionlimit` default of 100 was a genuine
+finding and is still raised to 500, but it was not the cause; and the
+host→container port-publishing path was a dead lead — the wedge
+reproduced identically against the container IP with no NAT involved.
+
+**G1's result is unaffected and now reproducible without a restart.**
+The five INV-03 stages were already observed passing on a restored rig;
+what was open was running the suite *repeatedly*, which failed the
+untouched `TestWalkingSkeleton` identically and predated this change.
+That is what the engine upgrade fixed.
 
 ### G2 — INV-01 cannot be proven here at all
 

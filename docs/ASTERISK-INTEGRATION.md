@@ -56,10 +56,49 @@ they could not before.
 
 **Read the next section before concluding this explains a failure.**
 
-### 2.1.1 UNRESOLVED: host-side WebSocket upgrades hang
+### 2.1.1 RESOLVED: an upstream websocket session leak (Asterisk < 22.11.0)
 
-**Status 2026-09-09: root cause not identified. Do not assume it is the
-session limit — that was checked and ruled out.**
+**Status 2026-09-09: root cause identified and fixed by upgrading the
+engine to 22.11.0.** The fix is the version pin in `core/Dockerfile`;
+there is no code change on our side. Do not downgrade below 22.11.0.
+
+**Cause.** Asterisk issue #2020, *"Possible leak of inbound websocket
+session"*: two error paths in `res_http_websocket` allocated an
+`ast_websocket` session and returned without dropping the reference. One
+is reachable when the ARI pre-callback fails. Every e2e run leaked
+sessions until the engine stopped serving new ARI event streams. Fix
+commit: `res_http_websocket: Unref session when it fails to establish`,
+released in 22.11.0.
+
+**The controlled A/B that established it.** Same test code, same
+`mise run rig:restore` procedure, same six-run loop, only the
+`ASTERISK_VERSION` build arg changed. Six consecutive runs on one rig
+with **no** restart between them:
+
+| Run | 22.8.2 threads / result | 22.11.0 threads / result |
+|---|---|---|
+| 1 | 82 — PASS | 84 — PASS |
+| 2 | 92 — FAIL | 84 — PASS |
+| 3 | 96 — FAIL | 84 — PASS |
+| 4 | 100 — FAIL | 84 — PASS |
+| 5 | 104 — FAIL | 84 — PASS |
+| 6 | 108 — FAIL | 84 — PASS |
+
+Thread count is the leak signature and the reason this is attribution
+rather than correlation: on 22.8.2 it climbs monotonically by ~4 per run
+and lingering `stasis/m:ari:application` taskprocessors go 1 → 3 and
+stay; on 22.11.0 both are flat across all six. Test-side changes cannot
+hold an engine's thread count flat.
+
+**Why it took so long to find.** The first run always passed, on every
+version. Any loop shorter than two runs reports success, which is why
+the six-run loop — not a single green run — is the acceptance test.
+The script is `scratchpad/wedge-loop.sh`; keep using it after any
+engine or ARI-client change.
+
+**Everything below is the investigation that preceded the fix.** It is
+kept because each entry cost real time and re-running any of it would
+waste that time again.
 
 **Symptom.** A client on the host, connecting through the published port
 `127.0.0.1:8088`, sends the WebSocket upgrade and receives nothing.
@@ -85,7 +124,7 @@ looks healthy and its healthcheck passes.
 | Stasis apps accumulating | `ari show apps` is empty when failing |
 | Missing schema / deregistered devices | Schema present (17 tables), `pjsip show contacts` shows 2 |
 
-**The strongest lead, and it is only a lead.** While host-side upgrades
+**A lead that was pursued and died — kept so it is not re-run.** While host-side upgrades
 hang, the **app container's** ARI stream — established over the Docker
 network rather than the published port — logs zero reconnects. That
 points at the host→container port-publishing path for long-lived
@@ -102,6 +141,11 @@ Measured on a wedged engine, each item fresh and independent:
 - `/` answers 404 in 9ms and bad credentials answer 401 in 8ms, while
   every **authenticated** `/ari/*` call — REST and WS alike — hangs.
   TCP, HTTP dispatch and auth are fine; the stall is past auth.
+  (Refined by the 22.8.2 control run above: authenticated **REST** still
+  answered `200` on every failing run while only the WS upgrade timed
+  out. Total authenticated hang is a later, deeper stage of the same
+  leak, not its first symptom — so "REST answers, therefore the engine
+  is fine" is not a safe inference at any stage.)
 - Stopping the app container (removing all client retry pressure) does
   not clear it; 150s of idle does not clear it. Only an Asterisk restart
   clears it. No TCP pileup (zero sockets on 8088), no taskprocessor
@@ -114,13 +158,21 @@ Measured on a wedged engine, each item fresh and independent:
   accumulation alone does not explain it — there are either two
   mechanisms or one whose trigger is not the count.
 
-**Next step for whoever picks this up:** run the same upgrade probe from
-a container on `deploy_voip` and from the host at the same moment. If
-in-network succeeds while host fails, the fix is in how the e2e reaches
-the engine — not in Asterisk and not in our client.
+**The candidate that did NOT fit, recorded so it is not re-credited:**
+#1979, *"outbound client handshake read has no timeout"* — a
+non-responsive peer hangs the calling thread forever *while holding the
+channel lock*, stalling the process. The shape matches the symptom
+exactly, which makes it tempting, but the direction is wrong: that path
+is Asterisk dialling **out** over WebSocket, and nothing in this
+deployment makes it do so. It is also fixed in 22.11.0, so an upgrade
+alone cannot distinguish the two — only the leak signature (flat vs.
+climbing thread count) does.
 
-**Workaround today:** `mise run rig:restore` restarts Asterisk, after
-which a full e2e run passes. Subsequent runs may not.
+**The workaround this replaced:** before the upgrade, `mise run
+rig:restore` was the only remedy — it restarts Asterisk, after which one
+e2e run passes and subsequent ones may not. `rig:restore` is still the
+right tool between test tiers for its *other* reason (the integration
+tier drops the schema), but it is no longer needed to un-wedge ARI.
 
 ### 2.2 The WebSocket client needs bounds the libraries do not give it
 

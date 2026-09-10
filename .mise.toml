@@ -31,15 +31,18 @@ run = "./scripts/uat-auto.sh"
 #      tables and sip-ua deregistered — since ps_contacts became
 #      realtime-backed, registrations live in Postgres (D-47).
 #
-#   2. Asterisk's ARI WebSocket stops accepting event streams after a
-#      long-running container has served many of them. Observed
-#      2026-09-09 after ~20 hours and a day of e2e runs: the HTTP API
-#      still answers 200, but every stream dial times out, and the app
-#      logs "ari: event stream disconnected, retrying" on a growing
-#      backoff. The test-side symptom is
-#      "timed out waiting for Stasis app voip-app-e2e to register",
-#      which names neither Asterisk nor WebSockets and sends you looking
-#      at your own test. Restarting Asterisk clears it.
+#   2. (FIXED in Asterisk 22.11.0 — kept as history, and as the reason
+#      the engine version is pinned.) Asterisk's ARI WebSocket used to
+#      stop accepting event streams after serving a handful of them: the
+#      HTTP API still answered 200, but every stream dial timed out and
+#      the app logged "ari: event stream disconnected, retrying" on a
+#      growing backoff. The test-side symptom was "timed out waiting for
+#      Stasis app voip-app-e2e to register", which names neither Asterisk
+#      nor WebSockets and sends you looking at your own test. Root cause
+#      was upstream issue #2020, an inbound websocket session leak;
+#      restarting Asterisk was the only workaround. If this ever returns,
+#      check the engine version FIRST (docs/ASTERISK-INTEGRATION.md
+#      §2.1.1) before suspecting the test.
 #
 # Order matters: Asterisk first (it owns the ARI listener and the
 # registrations), then the app (it migrates on boot), then sip-ua (it
