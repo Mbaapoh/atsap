@@ -32,6 +32,7 @@ import (
 	pbxrpc "atsap-api/internal/pbx/rpc"
 	corepostgres "atsap-api/internal/postgres"
 	"atsap-api/internal/server"
+	shareddomain "atsap-api/internal/shared/domain"
 	"atsap-api/internal/telephony/acl"
 	"atsap-api/internal/telephony/acl/ami"
 	"atsap-api/internal/telephony/acl/ari"
@@ -242,6 +243,26 @@ func main() {
 		Addresser: pbxasterisk.Addresser{},
 		Legs:      pbxpostgres.NewCallLegStore(),
 	})
+	// Inbound numbers and the emergency profile live beside the
+	// configuration stores; the router answers telephony-core's
+	// InboundRouter port through the composition root, never an import
+	// (LLD-03 §4.2). pbx-core is constructed before telephony needs it.
+	pbxSvc = pbxSvc.
+		WithEmergencyStores(pbxpostgres.NewInboundNumberStore(), pbxpostgres.NewEmergencyStore()).
+		WithInbound(pbxapp.Inbound{
+			Addresser: pbxasterisk.Addresser{},
+			Numbers:   pbxpostgres.NewInboundNumberStore(),
+			Emergency: pbxpostgres.NewEmergencyStore(),
+			Legs:      pbxpostgres.NewCallLegStore(),
+			Status:    callStatusAdapter{calls: callStore},
+			// Late binding on purpose: the closure reads the
+			// variable, so health reports land on the fully wired
+			// service, not the pre-inbound clone.
+			ReportHealth: func(ctx context.Context, id shareddomain.TrunkID, code int, latency time.Duration) error {
+				return pbxSvc.ReportRouteHealth(ctx, id, code, latency)
+			},
+		})
+	callService.SetInboundRouter(pbxSvc)
 	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
 		connectrpc.WithInterceptors(authInterceptor))
 	handlers[pbxPath] = pbxRPC

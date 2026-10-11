@@ -87,7 +87,15 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 		caller domain.Extension
 		res    domain.Resolution
 	)
-	err := s.pool.WithTenant(ctx, cmd.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+	// The dial plan matches against the tenant's effective emergency set
+	// — 112 plus its country's catalogue plus its own additions — so an
+	// emergency number is recognized on every origination path (design
+	// D6). Without a configured profile the built-in default applies.
+	emergency, err := s.effectiveEmergencySet(ctx, cmd.TenantID)
+	if err != nil {
+		return ports.PlacedCall{}, err
+	}
+	err = s.pool.WithTenant(ctx, cmd.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		if caller, err = s.store.Get(ctx, tx, cmd.TenantID, cmd.ExtensionID); err != nil {
 			return err
@@ -111,7 +119,7 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 			}
 			return e.ID, true
 		}
-		res, err = domain.ResolveDestination(cmd.Destination, p.Emergency, lookup, routes, trunks)
+		res, err = domain.ResolveDestination(cmd.Destination, emergency, lookup, routes, trunks)
 		if lookupErr != nil {
 			return lookupErr
 		}

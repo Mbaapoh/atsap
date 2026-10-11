@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -100,6 +101,40 @@ func (f *fakeService) HangupCall(context.Context, shareddomain.TenantID, sharedd
 
 func (f *fakeService) ListRoutes(context.Context, shareddomain.TenantID, ports.Page) ([]ports.RouteView, error) {
 	return nil, f.err
+}
+
+// Stubs for the inbound-and-emergency surface: the handlers land in
+// Group 4, but the interface already carries them so the fake must too.
+func (f *fakeService) CreateInboundNumber(context.Context, ports.CreateInboundNumberCommand) (ports.InboundNumberView, error) {
+	return ports.InboundNumberView{}, f.err
+}
+
+func (f *fakeService) ListInboundNumbers(context.Context, shareddomain.TenantID) ([]ports.InboundNumberView, error) {
+	return nil, f.err
+}
+
+func (f *fakeService) DeleteInboundNumber(context.Context, shareddomain.TenantID, uuid.UUID) error {
+	return f.err
+}
+
+func (f *fakeService) SetEmergencyProfile(context.Context, shareddomain.TenantID, string) error {
+	return f.err
+}
+
+func (f *fakeService) GetEmergencyProfile(context.Context, shareddomain.TenantID) (ports.EmergencyProfile, error) {
+	return ports.EmergencyProfile{}, f.err
+}
+
+func (f *fakeService) CreateEmergencyNumber(context.Context, shareddomain.TenantID, string) error {
+	return f.err
+}
+
+func (f *fakeService) ListEmergencyNumbers(context.Context, shareddomain.TenantID) ([]ports.EmergencyNumberView, error) {
+	return nil, f.err
+}
+
+func (f *fakeService) DeleteEmergencyNumber(context.Context, shareddomain.TenantID, string) error {
+	return f.err
 }
 
 func sampleView() ports.ExtensionView {

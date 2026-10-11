@@ -20,3 +20,24 @@ func TestAddresser(t *testing.T) {
 		"the + is dropped and the call goes via the trunk's endpoint")
 	assert.Equal(t, "PJSIP/112@"+domain.TrunkEndpointIdentifier(trunk), a.TrunkAddress(trunk, "112"))
 }
+
+func TestAddresser_Identify(t *testing.T) {
+	ext := shareddomain.NewExtensionID()
+	trunk := shareddomain.NewTrunkID()
+	a := asterisk.Addresser{}
+
+	got, ok := a.Identify(domain.EndpointIdentifier(ext))
+	assert.True(t, ok, "a projected extension round-trips")
+	assert.False(t, got.IsTrunk)
+	assert.Equal(t, ext, got.ExtensionID)
+
+	got, ok = a.Identify(domain.TrunkEndpointIdentifier(trunk))
+	assert.True(t, ok, "a projected trunk round-trips")
+	assert.True(t, got.IsTrunk)
+	assert.Equal(t, trunk, got.TrunkID)
+
+	for _, unknown := range []string{"", "1000", "1001", "e_nothex", "t_", "sip-provider", "PJSIP/e_abc"} {
+		_, ok := a.Identify(unknown)
+		assert.False(t, ok, "anything not projected is refused: %q", unknown)
+	}
+}

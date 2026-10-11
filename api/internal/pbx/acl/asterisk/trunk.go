@@ -86,8 +86,8 @@ func (p *Projector) ProjectTrunk(ctx context.Context, tx pgx.Tx, t domain.Trunk,
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO ps_endpoints
-			(id, transport, aors, auth, outbound_auth, context, disallow, allow, direct_media, from_user, from_domain)
-		VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 'no', $8, $9)
+			(id, transport, aors, auth, outbound_auth, context, disallow, allow, direct_media, from_user, from_domain, set_var)
+		VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 'no', $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE SET
 			transport     = EXCLUDED.transport,
 			aors          = EXCLUDED.aors,
@@ -98,10 +98,24 @@ func (p *Projector) ProjectTrunk(ctx context.Context, tx pgx.Tx, t domain.Trunk,
 			allow         = EXCLUDED.allow,
 			direct_media  = EXCLUDED.direct_media,
 			from_user     = EXCLUDED.from_user,
-			from_domain   = EXCLUDED.from_domain
+			from_domain   = EXCLUDED.from_domain,
+			set_var       = EXCLUDED.set_var
 	`, id, p.cfg.SIPTransport, id, outboundAuth, stasisContext,
-		disallowedCodecs, allowedCodecs, fromUser, t.Host); err != nil {
+		disallowedCodecs, allowedCodecs, fromUser, t.Host, setVarFor(t.TenantID)); err != nil {
 		return fmt.Errorf("project trunk endpoint: %w", err)
+	}
+
+	// Identify-by-IP (design D5): one row matching the carrier's host,
+	// so signalling from that address is attributed to this trunk.
+	// Asterisk resolves a hostname match itself.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO ps_endpoint_id_ips (id, endpoint, "match")
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id) DO UPDATE SET
+			endpoint = EXCLUDED.endpoint,
+			"match"  = EXCLUDED."match"
+	`, id, id, t.Host); err != nil {
+		return fmt.Errorf("project trunk identify: %w", err)
 	}
 	return nil
 }
@@ -115,6 +129,7 @@ func (p *Projector) RemoveTrunk(ctx context.Context, tx pgx.Tx, trunkID shareddo
 		{"ps_endpoints", `DELETE FROM ps_endpoints WHERE id = $1`},
 		{"ps_auths", `DELETE FROM ps_auths WHERE id = $1`},
 		{"ps_aors", `DELETE FROM ps_aors WHERE id = $1`},
+		{"ps_endpoint_id_ips", `DELETE FROM ps_endpoint_id_ips WHERE id = $1`},
 	} {
 		if _, err := tx.Exec(ctx, stmt.sql, id); err != nil {
 			return fmt.Errorf("deproject trunk %s: %w", stmt.table, err)
@@ -134,13 +149,14 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 
 	var (
 		transport, aors, context_, allow, fromDomain string
+		setVar                                      *string
 		auth, outboundAuth, fromUser, contact        *string
 	)
 	err := p.pool.Unwrap().QueryRow(ctx, `
-		SELECT e.transport, e.aors, e.auth, e.outbound_auth, e.context, e.allow, e.from_user, e.from_domain, r.contact
+		SELECT e.transport, e.aors, e.auth, e.outbound_auth, e.context, e.allow, e.from_user, e.from_domain, e.set_var, r.contact
 		FROM ps_endpoints e JOIN ps_aors r ON r.id = e.id
 		WHERE e.id = $1
-	`, id).Scan(&transport, &aors, &auth, &outboundAuth, &context_, &allow, &fromUser, &fromDomain, &contact)
+	`, id).Scan(&transport, &aors, &auth, &outboundAuth, &context_, &allow, &fromUser, &fromDomain, &setVar, &contact)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return []string{"missing"}, nil
 	}
@@ -167,6 +183,17 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 	expect("allow", allowedCodecs, allow)
 	expect("from_domain", t.Host, fromDomain)
 	expect("contact", contactFor(t), str(contact))
+	expect("set_var", setVarFor(t.TenantID), str(setVar))
+
+	var identifyMatch *string
+	err = p.pool.Unwrap().QueryRow(ctx, `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&identifyMatch)
+	if errors.Is(err, pgx.ErrNoRows) {
+		drift = append(drift, "identify")
+	} else if err != nil {
+		return nil, fmt.Errorf("read projected trunk identify: %w", err)
+	} else {
+		expect("identify", t.Host, str(identifyMatch))
+	}
 
 	if t.AuthUsername == "" {
 		expect("outbound_auth", "", str(outboundAuth))

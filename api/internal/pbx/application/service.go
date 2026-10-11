@@ -57,12 +57,15 @@ type Service struct {
 	store     ports.ExtensionStore
 	trunks    ports.TrunkStore
 	routes    ports.RouteStore
+	numbers   ports.InboundNumberStore
+	emergency ports.EmergencyStore
 	extCap    ports.ExtensionCap
 	projector ports.EndpointProjector
 	authz     Authorizer
 	audit     AuditAppender
 	realm     string
 	placement *Placement
+	inbound   *Inbound
 	rand      io.Reader
 	now       func() time.Time
 }
@@ -248,6 +251,25 @@ func (s *Service) DeleteExtension(ctx context.Context, tenantID shareddomain.Ten
 		before, err := s.store.Get(ctx, tx, tenantID, id)
 		if err != nil {
 			return err
+		}
+		// The extension's DIDs leave with it, each audited, mirroring
+		// trunk/route deletion (design D7). They go first: the
+		// composite foreign key refuses the extension delete while a
+		// number still points at it.
+		if s.numbers != nil {
+			removed, err := s.numbers.DeleteByExtension(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			for _, n := range removed {
+				if err := s.appendAuditEntry(ctx, tx, actor, tenantID, "inbound_number.deleted",
+					auditResourceInboundNumber, n.ID.String(), map[string]any{
+						"number":       n.Number,
+						"extension_id": n.ExtensionID.String(),
+					}, nil); err != nil {
+					return err
+				}
+			}
 		}
 		if err := s.store.Delete(ctx, tx, tenantID, id); err != nil {
 			return err

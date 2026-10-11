@@ -32,3 +32,16 @@ func (Addresser) ExtensionAddress(id shareddomain.ExtensionID) string {
 func (Addresser) TrunkAddress(id shareddomain.TrunkID, number string) string {
 	return pjsipTech + strings.TrimPrefix(number, "+") + "@" + domain.TrunkEndpointIdentifier(id)
 }
+
+// Identify attributes a projected endpoint name back to its domain
+// identity: e_… to its extension, t_… to its trunk, anything else
+// refused (design D4).
+func (Addresser) Identify(endpoint string) (ports.EndpointIdentity, bool) {
+	if id, ok := domain.ExtensionIDFromIdentifier(endpoint); ok {
+		return ports.EndpointIdentity{ExtensionID: id}, true
+	}
+	if id, ok := domain.TrunkIDFromIdentifier(endpoint); ok {
+		return ports.EndpointIdentity{TrunkID: id, IsTrunk: true}, true
+	}
+	return ports.EndpointIdentity{}, false
+}

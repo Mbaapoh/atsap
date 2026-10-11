@@ -49,6 +49,14 @@ var (
 	// ErrCallRefused is a call telephony-core's Screening refused —
 	// licensed capacity or compliance. Wrapped with the refusal reason.
 	ErrCallRefused = errors.New("call refused")
+
+	// ErrInboundNumberTaken is a DID already assigned in the tenant.
+	ErrInboundNumberTaken = errors.New("inbound number already assigned in this tenant")
+
+	// ErrEmergencyNumberProtected is deleting (or removing the
+	// emergency status of) 112 or a catalogue number for the tenant's
+	// country: the floor no tenant can configure away (design D6).
+	ErrEmergencyNumberProtected = errors.New("emergency number is built-in and cannot be removed")
 )
 
 // ExtensionCap supplies the installation's extension cap — the mirror of
@@ -229,6 +237,57 @@ type ConfigService interface {
 	// PlaceCall and HangupCall are the dial plan's wire surface (LLD-03 §6).
 	PlaceCall(ctx context.Context, cmd PlaceCallCommand) (PlacedCall, error)
 	HangupCall(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID) error
+
+	// Inbound numbers: the tenant's DIDs, each ringing one extension.
+	CreateInboundNumber(ctx context.Context, cmd CreateInboundNumberCommand) (InboundNumberView, error)
+	ListInboundNumbers(ctx context.Context, tenantID shareddomain.TenantID) ([]InboundNumberView, error)
+	DeleteInboundNumber(ctx context.Context, tenantID shareddomain.TenantID, id uuid.UUID) error
+
+	// Emergency profile: the tenant's emergency country and its own
+	// additional numbers (design D6).
+	SetEmergencyProfile(ctx context.Context, tenantID shareddomain.TenantID, countryCode string) error
+	GetEmergencyProfile(ctx context.Context, tenantID shareddomain.TenantID) (EmergencyProfile, error)
+	CreateEmergencyNumber(ctx context.Context, tenantID shareddomain.TenantID, number string) error
+	ListEmergencyNumbers(ctx context.Context, tenantID shareddomain.TenantID) ([]EmergencyNumberView, error)
+	DeleteEmergencyNumber(ctx context.Context, tenantID shareddomain.TenantID, number string) error
+}
+
+// CreateInboundNumberCommand assigns a DID to an extension in the same
+// tenant. Number carries an optional leading "+".
+type CreateInboundNumberCommand struct {
+	TenantID    shareddomain.TenantID
+	Number      string
+	ExtensionID shareddomain.ExtensionID
+}
+
+// InboundNumberView is what a caller sees of a DID: no engine state,
+// never another tenant's extension.
+type InboundNumberView struct {
+	ID          uuid.UUID
+	Number      string
+	ExtensionID shareddomain.ExtensionID
+}
+
+// EmergencyNumberView is one effective emergency number and where it
+// comes from: BuiltIn (112 or the country's catalogue, not removable)
+// or the tenant's own addition.
+type EmergencyNumberView struct {
+	Number  string
+	BuiltIn bool
+}
+
+// EmergencyProfile is the tenant's emergency configuration as the
+// console renders it.
+type EmergencyProfile struct {
+	// CountryCode is the tenant's emergency country, "" when unset.
+	CountryCode string
+	// CountrySet reports whether a country was ever chosen. InCatalogue
+	// reports whether it names a catalogued country. Both false with an
+	// empty code means "no country set"; set-but-uncatalogued means
+	// "enter your numbers".
+	CountrySet  bool
+	InCatalogue bool
+	Numbers     []EmergencyNumberView
 }
 
 // CallOutcome is what pbx-core needs to know about a call it placed.
@@ -247,12 +306,27 @@ type CallStatus interface {
 	Status(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID) (CallOutcome, error)
 }
 
+// EndpointIdentity is what a projected endpoint name attributes back
+// to: exactly one of an extension or a trunk.
+type EndpointIdentity struct {
+	ExtensionID shareddomain.ExtensionID
+	TrunkID     shareddomain.TrunkID
+	IsTrunk     bool
+}
+
 // EndpointAddresser turns domain identities into the engine addresses an
 // origination needs. Implemented by pbx/acl/asterisk, the only package
 // permitted engine vocabulary (D-41, D-47).
 type EndpointAddresser interface {
 	ExtensionAddress(id shareddomain.ExtensionID) string
 	TrunkAddress(id shareddomain.TrunkID, dialled string) string
+	// Identify attributes a projected endpoint name back to the domain
+	// identity it was projected from (design D4): the arriving-call
+	// path's translation of a source endpoint string, done here in the
+	// ACL rather than in application. It reports false for anything
+	// this ACL did not project — hand-written rows, future kinds —
+	// which the router refuses as unknown.
+	Identify(endpoint string) (EndpointIdentity, bool)
 }
 
 // CallLegStore persists placed calls (design D4). Every method takes the
@@ -312,6 +386,48 @@ type RouteStore interface {
 	// DeleteByTrunk removes every route sending to trunkID and returns
 	// them, so a trunk deletion can audit what it took with it.
 	DeleteByTrunk(ctx context.Context, tx pgx.Tx, trunkID shareddomain.TrunkID) ([]domain.CarrierRoute, error)
+}
+
+// InboundNumberStore is the outbound storage port for DIDs. Every
+// method takes the caller's transaction; tenancy is its RLS context.
+type InboundNumberStore interface {
+	// Insert persists a DID already normalized to digits. A duplicate
+	// number in the tenant is ErrInboundNumberTaken; the composite
+	// foreign key refuses another tenant's extension at the database.
+	Insert(ctx context.Context, tx pgx.Tx, number domain.InboundNumber) error
+	// List returns the tenant's DIDs in assignment order.
+	List(ctx context.Context, tx pgx.Tx) ([]domain.InboundNumber, error)
+	// Delete removes one DID, reporting ErrNotFound when it removed
+	// nothing (another tenant's DID included).
+	Delete(ctx context.Context, tx pgx.Tx, id uuid.UUID) error
+	// FindByNumber resolves a DID for the arriving-call path.
+	// ErrNotFound when unassigned. number must already be normalized.
+	FindByNumber(ctx context.Context, tx pgx.Tx, number string) (domain.InboundNumber, error)
+	// DeleteByExtension removes every DID pointing at extensionID and
+	// returns them, so an extension deletion can audit what it took
+	// with it (design D7, mirroring trunk/route deletion).
+	DeleteByExtension(ctx context.Context, tx pgx.Tx, extensionID shareddomain.ExtensionID) ([]domain.InboundNumber, error)
+}
+
+// EmergencyStore is the outbound storage port for the emergency
+// profile. Every method takes the caller's transaction; tenancy is its
+// RLS context. Only the tenant's OWN additions live in emergency_numbers
+// — 112 and the catalogue are code — and only the country code lives in
+// emergency_settings.
+type EmergencyStore interface {
+	// GetCountry returns the tenant's emergency country and whether one
+	// was ever set.
+	GetCountry(ctx context.Context, tx pgx.Tx) (string, bool, error)
+	// SetCountry replaces the tenant's emergency country.
+	SetCountry(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, countryCode string) error
+	// ListAdditions returns the tenant's own numbers, ascending.
+	ListAdditions(ctx context.Context, tx pgx.Tx) ([]string, error)
+	// AddAddition records one of the tenant's own numbers. Adding what
+	// is already there succeeds idempotently.
+	AddAddition(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, number string) error
+	// DeleteAddition removes one of the tenant's own numbers,
+	// reporting ErrNotFound when it removed nothing.
+	DeleteAddition(ctx context.Context, tx pgx.Tx, number string) error
 }
 
 // ExtensionStore is the outbound storage port.

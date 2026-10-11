@@ -1,9 +1,11 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestIsEmergency is the identification half of INV-01 (LLD-03 §3): the
@@ -64,4 +66,46 @@ func TestIsEmergency(t *testing.T) {
 			assert.Equal(t, tt.want, IsEmergency(tt.dialled, tt.set), tt.why)
 		})
 	}
+}
+
+// TestCountryCatalogue pins every catalogue entry and its source
+// (task 3.3): entries are code, not configuration, so no deployment can
+// empty them — and a wrong entry is a licence bypass, so each one names
+// what verified it.
+func TestCountryCatalogue(t *testing.T) {
+	for code, entries := range CountryEmergencyCatalogue {
+		require.Len(t, code, 2, "codes are ISO 3166-1 alpha-2")
+		assert.Equal(t, strings.ToUpper(code), code)
+		require.NotEmpty(t, entries, "a catalogue entry with no numbers helps nobody: %s", code)
+		for _, e := range entries {
+			assert.NotEmpty(t, e.Number, "catalogue number: %s", code)
+			assert.NotEqual(t, "112", e.Number, "112 is the separate floor, never a catalogue entry: %s", code)
+			assert.NotEmpty(t, e.Source, "every entry names what verified it: %s %s", code, e.Number)
+			assert.Equal(t, e.Number, emergencyDigits(e.Number), "catalogue numbers are stored digits-only: %s %s", code, e.Number)
+		}
+	}
+}
+
+// TestEffectiveEmergencySet covers the country profile arithmetic.
+func TestEffectiveEmergencySet(t *testing.T) {
+	cm, inCat := EffectiveEmergencySet("CM", nil)
+	assert.True(t, inCat)
+	for _, n := range []string{"112", "117", "118", "119", "113"} {
+		assert.True(t, IsEmergency(n, cm), "CM tenant treats %s as emergency", n)
+	}
+	assert.False(t, IsEmergency("911", cm), "a foreign emergency number is ordinary here")
+
+	def, inCat := EffectiveEmergencySet("", nil)
+	assert.False(t, inCat, "no country set is flagged, not catalogued")
+	for _, n := range []string{"112", "911", "999"} {
+		assert.True(t, IsEmergency(n, def))
+	}
+
+	xx, inCat := EffectiveEmergencySet("XX", []string{"15"})
+	assert.False(t, inCat, "an uncatalogued country is flagged so the console prompts for numbers")
+	assert.True(t, IsEmergency("112", xx))
+	assert.True(t, IsEmergency("15", xx), "tenant additions always apply")
+
+	withAdd, _ := EffectiveEmergencySet("cm", []string{"1500"})
+	assert.True(t, IsEmergency("1500", withAdd), "country codes match case-insensitively")
 }

@@ -70,6 +70,14 @@ type Config struct {
 	WebRTCTransport string
 }
 
+// setVarFor is the endpoint configuration that carries the tenant onto
+// every channel the endpoint creates (pbx-inbound-and-emergency design
+// D1): ATSA_TENANT_ID=<tenant>. Set by configuration, so no SIP header
+// can forge it, and pbx-core never needs a cross-tenant lookup.
+func setVarFor(tenantID shareddomain.TenantID) string {
+	return "ATSA_TENANT_ID=" + tenantID.String()
+}
+
 // Projector implements ports.EndpointProjector against PJSIP Realtime.
 //
 // It holds a pool as well as taking transactions, because its two kinds
@@ -155,8 +163,8 @@ func (p *Projector) ProjectExtension(ctx context.Context, tx pgx.Tx, ext domain.
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO ps_endpoints
-			(id, transport, aors, auth, context, disallow, allow, direct_media)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'no')
+			(id, transport, aors, auth, context, disallow, allow, direct_media, set_var)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'no', $8)
 		ON CONFLICT (id) DO UPDATE SET
 			transport    = EXCLUDED.transport,
 			aors         = EXCLUDED.aors,
@@ -164,9 +172,10 @@ func (p *Projector) ProjectExtension(ctx context.Context, tx pgx.Tx, ext domain.
 			context      = EXCLUDED.context,
 			disallow     = EXCLUDED.disallow,
 			allow        = EXCLUDED.allow,
-			direct_media = EXCLUDED.direct_media
+			direct_media = EXCLUDED.direct_media,
+			set_var      = EXCLUDED.set_var
 	`, id, p.transportFor(ext.DeviceType), id, id, stasisContext,
-		disallowedCodecs, allowedCodecs); err != nil {
+		disallowedCodecs, allowedCodecs, setVarFor(ext.TenantID)); err != nil {
 		return fmt.Errorf("project endpoint: %w", err)
 	}
 
@@ -304,18 +313,19 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 	var (
 		transport, aors, auth, context_, allow string
 		authType, username, digest, realm      string
-		maxContactsGot                         int
+		setVar                                *string
+		maxContactsGot                        int
 	)
 
 	err := p.pool.Unwrap().QueryRow(ctx, `
-		SELECT e.transport, e.aors, e.auth, e.context, e.allow,
+		SELECT e.transport, e.aors, e.auth, e.context, e.allow, e.set_var,
 		       a.auth_type, a.username, a.md5_cred, a.realm,
 		       r.max_contacts
 		FROM ps_endpoints e
 		JOIN ps_auths a ON a.id = e.id
 		JOIN ps_aors  r ON r.id = e.id
 		WHERE e.id = $1
-	`, id).Scan(&transport, &aors, &auth, &context_, &allow,
+	`, id).Scan(&transport, &aors, &auth, &context_, &allow, &setVar,
 		&authType, &username, &digest, &realm, &maxContactsGot)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return []string{"missing"}, nil
@@ -339,6 +349,13 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 	expect("username", id, username)
 	expect("md5_cred", ext.SecretDigest, digest)
 	expect("realm", p.cfg.Realm, realm)
+	strOrEmpty := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	expect("set_var", setVarFor(ext.TenantID), strOrEmpty(setVar))
 	if maxContactsGot != maxContacts {
 		drift = append(drift, "max_contacts")
 	}
