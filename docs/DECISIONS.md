@@ -1967,9 +1967,11 @@ recoverable by email link or administrator reset (2026-10-11).**
 - **Throttling** is done by `identity` itself, before password
   verification. It is keyed separately by account (the normalized email,
   whether or not it exists) and by source address. It uses exponential
-  backoff after five failures, capped at 15 minutes, and never locks an
-  account outright, since a hard lock is a denial-of-service on a known
-  victim. State lives in PostgreSQL (D-56). A throttled attempt is
+  backoff after five consecutive failures, capped at 15 minutes, and
+  never locks an account outright, since a hard lock is a
+  denial-of-service on a known victim. A failure more than 15 minutes
+  after the previous one starts a fresh count, so an office behind one
+  address never accumulates a day of typos into a block. State lives in PostgreSQL (D-56). A throttled attempt is
   refused with `RESOURCE_EXHAUSTED` and a retry delay. It answers the same
   for unknown and known emails.
 - **An unknown email costs the same as a wrong password.** The current
@@ -2090,6 +2092,66 @@ registers a phone), D-46 (phases and console slices), D-61 (users and
 memberships), D-43 (RPCs only for named consumers)
 **Traceability:** PRD US-03.4, US-03.5, EPIC-03, EPIC-07; LLD-03 §1,
 §3.1, §12; HLD 04 §2; HLD 18 §7; `console-apis-phase-a` G3
+
+---
+
+**D-66 · Identity hardening: credential kinds, rotatable signing keys,
+off-network recovery, admin MFA before GA, and revocation by broadcast at
+multi-node (2026-10-11).**
+
+**Decision:** Six refinements to D-61 to D-64, from an architecture
+review against industry practice (NIST SP 800-63B, OWASP ASVS L2,
+RFC 9700, SCIM RFC 7644). The first three are built in
+`identity-accounts-and-sessions`; the rest are decided now and built
+later.
+
+1. **Credentials have kinds.** One `user_credentials (user_id, kind,
+   secret, must_change, …)` table with `kind = password` today, so TOTP
+   and passkeys (WebAuthn) are new kinds rather than new schema. At most
+   one password per user. *(Built now.)*
+2. **Token signing keys rotate without signing anyone out.** Each token
+   carries a `kid`: the first 8 bytes, in hex, of the SHA-256 of the
+   public key. The validator accepts the current key
+   (`ATSAPBX_JWT_KEY`) and any previous keys
+   (`ATSAPBX_JWT_PREVIOUS_KEYS`), issues only with the current one, and
+   refuses an unknown `kid`. It does this before any signature work,
+   alongside the algorithm pin. The same pattern as licensing's key set
+   (D-54). *(Built now.)*
+3. **An operator can recover an account off the network.**
+   `atsap-api admin reset-password --email …` runs on the server, like
+   `bootstrap`, sets a temporary password that must be changed, revokes
+   every session, and records an auth event and a system audit entry.
+   Without it, an installation whose last administrator forgot their
+   password and has no mail configured has no way back in. *(Built now.)*
+4. **MFA for administrator roles before general availability.** A PBX
+   administrator account is a toll-fraud target. Order after this
+   change: `identity-oidc`, then `identity-mfa` (TOTP and passkeys, with
+   required MFA enforceable for `TENANT_ADMIN` and `PLATFORM_ADMIN`),
+   then SCIM 2.0 provisioning. MFA stops being "someday". *(Decided.)*
+5. **Revocation at multi-node is a broadcast, not a cache window.** On
+   one node, `ValidateToken` reads the database per request (D-42, D-56).
+   When the platform goes multi-node (D-08), each node may cache
+   validity in-process **only** if revocations are published on NATS
+   (already present) and drop the cached entry everywhere on receipt. A
+   time-based cache stays rejected. This supersedes D-56 only for that
+   deployment shape, and only with the broadcast. *(Decided; built at
+   multi-node.)*
+6. **The partner hierarchy is installation → tenants.** Partner
+   engineers hold platform scope. A least-privilege technician is a
+   person with memberships in exactly the customers they serve (D-61). A
+   `tenant-group` scope is added only if partners ask. *(Documented.)*
+
+**Alternatives:**
+- *A separate table per credential kind.* Rejected: every kind shares
+  ownership, lifecycle and audit, and a new kind would mean a new
+  migration and store.
+- *Rotating the key by redeploying with a new one.* Rejected: it signs
+  everyone out, so in practice nobody rotates.
+- *Recovery only by email.* Rejected: mail is optional on a self-hosted
+  install.
+
+**Related Decisions:** D-08, D-42, D-54 (key sets), D-56, D-61–D-64
+**Traceability:** LLD-02 §3.1, §5.3, §5.4, §8, §9; HLD 03 §5; HLD 05 §1.2
 
 ---
 

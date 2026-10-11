@@ -61,6 +61,20 @@ An administrator SHALL be able to set a temporary password for a member of their
 - **WHEN** an administrator resets a password
 - **THEN** one audit record names the administrator and the member, and contains no password material
 
+### Requirement: An operator can recover an account off the network
+
+The system SHALL provide a means, available only to an operator on the installation's own server and not over the network, to set a temporary password for an account by email. The person SHALL be required to change it at next sign-in, every session of theirs SHALL end, and the recovery SHALL be recorded in their authentication history and in the audit log of each of their tenants. The temporary password SHALL be shown once and never logged.
+
+#### Scenario: Recovering a locked-out administrator
+
+- **WHEN** an operator runs the recovery on the server for an administrator's email
+- **THEN** a temporary password is shown once, the administrator can sign in with it only to change it, and their earlier sessions have ended
+
+#### Scenario: Recovery is not reachable over the network
+
+- **WHEN** the public API is examined for an operation equivalent to the off-network recovery
+- **THEN** none exists: over the network, only the authority-checked administrator reset and the emailed link can reset a password
+
 ### Requirement: Password guessing is slowed without locking anyone out
 
 The system SHALL slow repeated failed password attempts, counted separately for each account and for each source address. After five consecutive failures, further attempts SHALL be refused for a delay that doubles with each further failure, up to 15 minutes, with a refusal that states the delay. The system SHALL NOT permanently lock an account. Throttling SHALL behave identically for emails that have no account, and a success SHALL clear the account's count.

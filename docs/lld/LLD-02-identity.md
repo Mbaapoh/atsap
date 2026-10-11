@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `identity` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Implemented & archived; revision 2 proposed** (user accounts, sessions, credential recovery, SSO readiness: D-61–D-64, change `identity-accounts-and-sessions`). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| **Status** | **Implemented; revision 2 applied** (user accounts, sessions, credential recovery, SSO readiness, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, change `identity-accounts-and-sessions`, not yet archived). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | **Traces to** | BRD FBR-R1-04/§10; PRD EPIC-01 (US-01.1–01.7, AC-01.1–01.7), INV-01/INV-10/INV-11; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §7, [05-security.md](../hld/05-security.md) §1; DECISIONS D-24 |
 | **Why this is LLD-02** | LLD-01 proved the media path against stub adapters whose files say, verbatim, "until LLD-02 lands." Every Tier 1 context needs `identity`'s tenant context (§10.1), so D-26 (dependency-first within a release) puts it here. |
 
@@ -149,7 +149,7 @@ type User struct {
     Email       Email      // normalized: trimmed, lower-cased; UNIQUE installation-wide
     DisplayName string
     Status      UserStatus // Active | Disabled — platform scope only (D-61)
-    Password    *PasswordCredential // nil = no password; SSO-only or invited (D-63)
+    Password    *PasswordCredential // the `password` credential (D-66 kinds); nil = none (D-63)
     CreatedAt   time.Time
 }
 type PasswordCredential struct {
@@ -324,6 +324,12 @@ and `api_keys` had no DDL there until this LLD amended §5 to add them.
   first-run setup wizard on the network is a window in which an
   unauthenticated caller can create the platform administrator; shipping
   a default credential is worse.
+- **Off-network recovery (D-66):** `atsap-api admin reset-password
+  --email <e>` runs on the server, as `bootstrap` does. It prints a
+  temporary password once, marks it must-change, revokes every session,
+  and records an auth event plus a system-actor audit row in each of the
+  person's tenants. It is the way back in when the last administrator is
+  locked out and no mail is configured.
 - **Dev-token minting was designed here and never built.** §5.2
   originally specified a three-layer guarded `ATSAPBX_DEV_TOKEN_*` path
   so the rig would keep working after the auth cutover. It proved
@@ -339,7 +345,7 @@ and `api_keys` had no DDL there until this LLD amended §5 to add them.
 | Table | Tenant-scoped? | Notes |
 |---|---|---|
 | `users` | **No**: installation-wide, like `tenants` | `email` is UNIQUE on `lower(email)`; status |
-| `user_passwords` | No | `user_id` PK; Argon2id hash, `must_change`, `changed_at`. Having no row means no password |
+| `user_credentials` | No | One row per credential, by `kind` (D-66): `password` (Argon2id, `must_change`) today; `totp` and `webauthn` later. At most one password per user. No password row means no password |
 | `principals` | Yes (RLS unchanged) | Gains `user_id NOT NULL REFERENCES users`, `UNIQUE (tenant_id, user_id)`; **drops** `username`, `email` and `password_hash` once they are copied |
 | `sessions` | No | Refresh and previous digests, expiries, revocation |
 | `password_reset_tickets` | No | Digest, purpose (`reset` or `invite`), expiry, `used_at` |
@@ -358,7 +364,7 @@ display name, membership status) are exposed only through a membership
 that RLS does scope.
 
 **Data migration.** Each principal's email is normalized, one user is
-created per distinct email, and the hash is copied to `user_passwords`.
+created per distinct email, and the hash is copied to `user_credentials` as a `password`.
 If two principals share an email but have **different password hashes**,
 the migration **fails and names them** (D-61). The operator resolves it,
 and nothing is merged silently.
@@ -387,6 +393,13 @@ and nothing is merged silently.
   rotates on every refresh. Sessions last 30 minutes idle and 12 hours
   absolute. The access token adds `sid` (the session id) and `uid` (the
   user id) claims.
+- **Key rotation (D-66):** every token header carries a `kid`, the
+  first 8 bytes in hex of SHA-256(public key). Tokens are issued with
+  `ATSAPBX_JWT_KEY` and validated against it or any of
+  `ATSAPBX_JWT_PREVIOUS_KEYS` (comma-separated). An unknown `kid` is
+  refused before signature work, like a wrong `alg`. A token without a
+  `kid` (issued before revision 2) validates only against the current
+  key, and lives at most 15 minutes after the upgrade.
 - **Reset and invitation secrets**: 256 random bits, stored only as a
   SHA-256 digest, single use, valid for 30 minutes (reset) or 72 hours
   (invitation).
@@ -471,8 +484,13 @@ was pulled ahead as a result.
 - **SSO is modelled, not built** (D-63). No OIDC or SAML flow, no
   provider-administration RPC, no just-in-time provisioning. The next
   identity change builds OIDC behind `FederatedAuthenticator`.
-- **No MFA.** SSO users get their IdP's. TOTP for password users is a
-  future change, as a second credential kind on `User`.
+- **No MFA yet.** SSO users get their IdP's. Password users get TOTP and
+  passkeys in `identity-mfa`, **before general availability**, with MFA
+  enforceable for administrator roles (D-66). Credential kinds already
+  exist for it.
+- **Single node.** `ValidateToken` reads the database per request. At
+  multi-node, validity may be cached per node only with NATS-broadcast
+  revocation (D-66), never with a time-based cache.
 - **Platform authority is still a binding on a membership** of the
   operator's tenant (D-61), not a property of the user.
 
@@ -485,9 +503,10 @@ was pulled ahead as a result.
 | ~~`identity-bootstrap`~~ | ~~Dev-token minting for the rig~~ | **Closed as unnecessary** — see §5.2 |
 | `auth-cutover-connectrpc` | JWT enforced on every RPC including `TelephonyService`; tenant-match rule | **Archived** 2026-09-08 |
 | `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | **Archived** 2026-10-11 |
-| `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model | **Proposed** 2026-10-11 |
+| `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model; D-66 credential kinds, key rotation, off-network recovery | **Applied** 2026-10-11 |
 | *(future)* `identity-oidc` | OIDC sign-in behind `FederatedAuthenticator`, provider administration, JIT policy | Not proposed |
-| *(future)* `identity-mfa-totp` | TOTP second factor for password users | Not proposed |
+| *(future)* `identity-mfa` | TOTP and passkeys; required MFA for administrator roles. **Before GA** (D-66) | Not proposed |
+| *(future)* `identity-scim` | SCIM 2.0 provisioning and deprovisioning from a tenant's IdP | Not proposed |
 
 This LLD's Definition of Done is met. Further identity work is proposed
 against the living specs, which are now the record of current behaviour —
@@ -529,8 +548,9 @@ proxy.~~ **Superseded in part by D-64.** A self-hosted install may have no
 proxy, so password sign-in, reset requests and the deprecated
 `AuthenticateUser` are throttled by identity's `LoginThrottle`. It runs
 before verification and is keyed separately by account and by source. It
-uses exponential backoff after 5 failures, capped at 15 minutes, with no
-hard lockout. It answers the same whether or not the account exists. It
+uses exponential backoff after 5 consecutive failures, capped at 15
+minutes, with no hard lockout; a failure more than 15 minutes after the
+previous one starts a fresh count. It answers the same whether or not the account exists. It
 sits beside the auth logic, not inside it, as this section originally
 required. General per-RPC rate limiting is still deferred.
 

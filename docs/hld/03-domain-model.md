@@ -202,7 +202,7 @@ $$\text{Fold}(\text{CurrentNode}, \text{FlowState}, \text{TelephonyEvent}) \to (
 
 ## 5. Comprehensive Relational Schema (PostgreSQL 16)
 
-Every tenant-owned table has `tenant_id` and PostgreSQL Row-Level Security (`RLS`) enabled. The exceptions are `tenants` itself, `licensing_state`, and identity's installation-wide account tables (`users`, `user_passwords`, `sessions`, `password_reset_tickets`, `identity_provider_domains`, `external_identities`, `login_throttle`, `auth_events`). Those describe a person or the installation rather than a tenant (D-61), and only `identity/postgres` may name them.
+Every tenant-owned table has `tenant_id` and PostgreSQL Row-Level Security (`RLS`) enabled. The exceptions are `tenants` itself, `licensing_state`, and identity's installation-wide account tables (`users`, `user_credentials`, `sessions`, `password_reset_tickets`, `identity_provider_domains`, `external_identities`, `login_throttle`, `auth_events`). Those describe a person or the installation rather than a tenant (D-61), and only `identity/postgres` may name them.
 This section is authoritative; [17-data-model-erd.md](17-data-model-erd.md)
 draws these same tables as entity-relationship diagrams, including the
 ACL projection tables that D-47 added and that Asterisk — not the
@@ -231,13 +231,19 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email));
 
--- Optional: no row means no password (SSO-only or invited, D-63).
-CREATE TABLE IF NOT EXISTS user_passwords (
-    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    password_hash VARCHAR(255) NOT NULL, -- Argon2id (LLD-02 §5.3 params), never plaintext (INV-11)
+-- Credentials by kind (D-66): 'password' today; 'totp' and 'webauthn'
+-- later. No password row means no password (SSO-only or invited, D-63).
+CREATE TABLE IF NOT EXISTS user_credentials (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind VARCHAR(20) NOT NULL,               -- password | totp | webauthn
+    secret TEXT NOT NULL,                    -- password: Argon2id (LLD-02 §5.3), never plaintext (INV-11)
     must_change BOOLEAN NOT NULL DEFAULT FALSE, -- set by an administrator reset (D-64)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS user_credentials_one_password
+    ON user_credentials (user_id) WHERE kind = 'password';
 
 -- A principal is a user's membership of one tenant (D-61). Ids are
 -- unchanged from revision 1, so audit rows and TenantContext stay valid.

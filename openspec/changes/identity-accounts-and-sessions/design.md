@@ -1,6 +1,6 @@
 ## Context
 
-The design of record is **LLD-02 revision 2** (§3.1, §4, §5.3, §5.4, §6, §10.2, §10.5, §10.10, §11.2) and decisions **D-61 to D-64**. This document records how the change implements them, not the reasons for them.
+The design of record is **LLD-02 revision 2** (§3.1, §4, §5.2, §5.3, §5.4, §6, §10.2, §10.5, §10.10, §11.2) and decisions **D-61 to D-64**, with **D-66** refinements 1–3. This document records how the change implements them, not the reasons for them.
 
 Current state:
 - `principals` holds username, email, password hash, role and status per tenant.
@@ -41,14 +41,14 @@ Unit tests cover each function exhaustively. Application services orchestrate th
 **D2 — Migration `0010_identity_accounts`, in one transaction.**
 1. Create the new tables (LLD-02 §5.4, HLD 03 §5).
 2. A `DO` block finds normalized emails shared by principals with **different** `password_hash` values, and raises an exception listing the principal ids. The migration aborts with nothing changed.
-3. Insert one `users` row per normalized email, and one `user_passwords` row per user from the shared hash.
+3. Insert one `users` row per normalized email, and one `user_credentials` row (`kind = 'password'`) per user from the shared hash.
 4. Add `principals.user_id` and backfill it. Set it `NOT NULL`, and add `UNIQUE (tenant_id, user_id)`.
 5. Drop `username`, `email` and `password_hash` from `principals`.
 
-The down migration re-adds the columns. It restores `email` from `users`, `username` from the email's local part (suffixed if needed, to stay unique per tenant), and `password_hash` from `user_passwords`, or an unusable marker when there is none. It is documented as lossy for invited users. The migration test seeds duplicates, both conflicting and compatible, and asserts both outcomes.
+The down migration re-adds the columns. It restores `email` from `users`, `username` from the email's local part (suffixed if needed, to stay unique per tenant), and `password_hash` from the user's password credential, or an unusable marker when there is none. It is documented as lossy for invited users. The migration test seeds duplicates, both conflicting and compatible, and asserts both outcomes.
 
 **D3 — Installation-wide tables are confined by archtest.**
-A new rule in `archtest`, modelled on `enginetables.go`, lists `users`, `user_passwords`, `sessions`, `password_reset_tickets`, `identity_provider_domains`, `external_identities`, `login_throttle` and `auth_events`. It fails if any package other than `internal/identity/postgres` (and archtest itself) names one in a string literal. It is fault-injected. These tables have no RLS (LLD-02 §5.4). `principals` and `identity_providers` keep or gain RLS.
+A new rule in `archtest`, modelled on `enginetables.go`, lists `users`, `user_credentials`, `sessions`, `password_reset_tickets`, `identity_provider_domains`, `external_identities`, `login_throttle` and `auth_events`. It fails if any package other than `internal/identity/postgres` (and archtest itself) names one in a string literal. It is fault-injected. These tables have no RLS (LLD-02 §5.4). `principals` and `identity_providers` keep or gain RLS.
 
 **D4 — The token gains `sid` and `uid`; validation is one transaction.**
 `Claims` gains `SessionID` and `UserID`. Both are absent on deprecated `AuthenticateUser` and API-key paths. `ValidateToken` reads, in one transaction:
@@ -72,6 +72,7 @@ Any failure is reported as the same `ErrInvalidCredentials`. `TenantContext` gai
 - **Keys:** `SHA-256("account:" + normalized email)` and `SHA-256("source:" + address)`.
 - **Order:** `Check` runs before any user lookup and refuses while either key is blocked, with `RESOURCE_EXHAUSTED` and a `retry-after-seconds` detail. `Record` happens after verification: a failure increments both keys and sets `blocked_until` from D1's policy; a success clears the account key only.
 - **Source address:** the connection peer. `X-Forwarded-For` is honoured only when the peer is in `ATSAPBX_TRUSTED_PROXIES`, which is empty by default.
+- **Runs, not totals:** a failure more than 15 minutes after the key's previous failure starts a fresh count (`ThrottlePolicy.Window`), so a shared address never accumulates a day of typos into a block. *Found while designing the e2e suite: without it the source key never reset.*
 - **Housekeeping:** rows not updated for 24 hours are deleted on write, so no background job is needed.
 - **Scope:** `SignIn`, `AuthenticateUser`, `RequestPasswordReset` (source key only, plus a per-account limit of 3 per hour) and `CompletePasswordReset` (source key).
 
@@ -106,6 +107,23 @@ The enforcement and discovery scenarios are proven at integration level, with pr
 **D12 — Bootstrap, fixtures and harnesses.**
 - `atsap-api bootstrap` takes `--email` and `--display-name`. `--username` is removed, and passing it fails with a message.
 - The e2e and UAT fixtures (`projection_test.go`, `walkingskeleton_test.go`, `console_apis_test.go` and the UAT scripts) seed users and memberships, and sign in by email with `SignIn` and a cookie jar, or with `AuthenticateUser` where a harness only needs a token.
+
+**D13 — Credential kinds (D-66 §1).**
+- `user_credentials (id, user_id, kind, secret, must_change, created_at, changed_at)` with a partial unique index allowing one `password` per user. The domain exposes `User.Password *PasswordCredential`.
+- The store reads and writes the `password` kind only. Other kinds are rejected by a `CHECK (kind IN ('password'))` until `identity-mfa` widens it, so nothing half-supported can be written.
+
+**D14 — Signing key set (D-66 §2).**
+- `TokenIssuer` holds a current key and zero or more previous keys, indexed by `kid` = hex(SHA-256(pub)[:8]).
+- **Issue:** sets `kid` in the header and signs with the current key.
+- **Validate:** after the `alg` pin, looks the `kid` up and refuses an unknown one (`ErrTokenUnknownKey`) before any signature work. A missing `kid` is checked against the current key only.
+- **Config:** `ATSAPBX_JWT_PREVIOUS_KEYS` holds comma-separated hex seeds. A malformed entry fails startup, and so does an entry equal to the current key.
+- Unit tests cover: a token from the previous key still validates after rotation; an unknown `kid` is refused without calling verify (counted); a kid-less token validates only against the current key; issue always uses the current key.
+
+**D15 — Off-network recovery CLI (D-66 §3).**
+- `atsap-api admin reset-password --email <e>` is a subcommand beside `bootstrap` and `pbx reconcile`.
+- It generates a 20-character temporary password from crypto/rand, prints it once to stdout and never logs it, and calls the same application method as the administrator reset with the system actor and no authority check, because shell access to the server is the authority.
+- It sets `must_change`, revokes every session, writes an auth event and one system audit row per tenant the person belongs to, and exits non-zero for an unknown email with a generic message.
+- An integration test drives the command function directly.
 
 ## Risks / Trade-offs
 

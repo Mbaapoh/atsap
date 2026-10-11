@@ -37,6 +37,10 @@ The last point also blocks SSO: an identity provider asserts a person, and there
 - **Mail.** A `Mailer` port owned by identity, an SMTP adapter in `internal/mail`, and Mailpit in the dev rig to capture mail for tests.
 - **Deprecated, kept:** `AuthenticateUser`, for machines and harnesses. Its `username` field is read as the email, and it creates no session. `ProvisionPrincipal.username` is ignored.
 - **Bootstrap** takes an email instead of a username.
+- **Hardening (D-66):**
+  - credentials are stored by kind (`password` now; TOTP and passkeys later, with no schema change);
+  - token signing keys rotate without signing anyone out: tokens carry a key id, and previous keys stay valid for validation only;
+  - `atsap-api admin reset-password` recovers an account off the network when no administrator can sign in and no mail is configured.
 
 ## Capabilities
 
@@ -65,12 +69,12 @@ The last point also blocks SSO: an identity provider asserts a person, and there
 
 - **Code:** all inside `internal/identity` (domain, ports, application, postgres, rpc, bootstrap), plus a new `internal/mail` adapter, `cmd/atsap-api` wiring (the `AuthService` mount, cookie handling, mailer, config) and a new `auth.proto`. No change to telephony, pbx or licensing. `TenantContext` keeps every field those contexts read.
 - **Schema:** migration `0010_identity_accounts`:
-  - new tables `users`, `user_passwords`, `sessions`, `password_reset_tickets`, `identity_providers`, `identity_provider_domains`, `external_identities`, `login_throttle` and `auth_events`;
+  - new tables `users`, `user_credentials`, `sessions`, `password_reset_tickets`, `identity_providers`, `identity_provider_domains`, `external_identities`, `login_throttle` and `auth_events`;
   - `principals` gains `user_id` and drops `username`, `email` and `password_hash` after copying them.
   - The migration refuses to merge two principals with one email and different hashes.
 - **API:** a new `AuthService` (7 RPCs) and `IdentityService.ResetPrincipalPassword`. The wire change is **additive**, and `buf breaking` stays clean: `Principal` gains `user_id` and `display_name`, and `ProvisionPrincipalRequest` gains `display_name`. The `username` fields are marked deprecated but kept: requests ignore them and responses fill them with the email. The **BREAKING** change is behavioural only: a username no longer identifies anyone.
-- **Config:** SMTP settings, the console's public base URL (for links), and the cookie's Secure flag (off only for the HTTP dev rig).
+- **Config:** `ATSAPBX_JWT_PREVIOUS_KEYS` (key rotation), SMTP settings, the console's public base URL (for links), and the cookie's Secure flag (off only for the HTTP dev rig).
 - **Dev rig:** a Mailpit service in compose.
 - **Tests:** unit, integration, wire, and e2e against the running app. That covers sign-in to refresh to tenant switch to sign-out, reuse revocation, throttling, a reset by email read from Mailpit, administrator reset with forced change, and invitation. Existing e2e and UAT fixtures move from username to email. No phone path changes, so the UATs re-run as regression.
-- **Docs (already updated with this proposal):** DECISIONS D-61 to D-64; LLD-02 revision 2; HLD 03, 04, 05, 12, 17 and 18; API.md §3; PROGRESS.md.
+- **Docs (already updated with this proposal):** DECISIONS D-61 to D-64 and D-66; LLD-02 revision 2; HLD 03, 04, 05, 12, 17 and 18; API.md §3; PROGRESS.md.
 - **Order:** apply after `console-apis-phase-a` is archived, because both change `identity/public-api`.

@@ -47,7 +47,9 @@ AtsaPBX enforces defense-in-depth tenant isolation across every layer of the pla
 3. **No account-existence oracle.** Sign-in method discovery, sign-in failures, reset requests and throttling answer identically for known and unknown emails, and take the same time: Argon2id always runs.
 4. **Throttling ships with the product** (D-64): per account and per source, exponential backoff, no hard lockout. It does not depend on an edge proxy existing.
 5. **Recovery never weakens isolation.** Reset secrets are single-use digests, valid for 30 minutes. A tenant administrator may reset a password only for a person who belongs to no tenant outside their authority; otherwise only platform scope can.
-6. **SSO-ready.** A password is optional. An external identity is linked by `(provider, subject)` and never by email. A verified domain belongs to one tenant's provider, and an enforced provider disables password sign-in for that domain. Protocols (OIDC first) and MFA are future changes.
+6. **SSO-ready.** A password is optional. An external identity is linked by `(provider, subject)` and never by email. A verified domain belongs to one tenant's provider, and an enforced provider disables password sign-in for that domain. Protocols (OIDC first), then MFA required for administrators **before GA**, then SCIM provisioning (D-66).
+7. **Signing keys rotate** without signing anyone out: tokens carry a key id, and previous keys stay valid for validation only (D-66).
+8. **Off-network recovery:** `atsap-api admin reset-password`, run on the server, is the way back in when no administrator can sign in (D-66).
 
 ---
 

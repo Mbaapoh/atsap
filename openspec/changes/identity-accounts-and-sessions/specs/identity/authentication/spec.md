@@ -1,3 +1,16 @@
+## ADDED Requirements
+
+### Requirement: Token signing keys can be rotated without ending sessions
+The system SHALL sign every token with its current signing key and identify that key in the token. It SHALL accept tokens signed by any configured previous key until they expire, and SHALL refuse a token naming a key it does not hold before examining the signature.
+
+#### Scenario: A token signed before rotation still works
+- **WHEN** the signing key is rotated, and the old key is kept as a previous key, while a token signed with the old key is still unexpired
+- **THEN** that token is accepted, and every newly issued token is signed with the new key
+
+#### Scenario: A token naming an unknown key is refused
+- **WHEN** a token is presented that names a signing key the system does not hold
+- **THEN** validation fails without the signature being treated as valid under any key
+
 ## MODIFIED Requirements
 
 ### Requirement: Credentials are never stored recoverably

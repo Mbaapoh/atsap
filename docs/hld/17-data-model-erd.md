@@ -138,7 +138,7 @@ and `password_hash`, and gains `user_id`.
 
 ```mermaid
 erDiagram
-    users ||--o| user_passwords : "may have"
+    users ||--o{ user_credentials : "proves identity with"
     users ||--o{ principals : "member of tenants as"
     tenants ||--o{ principals : scopes
     users ||--o{ sessions : "signed in as"
@@ -156,9 +156,11 @@ erDiagram
         varchar display_name
         varchar status "platform scope only"
     }
-    user_passwords {
-        uuid user_id PK "no row = no password"
-        varchar password_hash "Argon2id"
+    user_credentials {
+        uuid id PK
+        uuid user_id FK "at most one password"
+        varchar kind "password; totp and webauthn later (D-66)"
+        text secret "Argon2id for passwords"
         bool must_change "administrator reset"
     }
     principals {
@@ -468,7 +470,7 @@ state change that produced it.
 |---|---|---|
 | `tenants`, `calls`, `call_participants`, `channel_history`, `usage_seconds`, `outbox` | pre-A | **Implemented** (`0001`, LLD-01) |
 | `principals`, `role_bindings`, `api_keys`, `audit_logs` | pre-A | **Implemented** (`0003`, LLD-02) |
-| `users`, `user_passwords`, `sessions`, `password_reset_tickets`, `identity_providers`, `identity_provider_domains`, `external_identities`, `login_throttle`, `auth_events`; `principals` reshaped | A (before console) | **Proposed** (`0010`, LLD-02 rev 2, `identity-accounts-and-sessions`) |
+| `users`, `user_credentials`, `sessions`, `password_reset_tickets`, `identity_providers`, `identity_provider_domains`, `external_identities`, `login_throttle`, `auth_events`; `principals` reshaped | A (before console) | **Proposed** (`0010`, LLD-02 rev 2, `identity-accounts-and-sessions`) |
 | `extension_assignments`, `agents`, `queue_members`; `call_participants` gains `extension_id`, `principal_id` | B | **Designed** (LLD-03 §3.1, D-65) |
 | `licensing_state` | **A** | Designed; LLD-02's licensing half |
 | `extensions`, `carrier_trunks`, `carrier_routes` | **A** | Designed; LLD-03 |
