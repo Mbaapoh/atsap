@@ -124,11 +124,22 @@ func (s *Service) router() ports.InboundRouter {
 	return s.inboundRouter
 }
 
-func (s *Service) arrivedOf(callID shareddomain.CallID) (*arrivedCall, bool) {
+func (s *Service) arrivedOf(callID shareddomain.CallID) (arrivedCall, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, ok := s.arrived[callID.String()]
-	return a, ok
+	if !ok {
+		return arrivedCall{}, false
+	}
+	return *a, true
+}
+
+func (s *Service) markArrivedAnswered(callID shareddomain.CallID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.arrived[callID.String()]; ok {
+		a.answered = true
+	}
 }
 
 // InitiateCall creates a two-party Call (caller, callee — never fixed
@@ -492,10 +503,10 @@ func (s *Service) HangupCall(ctx context.Context, callID shareddomain.CallID, re
 	//
 	// An arriving caller has no deterministic channel address (Asterisk
 	// assigned its id), so its tracked ref is used instead.
-	arrived, _ := s.arrivedOf(callID)
+	arrived, isArrived := s.arrivedOf(callID)
 	for _, id := range live {
 		ref := participantChannel(id)
-		if arrived != nil && arrived.callerParticipant == id {
+		if isArrived && arrived.callerParticipant == id {
 			ref = arrived.callerRef
 		}
 		if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
@@ -561,9 +572,7 @@ func (s *Service) ParticipantAnswered(ctx context.Context, _, callIDStr, partici
 			return fmt.Errorf("add arriving caller to bridge: %w", err)
 		}
 		connectEvents = append(connectEvents, callerEvents...)
-		s.mu.Lock()
-		a.answered = true
-		s.mu.Unlock()
+		s.markArrivedAnswered(callID)
 	}
 
 	return s.saveCall(ctx, call, connectEvents...)

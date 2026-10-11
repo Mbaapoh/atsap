@@ -33,7 +33,7 @@ Ordered by dependency. Group 1 settles the engine facts (spike, schema, config) 
 
 ## 5. Gates
 
-- [ ] 5.1 Run `make lint`, `go build`, `go vet` under every tag, the unit tier with `-race`, and the integration tier with `-race -p 1`, all green. Verify `git status --short -- api/internal/licensing/ api/internal/identity/` is empty, and that the telephony diff is confined to the ports, application, ACL and their tests
+- [x] 5.1 Run `make lint`, `go build`, `go vet` under every tag, the unit tier with `-race`, and the integration tier with `-race -p 1`, all green. Verify `git status --short -- api/internal/licensing/ api/internal/identity/` is empty, and that the telephony diff is confined to the ports, application, ACL and their tests *(done — lint clean incl. depguard + archtest; build/vet under default, integration and e2e tags; unit `-race` and full integration `-race -p 1` green; licensing/identity untouched; telephony diff confined. Two races found and fixed along the way: the health-watcher test harness and the arrived-call tracker now copy under lock.)*
 
 ## 6. End to end — the running app, live Asterisk
 

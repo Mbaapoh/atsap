@@ -4,6 +4,7 @@ package application_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ type inboundHarness struct {
 	svc    *application.Service
 	calls  *fakeCalls
 	status *stubStatus
+	mu     sync.Mutex
 	health []shareddomain.TrunkID
 }
 
@@ -57,6 +59,8 @@ func newInboundHarness(t *testing.T) *inboundHarness {
 		Legs:      pbxpg.NewCallLegStore(),
 		Status:    ih.status,
 		ReportHealth: func(_ context.Context, trunkID shareddomain.TrunkID, _ int, _ time.Duration) error {
+			ih.mu.Lock()
+			defer ih.mu.Unlock()
 			ih.health = append(ih.health, trunkID)
 			return nil
 		},
@@ -464,6 +468,8 @@ func TestRouter_HealthWatcherOnConnect(t *testing.T) {
 	assert.Equal(t, telephonyports.RefusalNone, decision.Refuse)
 
 	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		return len(h.health) == 1 && h.health[0] == trunk.ID
 	}, 5*time.Second, 20*time.Millisecond, "an answered inbound leg reports its trunk healthy")
 }

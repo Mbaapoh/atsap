@@ -143,39 +143,39 @@ func TestEventLoop_ChannelStateChange_NoSinkCall(t *testing.T) {
 // the caller number.
 func TestEventLoop_UncorrelatedStasisStart_RoutesToCallArrived(t *testing.T) {
 	for _, tc := range []struct {
-		name           string
-		channelID      string
-		channelName    string
-		dialled        string
-		caller         string
-		vars           map[string]string
-		wantTenant     string
-		wantSource     string
+		name        string
+		channelID   string
+		channelName string
+		dialled     string
+		caller      string
+		vars        map[string]string
+		wantTenant  string
+		wantSource  string
 	}{
 		{
-			name: "extension channel",
-			channelID: "chan-ext",
+			name:        "extension channel",
+			channelID:   "chan-ext",
 			channelName: "PJSIP/e_6f8b2c1a-4d3e-4f5a-8b1c-9d2e3f4a5b6c-00000001",
-			dialled: "+442071234567", caller: "+1555000111",
-			vars: map[string]string{"chan-ext": "11111111-2222-3333-4444-555555555555"},
+			dialled:     "+442071234567", caller: "+1555000111",
+			vars:       map[string]string{"chan-ext": "11111111-2222-3333-4444-555555555555"},
 			wantTenant: "11111111-2222-3333-4444-555555555555",
 			wantSource: "e_6f8b2c1a-4d3e-4f5a-8b1c-9d2e3f4a5b6c",
 		},
 		{
-			name: "trunk channel",
-			channelID: "chan-trunk",
+			name:        "trunk channel",
+			channelID:   "chan-trunk",
 			channelName: "PJSIP/t_a1b2c3d4-5e6f-4a5b-8c9d-0e1f2a3b4c5d-00000002",
-			dialled: "442071234567", caller: "+1555000222",
-			vars: map[string]string{"chan-trunk": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+			dialled:     "442071234567", caller: "+1555000222",
+			vars:       map[string]string{"chan-trunk": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
 			wantTenant: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 			wantSource: "t_a1b2c3d4-5e6f-4a5b-8c9d-0e1f2a3b4c5d",
 		},
 		{
-			name: "no tenant variable",
-			channelID: "chan-static",
+			name:        "no tenant variable",
+			channelID:   "chan-static",
 			channelName: "PJSIP/1000-00000003",
-			dialled: "2000", caller: "1000",
-			vars: map[string]string{},
+			dialled:     "2000", caller: "1000",
+			vars:       map[string]string{},
 			wantTenant: "",
 			wantSource: "1000",
 		},

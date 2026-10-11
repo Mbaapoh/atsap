@@ -78,6 +78,7 @@ func (s *Service) ResolveInbound(ctx context.Context, req telephonyports.Inbound
 	}
 	return s.resolveDeskPhoneCall(ctx, req, ident.ExtensionID)
 }
+
 // resolveTrunkCall is a carrier call to a DID: it rings the assigned
 // extension, internally, or the carrier gets a 404.
 func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.InboundRequest, _ shareddomain.TrunkID) (telephonyports.InboundDecision, error) {

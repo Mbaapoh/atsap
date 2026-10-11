@@ -100,9 +100,9 @@ func (l *EventLoop) Handle(ctx context.Context, ev ari.Event) {
 
 type channelPayload struct {
 	Channel struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		State string `json:"state"`
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		State    string `json:"state"`
 		Dialplan struct {
 			Exten string `json:"exten"`
 		} `json:"dialplan"`

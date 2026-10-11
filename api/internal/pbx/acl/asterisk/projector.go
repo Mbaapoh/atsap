@@ -313,8 +313,8 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 	var (
 		transport, aors, auth, context_, allow string
 		authType, username, digest, realm      string
-		setVar                                *string
-		maxContactsGot                        int
+		setVar                                 *string
+		maxContactsGot                         int
 	)
 
 	err := p.pool.Unwrap().QueryRow(ctx, `

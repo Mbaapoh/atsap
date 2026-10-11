@@ -149,7 +149,7 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 
 	var (
 		transport, aors, context_, allow, fromDomain string
-		setVar                                      *string
+		setVar                                       *string
 		auth, outboundAuth, fromUser, contact        *string
 	)
 	err := p.pool.Unwrap().QueryRow(ctx, `
