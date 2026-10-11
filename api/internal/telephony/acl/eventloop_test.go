@@ -109,10 +109,11 @@ func TestEventLoop_HappyPathProgression(t *testing.T) {
 	assert.Equal(t, domain.CallActive, call.State, "both participants answered: Active")
 
 	loop.Handle(ctx, channelDestroyedEvent(t, "chan-caller"))
-	assert.Equal(t, domain.CallActive, call.State, "callee still connected: not yet Terminating")
+	assert.Equal(t, domain.CallTerminating, call.State,
+		"one party leaving a two-party call ends it: Terminating, not left Active for the other alone")
 
 	loop.Handle(ctx, channelDestroyedEvent(t, "chan-callee"))
-	assert.Equal(t, domain.CallTerminating, call.State, "last connected participant left: Terminating")
+	assert.Equal(t, domain.CallTerminating, call.State, "the other leg's departure echoes into an already-ending call")
 
 	_, ok := registry.Lookup("chan-caller")
 	assert.False(t, ok, "destroyed channels are removed from the registry")

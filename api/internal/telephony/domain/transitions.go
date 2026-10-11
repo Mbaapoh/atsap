@@ -152,7 +152,14 @@ func (c *Call) DisconnectParticipant(participantID shareddomain.ParticipantID, w
 
 	events := []event.DomainEvent{ParticipantLeftEvent{CallID: c.ID.String(), ParticipantID: p.ID.String()}}
 
-	if c.connectedCount() == 0 && c.State == CallActive {
+	// An Active call ends when it can no longer connect anyone to
+	// anyone: fewer than two connected participants. The rule used to be
+	// "the LAST participant leaves", which left the other party of a
+	// two-party call connected to a dead bridge, in silence, accruing
+	// per-second usage until they hung up themselves (found by
+	// pbx-inbound-and-emergency's e2e). Conferences, where a call can
+	// outlive a departure, are Phase B and will revisit this.
+	if c.State == CallActive && c.connectedCount() < 2 {
 		c.State = CallTerminating
 	}
 	return events, nil

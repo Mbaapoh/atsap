@@ -634,16 +634,23 @@ func TestParticipantLeft_LastConnectedTerminates(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, h.svc.ParticipantLeft(ctx, corrs[0].TenantID, corrs[0].CallID, corrs[0].ParticipantID))
 
+	// One party leaving ends a two-party call, and the OTHER party's leg
+	// is released on the engine — not left on a dead bridge, in silence,
+	// accruing usage.
 	saved := h.callStore.get(callID)
-	require.NotNil(t, saved)
-	assert.Equal(t, domain.CallActive, saved.State, "one participant still connected")
-
-	require.NoError(t, h.svc.ParticipantLeft(ctx, corrs[1].TenantID, corrs[1].CallID, corrs[1].ParticipantID))
-
-	saved = h.callStore.get(callID)
 	require.NotNil(t, saved)
 	assert.Equal(t, domain.CallTerminated, saved.State)
 	assert.Equal(t, "normal clearing", saved.TerminationReason)
+	require.Len(t, h.mediaGW.destroyedChans, 1, "the remaining party's leg is hung up")
+	assert.Equal(t, "atsa-part-"+corrs[1].ParticipantID, string(h.mediaGW.destroyedChans[0]))
+	for _, p := range saved.Participants {
+		assert.Equal(t, domain.ParticipantDisconnected, p.State, "nobody is left connected")
+	}
+
+	// The second leg's own ChannelDestroyed then arrives for a call that
+	// is already over: the expected echo, not a second ending.
+	err := h.svc.ParticipantLeft(ctx, corrs[1].TenantID, corrs[1].CallID, corrs[1].ParticipantID)
+	assert.ErrorIs(t, err, application.ErrCallNotFound)
 }
 
 // TestParticipantLeft_NeverAnswered_TerminatesDirectly covers the
@@ -1166,4 +1173,59 @@ func TestCallArrived_DefaultRouterRefusesNotFound(t *testing.T) {
 	require.Len(t, h.mediaGW.rejectedChans, 1)
 	assert.Equal(t, ports.RefusalNotFound, h.mediaGW.rejectedChans[0].cause)
 	assert.Empty(t, h.mediaGW.originateCalls)
+}
+
+// connectArrived drives an arriving call to Active and returns it with
+// the destination leg's correlation.
+func connectArrived(t *testing.T, h *harness) (*domain.Call, acl.Correlation) {
+	t.Helper()
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+	corr, ok := h.registry.Lookup(h.mediaGW.originateCalls[0].ChannelID)
+	require.True(t, ok)
+	require.NoError(t, h.svc.ParticipantAnswered(context.Background(), corr.TenantID, corr.CallID, corr.ParticipantID,
+		h.mediaGW.originateCalls[0].ChannelID))
+	call := lastSavedCall(t, h)
+	require.Equal(t, domain.CallActive, call.State)
+	return call, corr
+}
+
+// HangupCall on an arrived call releases the caller's REAL channel — the
+// one Asterisk assigned — not the atsa-part-<id> name originated legs
+// use. It used to resolve the caller's channel after finalizing, by which
+// point the arrived record was already deleted, so the fallback named a
+// channel that does not exist and the caller stayed on the line.
+func TestHangupCall_ArrivedReleasesTheCallersOwnChannel(t *testing.T) {
+	h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+	call, _ := connectArrived(t, h)
+
+	require.NoError(t, h.svc.HangupCall(context.Background(), call.ID, "api hangup"))
+	assert.Contains(t, h.mediaGW.destroyedChans, ports.ChannelRef("chan-arriving"), "the arrived caller's own channel is hung up")
+	assert.Contains(t, h.mediaGW.destroyedChans, ports.ChannelRef(h.mediaGW.originateCalls[0].ChannelID), "and the destination's")
+}
+
+// The destination hanging up an arrived call releases the caller.
+func TestParticipantLeft_DestinationLeavingReleasesArrivedCaller(t *testing.T) {
+	h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+	call, corr := connectArrived(t, h)
+
+	require.NoError(t, h.svc.ParticipantLeft(context.Background(), corr.TenantID, corr.CallID, corr.ParticipantID))
+	assert.Equal(t, []ports.ChannelRef{"chan-arriving"}, h.mediaGW.destroyedChans,
+		"the caller is released, not left on a dead bridge")
+	assert.Equal(t, domain.CallTerminated, h.callStore.get(call.ID).State)
+}
+
+// The caller hanging up an arrived call releases the destination.
+func TestParticipantLeft_ArrivedCallerLeavingReleasesDestination(t *testing.T) {
+	h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+	call, corr := connectArrived(t, h)
+
+	var caller shareddomain.ParticipantID
+	for _, p := range call.Participants {
+		if p.ID.String() != corr.ParticipantID {
+			caller = p.ID
+		}
+	}
+	require.NoError(t, h.svc.ParticipantLeft(context.Background(), corr.TenantID, corr.CallID, caller.String()))
+	assert.Equal(t, []ports.ChannelRef{ports.ChannelRef(h.mediaGW.originateCalls[0].ChannelID)}, h.mediaGW.destroyedChans)
+	assert.Equal(t, domain.CallTerminated, h.callStore.get(call.ID).State)
 }

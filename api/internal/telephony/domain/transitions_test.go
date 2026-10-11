@@ -55,7 +55,8 @@ func TestHappyPathProgression(t *testing.T) {
 	events, err = call.DisconnectParticipant(caller.ID, endTime)
 	require.NoError(t, err)
 	assert.Len(t, events, 1)
-	assert.Equal(t, domain.CallActive, call.State, "callee is still connected: must not yet be Terminating")
+	assert.Equal(t, domain.CallTerminating, call.State,
+		"one party leaving a two-party call ends it: the other must not be left connected to no one")
 
 	events, err = call.DisconnectParticipant(callee.ID, endTime)
 	require.NoError(t, err)

@@ -389,6 +389,12 @@ func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, 
 	if err := call.AddParticipant(destination); err != nil {
 		return fmt.Errorf("add arrived destination participant: %w", err)
 	}
+	// The destination must be persisted before origination: the channel
+	// history row originateParticipant writes references it, and the
+	// database refuses orphans.
+	if err := s.saveCall(ctx, call); err != nil {
+		return err
+	}
 	if err := s.originateParticipant(ctx, tenantID, callID, destination); err != nil {
 		return fmt.Errorf("originate arrived destination %s: %w", destination.ID, err)
 	}
@@ -467,12 +473,15 @@ func (s *Service) HangupCall(ctx context.Context, callID shareddomain.CallID, re
 		return domain.ErrCallTerminated
 	}
 
-	// The legs still on the engine, captured before the loop below marks
-	// the connected ones Disconnected in the domain.
-	var live []shareddomain.ParticipantID
+	// The legs still on the engine, resolved to channels NOW: before the
+	// loop below marks the connected ones Disconnected, and before
+	// finalizeTermination forgets an arrived caller's channel (removeCall
+	// deletes it — resolving afterwards silently fell back to the wrong
+	// channel and left an arrived caller on the line).
+	var live []ports.ChannelRef
 	for _, p := range call.Participants {
 		if p.State != domain.ParticipantDisconnected {
-			live = append(live, p.ID)
+			live = append(live, s.legRef(callID, p.ID))
 		}
 	}
 
@@ -500,25 +509,35 @@ func (s *Service) HangupCall(ctx context.Context, callID shareddomain.CallID, re
 	// the ChannelDestroyed events this triggers find the call already gone
 	// rather than racing a second termination. A leg the far end has just
 	// hung up is already destroyed; that failure is expected and logged.
-	//
-	// An arriving caller has no deterministic channel address (Asterisk
-	// assigned its id), so its tracked ref is used instead.
-	arrived, isArrived := s.arrivedOf(callID)
-	for _, id := range live {
-		ref := participantChannel(id)
-		if isArrived && arrived.callerParticipant == id {
-			ref = arrived.callerRef
-		}
-		if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
-			s.logger.Debug("destroy channel on hangup", "error", err, "call_id", callID, "participant_id", id)
-		}
-	}
+	s.releaseLegs(ctx, callID, live)
 	return nil
 }
 
 // participantChannel is the engine channel a participant's leg is
 // originated with. Deterministic, so a leg can be addressed by its
 // participant alone (D-19 correlation).
+// legRef is the engine channel of one participant: the channel an
+// arrived caller came in on, or the atsa-part-<id> channel the platform
+// originated for every other leg. Resolve it before finalizing a call.
+func (s *Service) legRef(callID shareddomain.CallID, participantID shareddomain.ParticipantID) ports.ChannelRef {
+	if a, ok := s.arrivedOf(callID); ok && a.callerParticipant == participantID {
+		return a.callerRef
+	}
+	return participantChannel(participantID)
+}
+
+// releaseLegs hangs up channels after the call is finalized, so the
+// ChannelDestroyed events find it gone rather than racing a second
+// termination. A leg the far end already hung up fails; that is
+// expected and only logged.
+func (s *Service) releaseLegs(ctx context.Context, callID shareddomain.CallID, refs []ports.ChannelRef) {
+	for _, ref := range refs {
+		if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
+			s.logger.Debug("release leg", "error", err, "call_id", callID, "channel", ref)
+		}
+	}
+}
+
 func participantChannel(id shareddomain.ParticipantID) ports.ChannelRef {
 	return ports.ChannelRef("atsa-part-" + id.String())
 }
@@ -651,7 +670,37 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 	}
 
 	if call.State == domain.CallTerminating {
-		return s.finalizeTermination(ctx, call, "normal clearing")
+		// The departure left fewer than two connected: the call is over
+		// for everyone still on it. Record their usage up to now, mark
+		// them left, finalize, then release their legs on the engine —
+		// otherwise the other party sits on a dead bridge in silence,
+		// accruing usage.
+		var remaining []ports.ChannelRef
+		var leftEvents []event.DomainEvent
+		for _, p := range call.Participants {
+			if p.State != domain.ParticipantConnected {
+				continue
+			}
+			if err := s.recordUsageForParticipant(ctx, call, p, now); err != nil {
+				s.logger.Error("record usage on call end", "error", err, "call_id", callID, "participant_id", p.ID)
+			}
+			remaining = append(remaining, s.legRef(callID, p.ID))
+			evs, err := call.DisconnectParticipant(p.ID, now)
+			if err != nil {
+				return fmt.Errorf("disconnect remaining participant: %w", err)
+			}
+			leftEvents = append(leftEvents, evs...)
+		}
+		if len(leftEvents) > 0 {
+			if err := s.saveCall(ctx, call, leftEvents...); err != nil {
+				return err
+			}
+		}
+		if err := s.finalizeTermination(ctx, call, "normal clearing"); err != nil {
+			return err
+		}
+		s.releaseLegs(ctx, callID, remaining)
+		return nil
 	}
 	return nil
 }
