@@ -6,13 +6,24 @@ Carriers are how every external call leaves and enters the platform. This capabi
 
 ### Requirement: A trunk is a tenant-scoped record created through the public API
 
-The system SHALL create, list, update and delete carrier trunks through public endpoints, scoped to the calling tenant. A trunk carries a name, host, port, per-trunk channel limit and priority. The carrier secret is supplied at creation, used for engine projection, and never returned afterwards.
+The system SHALL create, list, update and delete carrier trunks through public endpoints, scoped to the calling tenant. A trunk carries a name, host, port, per-trunk channel limit and priority, and optionally carrier digest credentials: an authentication username and a secret, as SIP trunk configuration conventionally takes them. The username is configuration and is returned on reads. The secret is supplied at creation or as a replacement on update, used for engine projection, and never returned. A trunk with no credentials is an IP-authenticated carrier; a secret without a username is refused.
 
 #### Scenario: A trunk is created and usable
 
 - **WHEN** a partner engineer creates a trunk with a name, host and secret
 - **THEN** the trunk is stored under their tenant and appears in the trunk list
 - **AND** the secret is never returned by any later read
+
+#### Scenario: An IP-authenticated trunk needs no credentials
+
+- **WHEN** a trunk is created with no username and no secret
+- **THEN** the trunk is stored and projected with no engine-facing auth state
+
+#### Scenario: A secret is replaced, never read back
+
+- **WHEN** a trunk is updated with a replacement secret
+- **THEN** the engine-facing auth state carries the new secret
+- **AND** an update that supplies no secret leaves the stored secret unchanged
 
 #### Scenario: A trunk belonging to another tenant is indistinguishable from one that does not exist
 
@@ -21,7 +32,7 @@ The system SHALL create, list, update and delete carrier trunks through public e
 
 #### Scenario: Trunk input is validated before it is stored
 
-- **WHEN** a trunk is created with an unparseable host, an out-of-range port, or a non-positive channel limit
+- **WHEN** a trunk is created with an unparseable host, an out-of-range port, a non-positive channel limit, or a secret without a username
 - **THEN** creation is refused with a reason identifying the offending field
 
 ### Requirement: Trunk health is observed, never set

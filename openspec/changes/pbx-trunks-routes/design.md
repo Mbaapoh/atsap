@@ -35,6 +35,15 @@ Unlike the inbound slice, nothing here needs a port on `telephony-core`. The tas
 **D6 — Selection is pure domain, cost is stored not computed.**
 `SelectRoutes(dialled, routes, trunks)` stays a pure function (D-21 shape) with property tests per DoD 14. `cost_per_minute` participates only as a tie-break; any rating model is LLD-09's, and building one here would put a pricing engine in the wrong context (§9).
 
+**D7 — Trunk credentials follow SIP-trunk convention: optional username + secret.** *(Added at apply time.)*
+LLD-03 §3 gave a trunk a secret and no username, but carrier digest authentication needs both. 3CX ("Authentication ID" / password), FreePBX and VitalPBX (username / secret) all take the pair, and all allow neither for IP-authenticated carriers. So: `auth_username` is optional configuration, stored on the trunk row and returned on reads; `secret` is optional, write-only, and refused without a username. `UpdateTrunk` takes an optional replacement secret; omitting it keeps the stored one. Projected From-user is the auth username and From-domain the host, the FreePBX defaults; neither is separately configurable in Phase A. **Outbound registration to the carrier** (FreePBX "send registration", 3CX "registration required") is deliberately not here: it needs a `ps_registrations` table and a new engine grant, which the endpoint-projection requirement confines. It is the natural follow-up with the first health reporter.
+
+**D8 — What an observed outcome does to health.** *(Added at apply time.)*
+`ReportRouteHealth(statusCode, latency)` is mapped by a pure domain function: a 2xx within 2 s → `Healthy`, a 2xx slower than that → `Degraded`, no response (0), 408 or any 5xx → `Unhealthy`; every other code (404, 486, 480…) describes the callee, not the carrier, and leaves health unchanged. Hysteresis and thresholds over a window are AC-02.5's and land with the reporter.
+
+**D9 — Prefix patterns are digits plus `X`.** *(Added at apply time.)*
+A pattern is an optional leading `+` then 1–50 characters of `0-9` or `X` (any one digit) — FreePBX's `X` without its expression syntax (§10.5). Matching strips a leading `+` from both sides. Specificity is pattern length; equal length ties on priority, then cost, then route id, so the order is total and the same input always yields the same winner.
+
 ## Risks / Trade-offs
 
 - [Risk] Migration-number collision if licensing renumbers → Mitigation: tasks resolve the number against the tree at apply start, before writing the migration.

@@ -12,6 +12,7 @@
 | Date | Change |
 |---|---|
 | 2026-09-07 | Initial draft. |
+| 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
 
 ## 1. Scope
 
@@ -111,6 +112,7 @@ type Trunk struct {
     Name           string
     Host           string
     Port           int
+    AuthUsername   string        // optional; configuration, not a secret (D7)
     CredentialRef  string        // reference; the secret is fetched, not stored here
     ChannelLimit   int
     Priority       int
