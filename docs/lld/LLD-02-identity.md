@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `identity` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Implemented; revision 2 applied** (user accounts, sessions, credential recovery, SSO readiness, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, change `identity-accounts-and-sessions`, not yet archived). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| **Status** | **Implemented & archived, revision 2 included** (user accounts, sessions, credential recovery, SSO readiness, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, change `identity-accounts-and-sessions`, archived 2026-10-11). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | **Traces to** | BRD FBR-R1-04/§10; PRD EPIC-01 (US-01.1–01.7, AC-01.1–01.7), INV-01/INV-10/INV-11; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §7, [05-security.md](../hld/05-security.md) §1; DECISIONS D-24 |
 | **Why this is LLD-02** | LLD-01 proved the media path against stub adapters whose files say, verbatim, "until LLD-02 lands." Every Tier 1 context needs `identity`'s tenant context (§10.1), so D-26 (dependency-first within a release) puts it here. |
 
@@ -503,7 +503,7 @@ was pulled ahead as a result.
 | ~~`identity-bootstrap`~~ | ~~Dev-token minting for the rig~~ | **Closed as unnecessary** — see §5.2 |
 | `auth-cutover-connectrpc` | JWT enforced on every RPC including `TelephonyService`; tenant-match rule | **Archived** 2026-09-08 |
 | `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | **Archived** 2026-10-11 |
-| `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model; D-66 credential kinds, key rotation, off-network recovery | **Applied** 2026-10-11 |
+| `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model; D-66 credential kinds, key rotation, off-network recovery | **Archived** 2026-10-11 |
 | *(future)* `identity-oidc` | OIDC sign-in behind `FederatedAuthenticator`, provider administration, JIT policy | Not proposed |
 | *(future)* `identity-mfa` | TOTP and passkeys; required MFA for administrator roles. **Before GA** (D-66) | Not proposed |
 | *(future)* `identity-scim` | SCIM 2.0 provisioning and deprovisioning from a tenant's IdP | Not proposed |
