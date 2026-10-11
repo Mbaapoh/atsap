@@ -1,9 +1,15 @@
 version: v2
 plugins:
-  - remote: buf.build/protocolbuffers/go
+  # Both Go plugins are pinned. Unpinned, `buf generate` resolved
+  # connectrpc/go to its v2 major and rewrote every service onto a runtime
+  # go.mod does not have (found while adding the trunk RPCs). Pins match
+  # what generated the committed code: protoc-gen-go v1.36.12 (the version
+  # in every .pb.go header) and connect-go v1.18.1, which regenerates the
+  # untouched services byte-identical.
+  - remote: buf.build/protocolbuffers/go:v1.36.12
     out: internal/genproto
     opt: paths=source_relative
-  - remote: buf.build/connectrpc/go
+  - remote: buf.build/connectrpc/go:v1.18.1
     out: internal/genproto
     opt: paths=source_relative
   # OpenAPI v3 for the Connect surface (identity-api task 1.3;
