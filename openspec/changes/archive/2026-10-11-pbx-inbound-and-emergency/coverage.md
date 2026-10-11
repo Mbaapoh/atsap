@@ -84,7 +84,7 @@ Every scenario in the five delta specs, mapped to what proves it. **Tiers:** U =
 ## Gaps (G-series)
 
 - **G1 — No `Retry-After` on 503.** Asterisk 22.11.0 cannot add a header to the final response of an inbound INVITE (task 1.1 spike). A plain 503 ships, with `Reason: Q.850;cause=34`.
-- **G2 — Emergency catalogue narrowed.** It ships CM (113/117/118/119) and US (911) only (task 3.3 note, recorded as descoped "per owner"). Every other country is tenant-entered via the profile RPCs. The proposal and design describe the wider intended coverage.
+- **G2 — Emergency catalogue is CM and US only, by owner decision.** It ships Cameroon (113/117/118/119) and the US (911). Every other country is tenant-entered via the profile RPCs. A new country is a data-only addition with a verified source per number.
 - **G3 — Two trunks on one carrier address are indistinguishable.** Identify-by-IP cannot attribute a call when two trunks, in the same or different tenants, share a signalling address, and many tenants bringing the same carrier is common in BYOT. Seen live: a stale trunk from a killed UAT run captured the next run's calls. A resolution (refuse a duplicate host, or match on Request-URI/DID across tenants) is a design decision for a follow-up.
 - **G4 — No live test of a full trunk being passed over** for a desk-phone call. It needs a second trunk on a second carrier address, and this host's firewall admits one. Proven at integration.
 - **G5 — Static fixtures 1000/1001 cannot dial.** They carry no tenant variable and are refused 404 by design (design D1 risk); the walking skeleton only originates.

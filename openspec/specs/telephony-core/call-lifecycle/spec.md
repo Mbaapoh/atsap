@@ -114,16 +114,18 @@ and no missing second, until the participant disconnects.
   elapsed second in that period, and no second has more than one entry
 
 ### Requirement: Call ends when the last connected participant leaves
-A Call SHALL move to Terminating when its last remaining Connected
-participant leaves, and SHALL move to Terminated once teardown completes.
-A Terminated call's record SHALL become immutable: its final state,
-timestamps, and billable durations SHALL NOT change afterward.
+
+An Active Call SHALL move to Terminating as soon as fewer than two of its participants remain Connected, because no one is left to be connected to anyone. It SHALL release every remaining participant's leg on the engine, and SHALL move to Terminated once teardown completes. A Terminated call's record SHALL become immutable: its final state, timestamps, and billable durations SHALL NOT change afterward.
 
 #### Scenario: Either party hangs up
-- **WHEN** one of the two connected participants disconnects while the
-  other has already left or disconnects at the same time
-- **THEN** the Call moves to Terminating and then Terminated, and its
-  record is thereafter immutable
+
+- **WHEN** one of the two connected participants disconnects while the other has already left or disconnects at the same time
+- **THEN** the Call moves to Terminating and then Terminated, and its record is thereafter immutable
+
+#### Scenario: One party hanging up releases the other
+
+- **WHEN** one of the two connected participants of an Active call disconnects and the other is still connected
+- **THEN** the Call ends, the other participant's leg is released on the engine, their usage stops at that moment, and neither party is left connected to no one
 
 ### Requirement: Lifecycle transitions are published as domain events
 Each Call state transition and each Participant join or leave SHALL be
@@ -147,3 +149,32 @@ telephony-engine-internal identifier for a Call or Participant.
 - **THEN** the response identifies participants only by their Participant
   identifiers, with no telephony-engine channel identifier present
   anywhere in the response
+
+### Requirement: A call can begin with a channel arriving at the engine
+
+The system SHALL accept a channel that arrives at the engine without having been originated by the platform as the first participant of a new Call, and SHALL decide what the call is before any further leg is set up. Telephony SHALL NOT itself know how a dialled number is resolved: the decision comes from a routing port, and with no router configured every arriving call is refused as "not found".
+
+#### Scenario: An arriving call that resolves to a destination connects
+
+- **WHEN** a channel arrives and the router resolves it to a destination
+- **THEN** the call passes Screening (unless the router marks it emergency), the destination leg is originated, the arriving caller hears ringing, and when the destination answers the caller is answered and both are bridged
+
+#### Scenario: An arriving call the router cannot place is refused at the edge
+
+- **WHEN** a channel arrives and the router refuses it
+- **THEN** the arriving channel is refused with the standard response the router named, the Call is recorded Terminated with the reason, and no other leg is set up
+
+#### Scenario: Screening refuses an arriving call with service unavailable
+
+- **WHEN** a non-emergency arriving call is refused by capacity
+- **THEN** the arriving channel receives "service unavailable" and no destination leg is set up
+
+#### Scenario: The arriving caller hangs up before an answer
+
+- **WHEN** the arriving caller hangs up while the destination is still ringing
+- **THEN** the destination leg is released and the Call is recorded Terminated
+
+#### Scenario: Telephony runs with no router
+
+- **WHEN** the platform runs telephony with no routing implementation present
+- **THEN** every arriving call is refused as "not found" and every originated call behaves exactly as before

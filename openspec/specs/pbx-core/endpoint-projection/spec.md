@@ -42,7 +42,7 @@ state as a single atomic unit. Neither SHALL be observable without the other.
 
 The system SHALL store extension credentials only in a form that cannot be read back as the original secret, including in the state made available to the media engine.
 
-Carrier trunk secrets are the deliberate exception (LLD-03 §7.4): outbound registration requires the engine to authenticate *as us* to the carrier, and there is no arrangement in which it presents a one-way hash. The trunk secret SHALL rest in the engine-facing auth state readable by the engine identity, and SHALL appear nowhere else — never in an API response after creation, never in a log or audit row, and never in the domain table, which holds a reference only. The engine identity's read access stays confined to the engine-facing tables it already holds.
+Carrier trunk secrets are the deliberate exception (LLD-03 §7.4): outbound registration requires the engine to authenticate *as us* to the carrier, and there is no arrangement in which it presents a one-way hash. The trunk secret SHALL rest in the engine-facing auth state readable by the engine identity, and SHALL appear nowhere else — never in an API response after creation, never in a log or audit row, and never in the domain table, which holds a reference only. The engine identity's read access stays confined to engine-facing state: it may gain an engine-facing table a feature requires, and never gains a tenant data table.
 
 #### Scenario: Stored state contains no plaintext secret
 
