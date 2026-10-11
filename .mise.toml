@@ -3,151 +3,100 @@ go = "1.25"
 golangci-lint = "2.13.1"
 buf = "1.72.0"
 gotestsum = "1.13.0"
+tilt = "0.37.8"
 
 [env]
 GOFLAGS = "-mod=mod"
 
+# All recipes live in the Makefile (single source of truth, D-60); these
+# tasks are thin wrappers so `mise run <name>` keeps working and resolves
+# the pinned toolchain above. Rationale comments live next to the recipes
+# in the Makefile, not here.
+
 [tasks.dev]
 description = "Start local dev stack (Asterisk + Go app) with live rebuild"
-run = "docker compose -f deploy/docker-compose.yml up --build"
+run = "make dev"
 
 [tasks."dev:down"]
 description = "Stop and remove the local dev stack"
-run = "docker compose -f deploy/docker-compose.yml down"
+run = "make dev-down"
 
 [tasks."dev:app"]
 description = "Rebuild and restart only the app service (fast; Asterisk is untouched)"
-run = "docker compose -f deploy/docker-compose.yml up -d --build app"
+run = "make dev-app"
 
 [tasks."uat:auto"]
 description = "Automated UAT: real baresip phones auto-answer the e2e call; asserts signaling, records, events, and bidirectional media, then restores the rig"
-run = "./scripts/uat-auto.sh"
+run = "make uat-auto"
 
-# Restore the dev rig between test tiers. Two independent things rot, and
-# neither symptom names its cause:
-#
-#   1. The integration tier's cleanup drops the schema (each suite
-#      migrates down on exit), leaving e2e facing a database with no
-#      tables and sip-ua deregistered — since ps_contacts became
-#      realtime-backed, registrations live in Postgres (D-47).
-#
-#   2. (FIXED in Asterisk 22.11.0 — kept as history, and as the reason
-#      the engine version is pinned.) Asterisk's ARI WebSocket used to
-#      stop accepting event streams after serving a handful of them: the
-#      HTTP API still answered 200, but every stream dial timed out and
-#      the app logged "ari: event stream disconnected, retrying" on a
-#      growing backoff. The test-side symptom was "timed out waiting for
-#      Stasis app voip-app-e2e to register", which names neither Asterisk
-#      nor WebSockets and sends you looking at your own test. Root cause
-#      was upstream issue #2020, an inbound websocket session leak;
-#      restarting Asterisk was the only workaround. If this ever returns,
-#      check the engine version FIRST (docs/ASTERISK-INTEGRATION.md
-#      §2.1.1) before suspecting the test.
-#
-# Order matters: Asterisk first (it owns the ARI listener and the
-# registrations), then the app (it migrates on boot), then sip-ua (it
-# must register against the schema that results).
 [tasks."rig:restore"]
 description = "Restore the dev rig between test tiers (Asterisk ARI, migrations, SIP fixtures)"
-run = """
-docker restart deploy-asterisk-1 >/dev/null
-sleep 18
-docker restart deploy-app-1 >/dev/null
-sleep 8
-docker restart deploy-sipua-1 >/dev/null
-sleep 12
-docker exec deploy-asterisk-1 asterisk -rx 'pjsip show contacts'
-"""
+run = "make rig-restore"
 
 [tasks."dev:logs"]
 description = "Tail logs from the local dev stack"
-run = "docker compose -f deploy/docker-compose.yml logs -f"
+run = "make dev-logs"
+
+[tasks."tilt:up"]
+description = "Start local dev stack under Tilt (live reload for Go services; compose owns topology)"
+run = "make tilt-up"
+
+[tasks."tilt:down"]
+description = "Stop the Tilt-managed dev stack"
+run = "make tilt-down"
+
+[tasks."tilt:ci"]
+description = "Headless Tilt bring-up; exits 0 once all workloads are healthy (CI/E2E)"
+run = "make tilt-ci"
 
 [tasks.build]
 description = "Build the Go binary to ./bin/atsap-api"
-dir = "api"
-env = { CGO_ENABLED = "0" }
-run = "go build -o ../bin/atsap-api ./cmd/atsap-api"
+run = "make build"
 
 [tasks.run]
 description = "Run the Go app locally (expects Asterisk reachable, see .env)"
-dir = "api"
-run = "go run ./cmd/atsap-api"
+run = "make run"
 
 [tasks.test]
 description = "Run the Go test suite"
-dir = "api"
-run = "go test ./... -race -cover"
+run = "make test"
 
 [tasks.lint]
 description = "Run golangci-lint (including tagged integration and e2e files)"
-dir = "api"
-# --build-tags is not optional. Without it golangci-lint never compiles a
-# file behind //go:build integration or //go:build e2e, so depguard's
-# boundary rules — the architectural gate — silently skipped every
-# integration and e2e test in the repo. That went unnoticed because the
-# untagged run reports "0 issues", which reads like coverage rather than
-# absence. Adding the tags surfaced nine real findings on 2026-09-08.
-run = "golangci-lint run --build-tags integration,e2e ./..."
+run = "make lint"
 
-# buf.yaml has configured lint and breaking rules since LLD-01, but
-# nothing ever ran them — the proto contract was unguarded while
-# docs/API.md claimed otherwise. A reshape of an RPC that already has a
-# consumer now fails here rather than in a partner's client.
-#
-# Compared against origin/develop, the integration branch, rather than
-# main: main still predates the protos entirely (it has no .proto files
-# at all), so it cannot serve as a baseline yet. Move this to main once
-# develop is promoted and main carries the contract.
 [tasks.proto]
 description = "Lint protos and check for breaking changes against the integration branch"
-dir = "api"
-run = [
-  "buf lint",
-  "buf breaking --against '../.git#branch=origin/develop,subdir=api'",
-]
+run = "make proto"
 
 [tasks.tidy]
 description = "Tidy go modules"
-dir = "api"
-run = "go mod tidy"
+run = "make tidy"
 
 [tasks.docs]
 description = "Run documentation wiring checks (HLD markers, decision refs, internal links)"
-run = "./scripts/check-docs.sh"
+run = "make docs"
 
 [tasks.diagrams]
 description = "Render every mermaid diagram in docs/ and fail if one does not parse"
-# Not in `ci`: unlike check-docs.sh this needs mermaid-cli and a Chromium
-# binary, which the CI image does not carry yet. Run it whenever a
-# diagram changes; wiring it into Jenkins means adding chromium there.
-run = "./scripts/check-diagrams.sh"
+run = "make diagrams"
 
 [tasks.vuln]
 description = "Run govulncheck (pinned, matches CI GOVULNCHECK_VERSION) on the Go module"
-dir = "api"
-run = "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./..."
+run = "make vuln"
 
 [tasks.ci]
 description = "Run the full local CI gate in pipeline order (docs, lint, vuln, test)"
-depends = ["docs", "lint", "vuln", "test"]
+run = "make ci"
 
 [tasks."docker:build"]
 description = "Build production images for the app and Asterisk"
-run = "docker build -t atsap-api:local api && docker build -t atsap-core:local core"
+run = "make docker-build"
 
 [tasks."images:push"]
 description = "Build, tag and push the production images to REGISTRY (default: registry.example.com/atsap), tagged IMAGE_TAG (default: latest)"
-run = '''
-set -eu
-: "${REGISTRY:=registry.example.com/atsap}"
-: "${IMAGE_TAG:=latest}"
-docker build -t "$REGISTRY/atsap-api:$IMAGE_TAG" api
-docker build -t "$REGISTRY/atsap-core:$IMAGE_TAG" core
-docker push "$REGISTRY/atsap-api:$IMAGE_TAG"
-docker push "$REGISTRY/atsap-core:$IMAGE_TAG"
-'''
+run = "make images-push"
 
 [tasks.deploy]
 description = "Deploy the prod stack on this host from pre-built images (run on the VPS; see README's Production deployment section). Set REGISTRY/IMAGE_TAG as needed."
-run = "docker compose -f deploy/docker-compose.prod.yml pull && docker compose -f deploy/docker-compose.prod.yml up -d"
+run = "make deploy"

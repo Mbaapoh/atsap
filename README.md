@@ -42,6 +42,10 @@ deploy/
 scripts/check-docs.sh          doc wiring checks (HLD markers, decision refs, links)
 scripts/check-diagrams.sh      renders every mermaid block in docs/ (mise run diagrams)
 Jenkinsfile                  CI: lint, test, vuln-scan, docs, build+scan+push, deploy
+Tiltfile + api/Dockerfile.dev  Tilt local orchestration: live reload for Go, manual
+                               rebuild for the Asterisk image (D-60)
+Makefile                     workflow entrypoint; every `mise run` task delegates
+                               to the same-named target (D-60)
 ```
 
 **How work moves through this repo — and how to resume an in-flight
@@ -69,10 +73,16 @@ same versions are used in CI, so "works on my machine" failures are rare.
 
 ```bash
 mise trust
-mise install        # installs Go + golangci-lint at the pinned versions
+mise install        # installs the pinned toolchain (Go, tilt, linters, ...)
 cp .env.example .env
+mise run tilt:up     # full stack under Tilt: live reload for Go (UI :10350)
+# …or plain compose, without live reload:
 mise run dev         # docker compose up --build: Asterisk + Postgres + the Go app
 ```
+
+`mise run <task>` delegates to the same-named `make` target (`:` → `-`),
+so `mise run dev:down` ≡ `make dev-down`; `mise exec -- make help` lists
+every workflow (D-60).
 
 **Always run Go commands through mise** (`mise exec -- go ...` / `mise run test` /
 etc.), not a bare `go` on your `$PATH`. `go.mod`'s `go 1.25` directive makes a
@@ -110,6 +120,7 @@ mise run vuln         # govulncheck (pinned) on the Go module
 mise run docs         # doc wiring checks (HLD markers, decision refs, links)
 mise run ci           # full local gate in pipeline order: docs, lint, vuln, test
 mise run build        # build ./bin/atsap-api
+mise run tilt:ci      # headless Tilt bring-up; exits 0 when all workloads healthy
 mise run dev:logs      # tail the dev stack's logs
 mise run dev:down      # stop the dev stack
 mise run dev:app       # rebuild + restart only the app service (fast)

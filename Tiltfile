@@ -1,0 +1,144 @@
+# Tilt orchestration for atsap local development.
+#
+# Industry split, mirroring the contract in .env.example:
+#   - deploy/docker-compose.yml owns TOPOLOGY (services, networks, ports).
+#   - This file owns ORCHESTRATION (build strategy, startup order, reload).
+#   - api/Dockerfile[.dev] owns IMAGES (prod stays distroless; .dev keeps
+#     the toolchain for live_update). Never point compose at .dev directly.
+#
+# Usage:
+#   tilt up                 # full stack with live reload (mise run tilt:up)
+#   tilt up -- --no-sipua   # app-only iteration, no sip-ua sidecar
+#   tilt down               # stop everything (mise run tilt:down)
+
+version_settings(constraint='>=0.37.0')
+analytics_settings(False)
+update_settings(max_parallel_updates=3)
+
+config.define_bool(
+    'no-sipua',
+    args=True,
+    usage='Skip the sip-ua sidecar (faster app-only iteration).',
+)
+cfg = config.parse()
+
+# Single source of truth for topology; the docker_build stanzas below
+# override the compose `build:` sections by matching `image:` name.
+docker_compose('./deploy/docker-compose.yml')
+
+# ---------------------------------------------------------------- builds ---
+
+# Asterisk is built from source (several minutes) and its version is pinned
+# (see core/Dockerfile: never downgrade below 22.11.0). Watch ONLY the files
+# that can legitimately change it, so a Go edit never triggers a rebuild.
+# NOTE: `only` paths are relative to the build context (./core), NOT to the
+# Tiltfile — root-relative patterns would empty the Docker build context and
+# break `COPY conf/` (seen 2026-10-06: "/conf": not found).
+docker_build(
+    'atsap-core:dev',
+    context='./core',
+    dockerfile='./core/Dockerfile',
+    only=[
+        './Dockerfile',
+        './conf/',
+    ],
+)
+
+# Go control-plane: toolchain-rich dev image + in-container recompile.
+# A save under api/ resyncs sources, rebuilds /out/app, and restarts the
+# container in seconds — no image rebuild, Asterisk untouched.
+# NOTE: `only` is context-relative (see asterisk note above); `sync`/`run`
+# triggers stay Tiltfile-relative.
+_GO_ONLY = [
+    './Dockerfile.dev',
+    './go.mod',
+    './go.sum',
+    './cmd/',
+    './internal/',
+    './migrations/',
+]
+
+docker_build(
+    'atsap-api:dev',
+    context='./api',
+    dockerfile='./api/Dockerfile.dev',
+    only=_GO_ONLY,
+    live_update=[
+        sync('./api/cmd', '/src/cmd'),
+        sync('./api/internal', '/src/internal'),
+        sync('./api/migrations', '/src/migrations'),
+        sync('./api/go.mod', '/src/go.mod'),
+        sync('./api/go.sum', '/src/go.sum'),
+        run(
+            'cd /src && CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/atsap-api',
+            trigger=['./api/cmd', './api/internal', './api/go.mod', './api/go.sum'],
+        ),
+        restart_container(),
+    ],
+)
+
+docker_build(
+    'atsap-sipua:dev',
+    context='./api',
+    dockerfile='./api/Dockerfile.dev',
+    build_args={'CMD_PATH': './cmd/sip-ua'},
+    only=_GO_ONLY,
+    live_update=[
+        sync('./api/cmd', '/src/cmd'),
+        sync('./api/internal', '/src/internal'),
+        # sip-ua never reads migrations, but Dockerfile.dev COPYs them and
+        # they are in _GO_ONLY: without this sync a migration edit falls
+        # outside live_update and forces a full sip-ua image rebuild.
+        sync('./api/migrations', '/src/migrations'),
+        sync('./api/go.mod', '/src/go.mod'),
+        sync('./api/go.sum', '/src/go.sum'),
+        run(
+            'cd /src && CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/sip-ua',
+            trigger=['./api/cmd', './api/internal', './api/go.mod', './api/go.sum'],
+        ),
+        restart_container(),
+    ],
+)
+
+# -------------------------------------------------------------- resources ---
+
+# Fail fast with a human message when the 12-factor env contract is missing
+# (compose would otherwise start `app` with empty config).
+local_resource(
+    'env-guard',
+    cmd='test -f .env || (echo "FATAL: missing .env — run: cp .env.example .env" >&2 && exit 1)',
+    deps=['.env.example'],
+    labels=['preflight'],
+)
+
+dc_resource('postgres', labels=['infra'])
+
+dc_resource(
+    'nats',
+    links=['http://localhost:8222'],
+    labels=['infra'],
+)
+
+dc_resource(
+    'asterisk',
+    resource_deps=['postgres'],
+    # Manual trigger: a source build costs minutes; rebuild explicitly from
+    # the Tilt UI after touching core/. The first `tilt up` still builds it.
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    links=['http://localhost:8088'],
+    labels=['voice'],
+)
+
+dc_resource(
+    'app',
+    resource_deps=['postgres', 'nats', 'asterisk', 'env-guard'],
+    links=['http://localhost:8080/healthz'],
+    labels=['app'],
+)
+
+dc_resource(
+    'sipua',
+    resource_deps=['asterisk'],
+    auto_init=not cfg.get('no-sipua', False),
+    labels=['voice'],
+)

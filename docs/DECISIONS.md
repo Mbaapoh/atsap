@@ -1766,6 +1766,53 @@ context whose addition prompted this)
 
 ---
 
+**D-60 · Tilt orchestrates local dev; Make owns workflows; mise owns pins
+(2026-10-07).**
+
+**Decision:** Local orchestration is specified in a `Tiltfile` over the
+existing `deploy/docker-compose.yml`; every human-typed workflow is a
+`make` target; every `mise run` task is a thin wrapper delegating to the
+same-named target (`:` → `-`); mise remains the sole pinner and provider
+of tool versions. Concretely: compose owns topology, Tilt owns
+orchestration (live reload, manual rebuild of the minutes-long Asterisk
+source build, and startup order *under Tilt*), the Makefile owns
+workflows, `.mise.toml` owns pins. Startup order is the one deliberate
+duplicate: compose keeps its `depends_on` so `mise run dev` still starts
+in order without Tilt, and the Tiltfile's `resource_deps` mirror it —
+change one, change the other. Proven end to end the night it landed: `tilt ci`
+brought all six resources healthy (postgres, nats, asterisk, app, sipua,
+env-guard), with `/healthz` returning 200, ARI endpoints 1000/1001
+online, and both PJSIP contacts registered.
+
+**Context:** `mise run dev` (`compose up --build`) rebuilt the world on
+every change and knew nothing of startup order; the Asterisk source build
+costs minutes, so each Go iteration paid for an engine rebuild it did not
+need. Two `docker_build` overrides with `live_update` (toolchain-rich
+`api/Dockerfile.dev`; production stays distroless) recompile the Go
+binaries in-container in seconds. The one fault found while proving it:
+Tilt's `only` paths are relative to the build context, not the Tiltfile —
+root-relative patterns silently emptied the Docker context (`COPY conf/`
+failed with `"/conf": not found`); the Tiltfile records this next to the
+stanzas so the next author does not rediscover it.
+
+**Alternatives:**
+- *Compose only, no Tilt.* Rejected — no live reload, no startup
+  ordering, no manual-trigger guard for the heavy image; every Go save
+  rebuilt the engine.
+- *Makefile calling tools directly, dropping mise.* Rejected — loses
+  pinned, CI-identical tool versions (TOOLSET §1.5); bare `make` is
+  supported only when the right tools are already on PATH.
+- *Tiltfile replacing compose.* Rejected — compose stays the topology
+  source of truth (the `.env` contract already states compose owns it);
+  Tilt references it, never duplicates it.
+
+**Related Decisions:** D-28 (machine gates over review — `tilt ci`
+extends the pattern to the dev stack itself), D-59 (gates as code)
+**Traceability:** `Tiltfile`; `api/Dockerfile.dev`; `Makefile`;
+`.mise.toml`; `docs/TOOLSET.md` §5
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

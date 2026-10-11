@@ -91,6 +91,11 @@ Run before any commit that touches what they cover:
 | `mise run diagrams` | every mermaid block in `docs/` renders (needs Chromium; not in `ci`) |
 | `mise run ci` | docs, lint, vuln, test in pipeline order |
 
+Every `mise run <task>` above delegates to the same-named `make` target
+(`:` → `-`, so `mise run dev:down` ≡ `make dev-down`); recipes live in
+the `Makefile`, pins in `.mise.toml` (D-60). `mise exec -- make help`
+lists every workflow in one place.
+
 **The build tags on `lint` are load-bearing.** Without them
 `golangci-lint` never compiles a file behind `//go:build integration` or
 `//go:build e2e`, so the boundary rules skip every integration and e2e

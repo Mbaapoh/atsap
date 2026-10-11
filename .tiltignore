@@ -1,0 +1,10 @@
+# Tilt file-watch exclusions (dockerignore style, relative to repo root).
+# Anything that must trigger a rebuild is scoped per-image via `only=` in
+# the Tiltfile instead; this file only silences pure noise.
+.git/
+bin/
+api/coverage/
+api/test-results/
+docs/
+openspec/
+*.md

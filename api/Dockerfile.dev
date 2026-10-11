@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+#
+# Dev-only image for Tilt live_update. Production stays on the lean
+# distroless api/Dockerfile; this image keeps the Go toolchain so Tilt can
+# recompile the binary *inside* the running container on every save
+# (seconds) instead of rebuilding the image. Never ship this image.
+#
+# Select the binary with --build-arg CMD_PATH=./cmd/sip-ua
+# (default: ./cmd/atsap-api). The Tiltfile passes the matching in-container
+# `go build` command per service — keep the two in sync.
+
+FROM golang:1.25-bookworm
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Same build inputs as the production Dockerfile: generated code lives
+# committed under internal/genproto, so proto/ is not needed here.
+COPY cmd ./cmd
+COPY internal ./internal
+COPY migrations ./migrations
+
+ARG CMD_PATH=./cmd/atsap-api
+RUN CGO_ENABLED=0 go build -trimpath -o /out/app ${CMD_PATH}
+
+EXPOSE 8080
+# WORKDIR stays /src so the relative "migrations" path resolves exactly
+# like `mise run run` from api/ and WORKDIR /app in production.
+CMD ["/out/app"]
