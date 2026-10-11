@@ -484,7 +484,7 @@ was pulled ahead as a result.
 | `identity-api` | `IdentityService` proto (9 RPCs), auth enforced on this service, first-administrator bootstrap, generated OpenAPI | **Archived** 2026-09-07 — pulled ahead, since nothing external could call anything until it landed |
 | ~~`identity-bootstrap`~~ | ~~Dev-token minting for the rig~~ | **Closed as unnecessary** — see §5.2 |
 | `auth-cutover-connectrpc` | JWT enforced on every RPC including `TelephonyService`; tenant-match rule | **Archived** 2026-09-08 |
-| `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | Applied 2026-10-11 |
+| `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | **Archived** 2026-10-11 |
 | `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model | **Proposed** 2026-10-11 |
 | *(future)* `identity-oidc` | OIDC sign-in behind `FederatedAuthenticator`, provider administration, JIT policy | Not proposed |
 | *(future)* `identity-mfa-totp` | TOTP second factor for password users | Not proposed |
