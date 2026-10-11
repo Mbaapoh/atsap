@@ -481,12 +481,15 @@ was pulled ahead as a result.
   immutable and is carried in `TenantContext`; storage routing is a
   deployment-layer concern for a later LLD.
 - ~~No refresh-token flow (§5.3).~~ Revision 2 adds sessions (D-62).
+- **Google sign-in comes first** (D-67): personal Gmail and Workspace,
+  installation-wide, linked to an existing person, never by email.
 - **SSO is modelled, not built** (D-63). No OIDC or SAML flow, no
   provider-administration RPC, no just-in-time provisioning. The next
   identity change builds OIDC behind `FederatedAuthenticator`.
-- **No MFA yet.** SSO users get their IdP's. Password users get TOTP and
-  passkeys in `identity-mfa`, **before general availability**, with MFA
-  enforceable for administrator roles (D-66). Credential kinds already
+- **No MFA yet.** SSO and Google users get their provider's. Password
+  users get TOTP and passkeys in `identity-mfa`, in **Phase B, before
+  general availability**, with MFA enforceable for administrator roles
+  (D-66 as amended). Credential kinds already
   exist for it.
 - **Single node.** `ValidateToken` reads the database per request. At
   multi-node, validity may be cached per node only with NATS-broadcast
@@ -504,8 +507,9 @@ was pulled ahead as a result.
 | `auth-cutover-connectrpc` | JWT enforced on every RPC including `TelephonyService`; tenant-match rule | **Archived** 2026-09-08 |
 | `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | **Archived** 2026-10-11 |
 | `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model; D-66 credential kinds, key rotation, off-network recovery | **Archived** 2026-10-11 |
-| *(future)* `identity-oidc` | OIDC sign-in behind `FederatedAuthenticator`, provider administration, JIT policy | Not proposed |
-| *(future)* `identity-mfa` | TOTP and passkeys; required MFA for administrator roles. **Before GA** (D-66) | Not proposed |
+| *(future)* `identity-oidc-google` | "Sign in with Google" for Gmail and Workspace (D-67): one installation-wide provider, linked on invitation or from the account screen, never by email; public domains unclaimable | Not proposed; after console slice A |
+| *(future)* `identity-oidc` | Company-domain SSO (Workspace, Entra ID) with provider administration, on the same OIDC code | Not proposed |
+| *(future)* `identity-mfa` | TOTP and passkeys; required MFA for administrator roles. **Phase B, before GA** (D-66 as amended) | Not proposed |
 | *(future)* `identity-scim` | SCIM 2.0 provisioning and deprovisioning from a tenant's IdP | Not proposed |
 
 This LLD's Definition of Done is met. Further identity work is proposed

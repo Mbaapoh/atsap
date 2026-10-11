@@ -2127,7 +2127,10 @@ later.
    administrator account is a toll-fraud target. Order after this
    change: `identity-oidc`, then `identity-mfa` (TOTP and passkeys, with
    required MFA enforceable for `TENANT_ADMIN` and `PLATFORM_ADMIN`),
-   then SCIM 2.0 provisioning. MFA stops being "someday". *(Decided.)*
+   then SCIM 2.0 provisioning. MFA stops being "someday". *(Decided.
+   **Amended 2026-10-11 by the owner:** `identity-mfa` is Phase B work,
+   still before GA. Phase A pilots rely on Google's 2-step verification
+   for Google sign-ins (D-67).)*
 5. **Revocation at multi-node is a broadcast, not a cache window.** On
    one node, `ValidateToken` reads the database per request (D-42, D-56).
    When the platform goes multi-node (D-08), each node may cache
@@ -2152,6 +2155,63 @@ later.
 
 **Related Decisions:** D-08, D-42, D-54 (key sets), D-56, D-61–D-64
 **Traceability:** LLD-02 §3.1, §5.3, §5.4, §8, §9; HLD 03 §5; HLD 05 §1.2
+
+---
+
+**D-67 · "Sign in with Google" for personal Gmail accounts: one
+installation-wide provider, linked to an existing person, never by
+matching email (2026-10-11).**
+
+**Decision:** The first external sign-in method is Google, for personal
+Gmail accounts as well as Google Workspace. It differs from the company
+SSO of D-63 because a Gmail address has no company domain behind it.
+- **One provider for the installation, not per tenant.** The partner
+  registers one Google OAuth client (scopes `openid email profile`,
+  redirect on their own HTTPS domain), configured once; the client secret
+  is stored encrypted.
+- **No self-signup.** "Sign in with Google" never creates a person or a
+  membership. An administrator adds the person by email, as today.
+- **Linking happens one of two ways, never by matching email at sign-in.**
+  1. *On invitation:* the invitee opens the emailed link and chooses
+     Google. The link is made only if Google's verified email equals the
+     invited email. The ticket proves the inbox; Google proves the account.
+  2. *From the account screen:* a signed-in person links Google after
+     re-entering their password, so a stolen session cannot attach an
+     attacker's Google account.
+
+  Afterwards the person is found by Google's `sub` (the external identity
+  of D-63). An unlinked Google account is refused like a wrong password.
+- **Public email domains can never be claimed.** `gmail.com`,
+  `googlemail.com`, `outlook.com`, `hotmail.com`, `yahoo.com` and the like
+  are refused by `ClaimDomain`. Otherwise one tenant could route every
+  Gmail user to itself. Company-domain enforcement (D-63) stays as
+  designed, for Workspace and Entra ID later.
+- **Discovery shows the Google button to everyone** when Google is
+  configured. Shown regardless of the email, it reveals nothing.
+- **Built to the OIDC standard, shipped and supported for Google only.**
+  The code is generic OpenID Connect (`coreos/go-oidc`,
+  `golang.org/x/oauth2`, vetted under TOOLSET §6), so Microsoft accounts
+  and Entra ID later are mostly configuration.
+
+**Context:** Many of our target businesses, especially in Cameroon and
+wider Africa, run on Gmail rather than a company identity provider.
+Google's own 2-step verification then protects their sign-in, a useful
+stopgap while our MFA waits for Phase B (D-66 amended).
+
+**Alternatives:**
+- *Workspace only (domain-routed SSO).* Deferred: it excludes the Gmail
+  users who are the immediate market.
+- *Just-in-time accounts from any Google sign-in.* Rejected: on a B2B
+  platform, people are added by administrators.
+- *Link by matching email at sign-in.* Rejected: account takeover (D-63).
+
+**Consequences:** Account recovery for a linked Google sign-in is
+Google's, not the company's. When someone leaves, the administrator must
+remove the membership, because a company cannot disable a personal Gmail.
+A per-tenant "allow Google sign-in" switch is a later addition.
+
+**Related Decisions:** D-61, D-62, D-63, D-66
+**Traceability:** LLD-02 §4, §8, §9; planned change `identity-oidc-google`
 
 ---
 

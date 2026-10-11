@@ -8,8 +8,9 @@ behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
 **Last updated:** 2026-10-11, after `identity-accounts-and-sessions`
-was archived (D-61–D-64, D-66). Every Phase A backend change is now
-archived; console slice A is next.
+was archived, Google sign-in was decided (D-67) and MFA moved to Phase B.
+Every Phase A backend change is archived; the console is next, from the
+owner's design document.
 
 ## Keeping it current
 
@@ -52,11 +53,27 @@ configuration file, and without being told what Asterisk is.
 
 ### Phase A — next steps, in order
 
-1. **Console slice A** (to propose): React + TypeScript
-   ([D-36](DECISIONS.md)), TypeScript clients generated from the same protos,
-   the six screens, and browser e2e (Playwright) walking A1 → A5.
-2. **Shared carrier address** (to propose; correctness before selling):
-   two trunks on one carrier IP cannot be told apart for inbound calls.
+1. **Console design input** (owner): the console design document, from
+   the shared design input form. The console changes start from it.
+2. **`console-foundation`**: React + TypeScript ([D-36](DECISIONS.md)),
+   TypeScript clients generated from the same protos, session handling
+   (in-memory token, silent refresh, tenant picker), layout, Sign in and
+   Licence screens; browser e2e (Playwright) walking A1.
+3. **`console-admin-screens`**: Users, Extensions, Trunks and routes, Call
+   history; browser e2e walking A2–A5. **Phase A is done when this passes.**
+4. **`phase-a-hardening`** (small): `GetCall` stops exposing the engine
+   endpoint; no provisioning before a licence is applied; the hang-up log
+   noise.
+
+### Before a pilot
+
+5. **Shared carrier address**: two trunks on one carrier IP cannot be told
+   apart for inbound calls.
+6. **Toll-fraud protection**: enforce outbound destination classes.
+7. **`identity-oidc-google`**: Sign in with Google, Gmail and Workspace
+   ([D-67](DECISIONS.md)).
+
+MFA (`identity-mfa`) is Phase B, before GA (D-66 as amended).
 
 ### Phase A scope boundary (D-65)
 
@@ -115,27 +132,29 @@ that link.
 ## Open gaps
 
 Carried from each change's `coverage.md` (G-numbers are per change). Close
-one by linking the change that fixes it.
+one by linking the change that fixes it. **When:** *hardening* = in
+`phase-a-hardening`; *pilot* = before the first pilot; *B* = Phase B by
+design; *accepted* = no fix planned.
 
 | Gap | Where it came from | Severity |
 |---|---|---|
-| Two trunks on one carrier address are indistinguishable for inbound calls | inbound G3 | **High**: wrong-tenant attribution once two tenants share a carrier |
-| Before activation (Setup), tenant and extension caps read 0 = unlimited | license-provisioning-enforcement | Medium: provisioning is unbounded until a licence is applied |
-| `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium: arrives with LLD-09 |
-| `GetCall` returns `Participant.endpoint_uri` (`PJSIP/e_…`), an engine identifier | console-apis-phase-a G3 | Medium: Phase A shows the list only (`ListCalls` is clean); fixed by `pbx-extension-assignment` (D-65) |
-| SSO protocols (OIDC, then SAML) not built; providers can be configured only in the database | D-63, identity G1 | Planned: `identity-oidc` after console slice A |
+| Two trunks on one carrier address are indistinguishable for inbound calls | inbound G3 | **High** — pilot: wrong-tenant attribution once two tenants share a carrier |
+| Before activation (Setup), tenant and extension caps read 0 = unlimited | license-provisioning-enforcement | Medium — hardening: provisioning is unbounded until a licence is applied |
+| `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |
+| `GetCall` returns `Participant.endpoint_uri` (`PJSIP/e_…`), an engine identifier | console-apis-phase-a G3 | Medium — hardening: `GetCall` stops exposing it in `phase-a-hardening`; the person-aware participant fields come with `pbx-extension-assignment` (D-65) |
+| No external sign-in yet; providers can be configured only in the database | D-63, D-67, identity G1 | Planned: `identity-oidc-google` (Gmail and Workspace) before a pilot; company-domain SSO later |
 | No RPC for a person to change their own email or display name | identity G2 | Low: with the console's account screen |
 | The per-address login throttle is shared by everyone behind one address | identity G4 | Accepted (D-64): runs reset after 15 quiet minutes |
 | No person ↔ extension link: call history shows numbers and extension names, not people; no per-agent view | D-65 | Phase B by design: `pbx-extension-assignment` |
 | No formal CDR (immutable, per-second usage, export); calls and participants are recorded and listable | HLD 04 §5, LLD-09 | Phase B: reporting |
-| No MFA for password users | D-63, D-66 | Planned: `identity-mfa` (TOTP and passkeys; required for administrators) **before GA**; SSO users get their IdP's |
+| No MFA for password users | D-63, D-66 | Planned: `identity-mfa` (TOTP and passkeys; required for administrators) in **Phase B, before GA**; Google sign-ins get Google's 2-step verification |
 | No SCIM provisioning (leavers removed in the customer's IdP keep their membership) | D-66 | Planned: `identity-scim` after MFA |
 | No `Retry-After` on the 503 for capacity refusals (Asterisk cannot add it) | inbound G1 | Low |
 | Emergency catalogue is CM and US only (owner decision); other countries are tenant-entered | inbound G2 | Accepted |
-| Toll-fraud outbound classes not enforced | call-placement G4 | Medium: tenant country now exists to build it on |
+| Toll-fraud outbound classes not enforced | call-placement G4 | Medium — pilot: tenant country now exists to build it on |
 | No `Degraded` trunk health from latency; unanswered calls not attributed (no SIP cause) | call-placement G1, G2 | Low |
 | Both legs of an API-placed call ring at once | call-placement G6 | Low |
-| ERROR log "participant-left handler failed: call not found" after every hang-up | call-placement G3, inbound G6 | Low: noise |
+| ERROR log "participant-left handler failed: call not found" after every hang-up | call-placement G3, inbound G6 | Low — hardening: noise |
 | Static fixtures 1000/1001 cannot dial (no tenant) | inbound G5 | Accepted |
 | e2e/UAT need the host firewall to admit the Docker bridge on UDP 5070–5071 and 18000–18039 | call-placement G7 | Environment |
 | No live test of a full trunk being passed over, or of a trunk failing to originate | inbound G4, call-placement G8 | Low: proven at integration |
