@@ -472,6 +472,33 @@ func hangupCallChannels(t *testing.T, ctx context.Context, ariClient *ari.Client
 	t.Logf("hung up %d channel(s) for call %s", hungUp, callID)
 }
 
+// requireCallChannelsReleased asserts HangupCall released the call on the
+// engine: no channel tagged with its ATSA_CALL_ID survives. Callers used
+// to hang the channels up themselves after HangupCall, because HangupCall
+// destroyed only the bridge and left both legs up — the defect
+// pbx-call-placement's UAT found. Asserting absence is what proves it.
+func requireCallChannelsReleased(t *testing.T, ctx context.Context, ariClient *ari.Client, callID string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		channelIDs, err := ariClient.ListChannels(ctx)
+		require.NoError(t, err)
+		remaining := 0
+		for _, chID := range channelIDs {
+			if v, err := ariClient.GetChannelVariable(ctx, chID, "ATSA_CALL_ID"); err == nil && v == callID {
+				remaining++
+			}
+		}
+		if remaining == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("HangupCall left %d channel(s) up for call %s", remaining, callID)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // fixtureOperatorPassword and fixtureOperatorHash are a synthetic dev-rig
 // operator (D-39: no real credential, no PII). The hash is this
 // repository's own Argon2id output for that password.

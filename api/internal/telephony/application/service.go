@@ -224,6 +224,15 @@ func (s *Service) HangupCall(ctx context.Context, callID shareddomain.CallID, re
 		return domain.ErrCallTerminated
 	}
 
+	// The legs still on the engine, captured before the loop below marks
+	// the connected ones Disconnected in the domain.
+	var live []shareddomain.ParticipantID
+	for _, p := range call.Participants {
+		if p.State != domain.ParticipantDisconnected {
+			live = append(live, p.ID)
+		}
+	}
+
 	now := time.Now().UTC()
 	for _, p := range call.Participants {
 		if p.State != domain.ParticipantConnected {
@@ -237,7 +246,30 @@ func (s *Service) HangupCall(ctx context.Context, callID shareddomain.CallID, re
 		}
 	}
 
-	return s.finalizeTermination(ctx, call, reason)
+	if err := s.finalizeTermination(ctx, call, reason); err != nil {
+		return err
+	}
+
+	// Release every leg on the engine. Destroying the bridge alone left
+	// both phones on the line, media still flowing, with the call recorded
+	// as Terminated — found by pbx-call-placement's UAT, where a real phone
+	// stayed in the call until killed. Done AFTER finalizeTermination, so
+	// the ChannelDestroyed events this triggers find the call already gone
+	// rather than racing a second termination. A leg the far end has just
+	// hung up is already destroyed; that failure is expected and logged.
+	for _, id := range live {
+		if err := s.mediaGateway.DestroyChannel(ctx, participantChannel(id)); err != nil {
+			s.logger.Debug("destroy channel on hangup", "error", err, "call_id", callID, "participant_id", id)
+		}
+	}
+	return nil
+}
+
+// participantChannel is the engine channel a participant's leg is
+// originated with. Deterministic, so a leg can be addressed by its
+// participant alone (D-19 correlation).
+func participantChannel(id shareddomain.ParticipantID) ports.ChannelRef {
+	return ports.ChannelRef("atsa-part-" + id.String())
 }
 
 // ParticipantAnswered implements the shape acl.EventSink declares
@@ -339,7 +371,7 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 func (s *Service) originateParticipant(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID, p *domain.CallParticipant) error {
 	req := ports.OriginateRequest{
 		EndpointURI: p.EndpointURI,
-		ChannelID:   "atsa-part-" + p.ID.String(),
+		ChannelID:   string(participantChannel(p.ID)),
 		Variables: map[string]string{
 			"ATSA_TENANT_ID":      tenantID.String(),
 			"ATSA_CALL_ID":        callID.String(),

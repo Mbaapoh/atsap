@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,6 +34,7 @@ type fakeMediaGateway struct {
 	bridgesCreated   int
 	addedToBridge    []addedChannel
 	destroyedBridges []ports.BridgeID
+	destroyedChans   []ports.ChannelRef
 
 	failOriginate     error
 	failCreateBridge  error
@@ -91,7 +93,12 @@ func (f *fakeMediaGateway) StartPlayback(context.Context, ports.ChannelRef, stri
 func (f *fakeMediaGateway) StartSnoop(context.Context, ports.ChannelRef, ports.SnoopRequest) (ports.SnoopRef, error) {
 	return "", errors.New("StartSnoop: not implemented in this change")
 }
-func (f *fakeMediaGateway) DestroyChannel(context.Context, ports.ChannelRef) error { return nil }
+func (f *fakeMediaGateway) DestroyChannel(_ context.Context, ref ports.ChannelRef) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.destroyedChans = append(f.destroyedChans, ref)
+	return nil
+}
 
 type channelHistoryEntry struct {
 	participantID string
@@ -547,6 +554,37 @@ func TestHangupCall_TerminatesAndIsImmutable(t *testing.T) {
 
 	err = h.svc.HangupCall(context.Background(), callID, "again")
 	assert.ErrorIs(t, err, application.ErrCallNotFound, "a Terminated call is removed from the in-flight set")
+}
+
+// HangupCall must release the legs on the engine, not only the bridge:
+// destroying the bridge alone left both phones on the line with media
+// flowing while the call read Terminated (pbx-call-placement UAT).
+func TestHangupCall_ReleasesEveryLegOnTheEngine(t *testing.T) {
+	h := newHarness()
+	callID := initiateTestCall(t, h)
+	answerBothParticipants(t, h, callID)
+
+	require.NoError(t, h.svc.HangupCall(context.Background(), callID, "api hangup"))
+	assert.Len(t, h.mediaGW.destroyedChans, 2, "both legs are hung up")
+	for _, ref := range h.mediaGW.destroyedChans {
+		assert.True(t, strings.HasPrefix(string(ref), "atsa-part-"), "addressed by the channel each leg was originated with")
+	}
+	originated := map[string]bool{}
+	for _, o := range h.mediaGW.originateCalls {
+		originated[o.ChannelID] = true
+	}
+	for _, ref := range h.mediaGW.destroyedChans {
+		assert.True(t, originated[string(ref)], "%s must be a channel this call originated", ref)
+	}
+}
+
+// A call hung up while still ringing releases its ringing legs too.
+func TestHangupCall_ReleasesRingingLegs(t *testing.T) {
+	h := newHarness()
+	callID := initiateTestCall(t, h)
+
+	require.NoError(t, h.svc.HangupCall(context.Background(), callID, "abandoned"))
+	assert.Len(t, h.mediaGW.destroyedChans, 2, "legs that never answered are released as well")
 }
 
 // TestParticipantLeft_LastConnectedTerminates covers the natural

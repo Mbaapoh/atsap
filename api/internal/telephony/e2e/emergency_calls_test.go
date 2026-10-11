@@ -67,7 +67,7 @@ func TestEmergencyCallsConnectInEveryLicenceState(t *testing.T) {
 			"emergency must consume no capacity (%s)", stage)
 
 		require.NoError(t, rig.svc.HangupCall(ctx, callID, "e2e complete"))
-		hangupCallChannels(t, ctx, rig.ari, callID.String())
+		requireCallChannelsReleased(t, ctx, rig.ari, callID.String())
 	}
 
 	// assertOrdinaryRefused proves the stage is not vacuous: without the

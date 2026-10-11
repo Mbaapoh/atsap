@@ -230,7 +230,7 @@ func TestNoActiveCallIsDroppedByAnyLicenceTransition(t *testing.T) {
 
 	// And it ends normally, releasing what it held.
 	require.NoError(t, rig.svc.HangupCall(ctx, callID, "e2e complete"))
-	hangupCallChannels(t, ctx, rig.ari, callID.String())
+	requireCallChannelsReleased(t, ctx, rig.ari, callID.String())
 
 	// Task 6.4 / AC-06.8 runs here rather than as its own top-level test,
 	// and the reason is a property of the engine rather than of the code:
@@ -286,7 +286,7 @@ func TestNoActiveCallIsDroppedByAnyLicenceTransition(t *testing.T) {
 		assert.Equal(t, domain.CallActive, c.State, "no call in progress was interrupted by the upgrade")
 
 		require.NoError(t, rig.svc.HangupCall(ctx, second, "e2e complete"))
-		hangupCallChannels(t, ctx, rig.ari, second.String())
+		requireCallChannelsReleased(t, ctx, rig.ari, second.String())
 	})
 }
 
