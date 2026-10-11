@@ -14,6 +14,7 @@
 | 2026-09-07 | Initial draft. |
 | 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
 | 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
+| 2026-10-11 | **§3.1 added: extensions and the people who use them (D-65), Phase B design.** `ExtensionAssignment` (owner) and `Agent` (queue membership, state, hot-desk device), both keyed by `PrincipalID`; call participants gain the extension and owner. New Phase B change `pbx-extension-assignment` heads §12's Phase B list. Phase A is unchanged, and its console works without the link (HLD 18 §7). |
 
 ## 1. Scope
 
@@ -51,6 +52,7 @@ whole context with the phase marked on every part.
 | ACD queues | `Queue` is a `pbx-core` aggregate (HLD 04 §2); leaving it out of the design invites a competing one |
 | Voicemail (US-03.5) | Needs recording governance, which is Phase B |
 | Desk-phone zero-touch provisioning (US-03.6, AC-03.5) | Needs the encrypted provisioning endpoint in the edge gateway |
+| Extension ownership, agents, hot-desking (US-03.4), and calls recording extension and owner (§3.1, D-65) | Phase A screens must leave room for "assigned to" and "agent", and the console's Users and Extensions screens are built in Phase A |
 
 **Explicitly out of scope (owned elsewhere):**
 
@@ -156,6 +158,62 @@ func IsEmergency(dialled string, set EmergencyNumberSet) bool
 // returned once, for display, and is never persisted (§7.3).
 func NewExtensionCredential(username, realm string, rand io.Reader) (plaintext string, digest string, err error)
 ```
+
+### 3.1 Extensions and the people who use them — **Phase B** (D-65)
+
+> **Not built in Phase A.** Phase A ships extensions with no owner, and
+> users with no extension. The Phase A console is complete without this
+> section (HLD 18 §7). It is designed now so that the Phase A screens and
+> tables leave room for it.
+
+A user (identity) signs in; an extension (this context) is a line a
+device registers to. Either exists without the other. The link is owned
+here and keyed by `PrincipalID`, the user's membership of the tenant, so
+it is tenant-scoped by construction and identity never learns that
+phones exist.
+
+```go
+// pbx/domain — Phase B
+type ExtensionAssignment struct {   // configuration: "this is Ana's line"
+    TenantID    shared.TenantID
+    ExtensionID ExtensionID          // UNIQUE: at most one owner per extension
+    PrincipalID shared.PrincipalID   // a person may own several (desk + softphone)
+    AssignedAt  time.Time
+}
+
+type Agent struct {                  // a membership that takes queue calls
+    TenantID    shared.TenantID
+    PrincipalID shared.PrincipalID   // PK with TenantID
+    Queues      []QueueMembership    // queue id, penalty or skill level
+    State       AgentState           // LoggedOut | Available | OnCall | WrapUp | Paused
+    PauseReason string               // when Paused
+    Device      *ExtensionID         // hot-desk: where this shift's calls ring
+    StateSince  time.Time
+}
+```
+
+| Rule | Why |
+|---|---|
+| An extension has 0..1 owner; a person owns 0..n extensions | Shared phones and people without phones are both normal |
+| Hot-desking sets `Agent.Device` for a shift; it never changes ownership | Ownership is configuration, audited, and rarely changed. Agent state changes many times a minute and is telephony state, not an audit event |
+| Deleting an extension removes its assignment; disabling a membership logs its agent out | No ringing a device for someone who can no longer act |
+| `call_participants` gains `extension_id` and `principal_id` (owner or logged-in agent at the time), filled from the endpoint being called | "My calls", per-agent reports and agent-scoped visibility read these, not engine endpoints. It also lets `GetCall` drop `endpoint_uri`, the engine identifier recorded as `console-apis-phase-a` G3 |
+| `Agent` state transitions are a pure function, as `compliance` and the IVR interpreter are | Unit-testable in full, with no Asterisk in the loop |
+
+**Sketch of the Phase B tables** (final DDL is the owning change's):
+`extension_assignments (tenant_id, extension_id UNIQUE, principal_id,
+assigned_at)`; `agents (tenant_id, principal_id, state, pause_reason,
+device_extension_id, state_since)`; `queue_members (tenant_id, queue_id,
+principal_id, penalty)`. All three are RLS-scoped like every other pbx
+table.
+
+**What Phase A writes that Phase B relies on.**
+- The extension **number** is the source of every call placed from a
+  phone or the API, and the DID is the destination of every inbound call.
+  The Phase A call history therefore shows extensions by number and name
+  (the console joins against the extension list).
+- `call_participants.role` already has `AGENT`, `QUEUE` and `SUPERVISOR`
+  values (migration `0001`), so no enum change is needed.
 
 ## 4. Ports and the dependency direction
 
@@ -725,8 +783,10 @@ after the Phase A console slice exists, per D-46.
 | `pbx-trunks-routes` | A | Trunk and route domain, health observation, CRUD RPCs, `SelectRoutes` | Second: needs the projector from the first change |
 | `pbx-call-placement` | A | `PlaceCall`/`HangupCall` RPCs, outbound path into `telephony-core`, `Outbound` class enforcement | Third: needs routes to route to |
 | `pbx-inbound-and-emergency` | A | `InboundRouter` port on `telephony-core`, Stasis inbound wiring, `emergency_numbers`, `BypassScreening`, SIP `503` (plain — `Retry-After` is a recorded engine gap) | Fourth, and the only change that edits `telephony-core`. Isolated deliberately: it is the riskiest slice and the one a reviewer must look at hardest |
-| `pbx-ivr-flows` | B | `FlowInterpreter`, flow-as-data execution, publish/version/rollback (AC-03.7, AC-03.8) | Phase B opens here |
-| `pbx-queues` | B | ACD queues, agent state | After IVR |
+| `pbx-extension-assignment` | B | §3.1 `ExtensionAssignment`; `call_participants.extension_id`/`principal_id`; `GetCall` stops exposing `endpoint_uri`; "assigned to" in the console; agent-scoped call visibility, with LLD-09 | **Phase B opens here** (D-65): small, and every later Phase B slice (voicemail, queues, reporting) needs "whose extension is this" |
+| `pbx-ivr-flows` | B | `FlowInterpreter`, flow-as-data execution, publish/version/rollback (AC-03.7, AC-03.8), business hours and holidays | After assignment |
+| `pbx-queues` | B | ACD queues, §3.1 `Agent` (state, queue membership, hot-desk device), wrap-up | After IVR |
+| `pbx-voicemail` | B | Voicemail to an owned extension, voicemail to email (US-03.5) | Needs assignment and recording governance |
 
 Each change is proposed, applied, and archived independently. **Do not
 start a change until the previous one's tests pass** — per D-26 and the

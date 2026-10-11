@@ -72,6 +72,17 @@ mechanism defined for telemetry in [07](07-observability.md).
   drift before the portal builds.
 - Sessions use short-lived tenant-scoped JWTs; every request carries tenant
   context enforced by PostgreSQL RLS downstream ([05](05-security.md)).
+- **Sign-in (D-61–D-63):** email first (`DiscoverSignIn`), then the method:
+  password today, the tenant's IdP once SSO is built. The access token
+  lives **in memory only**. The refresh secret is an `HttpOnly; Secure;
+  SameSite=Strict` cookie the console never reads; it calls
+  `RefreshSession` before expiry and on page load. A person with several
+  memberships picks a tenant, and switching tenant is a refresh, never a
+  wider token. The console is served on the same origin as the API (§5),
+  so the cookie needs no cross-site allowance.
+- **Account screens:** change password, "forgot password" (email link),
+  and a forced change after an administrator reset. A user created
+  without a password receives an invitation link (D-64).
 - Permissions follow the scoped RBAC model (FBR-R1-08): a partner sees only
   their own customers' licences (PRD AC-10.4); an agent sees only their own
   queues and recordings per consent policy (PRD §7.1).

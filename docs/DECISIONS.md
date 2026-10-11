@@ -1813,6 +1813,286 @@ extends the pattern to the dev stack itself), D-59 (gates as code)
 
 ---
 
+**D-61 · A user is one person across the installation; a principal is
+that user's membership of one tenant (2026-10-11).**
+
+**Decision:** `identity` gains a global **User** aggregate: one row per
+person, keyed by a normalized email that is unique across the
+installation. What was the principal becomes that user's **membership of
+one tenant**. The table keeps its name and its ids, every role binding
+and API key still hangs from it, and every `PrincipalID` already written
+stays valid: in audit rows, in `TenantContext`, and in any other context
+that recorded an actor. Credentials move off the principal onto the
+user. The per-tenant username is retired; people sign in with their
+email.
+
+**Context:** A partner's engineer manages many customer tenants. Under
+the one-tenant principal model (identity-auth-rbac), that engineer has one
+account per customer, each with its own password, each needing its own
+SSO link, and each needing to be disabled separately when they leave. SSO
+makes the defect sharper. An identity provider asserts a person, not a
+tenant, so a federated identity has to link to something that is one
+person. The model was right for machines and wrong for people, and the
+console is the first thing built for people.
+
+**Rules that follow from it:**
+- **A tenant administrator governs the membership, never the person.**
+  They can add an existing user to their tenant, disable the membership,
+  and grant or revoke its roles. They cannot rename the user, change the
+  email, or disable the user, because each of those would reach into
+  tenants they do not administer (AC-01.1).
+- **Adding a member never reveals another tenant.** Adding an email that
+  already has an account looks the same to the administrator as creating
+  one. Which other tenants the person belongs to is visible only to the
+  person and to platform scope.
+- **Access tokens stay tenant-scoped.** A token names one membership
+  (`sub` = principal id, `tid` = tenant), so RLS, the tenant match and
+  every downstream context are unchanged. Switching tenant means asking
+  for a new access token, not widening the old one.
+- **Platform authority stays a system-scope binding on a membership** of
+  the operator's tenant, as today. Moving it onto the user is a separate
+  decision with no current driver.
+
+**Alternatives:**
+- *Keep tenant-scoped principals, and add credentials and external
+  identities beside them.* Rejected: it keeps one account per tenant per
+  person, which is the defect.
+- *Rename `principals` to `tenant_memberships`.* Rejected for now. It
+  churns every query, fixture and document for a name, and "principal"
+  is still accurate: it is who is acting, in a tenant.
+- *Merge duplicate emails silently during migration.* Rejected. Two
+  principals with one email and different password hashes are two
+  credentials, and choosing one locks a person out. The migration stops
+  and names them, and the operator decides.
+
+**Related Decisions:** D-24 (tenant_id everywhere), D-42 (identity stays
+in-process), D-62 (sessions), D-63 (SSO readiness)
+**Traceability:** PRD EPIC-01, AC-01.1, AC-01.5; LLD-02 §3, §5;
+`openspec/changes/identity-accounts-and-sessions`
+
+---
+
+**D-62 · Console sessions are revocable, rotating refresh sessions;
+access tokens stay 15-minute JWTs (2026-10-11).**
+
+**Decision:** Signing in creates a **session**: a server-side row holding
+the SHA-256 digest of a random 256-bit refresh secret. The secret
+travels only in an `HttpOnly; Secure; SameSite=Strict` cookie scoped to
+the session RPCs. Each refresh rotates it. A refresh secret presented a
+second time revokes the whole session, because reuse means it was
+copied. Access tokens remain 15-minute EdDSA JWTs held in memory by the
+console, now carrying a session id. `ValidateToken` already reads the
+database on every request (D-42, D-56), and it now also refuses a token
+whose session is revoked, so signing out, a password change or a
+disabled user takes effect on the next request. Lifetimes: 30 minutes
+idle, 12 hours absolute. Machine clients keep API keys and are
+unaffected.
+
+**Context:** LLD-02 §5.3 deferred refresh "until a human-facing session
+needs one". The console is that session. Without one, a person is logged
+out every 15 minutes. Lengthening the JWT instead would leave a token
+that cannot be withdrawn for its whole life.
+
+**Alternatives:**
+- *Long-lived JWTs.* Rejected: they cannot be revoked short of
+  per-request checks, and then they are sessions anyway.
+- *Refresh token in browser storage.* Rejected: any script injection
+  reads it. An HttpOnly cookie is unreadable to scripts.
+- *Redis-backed sessions.* Rejected by D-56. PostgreSQL holds the row,
+  and the per-request read already exists.
+- *CSRF tokens.* Not needed. ConnectRPC requests are JSON or protobuf
+  POSTs with a protocol header, which a cross-site form cannot send
+  without a CORS preflight, and the cookie is `SameSite=Strict`.
+
+**Related Decisions:** D-42 (per-request validation), D-56 (no cache;
+authorization is never cached), D-61
+**Traceability:** PRD AC-01.5; HLD 12 §4; LLD-02 §5.3, §10.2
+
+---
+
+**D-63 · Ready for SSO, not built: federation links an issuer and
+subject to a user, and sign-in starts by asking which method applies
+(2026-10-11).**
+
+**Decision:** The model and the sign-in flow are shaped now, so that
+adding OIDC (first) and SAML (later) is an adapter behind a port, not a
+schema or API redesign.
+- **A user may have no password.** The password is one optional
+  credential, and an account without one cannot sign in with a
+  password.
+- **An external identity is `(provider, subject)`**, unique, and linked
+  to a user. It is never matched by email: email at an IdP is mutable and
+  sometimes unverified, and matching on it is the classic account
+  takeover.
+- **An identity provider belongs to a tenant.** It is that customer's
+  Entra ID, Google Workspace or Keycloak, configured with the email
+  domains it is authoritative for. A domain is claimed by at most one
+  provider in the installation, and only after it is verified.
+- **Sign-in is two steps.** First "which methods for this email?", then
+  the method. Today the answer is always "password". When a provider is
+  enforced for a domain, the answer becomes "SSO" and password sign-in is
+  refused for that domain's members. The answer for an unknown email
+  looks exactly like the answer for a known one, so the first step is
+  not an account-existence oracle.
+- **No IdP is shipped or required.** Federation is with the customer's
+  existing provider. The platform never makes partners run Keycloak.
+- **MFA is deferred.** SSO users get their IdP's MFA. A TOTP second factor
+  for password users is a recorded future change, slotted as a second
+  credential kind on the user.
+
+**Context:** The owner asked that SSO be ready, not built, before the
+console. The expensive parts to retrofit are the data model (a mandatory
+password, per-tenant accounts) and the shape of the sign-in screen. The
+protocol work is not expensive to retrofit. It needs a vetted OIDC
+library (TOOLSET §6), as LLD-02 §5.3 already anticipated.
+
+**Alternatives:**
+- *Build OIDC now.* Deferred by the owner: it delays console slice A and
+  needs an IdP in the test rig.
+- *Delegate all authentication to a bundled Keycloak.* Rejected: it is
+  another stateful service the partner must run, back up and patch
+  (D-56's reasoning), and it moves the per-request revocation guarantee
+  out of our hands.
+- *Link IdP logins by email.* Rejected: it enables account takeover.
+
+**Related Decisions:** D-61, D-62, D-56, TOOLSET §6
+**Traceability:** LLD-02 §3, §5, §6, §8; HLD 05; HLD 12 §4
+
+---
+
+**D-64 · Password sign-in is throttled in identity, and credentials are
+recoverable by email link or administrator reset (2026-10-11).**
+
+**Decision:**
+- **Throttling** is done by `identity` itself, before password
+  verification. It is keyed separately by account (the normalized email,
+  whether or not it exists) and by source address. It uses exponential
+  backoff after five failures, capped at 15 minutes, and never locks an
+  account outright, since a hard lock is a denial-of-service on a known
+  victim. State lives in PostgreSQL (D-56). A throttled attempt is
+  refused with `RESOURCE_EXHAUSTED` and a retry delay. It answers the same
+  for unknown and known emails.
+- **An unknown email costs the same as a wrong password.** The current
+  code returns early on an unknown username, skipping Argon2id, so
+  response time reveals which accounts exist. Verification now always
+  runs, against a fixed dummy hash when there is no account.
+- **Self-service password change** needs the current password. It
+  revokes every other session of the user.
+- **Email reset link:** a request always answers the same, whatever the
+  email. If an account with a password exists, a single-use secret valid
+  for 30 minutes is sent; only its digest is stored. Completing the reset
+  sets the password and revokes every session. Users whose domain
+  enforces SSO get no link, because their IdP owns their password. Mail is
+  sent through a port `identity` owns. An SMTP adapter is wired at the
+  root, and the dev rig captures mail in Mailpit.
+- **Administrator reset:** sets a temporary password the user must change
+  at next sign-in. Until it is changed, that sign-in can do nothing but
+  change it. A tenant administrator may reset only a user who belongs to
+  no tenant they do not administer. Otherwise only platform scope can,
+  because resetting a shared person's password from one tenant would
+  take over their access to the others (D-61).
+- **Authentication events** (sign-in success and failure, throttling,
+  password change and reset, session revocation) are recorded in an
+  append-only `auth_events` table keyed by user, not tenant. `audit_logs`
+  stays the record of administrative mutations. An administrator's reset
+  is both an audit row in their tenant and an auth event.
+
+**Context:** LLD-02 §10.5 put brute-force protection "at the connection
+boundary — an edge proxy". The platform is self-hosted (D-08), and many
+partners will run it with no proxy in front, so "the proxy will do it"
+means nothing does. The limiter has to ship with the product. This
+decision supersedes §10.5 on that point. It still sits beside the auth
+logic rather than inside it.
+
+**Alternatives:**
+- *Hard lockout after N failures.* Rejected: anyone who knows an email
+  can lock that person out.
+- *Rate limiting in an edge proxy only.* Rejected: it is not
+  guaranteed to exist on a self-hosted install.
+- *Security questions.* Rejected (NIST SP 800-63B §5.1.1.2).
+
+**Related Decisions:** D-56 (state in PostgreSQL), D-61, D-62, D-63
+**Traceability:** PRD AC-01.5; LLD-02 §10.5 (superseded in part), §10.8;
+HLD 05
+
+---
+
+**D-65 · Users and extensions stay separate; `pbx-core` owns the link
+between them, and the link is Phase B. Phase A's console works without it
+(2026-10-11).**
+
+**Decision:**
+- **Separate concepts.** A **user** signs in: identity, D-61. An
+  **extension** is a line a device registers to: `pbx-core`. Neither
+  requires the other.
+  - A lobby phone, a fax line or a conference room is an extension with
+    no person.
+  - An administrator or supervisor who never takes calls is a user with
+    no extension.
+- **The link lives in `pbx-core`, as two aggregates keyed by
+  `PrincipalID`** (the membership, so it is tenant-scoped by
+  construction):
+
+| Aggregate | What it says | Cardinality |
+|---|---|---|
+| **`ExtensionAssignment`** | "This extension belongs to this person": their desk phone, their softphone | An extension has at most one owner; a person may own several |
+| **`Agent`** | "This person takes queue calls": queues and skills, state (`LoggedOut`, `Available`, `OnCall`, `WrapUp`, `Paused`), and the device they are logged in at for this shift | One per membership that is an agent |
+
+- **Hot-desking (US-03.4) is an agent session, not an ownership
+  change.** An agent logs in at a device for a shift, calls for them ring
+  there, and logging out returns the device to its own routing.
+  Ownership is configuration; hot-desking is state.
+- **Calls point at people through the extension.** A call participant
+  records the extension id, and the owner or logged-in agent at that
+  moment, alongside the engine endpoint. Per-person history, "my calls",
+  agent reports and role-scoped visibility (agents see their own calls)
+  read those columns. They also replace the engine-identifier field that
+  `GetCall` exposes today (`console-apis-phase-a` G3).
+- **Identity is untouched.** It does not know extensions exist, and
+  `pbx-core` reads only `PrincipalID` (HLD 04 §10.1).
+- **All of the above is Phase B.** It is built in `pbx-extension-assignment`
+  (ownership, plus the participant's extension and owner), then
+  `pbx-ivr-flows`, `pbx-queues` (`Agent` and state) and LLD-09 reporting
+  (immutable CDR and per-person views).
+
+**What Phase A's console does without it.** It is a working
+administration console:
+
+| Screen | Works in Phase A because |
+|---|---|
+| Users | Users have roles and status; no extension field is shown |
+| Extensions | Number, name, registration status; no "assigned to" column yet |
+| Call history | Calls already record the extension **number** as the source of a placed or desk-phone call and the dialled number of an inbound one. The console joins numbers to extension names from the extension list it already loads, client-side |
+
+Nothing in Phase A needs to know who is behind an extension: no
+voicemail, no queues, no per-person history. The Phase A screens are
+designed so the Phase B columns ("assigned to", "agent") slot in without
+a redesign.
+
+**Context:** In 3CX, a user *is* an extension. That works for one office
+per server and breaks down for shared phones, hot-desking and people
+without phones. Contact-centre systems (Vicidial's user login plus phone
+login, and queue-agent models generally) separate the person from the
+device for exactly those reasons. Our multi-tenant, partner-run,
+contact-centre roadmap needs the separation. Merging them now would have
+to be undone in Phase B.
+
+**Alternatives:**
+- *User = extension (the 3CX model).* Rejected for the reasons above.
+- *Put the link in identity.* Rejected: identity would learn about
+  phones, and agent state changes many times a minute, which is
+  telephony state, not identity state.
+- *Build the link in Phase A.* Rejected: no Phase A screen or flow needs
+  it (D-46). The console stays useful without it.
+
+**Related Decisions:** D-42 (a principal signs in, an extension
+registers a phone), D-46 (phases and console slices), D-61 (users and
+memberships), D-43 (RPCs only for named consumers)
+**Traceability:** PRD US-03.4, US-03.5, EPIC-03, EPIC-07; LLD-03 §1,
+§3.1, §12; HLD 04 §2; HLD 18 §7; `console-apis-phase-a` G3
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

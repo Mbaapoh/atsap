@@ -202,7 +202,7 @@ $$\text{Fold}(\text{CurrentNode}, \text{FlowState}, \text{TelephonyEvent}) \to (
 
 ## 5. Comprehensive Relational Schema (PostgreSQL 16)
 
-Every table has `tenant_id` and PostgreSQL Row-Level Security (`RLS`) enabled.
+Every tenant-owned table has `tenant_id` and PostgreSQL Row-Level Security (`RLS`) enabled. The exceptions are `tenants` itself, `licensing_state`, and identity's installation-wide account tables (`users`, `user_passwords`, `sessions`, `password_reset_tickets`, `identity_provider_domains`, `external_identities`, `login_throttle`, `auth_events`). Those describe a person or the installation rather than a tenant (D-61), and only `identity/postgres` may name them.
 This section is authoritative; [17-data-model-erd.md](17-data-model-erd.md)
 draws these same tables as entity-relationship diagrams, including the
 ACL projection tables that D-47 added and that Asterisk — not the
@@ -219,16 +219,97 @@ CREATE TABLE IF NOT EXISTS tenants (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Users are people, installation-wide (D-61, LLD-02 §5.4). No tenant_id
+-- and no RLS: a user is read before any tenant is known (sign-in by
+-- email) and spans tenants. Only identity/postgres may name these tables.
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL,            -- stored normalized (trimmed, lower-case)
+    display_name VARCHAR(255) NOT NULL DEFAULT '',
+    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE', -- platform scope only
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email));
+
+-- Optional: no row means no password (SSO-only or invited, D-63).
+CREATE TABLE IF NOT EXISTS user_passwords (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    password_hash VARCHAR(255) NOT NULL, -- Argon2id (LLD-02 §5.3 params), never plaintext (INV-11)
+    must_change BOOLEAN NOT NULL DEFAULT FALSE, -- set by an administrator reset (D-64)
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- A principal is a user's membership of one tenant (D-61). Ids are
+-- unchanged from revision 1, so audit rows and TenantContext stay valid.
 CREATE TABLE IF NOT EXISTS principals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id),
-    username VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL, -- Argon2id (LLD-02 §5.3 params), never plaintext (INV-11)
+    user_id UUID NOT NULL REFERENCES users(id),
     role VARCHAR(50) NOT NULL DEFAULT 'AGENT',
-    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE', -- the membership, not the person
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(tenant_id, username)
+    UNIQUE(tenant_id, user_id)
+);
+
+-- Console sessions (D-62). Secrets are stored only as SHA-256 digests.
+CREATE TABLE IF NOT EXISTS sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    principal_id UUID REFERENCES principals(id) ON DELETE SET NULL, -- membership in use
+    refresh_digest VARCHAR(64) NOT NULL,
+    previous_digest VARCHAR(64),             -- presenting it again = reuse → revoke
+    idle_expires_at TIMESTAMPTZ NOT NULL,    -- last use + 30 min
+    absolute_expires_at TIMESTAMPTZ NOT NULL, -- creation + 12 h
+    revoked_at TIMESTAMPTZ,
+    revoke_reason VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    digest VARCHAR(64) NOT NULL UNIQUE,
+    purpose VARCHAR(20) NOT NULL,            -- reset | invite
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ
+);
+
+-- SSO-ready (D-63): modelled, no protocol built yet.
+CREATE TABLE IF NOT EXISTS identity_providers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    kind VARCHAR(10) NOT NULL,               -- OIDC | SAML
+    display_name VARCHAR(255) NOT NULL,
+    issuer VARCHAR(512) NOT NULL,
+    mode VARCHAR(20) NOT NULL DEFAULT 'DISABLED', -- DISABLED | OPTIONAL | ENFORCED
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS identity_provider_domains (
+    domain VARCHAR(255) PRIMARY KEY,         -- one provider per domain, installation-wide
+    provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    verified_at TIMESTAMPTZ                  -- unverified domains route nothing
+);
+CREATE TABLE IF NOT EXISTS external_identities (
+    provider_id UUID NOT NULL REFERENCES identity_providers(id) ON DELETE CASCADE,
+    subject VARCHAR(255) NOT NULL,           -- never matched by email
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (provider_id, subject)
+);
+
+-- Login throttling and authentication history (D-64).
+CREATE TABLE IF NOT EXISTS login_throttle (
+    key_digest VARCHAR(64) PRIMARY KEY,      -- SHA-256 of "account:<email>" or "source:<ip>"
+    failures INT NOT NULL DEFAULT 0,
+    blocked_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS auth_events ( -- append-only, like audit_logs
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID,                            -- NULL when the email matched no account
+    kind VARCHAR(50) NOT NULL,
+    source_address INET,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS role_bindings (

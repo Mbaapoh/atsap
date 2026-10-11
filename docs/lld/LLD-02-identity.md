@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `identity` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Implemented & archived.** Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| **Status** | **Implemented & archived; revision 2 proposed** (user accounts, sessions, credential recovery, SSO readiness: D-61–D-64, change `identity-accounts-and-sessions`). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | **Traces to** | BRD FBR-R1-04/§10; PRD EPIC-01 (US-01.1–01.7, AC-01.1–01.7), INV-01/INV-10/INV-11; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §7, [05-security.md](../hld/05-security.md) §1; DECISIONS D-24 |
 | **Why this is LLD-02** | LLD-01 proved the media path against stub adapters whose files say, verbatim, "until LLD-02 lands." Every Tier 1 context needs `identity`'s tenant context (§10.1), so D-26 (dependency-first within a release) puts it here. |
 
@@ -17,6 +17,7 @@
 | 2026-09-09 | **§4a.1 added: the `MaxTenants` provisioning cap (D-51).** `CreateTenant` refuses with `FAILED_PRECONDITION` at the cap; reads are never gated; RLS stays mandatory in every mode. The entitlement is passed in through a port `identity` owns, so `identity` still depends on nothing. |
 | 2026-09-08 | **Licensing split out into [LLD-08](LLD-08-licensing.md).** This document was `LLD-02-identity-licensing.md` and covered two bounded contexts. `docs/lld/README.md` states an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts depending on nothing. The merge had been justified as sharing "one cutover (auth + entitlement activate together)"; delivery disproved it — identity shipped in three archived changes while licensing shipped nothing. |
 | 2026-09-08 | Status → implemented. `auth-cutover-connectrpc` landed, closing the unauthenticated-`GetCall` concession §1 deferred; `identity-bootstrap` closed as unnecessary (§5.2, §9). |
+| 2026-10-11 | **Revision 2 (D-61–D-64), ahead of the console.** A global `User` (one person, one email) with tenant memberships, and the principal reinterpreted as a membership with ids unchanged (§3, §5.4). Revocable rotating refresh sessions replace "no refresh flow" (§5.3, §10.2). Credential recovery: change, email reset link, administrator reset (§6). Login throttling ships in identity, superseding §10.5's edge-proxy stance, and the unknown-username timing difference is closed (§10.5, §10.10). SSO readiness: optional password, `(provider, subject)` external identities, per-tenant providers with verified domains, and two-step sign-in. No protocol is built (§4, §5.4). MFA is deferred (§8). Proposed as `identity-accounts-and-sessions`. |
 
 ## 1. Scope
 
@@ -26,6 +27,13 @@ principals with Argon2id password hashes, scoped RBAC
 (`AuthorizeAction`), API keys stored as SHA-256 hashes, JWT issue and
 validation, an append-only audit log (AC-01.3), and the tenant-context
 middleware that feeds RLS.
+
+**Revision 2 scope (D-61–D-64):**
+- global user accounts with tenant memberships;
+- console sessions (sign in, refresh, sign out, choose tenant);
+- password change, email reset link and administrator reset;
+- login throttling and authentication events;
+- the data model and ports for SSO, with no OIDC or SAML flow yet.
 
 Also in scope, and now landed: the ConnectRPC auth cutover —
 `Authorization: Bearer <JWT>` required on every RPC in every service,
@@ -60,8 +68,12 @@ api/internal/
     │                    # audit), Argon2id hasher, JWT issuer/validator,
     │                    # the ConnectRPC auth interceptor
     ├── postgres/        # stores
-    ├── rpc/             # IdentityService handlers
+    ├── rpc/             # IdentityService and AuthService handlers
     └── bootstrap/       # first-administrator creation, off the network
+
+api/internal/mail/       # revision 2: SMTP adapter (shared infrastructure,
+                         # like internal/nats). identity owns the Mailer
+                         # port and never imports this; cmd/ adapts it.
 ```
 
 ## 3. Domain types
@@ -118,6 +130,71 @@ Password hashing uses `golang.org/x/crypto/argon2` (already in
 `go.mod`/TOOLSET.md) — no new dependency. JWTs use stdlib
 `crypto/ed25519` — no new dependency (§5.3).
 
+### 3.1 Revision 2: users, memberships, sessions (D-61–D-64)
+
+Revision 2 adds four aggregates and reinterprets one:
+
+| Aggregate | What it is | Invariants it owns |
+|---|---|---|
+| **`User`** (new) | One person, installation-wide | The email is normalized and unique installation-wide. Only the user or platform scope may change the profile or status. It holds credentials and external identities |
+| **`Principal`** (reinterpreted) | A user's **membership** of one tenant; the acting identity in that tenant | One per (user, tenant). Its status is the membership's status. Role bindings and API keys hang from it, unchanged |
+| **`Session`** (new) | One signed-in browser | The refresh secret rotates on each use; reuse revokes the session; idle and absolute expiry |
+| **`IdentityProvider`** (new, SSO-ready) | A tenant's external IdP | A verified domain is claimed by one provider at most; `Enforced` disables password sign-in for that domain |
+| **`PasswordResetTicket`** (new) | One emailed reset | Single use, 30 minutes; only the digest is stored |
+
+```go
+// identity/domain — revision 2
+type User struct {
+    ID          UserID
+    Email       Email      // normalized: trimmed, lower-cased; UNIQUE installation-wide
+    DisplayName string
+    Status      UserStatus // Active | Disabled — platform scope only (D-61)
+    Password    *PasswordCredential // nil = no password; SSO-only or invited (D-63)
+    CreatedAt   time.Time
+}
+type PasswordCredential struct {
+    Hash       string // Argon2id, §5.3
+    MustChange bool   // set by an administrator reset (D-64)
+    ChangedAt  time.Time
+}
+type Principal struct {       // a membership — ids unchanged from revision 1
+    ID        PrincipalID
+    TenantID  shared.TenantID
+    UserID    UserID
+    Role      string          // the role provisioned with; bindings authorize
+    Status    PrincipalStatus // Active | Disabled — the membership, not the person
+    CreatedAt time.Time
+}
+type ExternalIdentity struct { // SSO-ready; nothing creates one yet
+    ProviderID IdentityProviderID
+    Subject    string // the IdP's stable subject; never matched by email (D-63)
+    UserID     UserID
+}
+type IdentityProvider struct {
+    ID          IdentityProviderID
+    TenantID    shared.TenantID
+    Kind        ProviderKind   // OIDC | SAML
+    DisplayName string
+    Issuer      string
+    Mode        ProviderMode   // Disabled | Optional | Enforced
+    Domains     []VerifiedDomain
+}
+type Session struct {
+    ID              SessionID
+    UserID          UserID
+    PrincipalID     *PrincipalID // the membership the current access token names
+    RefreshDigest   string       // SHA-256 of the current secret
+    PreviousDigest  string       // one generation back: presenting it = reuse
+    IdleExpiresAt   time.Time    // last use + 30 min
+    AbsoluteExpires time.Time    // creation + 12 h
+    RevokedAt       *time.Time
+    RevokeReason    string       // sign-out | reuse | password-changed | user-disabled | reset
+}
+```
+
+`Username` is gone from `Principal`. People sign in with their email.
+`principals.email` moves to `users`.
+
 ## 4. Ports
 
 ```go
@@ -129,6 +206,19 @@ type IdentityService interface {
     RecordAudit(ctx context.Context, entry AuditEntry) error
 }
 ```
+
+**Revision 2 ports** (consumer-owned, declared in `identity/ports`):
+
+| Port | Why it is a port |
+|---|---|
+| `UserStore`, `SessionStore`, `ResetTicketStore`, `IdentityProviderStore`, `AuthEventStore` | Storage, as for every existing store |
+| `LoginThrottle` | `Check(ctx, keys) (retryAfter, error)` and `Record(ctx, keys, ok)`, keyed by account and by source. A Postgres adapter, since there is no cache (D-56) |
+| `Mailer` | `SendPasswordReset(ctx, to Email, link string)` and `SendInvitation(...)`. identity owns the port; the SMTP adapter is in `internal/mail` and wired in `cmd/` |
+| `FederatedAuthenticator` | `Begin(ctx, provider, returnTo)` and `Complete(ctx, provider, callback) (Assertion, error)`. **Declared, with no adapter** (D-63). OIDC is the first implementation, in a later change |
+
+`TenantContext` gains `UserID` and `SessionID` (empty for API keys).
+Nothing downstream reads them; they exist so identity can check the
+session on every request (§10.2).
 
 `TenantContext` carries tenant, principal, roles and scopes downstream
 into RLS (`SET LOCAL app.tenant_id`), authorization and audit. It is
@@ -244,6 +334,35 @@ and `api_keys` had no DDL there until this LLD amended §5 to add them.
   to keep secure, and a second thing that can be left enabled in
   production by accident. Closed by `auth-cutover-connectrpc` design D4.
 
+### 5.4 Revision 2 migration (`0010_identity_accounts.up.sql`)
+
+| Table | Tenant-scoped? | Notes |
+|---|---|---|
+| `users` | **No**: installation-wide, like `tenants` | `email` is UNIQUE on `lower(email)`; status |
+| `user_passwords` | No | `user_id` PK; Argon2id hash, `must_change`, `changed_at`. Having no row means no password |
+| `principals` | Yes (RLS unchanged) | Gains `user_id NOT NULL REFERENCES users`, `UNIQUE (tenant_id, user_id)`; **drops** `username`, `email` and `password_hash` once they are copied |
+| `sessions` | No | Refresh and previous digests, expiries, revocation |
+| `password_reset_tickets` | No | Digest, purpose (`reset` or `invite`), expiry, `used_at` |
+| `identity_providers` | Yes (RLS) | kind, issuer, mode. No client secret column until a protocol is built: an unused secret column is a liability with no benefit |
+| `identity_provider_domains` | No: a domain is claimed installation-wide | `domain` PK, provider, `verified_at` |
+| `external_identities` | No | PK `(provider_id, subject)`, `user_id` |
+| `login_throttle` | No | Key digest, failures, `blocked_until` |
+| `auth_events` | No: append-only, keyed by user | kind, user (nullable for unknown emails), source address, time. **No UPDATE or DELETE path**, as for `audit_logs` |
+
+**Why the installation-wide tables have no RLS.** RLS isolates tenants,
+and these rows are not a tenant's. They are read before any tenant is
+known (sign-in by email) or they describe a person across tenants. They
+are reachable only through `identity/postgres`, and archtest asserts that
+no other package names them. Tenant-visible facts about a user (email,
+display name, membership status) are exposed only through a membership
+that RLS does scope.
+
+**Data migration.** Each principal's email is normalized, one user is
+created per distinct email, and the hash is copied to `user_passwords`.
+If two principals share an email but have **different password hashes**,
+the migration **fails and names them** (D-61). The operator resolves it,
+and nothing is merged silently.
+
 ### 5.3 Cryptographic parameters
 
 - **Argon2id**: memory 19 MiB (19456 KiB), 2 iterations, parallelism 1 —
@@ -260,10 +379,17 @@ and `api_keys` had no DDL there until this LLD amended §5 to add them.
   header**. A token asserting `alg: none` is rejected before signature
   verification runs. There is no algorithm negotiation to attack because
   there is no algorithm choice at validation time.
-- **Token lifetime**: 15 minutes, no refresh flow. Machine clients
-  re-authenticate cheaply; a refresh/rotation scheme is deferred to
-  whichever LLD first has a human-facing session needing one (the
-  console, HLD 12).
+- **Token lifetime**: 15 minutes. Machine clients re-authenticate
+  cheaply or use API keys. **Revision 2 (D-62):** people get a
+  **session**. The refresh secret is 256 random bits, stored only as a
+  SHA-256 digest, the same reasoning as API keys. It is sent only in an
+  `HttpOnly; Secure; SameSite=Strict` cookie scoped to `AuthService`, and
+  rotates on every refresh. Sessions last 30 minutes idle and 12 hours
+  absolute. The access token adds `sid` (the session id) and `uid` (the
+  user id) claims.
+- **Reset and invitation secrets**: 256 random bits, stored only as a
+  SHA-256 digest, single use, valid for 30 minutes (reset) or 72 hours
+  (invitation).
 - **API keys stay SHA-256, not Argon2id.** Unlike a password, an API key
   is a high-entropy machine-generated token; slow hashing defends against
   brute-forcing a low-entropy secret, which does not apply.
@@ -282,6 +408,18 @@ change records why.
 | `GrantRole`, `IssueApiKey`, `RevokeApiKey`, `ListAudit` | **RPC** | EPIC-01 RBAC, partner key self-service, audit review |
 | `ValidateToken`, `AuthorizeAction`, `AuthenticateAPIKey` | Port only | Mechanism, not capability — what the interceptor does *for* a caller. Exposing `ValidateToken` hands out a token-validity oracle; a client asking "may I?" separately from doing the thing invites TOCTOU |
 | `RecordAudit` | Port only | A write path used by provisioning. Partners *read* audit; they do not author it |
+| **Revision 2: `AuthService`** (new service; the console's sign-in screens are the consumer) | | |
+| `DiscoverSignIn(email)` | **RPC**, unauthenticated | The first step of sign-in (D-63). It answers "password" for every email today, and identically for unknown emails |
+| `SignIn(email, password)` | **RPC**, unauthenticated, throttled | Creates a session, sets the refresh cookie, and returns an access token and the user's memberships. A `must_change` credential gets a token that can only `ChangePassword` |
+| `RefreshSession(tenant_id?)` | **RPC**, cookie-authenticated | Rotates the secret and issues an access token for the chosen membership. Choosing a tenant is a refresh |
+| `SignOut` | **RPC** | Revokes the session and clears the cookie |
+| `ChangePassword(current, new)` | **RPC** | Needs the current password; revokes the user's other sessions |
+| `RequestPasswordReset(email)`, `CompletePasswordReset(secret, new)` | **RPC**, unauthenticated, throttled | Always the same answer; completing a reset revokes every session |
+| **Revision 2: `IdentityService` additions** | | |
+| `ResetPrincipalPassword` | **RPC** | Administrator reset with a temporary must-change password (D-64 authority rule) |
+| `ProvisionPrincipal` | **Changed** | `email` and `display_name` identify the person. An existing email gets a membership only. With no `password`, an invitation email is sent instead. `username` is deprecated and ignored |
+| `AuthenticateUser` | **Deprecated, kept** | For harnesses and machines that already use it: `username` is read as the email, and no session is created. API keys are the machine path. It is throttled like `SignIn` |
+| `FederatedAuthenticator` | Port only | No consumer until the OIDC change (D-43) |
 
 **Corrected 2026-09-07.** This section previously argued API-first was
 "satisfied either way" because every capability is *reachable*. That was
@@ -324,13 +462,19 @@ was pulled ahead as a result.
 
 ## 8. Known limitations
 
-- Rate limiting is deferred (§10.5) — the extension point is documented,
-  the limiter is not built.
+- ~~Rate limiting is deferred (§10.5).~~ Revision 2 builds login
+  throttling (D-64). Rate limiting of *other* RPCs is still deferred.
 - Data-residency enforcement is deferred (§10.6): the field exists, is
   immutable and is carried in `TenantContext`; storage routing is a
   deployment-layer concern for a later LLD.
-- No refresh-token flow (§5.3). Deliberate until a human-facing session
-  needs one.
+- ~~No refresh-token flow (§5.3).~~ Revision 2 adds sessions (D-62).
+- **SSO is modelled, not built** (D-63). No OIDC or SAML flow, no
+  provider-administration RPC, no just-in-time provisioning. The next
+  identity change builds OIDC behind `FederatedAuthenticator`.
+- **No MFA.** SSO users get their IdP's. TOTP for password users is a
+  future change, as a second credential kind on `User`.
+- **Platform authority is still a binding on a membership** of the
+  operator's tenant (D-61), not a property of the user.
 
 ## 9. OpenSpec handoff — delivered
 
@@ -340,6 +484,10 @@ was pulled ahead as a result.
 | `identity-api` | `IdentityService` proto (9 RPCs), auth enforced on this service, first-administrator bootstrap, generated OpenAPI | **Archived** 2026-09-07 — pulled ahead, since nothing external could call anything until it landed |
 | ~~`identity-bootstrap`~~ | ~~Dev-token minting for the rig~~ | **Closed as unnecessary** — see §5.2 |
 | `auth-cutover-connectrpc` | JWT enforced on every RPC including `TelephonyService`; tenant-match rule | **Archived** 2026-09-08 |
+| `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | Applied 2026-10-11 |
+| `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model | **Proposed** 2026-10-11 |
+| *(future)* `identity-oidc` | OIDC sign-in behind `FederatedAuthenticator`, provider administration, JIT policy | Not proposed |
+| *(future)* `identity-mfa-totp` | TOTP second factor for password users | Not proposed |
 
 This LLD's Definition of Done is met. Further identity work is proposed
 against the living specs, which are now the record of current behaviour —
@@ -358,6 +506,12 @@ pinned `alg`) **and** live state: the principal and tenant rows must both
 read `Active`. Disabling an account therefore takes effect on the next
 request rather than at token expiry.
 
+**Revision 2 adds two more checks to the same read:** the user must be
+`Active`, and if the token carries a `sid`, that session must be neither
+revoked nor expired. Signing out, a password change or reset, a
+reused refresh secret, and a disabled user therefore all end access on
+the next request, within AC-01.5's 10 seconds, at no extra round trip.
+
 ### 10.3 Audit-log secret redaction
 `before_json`/`after_json` must not contain `password_hash`, `key_hash`
 or key material. The `AuditEntry` constructor strips sensitive fields
@@ -369,10 +523,16 @@ All SQL in `identity/*` uses pgx placeholders. String-built SQL is
 forbidden. Stated plainly: this is **review-enforced** — `depguard`
 matches import paths, not string shapes, so no CI gate claims it.
 
-### 10.5 Rate limiting (deferred)
-Brute-force protection belongs at the connection boundary — an edge proxy,
-or a dedicated interceptor wrapping auth in a future LLD — never inside
-the auth logic. This LLD documents the extension point only.
+### 10.5 Rate limiting (login throttling built in revision 2)
+~~Brute-force protection belongs at the connection boundary — an edge
+proxy.~~ **Superseded in part by D-64.** A self-hosted install may have no
+proxy, so password sign-in, reset requests and the deprecated
+`AuthenticateUser` are throttled by identity's `LoginThrottle`. It runs
+before verification and is keyed separately by account and by source. It
+uses exponential backoff after 5 failures, capped at 15 minutes, with no
+hard lockout. It answers the same whether or not the account exists. It
+sits beside the auth logic, not inside it, as this section originally
+required. General per-RPC rate limiting is still deferred.
 
 ### 10.6 Data residency posture (deferred enforcement)
 `Tenant.ResidencyZone` is set at provisioning and immutable thereafter.
@@ -393,6 +553,12 @@ a failed login mutates nothing). Without it, credential-stuffing patterns
 are invisible until §10.5's limiter lands. This is the minimum visibility
 before then, not a substitute for the limiter.
 
+**Revision 2:** authentication outcomes are also written to the
+append-only `auth_events` table (D-64). That covers sign-in success and
+failure, throttling, password change, reset request and completion, and
+session revocation. It is keyed by user, so a person's security history
+is one query, whichever tenant they were acting in.
+
 ### 10.9 OWASP Top 10 (2021) traceability
 
 | Category | How this LLD addresses it |
@@ -401,8 +567,16 @@ before then, not a substitute for the limiter.
 | A02 Cryptographic Failures | Argon2id for passwords, SHA-256 for high-entropy API keys, Ed25519 for JWTs, algorithm pinning (§10.7) |
 | A03 Injection | §10.4 parameterized queries, review-enforced |
 | A04 Insecure Design | The first administrator is created off the network, not by a seeded default credential (§5.2) |
-| A07 Identification & Authentication Failures | §5.3 parameters; §10.2 two-layer invalidation; §10.5 extension point; §10.8 failed-auth logging |
+| A07 Identification & Authentication Failures | §5.3 parameters; §10.2 invalidation (now including sessions); §10.5 login throttling; §10.8 failed-auth logging and auth events; §10.10 uniform timing; single-use reset secrets |
 | A09 Security Logging & Monitoring Failures | §10.3 immutable redacted audit log; §10.8 failed-auth visibility |
+
+### 10.10 No account-existence oracle (revision 2)
+Revision 1 returned early on an unknown username, skipping Argon2id, so
+response time revealed which accounts exist. From revision 2, every
+password check runs Argon2id, against a fixed dummy hash when there is no
+account. `DiscoverSignIn`, `RequestPasswordReset` and throttling also
+answer identically for known and unknown emails. Adding an existing email
+to a tenant looks the same to the administrator as creating one (D-61).
 
 ## 11. Critical path sequence diagram
 
@@ -431,4 +605,31 @@ sequenceDiagram
     ConnectRPC->>RLS: SET LOCAL app.tenant_id
     ConnectRPC->>Ctx: Forward with tenant context
     Ctx-->>Client: Domain state only, never infrastructure identifiers
+```
+
+### 11.2 Console sign-in, tenant choice and refresh (revision 2)
+
+```mermaid
+sequenceDiagram
+    participant UI as Console
+    participant Auth as AuthService
+    participant Thr as LoginThrottle
+    participant DB as PostgreSQL
+
+    UI->>Auth: DiscoverSignIn(email)
+    Auth-->>UI: methods = [password] (same for unknown emails)
+    UI->>Auth: SignIn(email, password)
+    Auth->>Thr: Check(account, source)
+    alt throttled
+        Auth-->>UI: RESOURCE_EXHAUSTED + retry delay
+    end
+    Auth->>DB: user by email (Argon2id runs even when absent)
+    Auth->>DB: INSERT session (refresh digest), auth_event
+    Auth-->>UI: access JWT (sid, uid, sub=principal, tid) + memberships<br/>Set-Cookie: refresh (HttpOnly, Secure, SameSite=Strict)
+    Note over UI: more than one membership → tenant picker
+    UI->>Auth: RefreshSession(tenant_id) + cookie
+    Auth->>DB: rotate digest; presenting the previous one revokes the session
+    Auth-->>UI: access JWT for that membership + new cookie
+    UI->>Auth: any RPC with Bearer JWT
+    Note over Auth,DB: ValidateToken: principal, tenant, user Active and session live — one read (§10.2)
 ```

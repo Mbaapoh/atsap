@@ -80,7 +80,7 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
 ## 2. `pbx-core`
 
 - **Purpose:** Manages PBX configuration, extension registrations, BYOT SIP carrier trunks, Least-Cost Routing (LCR), visual IVR flow execution, and ACD call queues.
-- **Aggregates:** `Extension`, `Trunk`, `CarrierRoute`, `IVRFlow`, `Queue`.
+- **Aggregates:** `Extension`, `Trunk`, `CarrierRoute`, `IVRFlow`, `Queue`; Phase B adds `ExtensionAssignment` (an extension's owner) and `Agent` (queue membership, state, hot-desk device), both keyed by `PrincipalID`. Users and extensions stay separate, and this context owns the link between them (D-65, LLD-03 §3.1).
 - **Inbound Ports (Go interfaces):**
   ```go
   type RoutePlanner interface {
@@ -201,7 +201,7 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
 ## 7. `identity` (BR-01, BR-15, FBR-R1-04, EPIC-01)
 
 - **Purpose:** Manages tenants, user accounts, authentication tokens, API keys, role-based access control (RBAC), and append-only audit logs.
-- **Aggregates:** `Tenant`, `Principal`, `RoleBinding`, `ApiKey`, `AuditEntry`.
+- **Aggregates:** `Tenant`, `User` (one person, installation-wide — D-61), `Principal` (a user's membership of one tenant), `RoleBinding`, `ApiKey`, `Session` (D-62), `IdentityProvider` (SSO-ready, D-63), `AuditEntry`.
 - **Inbound Ports (Go interfaces):**
   ```go
   type IdentityService interface {
@@ -215,6 +215,9 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
   - Every administrative action writes an immutable row to `audit_logs` containing `actor_id`, timestamp, before state, and after state (AC-01.3).
   - Passwords hashed with Argon2id; API keys stored as SHA-256 hashes.
   - Staff have no backdoor access to partner tenant data.
+  - A tenant administrator governs memberships, never the person: profile, email and user status change only by the user or platform scope (D-61).
+  - Access tokens name exactly one membership; sessions are revocable and checked on every request (D-62).
+  - External identities link by `(provider, subject)`, never by email (D-63).
 
 ---
 

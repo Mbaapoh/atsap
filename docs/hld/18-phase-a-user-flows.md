@@ -41,11 +41,16 @@ authenticate as yet.
 flowchart TD
     A["Partner installs the platform"] --> B["Run: atsap-api bootstrap"]
     B --> C["Creates first tenant + platform admin<br/>off the network, credentials entered once"]
-    C --> D["Open the console, sign in"]
-    D --> E{"Credentials valid?"}
-    E -->|no| E1["Generic failure.<br/>Never says which half was wrong"]
+    C --> D["Open the console, enter email"]
+    D --> D1["DiscoverSignIn: which method?<br/>(password today; the tenant's IdP once SSO is built)"]
+    D1 --> D2["Enter password"]
+    D2 --> E{"Credentials valid?<br/>(throttled after repeated failures)"}
+    E -->|no| E1["Generic failure.<br/>Never says which half was wrong,<br/>or whether the account exists"]
     E1 --> D
-    E -->|yes| F{"Licence present?"}
+    E -->|yes| E2{"More than one tenant?"}
+    E2 -->|yes| E3["Pick a tenant<br/>(switching later is a session refresh)"]
+    E2 -->|no| F
+    E3 --> F{"Licence present?"}
     F -->|no| G["Console opens in unlicensed state:<br/>licence screen only, no telephony"]
     G --> H["Paste licence key"]
     H --> I{"Key valid for this instance<br/>fingerprint?"}
@@ -64,20 +69,27 @@ both, and it is the one moment where a command line is defensible.
 
 | Needs | Status |
 |---|---|
-| `atsap-api bootstrap` (CLI, not an RPC) | **Exists** |
-| `AuthenticateUser` | **Exists** |
-| `ApplyLicenseKey`, `GetLicenseStatus` | Pending — LLD-02 licensing half |
+| `atsap-api bootstrap` (CLI, not an RPC) | **Exists**; takes an email from revision 2 |
+| `AuthenticateUser` | **Exists**; deprecated for people by revision 2, kept for machines and harnesses |
+| `DiscoverSignIn`, `SignIn`, `RefreshSession`, `SignOut` (console session, D-62) | **Proposed**: `identity-accounts-and-sessions` |
+| `ChangePassword`, `RequestPasswordReset`, `CompletePasswordReset` | **Proposed**: same change |
+| `ApplyLicenseKey`, `GetLicenseStatus` | **Built**: `console-apis-phase-a` |
 
 ## 3. Flow A2 — Add a user and give them a role
 
 ```mermaid
 flowchart TD
-    A["Admin opens Users"] --> B["Add user:<br/>username, email, initial password, role"]
-    B --> C{"Username already used<br/>in this tenant?"}
-    C -->|yes| C1["Rejected. Username is unique<br/>per tenant, not globally"]
+    A["Admin opens Users"] --> B["Add user:<br/>email, display name, role,<br/>optional initial password"]
+    B --> C{"Email already a member<br/>of this tenant?"}
+    C -->|yes| C1["Rejected: already a member"]
     C1 --> B
-    C -->|no| D["Principal created.<br/>Password hashed with Argon2id"]
-    D --> E["Role binding created<br/>for the role that was chosen"]
+    C -->|no| D["Membership (principal) created.<br/>New person: user created too.<br/>Existing person: same response —<br/>their other tenants are never revealed"]
+    D --> D1{"Initial password given<br/>and the person is new?"}
+    D1 -->|yes| D2["Password hashed with Argon2id"]
+    D1 -->|no| D3["Invitation link emailed<br/>(new person), or nothing<br/>(existing person keeps theirs)"]
+    D2 --> E
+    D3 --> E
+    E["Role binding created<br/>for the role that was chosen"]
     E --> F["Audit row written<br/>in the same transaction"]
     F --> G["User appears in the list"]
     G --> H{"Needs another role<br/>or a narrower scope?"}
@@ -95,7 +107,9 @@ drawn as part of creation rather than an optional extra.
 
 | Needs | Status |
 |---|---|
-| `ProvisionPrincipal` | **Exists** |
+| `ProvisionPrincipal` | **Exists**; by email, with an invitation, from revision 2 (D-61) |
+| `ListPrincipals`, `RevokeRole` | **Built**: `console-apis-phase-a` |
+| `ResetPrincipalPassword` (administrator reset, must change at next sign-in) | **Proposed**: `identity-accounts-and-sessions` (D-64) |
 | `GrantRole` | **Exists** |
 | `SetPrincipalStatus` (disable) | **Exists** |
 | `ListAudit` | **Exists** |
@@ -279,6 +293,27 @@ is — nothing more, and none of it optional:
 Phase A is done when a partner can walk A1 → A5 without leaving the
 console, without touching a configuration file, and without being told
 what Asterisk is.
+
+### 7.1 What the Phase A console does and does not show (D-65)
+
+The Phase A console is a complete **administration** console: install,
+licence, users, extensions, trunks and routes, and real calls with
+their history. It deliberately has no person ↔ phone link, because
+nothing in A1–A5 needs one.
+
+| Screen | Phase A shows | Added in Phase B |
+|---|---|---|
+| Sign in | Email, password, tenant choice, change and forgot password (`identity-accounts-and-sessions`) | SSO button per tenant IdP (`identity-oidc`); MFA |
+| Users | Email, name, status, roles; add, disable, grant, revoke, reset password | "Extensions" column; agent toggle and queues (`pbx-queues`) |
+| Extensions | Number, name, registration status, credentials shown once | "Assigned to" (`pbx-extension-assignment`) |
+| Trunks and routes | As built | Health latency (`Degraded`) |
+| Call history | Time, direction, from and to (extension numbers joined to names client-side), state, duration, end reason; filters | Person per call, "my calls", agent-scoped visibility, recordings and quality (`pbx-extension-assignment`, LLD-09) |
+| Licence | Status and activation | — |
+
+**Phase B, in order:** `pbx-extension-assignment` → `pbx-ivr-flows` →
+`pbx-queues` (agents, hot-desking) → LLD-09 reporting (immutable CDR,
+usage export) → `pbx-voicemail` and recording. Each brings its own
+console screens, per D-46.
 
 ## 8. Traceability
 

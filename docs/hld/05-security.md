@@ -38,7 +38,16 @@ AtsaPBX enforces defense-in-depth tenant isolation across every layer of the pla
 
 1. **Zero Cross-Tenant Leakage (AC-01.1):** A user of Tenant A cannot see, reach, or infer the existence of Tenant B's data through any API response, search query, or error message (errors return generic `404 Not Found` rather than `403 Forbidden` for other-tenant resource IDs).
 2. **Numbering Space Isolation (AC-01.2):** Extension numbers (e.g. `101`, `102`) and queue names are scoped to `tenant_id`. Overlapping extension numbers between different tenants never collide.
-3. **Fail-Closed Guarantee:** Any repository query executed without an authenticated tenant context immediately aborts and logs a security violation.
+3. **Fail-Closed Guarantee:** Any repository query on a tenant-owned table executed without an authenticated tenant context immediately aborts and logs a security violation. *The one designed exception:* identity's installation-wide account tables (`users`, `sessions` and their siblings, HLD 03 §5). These are read before any tenant is known, for sign-in by email. They hold no tenant's data, and only `identity/postgres` may name them, which archtest enforces (D-61).
+
+### 1.2 People, Sessions and Sign-in (D-61–D-64; proposed, `identity-accounts-and-sessions`)
+
+1. **One person, many tenants.** A user is installation-wide and signs in with an email. A principal is that user's membership of one tenant. Access tokens always name one membership, so §1's pipeline is unchanged. A tenant administrator governs the membership and never the person (AC-01.1), and nothing an administrator sees reveals the person's other tenants.
+2. **Sessions are revocable.** The console holds a 15-minute access token in memory and a rotating refresh secret in an `HttpOnly; Secure; SameSite=Strict` cookie. A reused refresh secret revokes the session. Every request re-checks the user, the membership, the tenant and the session in one read, so sign-out, a password change or a disabled user takes effect on the next request (AC-01.5).
+3. **No account-existence oracle.** Sign-in method discovery, sign-in failures, reset requests and throttling answer identically for known and unknown emails, and take the same time: Argon2id always runs.
+4. **Throttling ships with the product** (D-64): per account and per source, exponential backoff, no hard lockout. It does not depend on an edge proxy existing.
+5. **Recovery never weakens isolation.** Reset secrets are single-use digests, valid for 30 minutes. A tenant administrator may reset a password only for a person who belongs to no tenant outside their authority; otherwise only platform scope can.
+6. **SSO-ready.** A password is optional. An external identity is linked by `(provider, subject)` and never by email. A verified domain belongs to one tenant's provider, and an enforced provider disables password sign-in for that domain. Protocols (OIDC first) and MFA are future changes.
 
 ---
 

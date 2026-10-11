@@ -128,6 +128,95 @@ Two things this diagram is meant to make hard to get wrong:
   RLS can be recovered before the lookup — without that, the lookup
   cannot find its own row.
 
+### 3.1 Revision 2: users, memberships, sessions (proposed)
+
+Proposed by `identity-accounts-and-sessions` (D-61–D-64, LLD-02 §5.4)
+in `0010_identity_accounts.up.sql`. A **user** is one person across the
+installation. A **principal** becomes that user's membership of one
+tenant, and its id is unchanged. `principals` loses `username`, `email`
+and `password_hash`, and gains `user_id`.
+
+```mermaid
+erDiagram
+    users ||--o| user_passwords : "may have"
+    users ||--o{ principals : "member of tenants as"
+    tenants ||--o{ principals : scopes
+    users ||--o{ sessions : "signed in as"
+    principals |o--o{ sessions : "acting as"
+    users ||--o{ password_reset_tickets : "recovers with"
+    tenants ||--o{ identity_providers : configures
+    identity_providers ||--o{ identity_provider_domains : "authoritative for"
+    identity_providers ||--o{ external_identities : asserts
+    users ||--o{ external_identities : "linked to"
+    users |o--o{ auth_events : "history of"
+
+    users {
+        uuid id PK
+        varchar email "UNIQUE on lower(email), installation-wide"
+        varchar display_name
+        varchar status "platform scope only"
+    }
+    user_passwords {
+        uuid user_id PK "no row = no password"
+        varchar password_hash "Argon2id"
+        bool must_change "administrator reset"
+    }
+    principals {
+        uuid id PK "unchanged ids"
+        uuid tenant_id FK
+        uuid user_id FK "UNIQUE with tenant_id"
+        varchar role
+        varchar status "the membership"
+    }
+    sessions {
+        uuid id PK
+        uuid user_id FK
+        uuid principal_id FK "membership in use"
+        varchar refresh_digest "SHA-256"
+        varchar previous_digest "reuse detection"
+        timestamptz idle_expires_at
+        timestamptz absolute_expires_at
+        timestamptz revoked_at
+    }
+    password_reset_tickets {
+        uuid id PK
+        uuid user_id FK
+        varchar digest "SHA-256, single use"
+        varchar purpose "reset / invite"
+        timestamptz expires_at
+    }
+    identity_providers {
+        uuid id PK
+        uuid tenant_id FK "RLS"
+        varchar kind "OIDC / SAML"
+        varchar issuer
+        varchar mode "DISABLED / OPTIONAL / ENFORCED"
+    }
+    identity_provider_domains {
+        varchar domain PK "one provider per domain"
+        uuid provider_id FK
+        timestamptz verified_at
+    }
+    external_identities {
+        uuid provider_id PK
+        varchar subject PK "never matched by email"
+        uuid user_id FK
+    }
+    auth_events {
+        bigint id PK "append-only"
+        uuid user_id "NULL for unknown emails"
+        varchar kind
+        inet source_address
+    }
+```
+
+- **Only `principals` and `identity_providers` are tenant-scoped.** The
+  rest describe a person or the installation and are read before a tenant
+  is known. They have no RLS, and only `identity/postgres` may name them
+  (archtest).
+- **`role_bindings` and `api_keys` are unchanged.** They still hang from
+  `principals`, which is why the membership keeps its old name and ids.
+
 ## 4. Configuration — what the console writes
 
 `extensions`, `carrier_trunks` and `carrier_routes` land in Phase A
@@ -379,6 +468,8 @@ state change that produced it.
 |---|---|---|
 | `tenants`, `calls`, `call_participants`, `channel_history`, `usage_seconds`, `outbox` | pre-A | **Implemented** (`0001`, LLD-01) |
 | `principals`, `role_bindings`, `api_keys`, `audit_logs` | pre-A | **Implemented** (`0003`, LLD-02) |
+| `users`, `user_passwords`, `sessions`, `password_reset_tickets`, `identity_providers`, `identity_provider_domains`, `external_identities`, `login_throttle`, `auth_events`; `principals` reshaped | A (before console) | **Proposed** (`0010`, LLD-02 rev 2, `identity-accounts-and-sessions`) |
+| `extension_assignments`, `agents`, `queue_members`; `call_participants` gains `extension_id`, `principal_id` | B | **Designed** (LLD-03 §3.1, D-65) |
 | `licensing_state` | **A** | Designed; LLD-02's licensing half |
 | `extensions`, `carrier_trunks`, `carrier_routes` | **A** | Designed; LLD-03 |
 | `ps_endpoints`, `ps_auths`, `ps_aors` | **A** | Decided (D-47); LLD-03 |

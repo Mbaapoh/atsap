@@ -134,6 +134,28 @@ What each LLD is expected to put on the wire. This is a plan, not a
 promise: a capability arrives here only when it has a named consumer,
 and the owning change is where that is decided and recorded.
 
+### LLD-02 — identity, revision 2
+
+Proposed by `identity-accounts-and-sessions` (D-61–D-64, LLD-02 §6). The
+consumer is console slice A's sign-in, account and users screens.
+
+| RPC | Service | Auth | Note |
+|---|---|---|---|
+| `DiscoverSignIn` | **`AuthService`** (new) | None | Sign-in methods for an email; identical for unknown emails |
+| `SignIn` | `AuthService` | None, throttled | Creates a session, sets the refresh cookie, and returns an access token and memberships |
+| `RefreshSession` | `AuthService` | Refresh cookie | Rotates the session; `tenant_id` chooses the membership |
+| `SignOut` | `AuthService` | Bearer | Revokes the session |
+| `ChangePassword` | `AuthService` | Bearer | Revokes the user's other sessions |
+| `RequestPasswordReset`, `CompletePasswordReset` | `AuthService` | None, throttled | Email link; always the same answer |
+| `ResetPrincipalPassword` | `IdentityService` | Bearer, `principal.password.reset` | Administrator reset; the user must change it at next sign-in |
+
+**Changed:** `ProvisionPrincipal` identifies the person by `email` and
+`display_name`, and invites by email when no password is given;
+`username` is deprecated. `ListPrincipals` returns email and display
+name. **Deprecated, kept:** `AuthenticateUser` (machines and harnesses;
+`username` is read as the email; no session). Port only, by D-43:
+`FederatedAuthenticator` (SSO), until the OIDC change has a consumer.
+
 ### LLD-08 — licensing
 
 `GetLicenseStatus` and `ApplyLicenseKey` landed with `console-apis-phase-a`
@@ -150,7 +172,9 @@ of it lands on a new **`PbxService`**, not on `TelephonyService`:
 
 | RPC | Phase | Consumer |
 |---|---|---|
+| `AssignExtension`, `UnassignExtension` (and "assigned to" on `ListExtensions`) | B | Console Extensions and Users screens: `pbx-extension-assignment` (D-65) |
 | `IvrFlow*` (including publish, version, rollback) | B | Visual IVR builder |
+| `AgentLogin`, `AgentLogout`, `SetAgentState`, queue CRUD | B | Agent UI and supervisor wallboard: `pbx-queues` |
 
 **This resolves the `InitiateCall`/`HangupCall` question §2 left open**:
 they stay ports on `telephony-core`, and `PbxService.PlaceCall` becomes
