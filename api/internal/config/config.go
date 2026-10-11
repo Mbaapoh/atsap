@@ -40,6 +40,31 @@ type Config struct {
 	// issuer signs with (identity context). Required whenever the process
 	// serves IdentityService or bootstraps. Never logged, never echoed.
 	JWTPrivateKeyHex string
+	// JWTPreviousKeysHex lists previous signing seeds (comma-separated
+	// hex), accepted for validation only, so rotating JWTPrivateKeyHex
+	// signs nobody out (D-66). Remove an entry once 15 minutes have passed
+	// since rotation: no token signed with it can still be unexpired.
+	JWTPreviousKeysHex string
+
+	// ConsoleURL is the console's public base URL, which emailed reset and
+	// invitation links point at (D-64), e.g. https://pbx.example.com.
+	ConsoleURL string
+	// SMTPAddr (host:port), SMTPFrom, SMTPUser and SMTPPassword configure
+	// outbound mail. With SMTPAddr empty, mail is not sent and a warning
+	// is logged instead — administrator reset still works without mail.
+	SMTPAddr     string
+	SMTPFrom     string
+	SMTPUser     string
+	SMTPPassword string
+	// SMTPInsecure permits a server without STARTTLS. Dev rig only.
+	SMTPInsecure bool
+	// CookieInsecure drops the Secure attribute from the session cookie,
+	// for the plain-HTTP dev rig only. It is logged loudly when set.
+	CookieInsecure bool
+	// TrustedProxies lists proxy addresses or CIDRs whose X-Forwarded-For
+	// is believed when resolving a caller's address for throttling.
+	// Empty — the default — believes no one.
+	TrustedProxies string
 
 	// SIPRealm is the realm the media engine challenges with, and the
 	// realm every extension credential digest is computed over
@@ -103,6 +128,15 @@ func Load() (Config, error) {
 		SIPTransport:       getEnv("SIP_TRANSPORT", "transport-udp"),
 		SIPWebRTCTransport: getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
 		LicenseToken:       getEnv("ATSAPBX_LICENSE_TOKEN", ""),
+		JWTPreviousKeysHex: getEnv("ATSAPBX_JWT_PREVIOUS_KEYS", ""),
+		ConsoleURL:         getEnv("ATSAPBX_CONSOLE_URL", "http://localhost:8080"),
+		SMTPAddr:           getEnv("ATSAPBX_SMTP_ADDR", ""),
+		SMTPFrom:           getEnv("ATSAPBX_SMTP_FROM", "AtsaPBX <no-reply@localhost>"),
+		SMTPUser:           getEnv("ATSAPBX_SMTP_USER", ""),
+		SMTPPassword:       getEnv("ATSAPBX_SMTP_PASSWORD", ""),
+		SMTPInsecure:       getEnv("ATSAPBX_SMTP_INSECURE", "") == "true",
+		CookieInsecure:     getEnv("ATSAPBX_COOKIE_INSECURE", "") == "true",
+		TrustedProxies:     getEnv("ATSAPBX_TRUSTED_PROXIES", ""),
 	}
 
 	if cfg.ARIPassword == "" {

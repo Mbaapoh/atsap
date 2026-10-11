@@ -75,7 +75,7 @@ func TestAuthInterceptor_FailuresAreIndistinguishable(t *testing.T) {
 	tenant, principal := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 	i := application.NewAuthInterceptor(h.svc, tenantMatcher)
 
-	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	_, _, forgedErr := callUnary(t, i, "Bearer not-a-real-token", &bodyWithTenant{})
@@ -96,7 +96,7 @@ func TestAuthInterceptor_PassesValidTokenThrough(t *testing.T) {
 	tenant, principal := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 	i := application.NewAuthInterceptor(h.svc, tenantMatcher)
 
-	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	reached, ctxSeen, err := callUnary(t, i, "Bearer "+tok.Token,
@@ -116,7 +116,7 @@ func TestAuthInterceptor_RejectsTenantMismatch(t *testing.T) {
 	tenant, _ := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 	i := application.NewAuthInterceptor(h.svc, tenantMatcher)
 
-	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	otherTenant, err := h.svc.ProvisionTenant(context.Background(), application.SystemActor(), "Other", "EU")
@@ -134,7 +134,7 @@ func TestAuthInterceptor_AllowsBodyWithoutTenantField(t *testing.T) {
 	tenant, _ := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 	i := application.NewAuthInterceptor(h.svc, tenantMatcher)
 
-	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	// A body the matcher does not recognise, and one with an empty
@@ -153,7 +153,7 @@ func TestAuthInterceptor_NilMatcherSkipsTenantCheck(t *testing.T) {
 	tenant, _ := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 	i := application.NewAuthInterceptor(h.svc, nil)
 
-	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	reached, _, err := callUnary(t, i, "Bearer "+tok.Token,
@@ -173,7 +173,7 @@ func TestAuthInterceptor_ExpiredTokenIsRejected(t *testing.T) {
 	h := newHarness(t)
 	tenant, _ := h.seedTenantAndPrincipal(t, "alice", "correct horse battery")
 
-	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(context.Background(), tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	later := h.svc.WithClock(func() time.Time { return svcNow.Add(2 * application.DefaultTokenLifetime) })
@@ -224,7 +224,7 @@ func TestAuthInterceptor_SystemScopePassesBodyTenant(t *testing.T) {
 	otherTenant, err := h.svc.ProvisionTenant(ctx, application.SystemActor(), "Other", "EU")
 	require.NoError(t, err)
 
-	tok, err := h.svc.AuthenticateUser(ctx, tenant.ID, "op", "correct horse battery")
+	tok, err := h.svc.AuthenticateUser(ctx, tenant.ID, "op@example.test", "correct horse battery")
 	require.NoError(t, err)
 
 	i := application.NewAuthInterceptor(h.svc, tenantMatcher)

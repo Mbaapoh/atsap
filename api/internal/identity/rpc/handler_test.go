@@ -5,9 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"log/slog"
-	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -17,32 +15,29 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/jackc/pgx/v5"
-
 	atsapbxv1 "atsap-api/internal/genproto/atsapbx/v1"
 	"atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/domain"
-	"atsap-api/internal/identity/ports"
+	"atsap-api/internal/identity/memstore"
 	"atsap-api/internal/identity/rpc"
-	shareddomain "atsap-api/internal/shared/domain"
 )
 
 // env bundles a real Service over an in-memory store plus the handler.
 type env struct {
 	svc *application.Service
 	h   *rpc.IdentityHandler
-	st  *memStores
+	st  *memstore.Store
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	st := newMemStores()
+	st := memstore.New()
 	_, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	issuer, err := application.NewTokenIssuer(priv, time.Hour)
 	require.NoError(t, err)
 	logger := slog.New(slog.NewTextHandler(discardWriter{}, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := application.NewService(st, st, st, st, st, st, application.NewPasswordHasher(), issuer, logger)
+	svc := application.NewService(application.StoresOf(st), st, application.NewPasswordHasher(), issuer, logger)
 	return &env{svc: svc, h: rpc.NewIdentityHandler(svc), st: st}
 }
 
@@ -67,13 +62,13 @@ type user struct {
 func (e *env) seedUser(t *testing.T, tenant domain.Tenant, username, password, role, scope string) user {
 	t.Helper()
 	p, err := e.svc.ProvisionPrincipal(context.Background(), application.SystemActor(),
-		tenant.ID, username, username+"@test", password, role)
+		tenant.ID, username+"@example.test", username, password, role)
 	require.NoError(t, err)
 	if scope == "" {
 		scope = domain.ScopeTenant
 	}
 	require.NoError(t, e.svc.GrantRole(context.Background(), application.SystemActor(), tenant.ID, p.ID, role, scope))
-	tok, err := e.svc.AuthenticateUser(context.Background(), tenant.ID, username, password)
+	tok, err := e.svc.AuthenticateUser(context.Background(), tenant.ID, username+"@example.test", password)
 	require.NoError(t, err)
 	tc, err := e.svc.ValidateToken(context.Background(), tok.Token)
 	require.NoError(t, err)
@@ -95,7 +90,7 @@ func TestAuthenticateUser_SuccessAndIndistinguishableFailures(t *testing.T) {
 
 	req := func(pw string) *connect.Request[atsapbxv1.AuthenticateUserRequest] {
 		return connect.NewRequest(&atsapbxv1.AuthenticateUserRequest{
-			TenantId: tenant.ID.String(), Username: "alice", Password: pw,
+			TenantId: tenant.ID.String(), Username: "alice@example.test", Password: pw,
 		})
 	}
 
@@ -111,7 +106,7 @@ func TestAuthenticateUser_SuccessAndIndistinguishableFailures(t *testing.T) {
 	require.Error(t, err)
 	wrong := err
 	_, err = e.h.AuthenticateUser(context.Background(), connect.NewRequest(&atsapbxv1.AuthenticateUserRequest{
-		TenantId: tenant.ID.String(), Username: "ghost", Password: "correct horse battery",
+		TenantId: tenant.ID.String(), Username: "ghost@example.test", Password: "correct horse battery",
 	}))
 	require.Error(t, err)
 	unknown := err
@@ -147,8 +142,8 @@ func TestProvisionTenant_RequiresSystemScope(t *testing.T) {
 	assert.Equal(t, "B", tenantB.Msg.GetTenant().GetName())
 
 	_, err = e.h.ProvisionPrincipal(op.ctx, connect.NewRequest(&atsapbxv1.ProvisionPrincipalRequest{
-		TenantId: tenantB.Msg.GetTenant().GetTenantId(), Username: "admin-b",
-		Email: "admin-b@test", Password: "correct-pw-b-battery", Role: "TENANT_ADMIN",
+		TenantId: tenantB.Msg.GetTenant().GetTenantId(),
+		Email:    "admin-b@example.test", Password: "correct-pw-b-battery", Role: "TENANT_ADMIN",
 	}))
 	require.NoError(t, err, "a platform operator may provision a tenant's first administrator")
 }
@@ -165,9 +160,7 @@ func TestProvisionTenant_AtCapIsFailedPreconditionNotPermissionDenied(t *testing
 	tenantA := e.seedTenant(t, "Acme")
 	adminA := e.seedUser(t, tenantA, "admin-a", "correct-pw-a-battery", "TENANT_ADMIN", domain.ScopeTenant)
 	op := e.seedUser(t, tenantA, "op", "correct-pw-op-battery", "PLATFORM_ADMIN", domain.ScopeSystem)
-	e.st.mu.Lock()
-	e.st.tenantCap = 1
-	e.st.mu.Unlock()
+	e.st.TenantCap = 1
 
 	_, err := e.h.ProvisionTenant(op.ctx, connect.NewRequest(&atsapbxv1.ProvisionTenantRequest{Name: "B", ResidencyZone: "EU"}))
 	requireCode(t, err, connect.CodeFailedPrecondition)
@@ -195,12 +188,12 @@ func TestAuthorization_BasicRoleCannotAdminister(t *testing.T) {
 
 	// ProvisionPrincipal (basic role, trying to administer).
 	_, err := e.h.ProvisionPrincipal(agent.ctx, connect.NewRequest(&atsapbxv1.ProvisionPrincipalRequest{
-		TenantId: tenant.ID.String(), Username: "x", Email: "x@test", Password: "correct-pw-x-battery", Role: "AGENT",
+		TenantId: tenant.ID.String(), Email: "x@example.test", Password: "correct-pw-x-battery", Role: "AGENT",
 	}))
 	requireCode(t, err, connect.CodePermissionDenied)
 	// The same call with an admin role succeeds.
 	_, err = e.h.ProvisionPrincipal(admin.ctx, connect.NewRequest(&atsapbxv1.ProvisionPrincipalRequest{
-		TenantId: tenant.ID.String(), Username: "newbie", Email: "newbie@test", Password: "correct-pw-n-battery", Role: "AGENT",
+		TenantId: tenant.ID.String(), Email: "newbie@example.test", Password: "correct-pw-n-battery", Role: "AGENT",
 	}))
 	require.NoError(t, err)
 
@@ -325,7 +318,7 @@ func TestResponses_NeverCarryCredentialMaterial(t *testing.T) {
 
 	// Content scan of a real provisioning response: no password in it.
 	provisioned, err := e.h.ProvisionPrincipal(admin.ctx, connect.NewRequest(&atsapbxv1.ProvisionPrincipalRequest{
-		TenantId: tenant.ID.String(), Username: "dave", Email: "dave@test", Password: "super-secret-pw", Role: "AGENT",
+		TenantId: tenant.ID.String(), Email: "dave@example.test", Password: "super-secret-pw", Role: "AGENT",
 	}))
 	require.NoError(t, err)
 	raw, err := json.Marshal(provisioned.Msg)
@@ -377,263 +370,4 @@ func TestRawApiKey_IssuedOnceNeverAgain(t *testing.T) {
 		Status: atsapbxv1.PrincipalStatus_PRINCIPAL_STATUS_ACTIVE,
 	}))
 	require.NoError(t, err)
-}
-
-// --- memStores: in-memory identity storage -----------------------------
-
-type memStores struct {
-	mu         sync.Mutex
-	tenants    map[string]domain.Tenant
-	principals map[string]domain.Principal
-	bindings   []domain.RoleBinding
-	apiKeys    map[string]domain.ApiKey
-	audit      []domain.AuditEntry
-	seq        int64
-	tenantCap  int
-}
-
-func newMemStores() *memStores {
-	return &memStores{
-		tenants:    map[string]domain.Tenant{},
-		principals: map[string]domain.Principal{},
-		apiKeys:    map[string]domain.ApiKey{},
-	}
-}
-
-// MaxTenants makes memStores its own cap source.
-func (m *memStores) MaxTenants(context.Context) (int, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.tenantCap, nil
-}
-
-func (m *memStores) CreateTenant(_ context.Context, t domain.Tenant, maxTenants int) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if maxTenants > 0 && len(m.tenants) >= maxTenants {
-		return ports.ErrEntitlementExceeded
-	}
-	if _, ok := m.tenants[t.ID.String()]; ok {
-		return ports.ErrUsernameTaken
-	}
-	m.tenants[t.ID.String()] = t
-	return nil
-}
-
-func (m *memStores) GetTenant(_ context.Context, id shareddomain.TenantID) (domain.Tenant, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	t, ok := m.tenants[id.String()]
-	if !ok {
-		return domain.Tenant{}, ports.ErrNotFound
-	}
-	return t, nil
-}
-
-func (m *memStores) SetTenantStatus(_ context.Context, id shareddomain.TenantID, status domain.TenantStatus) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	t, ok := m.tenants[id.String()]
-	if !ok {
-		return ports.ErrNotFound
-	}
-	t.Status = status
-	m.tenants[id.String()] = t
-	return nil
-}
-
-func (m *memStores) CreatePrincipal(_ context.Context, p domain.Principal) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.principals[p.TenantID.String()+"/"+p.ID.String()]; ok {
-		return ports.ErrUsernameTaken
-	}
-	m.principals[p.TenantID.String()+"/"+p.ID.String()] = p
-	return nil
-}
-
-func (m *memStores) GetPrincipal(_ context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID) (domain.Principal, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	p, ok := m.principals[tenantID.String()+"/"+id.String()]
-	if !ok {
-		return domain.Principal{}, ports.ErrNotFound
-	}
-	return p, nil
-}
-
-func (m *memStores) GetPrincipalByUsername(_ context.Context, tenantID shareddomain.TenantID, username string) (domain.Principal, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, p := range m.principals {
-		if p.TenantID == tenantID && p.Username == username {
-			return p, nil
-		}
-	}
-	return domain.Principal{}, ports.ErrNotFound
-}
-
-func (m *memStores) SetPrincipalStatus(_ context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID, status domain.PrincipalStatus) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	key := tenantID.String() + "/" + id.String()
-	p, ok := m.principals[key]
-	if !ok {
-		return ports.ErrNotFound
-	}
-	p.Status = status
-	m.principals[key] = p
-	return nil
-}
-
-func (m *memStores) CreateRoleBinding(_ context.Context, b domain.RoleBinding) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// Idempotent like the real store (ON CONFLICT (principal_id, role,
-	// scope) DO NOTHING): a duplicate here would let a revocation remove
-	// one copy and leave the role in force — a fake more permissive than
-	// the database it stands for.
-	for _, x := range m.bindings {
-		if x.PrincipalID == b.PrincipalID && x.Role == b.Role && x.Scope == b.Scope {
-			return nil
-		}
-	}
-	m.bindings = append(m.bindings, b)
-	return nil
-}
-
-func (m *memStores) ListRoleBindings(_ context.Context, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID) ([]domain.RoleBinding, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []domain.RoleBinding
-	for _, b := range m.bindings {
-		if b.TenantID == tenantID && b.PrincipalID == principalID {
-			out = append(out, b)
-		}
-	}
-	return out, nil
-}
-
-func (m *memStores) DeleteRoleBinding(context.Context, domain.RoleBinding) error { return nil }
-
-func (m *memStores) CreateApiKey(_ context.Context, k domain.ApiKey) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.apiKeys[k.ID.String()] = k
-	return nil
-}
-
-func (m *memStores) GetApiKeyByHash(_ context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.ApiKey, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, k := range m.apiKeys {
-		if k.TenantID == tenantID && k.KeyHash == keyHash {
-			return k, nil
-		}
-	}
-	return domain.ApiKey{}, ports.ErrNotFound
-}
-
-func (m *memStores) RevokeApiKey(_ context.Context, tenantID shareddomain.TenantID, id shareddomain.ApiKeyID, revokedAt time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	k, ok := m.apiKeys[id.String()]
-	if !ok || k.TenantID != tenantID {
-		return ports.ErrNotFound
-	}
-	k.RevokedAt = &revokedAt
-	m.apiKeys[id.String()] = k
-	return nil
-}
-
-// AppendAuditTx appends the same way; this in-memory double has no
-// transaction to join, and what the tests observe is the entry, not the
-// path it took.
-func (m *memStores) AppendAuditTx(ctx context.Context, _ pgx.Tx, e domain.AuditEntry) error {
-	return m.AppendAudit(ctx, e)
-}
-
-func (m *memStores) AppendAudit(_ context.Context, e domain.AuditEntry) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.seq++
-	e.ID = m.seq
-	m.audit = append(m.audit, e)
-	return nil
-}
-
-func (m *memStores) ListAudit(_ context.Context, tenantID shareddomain.TenantID, limit int) ([]domain.AuditEntry, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []domain.AuditEntry
-	for i := len(m.audit) - 1; i >= 0; i-- {
-		if m.audit[i].TenantID == tenantID {
-			out = append(out, m.audit[i])
-			if limit > 0 && len(out) >= limit {
-				break
-			}
-		}
-	}
-	return out, nil
-}
-
-func (m *memStores) ListPrincipals(_ context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []domain.Principal
-	for _, p := range m.principals {
-		if p.TenantID == tenantID {
-			p.PasswordHash = ""
-			out = append(out, p)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
-	if offset >= len(out) {
-		return nil, nil
-	}
-	out = out[offset:]
-	if limit < len(out) {
-		out = out[:limit]
-	}
-	return out, nil
-}
-
-func (m *memStores) ListRoleBindingsFor(_ context.Context, tenantID shareddomain.TenantID, ids []shareddomain.PrincipalID) (map[shareddomain.PrincipalID][]domain.RoleBinding, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	want := map[shareddomain.PrincipalID]bool{}
-	for _, id := range ids {
-		want[id] = true
-	}
-	out := map[shareddomain.PrincipalID][]domain.RoleBinding{}
-	for _, b := range m.bindings {
-		if b.TenantID == tenantID && want[b.PrincipalID] {
-			out[b.PrincipalID] = append(out[b.PrincipalID], b)
-		}
-	}
-	return out, nil
-}
-
-// RevokeRoleBinding mirrors the store: ErrNotFound for no such binding,
-// ErrLastAdministrator for the tenant's last tenant-scope TENANT_ADMIN.
-func (m *memStores) RevokeRoleBinding(_ context.Context, b domain.RoleBinding) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	idx, admins := -1, 0
-	for i, x := range m.bindings {
-		if x.TenantID == b.TenantID && x.Role == "TENANT_ADMIN" && x.Scope == domain.ScopeTenant {
-			admins++
-		}
-		if x.TenantID == b.TenantID && x.PrincipalID == b.PrincipalID && x.Role == b.Role && x.Scope == b.Scope {
-			idx = i
-		}
-	}
-	if idx < 0 {
-		return ports.ErrNotFound
-	}
-	if b.Role == "TENANT_ADMIN" && b.Scope == domain.ScopeTenant && admins <= 1 {
-		return ports.ErrLastAdministrator
-	}
-	m.bindings = append(m.bindings[:idx], m.bindings[idx+1:]...)
-	return nil
 }

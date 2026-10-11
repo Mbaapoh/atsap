@@ -22,7 +22,6 @@ import (
 	"atsap-api/internal/config"
 	atsapbxv1connect "atsap-api/internal/genproto/atsapbx/v1/atsapbxv1connect"
 	identityapp "atsap-api/internal/identity/application"
-	identitypostgres "atsap-api/internal/identity/postgres"
 	identityrpc "atsap-api/internal/identity/rpc"
 	licensingrpc "atsap-api/internal/licensing/rpc"
 	"atsap-api/internal/logging"
@@ -71,13 +70,13 @@ func main() {
 		os.Exit(runPbx(cfg))
 	}
 
-	logger := logging.New(cfg.LogLevel)
-
-	key, err := identityapp.TokenKeyFromHex(cfg.JWTPrivateKeyHex)
-	if err != nil {
-		logger.Error("invalid ATSAPBX_JWT_KEY", "error", err)
-		os.Exit(1)
+	// `atsap-api admin reset-password` is off-network recovery for an
+	// installation nobody can sign in to (D-66).
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		os.Exit(runAdmin(cfg))
 	}
+
+	logger := logging.New(cfg.LogLevel)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -187,32 +186,53 @@ func main() {
 	// documented concession from LLD-02, made when no wire-level
 	// AuthenticateUser existed to mint the e2e suite a token; it is closed
 	// here (auth-cutover-connectrpc).
-	identityStore := identitypostgres.NewStore(appPool)
-	identityIssuer, err := identityapp.NewTokenIssuer(key, identityapp.DefaultTokenLifetime)
+	identitySvc, identityStore, err := newIdentity(cfg, appPool, licenseManager, logger)
 	if err != nil {
-		logger.Error("failed to build token issuer", "error", err)
+		logger.Error("failed to start identity", "error", err)
 		os.Exit(1)
 	}
-	identitySvc := identityapp.NewService(identityStore, licenseManager, identityStore, identityStore,
-		identityStore, identityStore, identityapp.NewPasswordHasher(), identityIssuer, logger)
-	identityHandler := identityrpc.NewIdentityHandler(identitySvc)
-	authInterceptor := identityapp.NewAuthInterceptor(identitySvc, identityrpc.TenantID).
-		ExemptProcedure(identityapp.AuthenticateUserProcedure)
+	trusted, err := identityrpc.ParseTrustedProxies(cfg.TrustedProxies)
+	if err != nil {
+		logger.Error("invalid ATSAPBX_TRUSTED_PROXIES", "error", err)
+		os.Exit(1)
+	}
+	sources := identityrpc.NewSourceResolver(trusted)
+	if cfg.CookieInsecure {
+		logger.Warn("ATSAPBX_COOKIE_INSECURE is set: the session cookie is sent without Secure. Dev rig only.")
+	}
+	identityHandler := identityrpc.NewIdentityHandler(identitySvc).WithSourceResolver(sources)
+	// newInterceptor is every service's auth interceptor: AuthenticateUser
+	// exempt by exact name, and a must-change token confined to changing
+	// its password (D-64) in every service alike.
+	newInterceptor := func(matcher identityapp.TenantMatcher) *identityapp.AuthInterceptor {
+		return identityapp.NewAuthInterceptor(identitySvc, matcher).
+			ExemptProcedure(identityapp.AuthenticateUserProcedure).
+			AllowWhilePasswordChange(identityrpc.PasswordChangeProcedures...)
+	}
+	authInterceptor := newInterceptor(identityrpc.TenantID)
 	identityPath, identityRPC := atsapbxv1connect.NewIdentityServiceHandler(identityHandler,
 		connectrpc.WithInterceptors(authInterceptor))
+
+	// AuthService: console sign-in and sessions (D-62). Its public
+	// procedures are exempt by exact name; SignOut and ChangePassword
+	// require a bearer token like everything else.
+	authServiceInterceptor := newInterceptor(noTenantInRequest).ExemptProcedures(identityrpc.AuthPublicProcedures...)
+	authPath, authRPC := atsapbxv1connect.NewAuthServiceHandler(
+		identityrpc.NewAuthHandler(identitySvc, sources, cfg.CookieInsecure),
+		connectrpc.WithInterceptors(authServiceInterceptor))
 
 	// TelephonyService carries its own tenant matcher, so the interceptor
 	// refuses a body tenant that is not the token's rather than trusting
 	// the caller's word for which tenant they are reading.
 	telephonyHandler := rpc.NewTelephonyHandler(callStore, callStore)
-	telephonyInterceptor := identityapp.NewAuthInterceptor(identitySvc, rpc.TenantID).
-		ExemptProcedure(identityapp.AuthenticateUserProcedure)
+	telephonyInterceptor := newInterceptor(rpc.TenantID)
 	rpcPath, rpcHandler := atsapbxv1connect.NewTelephonyServiceHandler(telephonyHandler,
 		connectrpc.WithInterceptors(telephonyInterceptor))
 
 	handlers := map[string]http.Handler{
 		rpcPath:      rpcHandler,
 		identityPath: identityRPC,
+		authPath:     authRPC,
 	}
 
 	// PbxService: extension configuration. Mounted WITH the same auth
@@ -270,8 +290,7 @@ func main() {
 
 	// LicensingService: the installation's licence (LLD-08 §6). Mounted
 	// behind the same auth interceptor; its requests name no tenant.
-	licensingInterceptor := identityapp.NewAuthInterceptor(identitySvc, noTenantInRequest).
-		ExemptProcedure(identityapp.AuthenticateUserProcedure)
+	licensingInterceptor := newInterceptor(noTenantInRequest)
 	licensingPath, licensingRPC := atsapbxv1connect.NewLicensingServiceHandler(
 		licensingrpc.NewHandler(licenseManager.inner,
 			licenceAuthority{identity: identitySvc}, licenceAuditor{identity: identitySvc}),

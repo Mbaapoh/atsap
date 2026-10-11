@@ -20,9 +20,8 @@ import (
 
 func admin(t *testing.T, store *identitypostgres.Store, tenant shareddomain.TenantID, username string) domain.Principal {
 	t.Helper()
-	p := domain.Principal{ID: shareddomain.NewPrincipalID(), TenantID: tenant, Username: username,
-		Email: username + "@test", PasswordHash: "$argon2id$not-a-real-hash", Role: "TENANT_ADMIN",
-		Status: domain.PrincipalActive, CreatedAt: time.Now().UTC()}
+	p := newPrincipal(t, store, tenant, username)
+	p.Role = "TENANT_ADMIN"
 	require.NoError(t, store.CreatePrincipal(context.Background(), p))
 	require.NoError(t, store.CreateRoleBinding(context.Background(), domain.RoleBinding{
 		PrincipalID: p.ID, TenantID: tenant, Role: "TENANT_ADMIN", Scope: domain.ScopeTenant, CreatedAt: p.CreatedAt}))
@@ -38,14 +37,11 @@ func TestListPrincipals_PagedIsolatedAndHashless(t *testing.T) {
 	got, err := store.ListPrincipals(ctx, tenantA, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 2, "tenant B's user never appears")
-	assert.Equal(t, "alice", got[0].Username)
-	for _, p := range got {
-		assert.Empty(t, p.PasswordHash, "the hash is never selected")
-	}
+	assert.Equal(t, "alice@example.test", got[0].Email, "ordered by email")
 	page2, err := store.ListPrincipals(ctx, tenantA, 1, 1)
 	require.NoError(t, err)
 	require.Len(t, page2, 1)
-	assert.Equal(t, "bob", page2[0].Username)
+	assert.Equal(t, "bob@example.test", page2[0].Email)
 
 	bindings, err := store.ListRoleBindingsFor(ctx, tenantA, []shareddomain.PrincipalID{a1.ID, a2.ID})
 	require.NoError(t, err)

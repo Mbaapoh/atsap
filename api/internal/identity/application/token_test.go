@@ -131,6 +131,8 @@ func TestTokenIssuer_RejectsTamperedClaims(t *testing.T) {
 
 // TestTokenIssuer_RejectsAnotherIssuersToken: a correctly-formed,
 // correctly-signed token from a *different* key must not validate here.
+// Its kid names a key this issuer does not hold, so it is refused before
+// any signature work (D-66).
 func TestTokenIssuer_RejectsAnotherIssuersToken(t *testing.T) {
 	issuer, _ := newTestIssuer(t)
 	other, _ := newTestIssuer(t)
@@ -138,8 +140,89 @@ func TestTokenIssuer_RejectsAnotherIssuersToken(t *testing.T) {
 	token, err := other.Issue(shareddomain.NewTenantID(), shareddomain.NewPrincipalID(), nil)
 	require.NoError(t, err)
 
-	_, err = issuer.Validate(token)
+	verifies := 0
+	_, err = issuer.WithVerifyCounter(&verifies).Validate(token)
+	assert.ErrorIs(t, err, application.ErrTokenUnknownKey)
+	assert.Zero(t, verifies, "an unknown kid is refused before any signature work")
+}
+
+// A token claiming this issuer's kid but signed by another key is still a
+// signature failure: naming a known key proves nothing.
+func TestTokenIssuer_KnownKidWrongSignature(t *testing.T) {
+	issuer, _ := newTestIssuer(t)
+	other, _ := newTestIssuer(t)
+	mine, err := issuer.Issue(shareddomain.NewTenantID(), shareddomain.NewPrincipalID(), nil)
+	require.NoError(t, err)
+	theirs, err := other.Issue(shareddomain.NewTenantID(), shareddomain.NewPrincipalID(), nil)
+	require.NoError(t, err)
+	// my header (with my kid) + their claims and signature
+	forged := strings.Split(mine, ".")[0] + "." + strings.Join(strings.Split(theirs, ".")[1:], ".")
+	_, err = issuer.Validate(forged)
 	assert.ErrorIs(t, err, application.ErrTokenSignatureInvalid)
+}
+
+// TestTokenIssuer_RotationKeepsOldTokensValid (design D14): after rotating,
+// a token signed by the previous key validates until it expires; every new
+// token is signed by the new key; a kid-less legacy token is checked
+// against the current key only.
+func TestTokenIssuer_RotationKeepsOldTokensValid(t *testing.T) {
+	oldIssuer, oldKey := newTestIssuer(t)
+	newIssuer, _ := newTestIssuer(t)
+	rotated, err := newIssuer.WithPreviousKeys(oldKey)
+	require.NoError(t, err)
+
+	tenant, principal := shareddomain.NewTenantID(), shareddomain.NewPrincipalID()
+	oldToken, err := oldIssuer.Issue(tenant, principal, nil)
+	require.NoError(t, err)
+	claims, err := rotated.Validate(oldToken)
+	require.NoError(t, err, "a token signed before rotation still validates")
+	assert.Equal(t, principal.String(), claims.PrincipalID)
+
+	newToken, err := rotated.Issue(tenant, principal, nil)
+	require.NoError(t, err)
+	_, err = newIssuer.Validate(newToken)
+	assert.NoError(t, err, "new tokens are signed with the current key")
+	_, err = oldIssuer.Validate(newToken)
+	assert.ErrorIs(t, err, application.ErrTokenUnknownKey, "and never with the previous one")
+
+	// A kid-less token (issued before revision 2) by the previous key is
+	// not accepted: without a kid only the current key is tried.
+	legacy := stripKid(t, oldToken)
+	_, err = rotated.Validate(legacy)
+	assert.ErrorIs(t, err, application.ErrTokenSignatureInvalid)
+
+	_, err = newIssuer.WithPreviousKeys(func() ed25519.PrivateKey { _, k := newTestIssuer(t); return k }(), nil)
+	assert.Error(t, err, "a malformed previous key is refused")
+	_, cur := newTestIssuer(t)
+	same, err := application.NewTokenIssuer(cur, application.DefaultTokenLifetime)
+	require.NoError(t, err)
+	_, err = same.WithPreviousKeys(cur)
+	assert.Error(t, err, "a previous key equal to the current one is a configuration mistake")
+}
+
+func TestPreviousKeysFromHex(t *testing.T) {
+	keys, err := application.PreviousKeysFromHex(" " + strings.Repeat("ab", 32) + " ,, " + strings.Repeat("cd", 32))
+	require.NoError(t, err)
+	assert.Len(t, keys, 2)
+	_, err = application.PreviousKeysFromHex("zz")
+	assert.Error(t, err)
+	keys, err = application.PreviousKeysFromHex("")
+	require.NoError(t, err)
+	assert.Empty(t, keys)
+}
+
+func stripKid(t *testing.T, token string) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	require.NoError(t, err)
+	var h map[string]any
+	require.NoError(t, json.Unmarshal(raw, &h))
+	delete(h, "kid")
+	out, err := json.Marshal(h)
+	require.NoError(t, err)
+	parts[0] = base64.RawURLEncoding.EncodeToString(out)
+	return strings.Join(parts, ".")
 }
 
 func TestTokenIssuer_Expiry(t *testing.T) {

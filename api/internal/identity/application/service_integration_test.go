@@ -68,7 +68,7 @@ func newLiveHarness(t *testing.T) (*application.Service, *identitypostgres.Store
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	svc := application.NewService(store, uncapped, store, store, store, store,
+	svc := application.NewService(application.StoresOf(store), uncapped,
 		application.NewPasswordHasher(), issuer, logger)
 
 	return svc, store, logs
@@ -85,10 +85,10 @@ func TestLive_ProvisionAuthenticateValidate(t *testing.T) {
 	require.NoError(t, err)
 
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, "alice", "alice@example.test", "correct horse battery", "AGENT")
+		tenant.ID, "alice@example.test", "Alice", "correct horse battery", "AGENT")
 	require.NoError(t, err)
 
-	tok, err := svc.AuthenticateUser(ctx, tenant.ID, "alice", "correct horse battery")
+	tok, err := svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 	assert.Equal(t, principal.ID, tok.PrincipalID)
 
@@ -108,19 +108,21 @@ func TestLive_ProvisionAuthenticateValidate(t *testing.T) {
 	}
 	require.Contains(t, byAction, "tenant.create")
 	require.Contains(t, byAction, "principal.create")
-	assert.Equal(t, "alice", byAction["principal.create"].AfterState["username"])
+	assert.Equal(t, "alice@example.test", byAction["principal.create"].AfterState["email"])
 
 	// And nothing in the durable audit trail carries the credential.
 	raw, err := json.Marshal(entries)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "correct horse battery")
-	assert.NotContains(t, string(raw), principal.PasswordHash)
+	user, err := store.GetUser(ctx, principal.UserID)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), user.Password.Hash)
 }
 
-// TestLive_UsernameOverlapAcrossTenants is AC-01.2 end to end: the same
-// username in two tenants yields independent principals with
-// independent sessions.
-func TestLive_UsernameOverlapAcrossTenants(t *testing.T) {
+// TestLive_OnePersonAcrossTenants (identity/user-accounts, D-61): one
+// email is one person; adding them to a second tenant creates a second
+// membership, not a second account, and their own password stays theirs.
+func TestLive_OnePersonAcrossTenants(t *testing.T) {
 	svc, _, _ := newLiveHarness(t)
 	ctx := context.Background()
 
@@ -129,25 +131,22 @@ func TestLive_UsernameOverlapAcrossTenants(t *testing.T) {
 	second, err := svc.ProvisionTenant(ctx, application.SystemActor(), "Second", "EU")
 	require.NoError(t, err)
 
-	_, err = svc.ProvisionPrincipal(ctx, application.SystemActor(), first.ID, "admin", "a@example.test", "first-tenant-password", "TENANT_ADMIN")
+	a, err := svc.ProvisionPrincipal(ctx, application.SystemActor(), first.ID, "admin@example.test", "Admin", "first-tenant-password", "TENANT_ADMIN")
 	require.NoError(t, err)
-	_, err = svc.ProvisionPrincipal(ctx, application.SystemActor(), second.ID, "admin", "b@example.test", "second-tenant-password", "TENANT_ADMIN")
+	b, err := svc.ProvisionPrincipal(ctx, application.SystemActor(), second.ID, "ADMIN@example.test", "Admin", "second-tenant-password", "TENANT_ADMIN")
 	require.NoError(t, err)
+	assert.Equal(t, a.UserID, b.UserID, "one person")
+	assert.NotEqual(t, a.ID, b.ID, "two memberships")
 
-	firstTok, err := svc.AuthenticateUser(ctx, first.ID, "admin", "first-tenant-password")
-	require.NoError(t, err)
-	secondTok, err := svc.AuthenticateUser(ctx, second.ID, "admin", "second-tenant-password")
-	require.NoError(t, err)
-
-	assert.NotEqual(t, firstTok.PrincipalID, secondTok.PrincipalID, "independent principals")
-
-	// Each tenant's password must not work for the other's account.
-	_, err = svc.AuthenticateUser(ctx, first.ID, "admin", "second-tenant-password")
-	assert.ErrorIs(t, err, ports.ErrInvalidCredentials, "independent sessions and credentials")
-
-	firstCtx, err := svc.ValidateToken(ctx, firstTok.Token)
-	require.NoError(t, err)
-	assert.Equal(t, first.ID, firstCtx.TenantID, "each token stays bound to its own tenant")
+	for _, tenant := range []domain.Tenant{first, second} {
+		tok, err := svc.AuthenticateUser(ctx, tenant.ID, "admin@example.test", "first-tenant-password")
+		require.NoError(t, err, "the person's own password works in every tenant")
+		tc, err := svc.ValidateToken(ctx, tok.Token)
+		require.NoError(t, err)
+		assert.Equal(t, tenant.ID, tc.TenantID, "each token stays bound to its own tenant")
+	}
+	_, err = svc.AuthenticateUser(ctx, second.ID, "admin@example.test", "second-tenant-password")
+	assert.ErrorIs(t, err, ports.ErrInvalidCredentials, "a password supplied for an existing person is never applied")
 }
 
 // TestLive_AuthenticationFailureModes covers the four ways a sign-in can
@@ -159,36 +158,36 @@ func TestLive_AuthenticationFailureModes(t *testing.T) {
 	tenant, err := svc.ProvisionTenant(ctx, application.SystemActor(), "Acme", "EU")
 	require.NoError(t, err)
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, "alice", "alice@example.test", "correct horse battery", "AGENT")
+		tenant.ID, "alice@example.test", "Alice", "correct horse battery", "AGENT")
 	require.NoError(t, err)
 
-	t.Run("unknown username", func(t *testing.T) {
-		_, err := svc.AuthenticateUser(ctx, tenant.ID, "nobody", "correct horse battery")
+	t.Run("unknown email", func(t *testing.T) {
+		_, err := svc.AuthenticateUser(ctx, tenant.ID, "nobody@example.test", "correct horse battery")
 		assert.ErrorIs(t, err, ports.ErrInvalidCredentials)
 	})
 
 	t.Run("wrong password", func(t *testing.T) {
-		_, err := svc.AuthenticateUser(ctx, tenant.ID, "alice", "wrong password entirely")
+		_, err := svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "wrong password entirely")
 		assert.ErrorIs(t, err, ports.ErrInvalidCredentials)
 	})
 
 	t.Run("disabled principal", func(t *testing.T) {
 		require.NoError(t, svc.SetPrincipalStatus(ctx, application.SystemActor(), tenant.ID, principal.ID, domain.PrincipalDisabled))
-		_, err := svc.AuthenticateUser(ctx, tenant.ID, "alice", "correct horse battery")
+		_, err := svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "correct horse battery")
 		assert.ErrorIs(t, err, ports.ErrInvalidCredentials)
 
 		require.NoError(t, svc.SetPrincipalStatus(ctx, application.SystemActor(), tenant.ID, principal.ID, domain.PrincipalActive))
-		_, err = svc.AuthenticateUser(ctx, tenant.ID, "alice", "correct horse battery")
+		_, err = svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "correct horse battery")
 		assert.NoError(t, err, "re-enabling restores access — suspension is reversible")
 	})
 
 	t.Run("suspended tenant", func(t *testing.T) {
 		require.NoError(t, svc.SetTenantStatus(ctx, application.SystemActor(), tenant.ID, domain.TenantSuspended))
-		_, err := svc.AuthenticateUser(ctx, tenant.ID, "alice", "correct horse battery")
+		_, err := svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "correct horse battery")
 		assert.ErrorIs(t, err, ports.ErrInvalidCredentials)
 
 		require.NoError(t, svc.SetTenantStatus(ctx, application.SystemActor(), tenant.ID, domain.TenantActive))
-		_, err = svc.AuthenticateUser(ctx, tenant.ID, "alice", "correct horse battery")
+		_, err = svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "correct horse battery")
 		assert.NoError(t, err, "reactivating restores access, with identities intact")
 	})
 }
@@ -202,10 +201,10 @@ func TestLive_DisablingInvalidatesAnExistingToken(t *testing.T) {
 	tenant, err := svc.ProvisionTenant(ctx, application.SystemActor(), "Acme", "EU")
 	require.NoError(t, err)
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, "alice", "alice@example.test", "correct horse battery", "AGENT")
+		tenant.ID, "alice@example.test", "Alice", "correct horse battery", "AGENT")
 	require.NoError(t, err)
 
-	tok, err := svc.AuthenticateUser(ctx, tenant.ID, "alice", "correct horse battery")
+	tok, err := svc.AuthenticateUser(ctx, tenant.ID, "alice@example.test", "correct horse battery")
 	require.NoError(t, err)
 	_, err = svc.ValidateToken(ctx, tok.Token)
 	require.NoError(t, err)
@@ -230,7 +229,7 @@ func TestLive_AuthorizeDenyByDefault(t *testing.T) {
 	// principal provisioned WITH a role now carries the matching one,
 	// which would make this assertion vacuous.
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, "alice", "alice@example.test", "correct horse battery", "")
+		tenant.ID, "alice@example.test", "Alice", "correct horse battery", "")
 	require.NoError(t, err)
 
 	assert.ErrorIs(t, svc.AuthorizeAction(ctx, principal.ID, "call.read", tenant.ID.String()),
@@ -254,7 +253,7 @@ func TestLive_APIKeyAuthentication(t *testing.T) {
 	tenant, err := svc.ProvisionTenant(ctx, application.SystemActor(), "Acme", "EU")
 	require.NoError(t, err)
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, "alice", "alice@example.test", "correct horse battery", "AGENT")
+		tenant.ID, "alice@example.test", "Alice", "correct horse battery", "AGENT")
 	require.NoError(t, err)
 
 	raw, key, err := svc.IssueAPIKey(ctx, application.SystemActor(), tenant.ID, principal.ID, nil)

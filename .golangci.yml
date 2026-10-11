@@ -116,6 +116,26 @@ linters:
             - pkg: atsap-api/internal/nats
               desc: "Publish by writing an outbox row, not by importing the broker (D-57). The contract is ports.OutboxPublisher in internal/shared/ports; internal/nats is an adapter wired only in cmd/"
 
+        # Mail is delivered by an adapter behind identity's own Mailer
+        # port (identity-accounts-and-sessions design D10). Identity
+        # composes every message; internal/mail only sends, and is wired
+        # only in cmd/. Shipping code never uses the in-memory test store
+        # either — it exists for unit tests alone.
+        mail-stays-behind-the-port:
+          files:
+            - "**/internal/*/application/**"
+            - "**/internal/*/domain/**"
+            - "**/internal/*/rpc/**"
+            - "**/internal/*/ports/**"
+            - "**/internal/*/postgres/**"
+            - "**/internal/shared/**"
+            - "!$test"
+          deny:
+            - pkg: atsap-api/internal/mail
+              desc: "Send mail through ports.Mailer (identity owns it); internal/mail is an adapter wired only in cmd/ (design D10)"
+            - pkg: atsap-api/internal/identity/memstore
+              desc: "memstore is an in-memory store for unit tests; shipping code uses identity/postgres"
+
   # The boundary rules above protect the SHIPPED dependency graph. An
   # integration or e2e test wiring a real adapter is not part of that
   # graph: Go links `package application_test` separately, and the file

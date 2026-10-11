@@ -14,10 +14,7 @@ import (
 	"os"
 
 	"atsap-api/internal/config"
-	identityapp "atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/bootstrap"
-	identityports "atsap-api/internal/identity/ports"
-	identitypostgres "atsap-api/internal/identity/postgres"
 	"atsap-api/internal/logging"
 	corepostgres "atsap-api/internal/postgres"
 )
@@ -28,14 +25,19 @@ func runBootstrap(cfg config.Config) int {
 	fs := flag.NewFlagSet("bootstrap", flag.ExitOnError)
 	name := fs.String("name", "", "tenant name (required)")
 	residency := fs.String("residency", "EU", "tenant residency zone")
-	username := fs.String("username", "", "administrator username (required)")
-	email := fs.String("email", "", "administrator email")
-	password := fs.String("password", "", "administrator password (required; min 8 chars)")
+	email := fs.String("email", "", "administrator email; they sign in with it (required)")
+	displayName := fs.String("display-name", "", "administrator display name")
+	password := fs.String("password", "", "administrator password (required; 8-64 chars)")
+	username := fs.String("username", "", "removed: administrators sign in with their email")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return 2
 	}
-	if *name == "" || *username == "" || *password == "" {
-		fmt.Fprintln(os.Stderr, "usage: atsap-api bootstrap -name <tenant> -username <admin> -password <pw> [-email e] [-residency zone]")
+	if *username != "" {
+		fmt.Fprintln(os.Stderr, "-username was removed: people sign in with their email now (D-61). Use -email.")
+		return 2
+	}
+	if *name == "" || *email == "" || *password == "" {
+		fmt.Fprintln(os.Stderr, "usage: atsap-api bootstrap -name <tenant> -email <admin email> -password <pw> [-display-name n] [-residency zone]")
 		return 2
 	}
 
@@ -48,32 +50,22 @@ func runBootstrap(cfg config.Config) int {
 	}
 	defer pool.Close()
 
-	key, err := identityapp.TokenKeyFromHex(cfg.JWTPrivateKeyHex)
-	if err != nil {
-		logger.Error("invalid ATSAPBX_JWT_KEY", "error", err)
-		return 1
-	}
-	issuer, err := identityapp.NewTokenIssuer(key, identityapp.DefaultTokenLifetime)
-	if err != nil {
-		logger.Error("failed to build token issuer", "error", err)
-		return 1
-	}
-
-	store := identitypostgres.NewStore(pool)
 	// Bootstrap provisions the first tenant only, and bootstrap.Run
 	// refuses outright if any tenant exists. No cap can refuse the first
 	// tenant (zero is unlimited, and every non-zero cap is at least one),
 	// so bootstrap does not consult the licence: a fresh installation is
 	// in Setup and must still be able to create its administrator.
-	noCap := identityports.TenantCapFunc(func(context.Context) (int, error) { return 0, nil })
-	svc := identityapp.NewService(store, noCap, store, store, store, store,
-		identityapp.NewPasswordHasher(), issuer, logger)
+	svc, store, err := newIdentity(cfg, pool, noTenantCap, logger)
+	if err != nil {
+		logger.Error("bootstrap failed", "error", err)
+		return 1
+	}
 
 	tenantID, err := bootstrap.Run(ctx, store, svc, bootstrap.Params{
 		TenantName:    *name,
 		ResidencyZone: *residency,
-		Username:      *username,
 		Email:         *email,
+		DisplayName:   *displayName,
 		Password:      *password,
 	})
 	if err != nil {
@@ -83,7 +75,6 @@ func runBootstrap(cfg config.Config) int {
 
 	logger.Info("installation bootstrapped",
 		"tenant_id", tenantID.String(),
-		"tenant", *name,
-		"administrator", *username)
+		"tenant", *name)
 	return 0
 }

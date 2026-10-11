@@ -122,6 +122,56 @@ func (PrincipalStatus) EnumDescriptor() ([]byte, []int) {
 	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{1}
 }
 
+// UserStatus mirrors the domain's person lifecycle.
+type UserStatus int32
+
+const (
+	UserStatus_USER_STATUS_UNSPECIFIED UserStatus = 0
+	UserStatus_USER_STATUS_ACTIVE      UserStatus = 1
+	UserStatus_USER_STATUS_DISABLED    UserStatus = 2
+)
+
+// Enum value maps for UserStatus.
+var (
+	UserStatus_name = map[int32]string{
+		0: "USER_STATUS_UNSPECIFIED",
+		1: "USER_STATUS_ACTIVE",
+		2: "USER_STATUS_DISABLED",
+	}
+	UserStatus_value = map[string]int32{
+		"USER_STATUS_UNSPECIFIED": 0,
+		"USER_STATUS_ACTIVE":      1,
+		"USER_STATUS_DISABLED":    2,
+	}
+)
+
+func (x UserStatus) Enum() *UserStatus {
+	p := new(UserStatus)
+	*p = x
+	return p
+}
+
+func (x UserStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (UserStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_atsapbx_v1_identity_proto_enumTypes[2].Descriptor()
+}
+
+func (UserStatus) Type() protoreflect.EnumType {
+	return &file_atsapbx_v1_identity_proto_enumTypes[2]
+}
+
+func (x UserStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use UserStatus.Descriptor instead.
+func (UserStatus) EnumDescriptor() ([]byte, []int) {
+	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{2}
+}
+
 // Tenant is a partner organisation.
 type Tenant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -199,17 +249,25 @@ func (x *Tenant) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-// Principal is a user account. It carries no credential representation:
-// there is deliberately no password or hash field here.
+// Principal is a person's membership of one tenant (D-61). It carries no
+// credential representation: there is deliberately no password or hash
+// field here. status is the membership's, not the person's.
 type Principal struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PrincipalId   string                 `protobuf:"bytes,1,opt,name=principal_id,json=principalId,proto3" json:"principal_id,omitempty"`
-	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	Username      string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
-	Email         string                 `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
-	Role          string                 `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
-	Status        PrincipalStatus        `protobuf:"varint,6,opt,name=status,proto3,enum=atsapbx.v1.PrincipalStatus" json:"status,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	PrincipalId string                 `protobuf:"bytes,1,opt,name=principal_id,json=principalId,proto3" json:"principal_id,omitempty"`
+	TenantId    string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// Deprecated: usernames no longer exist. Filled with the email for
+	// clients that still read it.
+	//
+	// Deprecated: Marked as deprecated in atsapbx/v1/identity.proto.
+	Username  string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	Email     string                 `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
+	Role      string                 `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
+	Status    PrincipalStatus        `protobuf:"varint,6,opt,name=status,proto3,enum=atsapbx.v1.PrincipalStatus" json:"status,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// user_id identifies the person behind the membership.
+	UserId        string `protobuf:"bytes,8,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	DisplayName   string `protobuf:"bytes,9,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -258,6 +316,7 @@ func (x *Principal) GetTenantId() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in atsapbx/v1/identity.proto.
 func (x *Principal) GetUsername() string {
 	if x != nil {
 		return x.Username
@@ -293,12 +352,27 @@ func (x *Principal) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Principal) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *Principal) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
 type AuthenticateUserRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// tenant_id is explicit because usernames are unique per tenant, never
-	// globally (AC-01.2) — two tenants may each have an "admin", and
-	// without a tenant there is no single account to resolve to.
-	TenantId      string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// tenant_id names the membership the token acts for: one person may be
+	// a member of several tenants.
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// username is read as the person's email. The field keeps its name and
+	// number for wire compatibility; usernames no longer exist (D-61).
 	Username      string `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
 	Password      string `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -524,12 +598,17 @@ func (x *ProvisionTenantResponse) GetTenant() *Tenant {
 type ProvisionPrincipalRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	Username string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
-	Email    string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
-	// password is accepted here and never echoed back: the response
-	// carries a Principal, which has no field for it.
+	// Deprecated and ignored: the person is identified by email.
+	//
+	// Deprecated: Marked as deprecated in atsapbx/v1/identity.proto.
+	Username string `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	Email    string `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	// password is optional and never echoed back. Without it, a new person
+	// is invited by email. It is never applied to a person who already has
+	// an account.
 	Password      string `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
 	Role          string `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
+	DisplayName   string `protobuf:"bytes,6,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -571,6 +650,7 @@ func (x *ProvisionPrincipalRequest) GetTenantId() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in atsapbx/v1/identity.proto.
 func (x *ProvisionPrincipalRequest) GetUsername() string {
 	if x != nil {
 		return x.Username
@@ -595,6 +675,13 @@ func (x *ProvisionPrincipalRequest) GetPassword() string {
 func (x *ProvisionPrincipalRequest) GetRole() string {
 	if x != nil {
 		return x.Role
+	}
+	return ""
+}
+
+func (x *ProvisionPrincipalRequest) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
 	}
 	return ""
 }
@@ -1694,6 +1781,192 @@ func (*RevokeRoleResponse) Descriptor() ([]byte, []int) {
 	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{26}
 }
 
+type ResetPrincipalPasswordRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	TenantId    string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	PrincipalId string                 `protobuf:"bytes,2,opt,name=principal_id,json=principalId,proto3" json:"principal_id,omitempty"`
+	// The temporary password, chosen by the administrator and given to the
+	// member out of band. Never echoed back.
+	TemporaryPassword string `protobuf:"bytes,3,opt,name=temporary_password,json=temporaryPassword,proto3" json:"temporary_password,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ResetPrincipalPasswordRequest) Reset() {
+	*x = ResetPrincipalPasswordRequest{}
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResetPrincipalPasswordRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResetPrincipalPasswordRequest) ProtoMessage() {}
+
+func (x *ResetPrincipalPasswordRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResetPrincipalPasswordRequest.ProtoReflect.Descriptor instead.
+func (*ResetPrincipalPasswordRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ResetPrincipalPasswordRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ResetPrincipalPasswordRequest) GetPrincipalId() string {
+	if x != nil {
+		return x.PrincipalId
+	}
+	return ""
+}
+
+func (x *ResetPrincipalPasswordRequest) GetTemporaryPassword() string {
+	if x != nil {
+		return x.TemporaryPassword
+	}
+	return ""
+}
+
+type ResetPrincipalPasswordResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResetPrincipalPasswordResponse) Reset() {
+	*x = ResetPrincipalPasswordResponse{}
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResetPrincipalPasswordResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResetPrincipalPasswordResponse) ProtoMessage() {}
+
+func (x *ResetPrincipalPasswordResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResetPrincipalPasswordResponse.ProtoReflect.Descriptor instead.
+func (*ResetPrincipalPasswordResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{28}
+}
+
+type SetUserStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Status        UserStatus             `protobuf:"varint,2,opt,name=status,proto3,enum=atsapbx.v1.UserStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserStatusRequest) Reset() {
+	*x = SetUserStatusRequest{}
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserStatusRequest) ProtoMessage() {}
+
+func (x *SetUserStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserStatusRequest.ProtoReflect.Descriptor instead.
+func (*SetUserStatusRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SetUserStatusRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *SetUserStatusRequest) GetStatus() UserStatus {
+	if x != nil {
+		return x.Status
+	}
+	return UserStatus_USER_STATUS_UNSPECIFIED
+}
+
+type SetUserStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserStatusResponse) Reset() {
+	*x = SetUserStatusResponse{}
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserStatusResponse) ProtoMessage() {}
+
+func (x *SetUserStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_identity_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserStatusResponse.ProtoReflect.Descriptor instead.
+func (*SetUserStatusResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_identity_proto_rawDescGZIP(), []int{30}
+}
+
 var File_atsapbx_v1_identity_proto protoreflect.FileDescriptor
 
 const file_atsapbx_v1_identity_proto_rawDesc = "" +
@@ -1706,16 +1979,18 @@ const file_atsapbx_v1_identity_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\x0e2\x18.atsapbx.v1.TenantStatusR\x06status\x12%\n" +
 	"\x0eresidency_zone\x18\x04 \x01(\tR\rresidencyZone\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x81\x02\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xc1\x02\n" +
 	"\tPrincipal\x12!\n" +
 	"\fprincipal_id\x18\x01 \x01(\tR\vprincipalId\x12\x1b\n" +
-	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x1a\n" +
-	"\busername\x18\x03 \x01(\tR\busername\x12\x14\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x1e\n" +
+	"\busername\x18\x03 \x01(\tB\x02\x18\x01R\busername\x12\x14\n" +
 	"\x05email\x18\x04 \x01(\tR\x05email\x12\x12\n" +
 	"\x04role\x18\x05 \x01(\tR\x04role\x123\n" +
 	"\x06status\x18\x06 \x01(\x0e2\x1b.atsapbx.v1.PrincipalStatusR\x06status\x129\n" +
 	"\n" +
-	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"n\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x17\n" +
+	"\auser_id\x18\b \x01(\tR\x06userId\x12!\n" +
+	"\fdisplay_name\x18\t \x01(\tR\vdisplayName\"n\n" +
 	"\x17AuthenticateUserRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x1a\n" +
@@ -1730,13 +2005,14 @@ const file_atsapbx_v1_identity_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
 	"\x0eresidency_zone\x18\x02 \x01(\tR\rresidencyZone\"E\n" +
 	"\x17ProvisionTenantResponse\x12*\n" +
-	"\x06tenant\x18\x01 \x01(\v2\x12.atsapbx.v1.TenantR\x06tenant\"\x9a\x01\n" +
+	"\x06tenant\x18\x01 \x01(\v2\x12.atsapbx.v1.TenantR\x06tenant\"\xc1\x01\n" +
 	"\x19ProvisionPrincipalRequest\x12\x1b\n" +
-	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1a\n" +
-	"\busername\x18\x02 \x01(\tR\busername\x12\x14\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1e\n" +
+	"\busername\x18\x02 \x01(\tB\x02\x18\x01R\busername\x12\x14\n" +
 	"\x05email\x18\x03 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x04 \x01(\tR\bpassword\x12\x12\n" +
-	"\x04role\x18\x05 \x01(\tR\x04role\"Q\n" +
+	"\x04role\x18\x05 \x01(\tR\x04role\x12!\n" +
+	"\fdisplay_name\x18\x06 \x01(\tR\vdisplayName\"Q\n" +
 	"\x1aProvisionPrincipalResponse\x123\n" +
 	"\tprincipal\x18\x01 \x01(\v2\x15.atsapbx.v1.PrincipalR\tprincipal\"g\n" +
 	"\x16SetTenantStatusRequest\x12\x1b\n" +
@@ -1811,7 +2087,16 @@ const file_atsapbx_v1_identity_proto_rawDesc = "" +
 	"\fprincipal_id\x18\x02 \x01(\tR\vprincipalId\x12\x12\n" +
 	"\x04role\x18\x03 \x01(\tR\x04role\x12\x14\n" +
 	"\x05scope\x18\x04 \x01(\tR\x05scope\"\x14\n" +
-	"\x12RevokeRoleResponse*d\n" +
+	"\x12RevokeRoleResponse\"\x8e\x01\n" +
+	"\x1dResetPrincipalPasswordRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12!\n" +
+	"\fprincipal_id\x18\x02 \x01(\tR\vprincipalId\x12-\n" +
+	"\x12temporary_password\x18\x03 \x01(\tR\x11temporaryPassword\" \n" +
+	"\x1eResetPrincipalPasswordResponse\"_\n" +
+	"\x14SetUserStatusRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12.\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x16.atsapbx.v1.UserStatusR\x06status\"\x17\n" +
+	"\x15SetUserStatusResponse*d\n" +
 	"\fTenantStatus\x12\x1d\n" +
 	"\x19TENANT_STATUS_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14TENANT_STATUS_ACTIVE\x10\x01\x12\x1b\n" +
@@ -1819,7 +2104,12 @@ const file_atsapbx_v1_identity_proto_rawDesc = "" +
 	"\x0fPrincipalStatus\x12 \n" +
 	"\x1cPRINCIPAL_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17PRINCIPAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
-	"\x19PRINCIPAL_STATUS_DISABLED\x10\x022\xcf\a\n" +
+	"\x19PRINCIPAL_STATUS_DISABLED\x10\x02*[\n" +
+	"\n" +
+	"UserStatus\x12\x1b\n" +
+	"\x17USER_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12USER_STATUS_ACTIVE\x10\x01\x12\x18\n" +
+	"\x14USER_STATUS_DISABLED\x10\x022\x96\t\n" +
 	"\x0fIdentityService\x12]\n" +
 	"\x10AuthenticateUser\x12#.atsapbx.v1.AuthenticateUserRequest\x1a$.atsapbx.v1.AuthenticateUserResponse\x12Z\n" +
 	"\x0fProvisionTenant\x12\".atsapbx.v1.ProvisionTenantRequest\x1a#.atsapbx.v1.ProvisionTenantResponse\x12c\n" +
@@ -1832,7 +2122,9 @@ const file_atsapbx_v1_identity_proto_rawDesc = "" +
 	"\tListAudit\x12\x1c.atsapbx.v1.ListAuditRequest\x1a\x1d.atsapbx.v1.ListAuditResponse\x12W\n" +
 	"\x0eListPrincipals\x12!.atsapbx.v1.ListPrincipalsRequest\x1a\".atsapbx.v1.ListPrincipalsResponse\x12K\n" +
 	"\n" +
-	"RevokeRole\x12\x1d.atsapbx.v1.RevokeRoleRequest\x1a\x1e.atsapbx.v1.RevokeRoleResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
+	"RevokeRole\x12\x1d.atsapbx.v1.RevokeRoleRequest\x1a\x1e.atsapbx.v1.RevokeRoleResponse\x12o\n" +
+	"\x16ResetPrincipalPassword\x12).atsapbx.v1.ResetPrincipalPasswordRequest\x1a*.atsapbx.v1.ResetPrincipalPasswordResponse\x12T\n" +
+	"\rSetUserStatus\x12 .atsapbx.v1.SetUserStatusRequest\x1a!.atsapbx.v1.SetUserStatusResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
 
 var (
 	file_atsapbx_v1_identity_proto_rawDescOnce sync.Once
@@ -1846,86 +2138,96 @@ func file_atsapbx_v1_identity_proto_rawDescGZIP() []byte {
 	return file_atsapbx_v1_identity_proto_rawDescData
 }
 
-var file_atsapbx_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_atsapbx_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_atsapbx_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_atsapbx_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_atsapbx_v1_identity_proto_goTypes = []any{
-	(TenantStatus)(0),                  // 0: atsapbx.v1.TenantStatus
-	(PrincipalStatus)(0),               // 1: atsapbx.v1.PrincipalStatus
-	(*Tenant)(nil),                     // 2: atsapbx.v1.Tenant
-	(*Principal)(nil),                  // 3: atsapbx.v1.Principal
-	(*AuthenticateUserRequest)(nil),    // 4: atsapbx.v1.AuthenticateUserRequest
-	(*AuthenticateUserResponse)(nil),   // 5: atsapbx.v1.AuthenticateUserResponse
-	(*ProvisionTenantRequest)(nil),     // 6: atsapbx.v1.ProvisionTenantRequest
-	(*ProvisionTenantResponse)(nil),    // 7: atsapbx.v1.ProvisionTenantResponse
-	(*ProvisionPrincipalRequest)(nil),  // 8: atsapbx.v1.ProvisionPrincipalRequest
-	(*ProvisionPrincipalResponse)(nil), // 9: atsapbx.v1.ProvisionPrincipalResponse
-	(*SetTenantStatusRequest)(nil),     // 10: atsapbx.v1.SetTenantStatusRequest
-	(*SetTenantStatusResponse)(nil),    // 11: atsapbx.v1.SetTenantStatusResponse
-	(*SetPrincipalStatusRequest)(nil),  // 12: atsapbx.v1.SetPrincipalStatusRequest
-	(*SetPrincipalStatusResponse)(nil), // 13: atsapbx.v1.SetPrincipalStatusResponse
-	(*GrantRoleRequest)(nil),           // 14: atsapbx.v1.GrantRoleRequest
-	(*GrantRoleResponse)(nil),          // 15: atsapbx.v1.GrantRoleResponse
-	(*IssueApiKeyRequest)(nil),         // 16: atsapbx.v1.IssueApiKeyRequest
-	(*IssueApiKeyResponse)(nil),        // 17: atsapbx.v1.IssueApiKeyResponse
-	(*RevokeApiKeyRequest)(nil),        // 18: atsapbx.v1.RevokeApiKeyRequest
-	(*RevokeApiKeyResponse)(nil),       // 19: atsapbx.v1.RevokeApiKeyResponse
-	(*AuditRecord)(nil),                // 20: atsapbx.v1.AuditRecord
-	(*ListAuditRequest)(nil),           // 21: atsapbx.v1.ListAuditRequest
-	(*ListAuditResponse)(nil),          // 22: atsapbx.v1.ListAuditResponse
-	(*RoleBinding)(nil),                // 23: atsapbx.v1.RoleBinding
-	(*ListedPrincipal)(nil),            // 24: atsapbx.v1.ListedPrincipal
-	(*ListPrincipalsRequest)(nil),      // 25: atsapbx.v1.ListPrincipalsRequest
-	(*ListPrincipalsResponse)(nil),     // 26: atsapbx.v1.ListPrincipalsResponse
-	(*RevokeRoleRequest)(nil),          // 27: atsapbx.v1.RevokeRoleRequest
-	(*RevokeRoleResponse)(nil),         // 28: atsapbx.v1.RevokeRoleResponse
-	(*timestamppb.Timestamp)(nil),      // 29: google.protobuf.Timestamp
+	(TenantStatus)(0),                      // 0: atsapbx.v1.TenantStatus
+	(PrincipalStatus)(0),                   // 1: atsapbx.v1.PrincipalStatus
+	(UserStatus)(0),                        // 2: atsapbx.v1.UserStatus
+	(*Tenant)(nil),                         // 3: atsapbx.v1.Tenant
+	(*Principal)(nil),                      // 4: atsapbx.v1.Principal
+	(*AuthenticateUserRequest)(nil),        // 5: atsapbx.v1.AuthenticateUserRequest
+	(*AuthenticateUserResponse)(nil),       // 6: atsapbx.v1.AuthenticateUserResponse
+	(*ProvisionTenantRequest)(nil),         // 7: atsapbx.v1.ProvisionTenantRequest
+	(*ProvisionTenantResponse)(nil),        // 8: atsapbx.v1.ProvisionTenantResponse
+	(*ProvisionPrincipalRequest)(nil),      // 9: atsapbx.v1.ProvisionPrincipalRequest
+	(*ProvisionPrincipalResponse)(nil),     // 10: atsapbx.v1.ProvisionPrincipalResponse
+	(*SetTenantStatusRequest)(nil),         // 11: atsapbx.v1.SetTenantStatusRequest
+	(*SetTenantStatusResponse)(nil),        // 12: atsapbx.v1.SetTenantStatusResponse
+	(*SetPrincipalStatusRequest)(nil),      // 13: atsapbx.v1.SetPrincipalStatusRequest
+	(*SetPrincipalStatusResponse)(nil),     // 14: atsapbx.v1.SetPrincipalStatusResponse
+	(*GrantRoleRequest)(nil),               // 15: atsapbx.v1.GrantRoleRequest
+	(*GrantRoleResponse)(nil),              // 16: atsapbx.v1.GrantRoleResponse
+	(*IssueApiKeyRequest)(nil),             // 17: atsapbx.v1.IssueApiKeyRequest
+	(*IssueApiKeyResponse)(nil),            // 18: atsapbx.v1.IssueApiKeyResponse
+	(*RevokeApiKeyRequest)(nil),            // 19: atsapbx.v1.RevokeApiKeyRequest
+	(*RevokeApiKeyResponse)(nil),           // 20: atsapbx.v1.RevokeApiKeyResponse
+	(*AuditRecord)(nil),                    // 21: atsapbx.v1.AuditRecord
+	(*ListAuditRequest)(nil),               // 22: atsapbx.v1.ListAuditRequest
+	(*ListAuditResponse)(nil),              // 23: atsapbx.v1.ListAuditResponse
+	(*RoleBinding)(nil),                    // 24: atsapbx.v1.RoleBinding
+	(*ListedPrincipal)(nil),                // 25: atsapbx.v1.ListedPrincipal
+	(*ListPrincipalsRequest)(nil),          // 26: atsapbx.v1.ListPrincipalsRequest
+	(*ListPrincipalsResponse)(nil),         // 27: atsapbx.v1.ListPrincipalsResponse
+	(*RevokeRoleRequest)(nil),              // 28: atsapbx.v1.RevokeRoleRequest
+	(*RevokeRoleResponse)(nil),             // 29: atsapbx.v1.RevokeRoleResponse
+	(*ResetPrincipalPasswordRequest)(nil),  // 30: atsapbx.v1.ResetPrincipalPasswordRequest
+	(*ResetPrincipalPasswordResponse)(nil), // 31: atsapbx.v1.ResetPrincipalPasswordResponse
+	(*SetUserStatusRequest)(nil),           // 32: atsapbx.v1.SetUserStatusRequest
+	(*SetUserStatusResponse)(nil),          // 33: atsapbx.v1.SetUserStatusResponse
+	(*timestamppb.Timestamp)(nil),          // 34: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_identity_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.Tenant.status:type_name -> atsapbx.v1.TenantStatus
-	29, // 1: atsapbx.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
+	34, // 1: atsapbx.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 2: atsapbx.v1.Principal.status:type_name -> atsapbx.v1.PrincipalStatus
-	29, // 3: atsapbx.v1.Principal.created_at:type_name -> google.protobuf.Timestamp
-	29, // 4: atsapbx.v1.AuthenticateUserResponse.expires_at:type_name -> google.protobuf.Timestamp
-	2,  // 5: atsapbx.v1.ProvisionTenantResponse.tenant:type_name -> atsapbx.v1.Tenant
-	3,  // 6: atsapbx.v1.ProvisionPrincipalResponse.principal:type_name -> atsapbx.v1.Principal
+	34, // 3: atsapbx.v1.Principal.created_at:type_name -> google.protobuf.Timestamp
+	34, // 4: atsapbx.v1.AuthenticateUserResponse.expires_at:type_name -> google.protobuf.Timestamp
+	3,  // 5: atsapbx.v1.ProvisionTenantResponse.tenant:type_name -> atsapbx.v1.Tenant
+	4,  // 6: atsapbx.v1.ProvisionPrincipalResponse.principal:type_name -> atsapbx.v1.Principal
 	0,  // 7: atsapbx.v1.SetTenantStatusRequest.status:type_name -> atsapbx.v1.TenantStatus
-	2,  // 8: atsapbx.v1.SetTenantStatusResponse.tenant:type_name -> atsapbx.v1.Tenant
+	3,  // 8: atsapbx.v1.SetTenantStatusResponse.tenant:type_name -> atsapbx.v1.Tenant
 	1,  // 9: atsapbx.v1.SetPrincipalStatusRequest.status:type_name -> atsapbx.v1.PrincipalStatus
-	3,  // 10: atsapbx.v1.SetPrincipalStatusResponse.principal:type_name -> atsapbx.v1.Principal
-	29, // 11: atsapbx.v1.IssueApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
-	29, // 12: atsapbx.v1.IssueApiKeyResponse.expires_at:type_name -> google.protobuf.Timestamp
-	29, // 13: atsapbx.v1.AuditRecord.created_at:type_name -> google.protobuf.Timestamp
-	20, // 14: atsapbx.v1.ListAuditResponse.records:type_name -> atsapbx.v1.AuditRecord
-	3,  // 15: atsapbx.v1.ListedPrincipal.principal:type_name -> atsapbx.v1.Principal
-	23, // 16: atsapbx.v1.ListedPrincipal.role_bindings:type_name -> atsapbx.v1.RoleBinding
-	24, // 17: atsapbx.v1.ListPrincipalsResponse.principals:type_name -> atsapbx.v1.ListedPrincipal
-	4,  // 18: atsapbx.v1.IdentityService.AuthenticateUser:input_type -> atsapbx.v1.AuthenticateUserRequest
-	6,  // 19: atsapbx.v1.IdentityService.ProvisionTenant:input_type -> atsapbx.v1.ProvisionTenantRequest
-	8,  // 20: atsapbx.v1.IdentityService.ProvisionPrincipal:input_type -> atsapbx.v1.ProvisionPrincipalRequest
-	10, // 21: atsapbx.v1.IdentityService.SetTenantStatus:input_type -> atsapbx.v1.SetTenantStatusRequest
-	12, // 22: atsapbx.v1.IdentityService.SetPrincipalStatus:input_type -> atsapbx.v1.SetPrincipalStatusRequest
-	14, // 23: atsapbx.v1.IdentityService.GrantRole:input_type -> atsapbx.v1.GrantRoleRequest
-	16, // 24: atsapbx.v1.IdentityService.IssueApiKey:input_type -> atsapbx.v1.IssueApiKeyRequest
-	18, // 25: atsapbx.v1.IdentityService.RevokeApiKey:input_type -> atsapbx.v1.RevokeApiKeyRequest
-	21, // 26: atsapbx.v1.IdentityService.ListAudit:input_type -> atsapbx.v1.ListAuditRequest
-	25, // 27: atsapbx.v1.IdentityService.ListPrincipals:input_type -> atsapbx.v1.ListPrincipalsRequest
-	27, // 28: atsapbx.v1.IdentityService.RevokeRole:input_type -> atsapbx.v1.RevokeRoleRequest
-	5,  // 29: atsapbx.v1.IdentityService.AuthenticateUser:output_type -> atsapbx.v1.AuthenticateUserResponse
-	7,  // 30: atsapbx.v1.IdentityService.ProvisionTenant:output_type -> atsapbx.v1.ProvisionTenantResponse
-	9,  // 31: atsapbx.v1.IdentityService.ProvisionPrincipal:output_type -> atsapbx.v1.ProvisionPrincipalResponse
-	11, // 32: atsapbx.v1.IdentityService.SetTenantStatus:output_type -> atsapbx.v1.SetTenantStatusResponse
-	13, // 33: atsapbx.v1.IdentityService.SetPrincipalStatus:output_type -> atsapbx.v1.SetPrincipalStatusResponse
-	15, // 34: atsapbx.v1.IdentityService.GrantRole:output_type -> atsapbx.v1.GrantRoleResponse
-	17, // 35: atsapbx.v1.IdentityService.IssueApiKey:output_type -> atsapbx.v1.IssueApiKeyResponse
-	19, // 36: atsapbx.v1.IdentityService.RevokeApiKey:output_type -> atsapbx.v1.RevokeApiKeyResponse
-	22, // 37: atsapbx.v1.IdentityService.ListAudit:output_type -> atsapbx.v1.ListAuditResponse
-	26, // 38: atsapbx.v1.IdentityService.ListPrincipals:output_type -> atsapbx.v1.ListPrincipalsResponse
-	28, // 39: atsapbx.v1.IdentityService.RevokeRole:output_type -> atsapbx.v1.RevokeRoleResponse
-	29, // [29:40] is the sub-list for method output_type
-	18, // [18:29] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	4,  // 10: atsapbx.v1.SetPrincipalStatusResponse.principal:type_name -> atsapbx.v1.Principal
+	34, // 11: atsapbx.v1.IssueApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
+	34, // 12: atsapbx.v1.IssueApiKeyResponse.expires_at:type_name -> google.protobuf.Timestamp
+	34, // 13: atsapbx.v1.AuditRecord.created_at:type_name -> google.protobuf.Timestamp
+	21, // 14: atsapbx.v1.ListAuditResponse.records:type_name -> atsapbx.v1.AuditRecord
+	4,  // 15: atsapbx.v1.ListedPrincipal.principal:type_name -> atsapbx.v1.Principal
+	24, // 16: atsapbx.v1.ListedPrincipal.role_bindings:type_name -> atsapbx.v1.RoleBinding
+	25, // 17: atsapbx.v1.ListPrincipalsResponse.principals:type_name -> atsapbx.v1.ListedPrincipal
+	2,  // 18: atsapbx.v1.SetUserStatusRequest.status:type_name -> atsapbx.v1.UserStatus
+	5,  // 19: atsapbx.v1.IdentityService.AuthenticateUser:input_type -> atsapbx.v1.AuthenticateUserRequest
+	7,  // 20: atsapbx.v1.IdentityService.ProvisionTenant:input_type -> atsapbx.v1.ProvisionTenantRequest
+	9,  // 21: atsapbx.v1.IdentityService.ProvisionPrincipal:input_type -> atsapbx.v1.ProvisionPrincipalRequest
+	11, // 22: atsapbx.v1.IdentityService.SetTenantStatus:input_type -> atsapbx.v1.SetTenantStatusRequest
+	13, // 23: atsapbx.v1.IdentityService.SetPrincipalStatus:input_type -> atsapbx.v1.SetPrincipalStatusRequest
+	15, // 24: atsapbx.v1.IdentityService.GrantRole:input_type -> atsapbx.v1.GrantRoleRequest
+	17, // 25: atsapbx.v1.IdentityService.IssueApiKey:input_type -> atsapbx.v1.IssueApiKeyRequest
+	19, // 26: atsapbx.v1.IdentityService.RevokeApiKey:input_type -> atsapbx.v1.RevokeApiKeyRequest
+	22, // 27: atsapbx.v1.IdentityService.ListAudit:input_type -> atsapbx.v1.ListAuditRequest
+	26, // 28: atsapbx.v1.IdentityService.ListPrincipals:input_type -> atsapbx.v1.ListPrincipalsRequest
+	28, // 29: atsapbx.v1.IdentityService.RevokeRole:input_type -> atsapbx.v1.RevokeRoleRequest
+	30, // 30: atsapbx.v1.IdentityService.ResetPrincipalPassword:input_type -> atsapbx.v1.ResetPrincipalPasswordRequest
+	32, // 31: atsapbx.v1.IdentityService.SetUserStatus:input_type -> atsapbx.v1.SetUserStatusRequest
+	6,  // 32: atsapbx.v1.IdentityService.AuthenticateUser:output_type -> atsapbx.v1.AuthenticateUserResponse
+	8,  // 33: atsapbx.v1.IdentityService.ProvisionTenant:output_type -> atsapbx.v1.ProvisionTenantResponse
+	10, // 34: atsapbx.v1.IdentityService.ProvisionPrincipal:output_type -> atsapbx.v1.ProvisionPrincipalResponse
+	12, // 35: atsapbx.v1.IdentityService.SetTenantStatus:output_type -> atsapbx.v1.SetTenantStatusResponse
+	14, // 36: atsapbx.v1.IdentityService.SetPrincipalStatus:output_type -> atsapbx.v1.SetPrincipalStatusResponse
+	16, // 37: atsapbx.v1.IdentityService.GrantRole:output_type -> atsapbx.v1.GrantRoleResponse
+	18, // 38: atsapbx.v1.IdentityService.IssueApiKey:output_type -> atsapbx.v1.IssueApiKeyResponse
+	20, // 39: atsapbx.v1.IdentityService.RevokeApiKey:output_type -> atsapbx.v1.RevokeApiKeyResponse
+	23, // 40: atsapbx.v1.IdentityService.ListAudit:output_type -> atsapbx.v1.ListAuditResponse
+	27, // 41: atsapbx.v1.IdentityService.ListPrincipals:output_type -> atsapbx.v1.ListPrincipalsResponse
+	29, // 42: atsapbx.v1.IdentityService.RevokeRole:output_type -> atsapbx.v1.RevokeRoleResponse
+	31, // 43: atsapbx.v1.IdentityService.ResetPrincipalPassword:output_type -> atsapbx.v1.ResetPrincipalPasswordResponse
+	33, // 44: atsapbx.v1.IdentityService.SetUserStatus:output_type -> atsapbx.v1.SetUserStatusResponse
+	32, // [32:45] is the sub-list for method output_type
+	19, // [19:32] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_identity_proto_init() }
@@ -1938,8 +2240,8 @@ func file_atsapbx_v1_identity_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_identity_proto_rawDesc), len(file_atsapbx_v1_identity_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   27,
+			NumEnums:      3,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

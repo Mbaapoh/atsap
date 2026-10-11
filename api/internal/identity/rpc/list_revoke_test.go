@@ -25,10 +25,10 @@ func TestListPrincipals(t *testing.T) {
 	require.NoError(t, err)
 	var names []string
 	for _, p := range res.Msg.GetPrincipals() {
-		names = append(names, p.GetPrincipal().GetUsername())
-		require.NotEmpty(t, p.GetRoleBindings(), "%s is listed with its roles", p.GetPrincipal().GetUsername())
+		names = append(names, p.GetPrincipal().GetEmail())
+		require.NotEmpty(t, p.GetRoleBindings(), "%s is listed with its roles", p.GetPrincipal().GetEmail())
 	}
-	assert.Equal(t, []string{"admin", "agent"}, names, "the tenant's users, by username, and no other tenant's")
+	assert.Equal(t, []string{"admin@example.test", "agent@example.test"}, names, "the tenant's users, by email, and no other tenant's")
 
 	b, _ := protojson.Marshal(res.Msg)
 	assert.NotContains(t, string(b), "argon2", "no password hash in any field")

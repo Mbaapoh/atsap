@@ -77,7 +77,18 @@ type AuthInterceptor struct {
 	// exemption that could widen is worse than none (identity-api design,
 	// AuthenticateUser "exempt by necessity").
 	exemptProcedure string
+	// exemptSet holds AuthService's public procedures (ExemptProcedures):
+	// the same exact-match rule, for a service where several calls are
+	// needed before a token exists (identity-accounts-and-sessions D5).
+	exemptSet map[string]bool
+	// passwordChange lists the procedures a must-change token may call.
+	// Everything else refuses it, in every service (D-64).
+	passwordChange map[string]bool
 }
+
+// errPasswordChangeRequired is the response to a must-change token
+// calling anything but the password-change procedures.
+var errPasswordChangeRequired = errors.New("password change required")
 
 // NewAuthInterceptor returns an interceptor validating tokens through
 // identity. matcher may be nil, in which case no body-tenant check runs.
@@ -93,17 +104,45 @@ func (i *AuthInterceptor) ExemptProcedure(procedure string) *AuthInterceptor {
 	return i
 }
 
+// ExemptProcedures marks a fixed set of procedures as reachable without a
+// token, each matched exactly. It replaces any previous set.
+func (i *AuthInterceptor) ExemptProcedures(procedures ...string) *AuthInterceptor {
+	i.exemptSet = make(map[string]bool, len(procedures))
+	for _, p := range procedures {
+		i.exemptSet[p] = true
+	}
+	return i
+}
+
+// AllowWhilePasswordChange names the procedures a must-change token may
+// call. Without it, such a token can call nothing at all.
+func (i *AuthInterceptor) AllowWhilePasswordChange(procedures ...string) *AuthInterceptor {
+	i.passwordChange = make(map[string]bool, len(procedures))
+	for _, p := range procedures {
+		i.passwordChange[p] = true
+	}
+	return i
+}
+
 // Exempt returns the currently exempt procedure name ("" when none).
 func (i *AuthInterceptor) Exempt() string {
 	return i.exemptProcedure
 }
 
-// isExempt reports whether procedure is the one exempt method. Exact
-// string equality only: a prefix or pattern match could accidentally
-// exempt a sibling method, and an exemption that can widen is worse than
-// none.
+// isExempt reports whether procedure is an exempt method. Exact string
+// equality only: a prefix or pattern match could accidentally exempt a
+// sibling method, and an exemption that can widen is worse than none.
 func (i *AuthInterceptor) isExempt(procedure string) bool {
-	return i.exemptProcedure != "" && i.exemptProcedure == procedure
+	return (i.exemptProcedure != "" && i.exemptProcedure == procedure) || i.exemptSet[procedure]
+}
+
+// checkPasswordChange refuses a must-change token everywhere except the
+// password-change procedures.
+func (i *AuthInterceptor) checkPasswordChange(tc *ports.TenantContext, procedure string) error {
+	if tc.PasswordChangeOnly && !i.passwordChange[procedure] {
+		return connect.NewError(connect.CodePermissionDenied, errPasswordChangeRequired)
+	}
+	return nil
 }
 
 // WrapUnary implements connect.Interceptor for unary RPCs.
@@ -114,6 +153,9 @@ func (i *AuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		}
 		tc, err := i.authenticate(ctx, req.Header().Get(authorizationHeader))
 		if err != nil {
+			return nil, err
+		}
+		if err := i.checkPasswordChange(tc, req.Spec().Procedure); err != nil {
 			return nil, err
 		}
 		if err := i.checkBodyTenant(tc, req.Any()); err != nil {
@@ -141,6 +183,9 @@ func (i *AuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc
 		}
 		tc, err := i.authenticate(ctx, conn.RequestHeader().Get(authorizationHeader))
 		if err != nil {
+			return err
+		}
+		if err := i.checkPasswordChange(tc, conn.Spec().Procedure); err != nil {
 			return err
 		}
 		return next(withTenantContext(ctx, tc), conn)

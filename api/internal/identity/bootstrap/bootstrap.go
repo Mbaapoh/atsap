@@ -34,9 +34,9 @@ type Store interface {
 type Params struct {
 	TenantName    string
 	ResidencyZone string // fixed at provisioning; never blank
-	Username      string
-	Email         string
-	Password      string
+	Email         string // the administrator signs in with it (D-61)
+	DisplayName   string
+	Password      string // required: there is no mail to invite with yet
 }
 
 // Run provisions the first tenant and a PLATFORM_ADMIN principal bound
@@ -57,8 +57,11 @@ func Run(ctx context.Context, store Store, svc *application.Service, p Params) (
 		return shareddomain.TenantID{}, fmt.Errorf("provision first tenant: %w", err)
 	}
 
+	if p.Password == "" {
+		return shareddomain.TenantID{}, errors.New("an administrator password is required")
+	}
 	principal, err := svc.ProvisionPrincipal(ctx, application.SystemActor(),
-		tenant.ID, p.Username, p.Email, p.Password, "PLATFORM_ADMIN")
+		tenant.ID, p.Email, p.DisplayName, p.Password, "PLATFORM_ADMIN")
 	if err != nil {
 		return shareddomain.TenantID{}, fmt.Errorf("provision platform administrator: %w", err)
 	}

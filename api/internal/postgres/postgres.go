@@ -135,6 +135,22 @@ func MigrateTo(databaseURL, dir string, version uint) error {
 	return nil
 }
 
+// ForceVersion records version as the current, clean schema version
+// without running anything. Used only by tests that drive a migration to
+// fail on purpose: golang-migrate marks the database dirty after a failed
+// migration, and nothing else can migrate it until the version is forced.
+func ForceVersion(databaseURL, dir string, version int) error {
+	m, err := migrate.New("file://"+dir, migrateURL(databaseURL))
+	if err != nil {
+		return fmt.Errorf("open migrator: %w", err)
+	}
+	defer func() { _, _ = m.Close() }()
+	if err := m.Force(version); err != nil {
+		return fmt.Errorf("force version %d: %w", version, err)
+	}
+	return nil
+}
+
 // MigrateDownAll rolls back every applied migration. Used by tests and
 // local teardown; never called against a shared environment.
 func MigrateDownAll(databaseURL, dir string) error {

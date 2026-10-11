@@ -109,11 +109,12 @@ func newRig(t *testing.T) *rig {
 		tenantID.String(), "e2e-"+username)
 	require.NoError(t, err)
 
+	userID := seedFixtureUser(t, pool, username+"@e2e.invalid", fixtureHash)
 	require.NoError(t, pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status)
-			 VALUES ($1, $2, $3, $4, $5, 'TENANT_ADMIN', 'ACTIVE')`,
-			principalID.String(), tenantID.String(), username, username+"@e2e.invalid", fixtureHash); err != nil {
+			`INSERT INTO principals (id, tenant_id, user_id, role, status)
+			 VALUES ($1, $2, $3, 'TENANT_ADMIN', 'ACTIVE')`,
+			principalID.String(), tenantID.String(), userID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx,
@@ -139,6 +140,7 @@ func newRig(t *testing.T) *rig {
 			return nil
 		})
 		_, _ = pool.Unwrap().Exec(cleanupCtx, `DELETE FROM tenants WHERE id = $1`, tenantID.String())
+		_, _ = pool.Unwrap().Exec(cleanupCtx, `DELETE FROM users WHERE id = $1`, userID)
 	})
 
 	r := &rig{pool: pool, tenant: tenantID}
@@ -198,7 +200,7 @@ func (r *rig) authenticate(t *testing.T, username string) string {
 		Token string `json:"token"`
 	}
 	r.call(t, "IdentityService/AuthenticateUser", "", map[string]any{
-		"tenantId": r.tenant.String(), "username": username, "password": fixturePassword,
+		"tenantId": r.tenant.String(), "username": username + "@e2e.invalid", "password": fixturePassword,
 	}, &out, http.StatusOK)
 	require.NotEmpty(t, out.Token, "authentication must yield a token")
 	return out.Token
@@ -515,3 +517,37 @@ func TestG2_IdenticalNumbersInTwoTenantsRemainSeparate(t *testing.T) {
 // no timeout, so a stalled service hangs the test instead of failing it
 // (see the note in internal/telephony/e2e).
 var e2eHTTP = &http.Client{Timeout: 10 * time.Second}
+
+// seedFixtureUser creates a person (D-61) with a password credential and
+// returns their id. People are installation-wide, so the row carries no
+// tenant; the caller deletes it in cleanup.
+func seedFixtureUser(t *testing.T, pool *corepostgres.Pool, email, hash string) string {
+	t.Helper()
+	var id string
+	require.NoError(t, pool.Unwrap().QueryRow(context.Background(),
+		`INSERT INTO users (email, display_name) VALUES ($1, 'e2e operator') RETURNING id`, email).Scan(&id))
+	_, err := pool.Unwrap().Exec(context.Background(),
+		`INSERT INTO user_credentials (user_id, kind, secret) VALUES ($1, 'password', $2)`, id, hash)
+	require.NoError(t, err)
+	return id
+}
+
+// forgetFixtureUser removes a person and their membership of tenant —
+// membership first, since it references the person. Cleanups run in
+// reverse order, so this cannot rely on the tenant sweep having run.
+func forgetFixtureUser(pool *corepostgres.Pool, tenant shareddomain.TenantID, email string) {
+	ctx := context.Background()
+	_ = pool.WithTenant(ctx, tenant, func(ctx context.Context, tx pgx.Tx) error {
+		for _, stmt := range []string{
+			`DELETE FROM role_bindings WHERE principal_id IN (SELECT p.id FROM principals p JOIN users u ON u.id = p.user_id WHERE u.email = $1)`,
+			`DELETE FROM api_keys WHERE principal_id IN (SELECT p.id FROM principals p JOIN users u ON u.id = p.user_id WHERE u.email = $1)`,
+			`DELETE FROM principals WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+		} {
+			if _, err := tx.Exec(ctx, stmt, email); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	_, _ = pool.Unwrap().Exec(ctx, `DELETE FROM users WHERE email = $1`, email)
+}

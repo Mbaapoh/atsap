@@ -11,6 +11,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,10 +81,12 @@ func platformOperator(t *testing.T, r *rig) string {
 	ctx := context.Background()
 	id := shareddomain.NewPrincipalID()
 	username := "e2e-platform-" + id.String()[:8]
+	userID := seedFixtureUser(t, r.pool, username+"@e2e.invalid", fixtureHash)
+	t.Cleanup(func() { forgetFixtureUser(r.pool, r.tenant, username+"@e2e.invalid") })
 	require.NoError(t, r.pool.WithTenant(ctx, r.tenant, func(ctx context.Context, tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status)
-			VALUES ($1, $2, $3, $4, $5, 'PLATFORM_ADMIN', 'ACTIVE')`,
-			id.String(), r.tenant.String(), username, username+"@e2e.invalid", fixtureHash); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO principals (id, tenant_id, user_id, role, status)
+			VALUES ($1, $2, $3, 'PLATFORM_ADMIN', 'ACTIVE')`,
+			id.String(), r.tenant.String(), userID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO role_bindings (principal_id, tenant_id, role, scope)
@@ -154,19 +157,21 @@ func TestConsoleAPIs_Licence(t *testing.T) {
 func TestConsoleAPIs_UsersAndRoles(t *testing.T) {
 	r := newRig(t)
 	const pw = "e2e-supervisor-password-ok"
+	supEmail := fmt.Sprintf("sup-%d@e2e.invalid", time.Now().UnixNano())
+	t.Cleanup(func() { forgetFixtureUser(r.pool, r.tenant, supEmail) })
 	var created struct {
 		Principal struct {
 			PrincipalID string `json:"principalId"`
 		} `json:"principal"`
 	}
 	r.call(t, "IdentityService/ProvisionPrincipal", r.token, map[string]any{
-		"tenantId": r.tenant.String(), "username": "e2e-sup", "email": "sup@e2e.invalid", "password": pw, "role": "SUPERVISOR",
+		"tenantId": r.tenant.String(), "email": supEmail, "password": pw, "role": "SUPERVISOR",
 	}, &created, http.StatusOK)
 
 	var listed struct {
 		Principals []struct {
 			Principal struct {
-				Username string `json:"username"`
+				Email string `json:"email"`
 			} `json:"principal"`
 			RoleBindings []struct {
 				Role string `json:"role"`
@@ -182,7 +187,7 @@ func TestConsoleAPIs_UsersAndRoles(t *testing.T) {
 		Token string `json:"token"`
 	}
 	r.call(t, "IdentityService/AuthenticateUser", "", map[string]any{
-		"tenantId": r.tenant.String(), "username": "e2e-sup", "password": pw}, &sup, http.StatusOK)
+		"tenantId": r.tenant.String(), "username": supEmail, "password": pw}, &sup, http.StatusOK)
 	r.call(t, "IdentityService/ListPrincipals", sup.Token, map[string]any{"tenantId": r.tenant.String()}, nil, http.StatusOK)
 
 	// ...until the role is revoked; the very next request feels it.

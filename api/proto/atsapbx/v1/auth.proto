@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+package atsapbx.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
+
+// AuthService is how a person signs in to the console and keeps, ends and
+// recovers their session (D-61–D-64, LLD-02 §6 revision 2).
+//
+// The refresh secret never appears in any message. It travels only in the
+// `atsa_refresh` cookie — HttpOnly, SameSite=Strict, scoped to this
+// service — which SignIn and RefreshSession set and SignOut clears. Access
+// tokens are 15-minute bearer tokens held in memory by the console.
+//
+// DiscoverSignIn, SignIn, RefreshSession, RequestPasswordReset and
+// CompletePasswordReset are reachable without a bearer token: a caller
+// needs them before it holds one, or after losing it. SignOut and
+// ChangePassword require one.
+//
+// No answer here discloses whether an account exists: discovery, sign-in
+// failures, reset requests and throttling answer the same for every email.
+service AuthService {
+  // DiscoverSignIn returns how an email signs in: a password today, or
+  // the tenant's identity provider once SSO is built (D-63).
+  rpc DiscoverSignIn(DiscoverSignInRequest) returns (DiscoverSignInResponse);
+
+  // SignIn checks an email and password and starts a session. Repeated
+  // failures are throttled (RESOURCE_EXHAUSTED, with a retry delay).
+  rpc SignIn(SignInRequest) returns (SignInResponse);
+
+  // RefreshSession rotates the session's refresh secret and issues an
+  // access token — for tenant_id when given. Choosing or switching tenant
+  // is a refresh. A replayed secret ends the session.
+  rpc RefreshSession(RefreshSessionRequest) returns (RefreshSessionResponse);
+
+  // SignOut ends the session. Its access tokens stop working at once.
+  rpc SignOut(SignOutRequest) returns (SignOutResponse);
+
+  // ChangePassword needs the current password, and ends every other
+  // session of the person. It is the one call a must-change token may make
+  // besides SignOut.
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+
+  // RequestPasswordReset emails a single-use link, valid for 30 minutes,
+  // when the email may sign in with a password. Always the same answer.
+  rpc RequestPasswordReset(RequestPasswordResetRequest) returns (RequestPasswordResetResponse);
+
+  // CompletePasswordReset redeems a reset or invitation link's secret,
+  // sets the password, and ends every session of the person.
+  rpc CompletePasswordReset(CompletePasswordResetRequest) returns (CompletePasswordResetResponse);
+}
+
+enum SignInMethod {
+  SIGN_IN_METHOD_UNSPECIFIED = 0;
+  SIGN_IN_METHOD_PASSWORD = 1;
+  SIGN_IN_METHOD_SSO = 2;
+}
+
+message DiscoverSignInRequest {
+  string email = 1;
+}
+
+message DiscoverSignInResponse {
+  SignInMethod method = 1;
+  // Set when method is SSO.
+  string provider_id = 2;
+  string provider_display_name = 3;
+}
+
+message SignInRequest {
+  string email = 1;
+  string password = 2;
+}
+
+// Membership is one tenant the signed-in person may act in. Returned only
+// to the person themselves.
+message Membership {
+  string tenant_id = 1;
+  string tenant_name = 2;
+  string principal_id = 3;
+  repeated string roles = 4;
+}
+
+// AccessToken is credential material: never log it, never store it.
+message AccessToken {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  string tenant_id = 3;
+  string principal_id = 4;
+}
+
+message SignInResponse {
+  // Absent while the person has several memberships and has not chosen
+  // one: RefreshSession with a tenant_id issues it.
+  AccessToken access = 1;
+  repeated Membership memberships = 2;
+  // The password must be changed before anything else is allowed.
+  bool password_change_required = 3;
+  google.protobuf.Timestamp session_expires_at = 4;
+}
+
+message RefreshSessionRequest {
+  // Optional: the tenant to act in.
+  string tenant_id = 1;
+}
+
+message RefreshSessionResponse {
+  AccessToken access = 1;
+  repeated Membership memberships = 2;
+  bool password_change_required = 3;
+  google.protobuf.Timestamp session_expires_at = 4;
+}
+
+message SignOutRequest {}
+
+message SignOutResponse {}
+
+message ChangePasswordRequest {
+  string current_password = 1;
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {}
+
+message RequestPasswordResetRequest {
+  string email = 1;
+}
+
+message RequestPasswordResetResponse {}
+
+message CompletePasswordResetRequest {
+  // The secret from the emailed link's fragment.
+  string secret = 1;
+  string new_password = 2;
+}
+
+message CompletePasswordResetResponse {}

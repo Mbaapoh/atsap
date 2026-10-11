@@ -59,6 +59,13 @@ var engineTablePattern = regexp.MustCompile(`\b(` + strings.Join(engineTables, "
 // a gate believed to cover something it does not is worse than no gate
 // (D-28).
 func ScanEngineTableNames(apiRootDir string) ([]EngineTableUse, error) {
+	return scanTableNames(apiRootDir, engineTablePattern, isEngineTableExempt)
+}
+
+// scanTableNames is the shared walker behind every table-confinement
+// rule: it reports each match of pattern in a non-test string literal
+// outside the packages exempt says may name the tables.
+func scanTableNames(apiRootDir string, pattern *regexp.Regexp, exempt func(string) bool) ([]EngineTableUse, error) {
 	var uses []EngineTableUse
 
 	for _, sub := range []string{"internal", "cmd"} {
@@ -79,7 +86,7 @@ func ScanEngineTableNames(apiRootDir string) ([]EngineTableUse, error) {
 				return fmt.Errorf("relativize %s: %w", path, err)
 			}
 			rel = filepath.ToSlash(rel)
-			if isEngineTableExempt(rel) {
+			if exempt(rel) {
 				return nil
 			}
 
@@ -118,7 +125,8 @@ func ScanEngineTableNames(apiRootDir string) ([]EngineTableUse, error) {
 				if !ok || lit.Kind != token.STRING {
 					return true
 				}
-				for _, m := range engineTablePattern.FindAllString(lit.Value, -1) {
+				for _, sub := range pattern.FindAllStringSubmatch(lit.Value, -1) {
+					m := sub[len(sub)-1]
 					if seen[m] {
 						continue
 					}

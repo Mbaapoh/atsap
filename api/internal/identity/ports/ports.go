@@ -34,7 +34,28 @@ var (
 	ErrPrincipalNotActive = errors.New("principal is not active")
 	ErrTenantNotActive    = errors.New("tenant is not active")
 	ErrPermissionDenied   = errors.New("permission denied")
-	ErrUsernameTaken      = errors.New("username already exists in this tenant")
+	// ErrAlreadyMember refuses a second membership of one tenant for one
+	// person (identity/user-accounts).
+	ErrAlreadyMember = errors.New("already a member of this tenant")
+	// ErrEmailTaken is a second account for one normalized email. The
+	// application resolves it to the existing person; it never reaches a
+	// client, since that would reveal the account exists (D-61).
+	ErrEmailTaken = errors.New("an account already exists for this email")
+	// ErrUserNotActive is a disabled person (platform scope only).
+	ErrUserNotActive = errors.New("user is not active")
+	// ErrThrottled refuses an attempt while its key is blocked (D-64).
+	// Callers read the delay from a *ThrottledError.
+	ErrThrottled = errors.New("too many attempts")
+	// ErrDomainClaimed refuses a second provider's claim on a domain.
+	ErrDomainClaimed = errors.New("domain already claimed by another identity provider")
+	// ErrAlreadyLinked refuses linking a (provider, subject) twice.
+	ErrAlreadyLinked = errors.New("external identity already linked")
+	// ErrPasswordChangeRequired is a must-change credential being used
+	// for anything but changing it.
+	ErrPasswordChangeRequired = errors.New("password change required")
+	// ErrSessionNotUsable is a refresh secret that cannot be used:
+	// unknown, expired, revoked, or replayed. Callers never learn which.
+	ErrSessionNotUsable   = errors.New("session cannot be refreshed")
 	ErrResidencyImmutable = errors.New("residency zone cannot be changed once set")
 
 	// ErrLastAdministrator refuses revoking a tenant's only remaining
@@ -51,6 +72,14 @@ var (
 	// licence (LLD-02 §4a.1, AC-06.14).
 	ErrEntitlementExceeded = errors.New("licence entitlement exceeded")
 )
+
+// ThrottledError carries how long a throttled caller must wait.
+type ThrottledError struct{ RetryAfter time.Duration }
+
+func (e *ThrottledError) Error() string { return ErrThrottled.Error() }
+
+// Unwrap lets errors.Is(err, ErrThrottled) match.
+func (e *ThrottledError) Unwrap() error { return ErrThrottled }
 
 // AuthToken is what a successful authentication yields.
 type AuthToken struct {
@@ -81,6 +110,17 @@ type TenantContext struct {
 	// tenant's own administrator; handlers consult them (and the fresh
 	// binding check in AuthorizeAction) before every mutation.
 	Scopes []string
+
+	// UserID is the person behind the membership; SessionID the console
+	// session the token was issued under (zero for API keys and the
+	// deprecated AuthenticateUser). No other context reads either: they
+	// exist so identity can check the session on every request (D-62).
+	UserID    domain.UserID
+	SessionID domain.SessionID
+	// PasswordChangeOnly marks a token issued for a must-change
+	// credential: the interceptor admits it to ChangePassword and SignOut
+	// and nothing else (D-64).
+	PasswordChangeOnly bool
 }
 
 // HasScope reports whether the context carries scope s.
@@ -150,18 +190,153 @@ type TenantStore interface {
 	SetTenantStatus(ctx context.Context, id shareddomain.TenantID, status domain.TenantStatus) error
 }
 
-// PrincipalStore persists principals within a tenant.
+// PrincipalStore persists memberships within a tenant. Email and
+// DisplayName on a returned Principal are the member's user's, read
+// through a join; they are never written here.
 type PrincipalStore interface {
+	// CreatePrincipal inserts a membership. A second membership of the
+	// same tenant for the same user is ErrAlreadyMember.
 	CreatePrincipal(ctx context.Context, principal domain.Principal) error
 	GetPrincipal(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID) (domain.Principal, error)
-	// GetPrincipalByUsername resolves a login. It returns ErrNotFound
-	// for an unknown username; the caller converts that into the same
-	// ErrInvalidCredentials a wrong password produces.
-	GetPrincipalByUsername(ctx context.Context, tenantID shareddomain.TenantID, username string) (domain.Principal, error)
+	// GetPrincipalByUser resolves a person's membership of one tenant.
+	GetPrincipalByUser(ctx context.Context, tenantID shareddomain.TenantID, userID domain.UserID) (domain.Principal, error)
 	SetPrincipalStatus(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID, status domain.PrincipalStatus) error
-	// ListPrincipals returns one page of the tenant's principals by
-	// username. The PasswordHash field is never populated.
+	// ListPrincipals returns one page of the tenant's members by email.
 	ListPrincipals(ctx context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error)
+}
+
+// UserStore persists people (D-61). Users are installation-wide: these
+// reads run before any tenant is known.
+type UserStore interface {
+	// CreateUser inserts a person and, when u.Password is set, their
+	// password credential, atomically. A taken email is ErrEmailTaken.
+	CreateUser(ctx context.Context, u domain.User) error
+	GetUser(ctx context.Context, id domain.UserID) (domain.User, error)
+	// GetUserByEmail takes a normalized email; ErrNotFound when absent.
+	GetUserByEmail(ctx context.Context, email string) (domain.User, error)
+	// SetPassword replaces the person's password credential.
+	SetPassword(ctx context.Context, id domain.UserID, cred domain.PasswordCredential) error
+	SetUserStatus(ctx context.Context, id domain.UserID, status domain.UserStatus) error
+	// ListMemberships returns every membership of a person, in every
+	// tenant, with that membership's roles. It reads under the person's
+	// own identity (a self-only RLS policy), never tenant-blind.
+	ListMemberships(ctx context.Context, id domain.UserID) ([]domain.Membership, error)
+}
+
+// SessionStore persists console sessions (D-62).
+type SessionStore interface {
+	CreateSession(ctx context.Context, s domain.Session) error
+	GetSession(ctx context.Context, id domain.SessionID) (domain.Session, error)
+	// UpdateSessionByDigest locks the session holding digest as its
+	// current or previous refresh digest, passes it to fn, and stores
+	// what fn returns — so two concurrent refreshes cannot both rotate.
+	// ErrNotFound when no session holds the digest. When fn returns an
+	// error alongside a session, the session is still stored (a replay
+	// is refused *and* the revocation persists).
+	UpdateSessionByDigest(ctx context.Context, digest string, fn func(domain.Session) (domain.Session, error)) (domain.Session, error)
+	// RevokeUserSessions ends every live session of a person except
+	// keep (zero = none), returning how many it ended.
+	RevokeUserSessions(ctx context.Context, user domain.UserID, keep domain.SessionID, at time.Time, reason string) (int, error)
+	RevokeSession(ctx context.Context, id domain.SessionID, at time.Time, reason string) error
+}
+
+// ResetTicket is a stored reset or invitation secret: its digest only.
+type ResetTicket struct {
+	UserID    domain.UserID
+	Digest    string
+	Purpose   domain.TicketPurpose
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+// ResetTicketStore persists emailed secrets (D-64).
+type ResetTicketStore interface {
+	CreateTicket(ctx context.Context, t ResetTicket) error
+	// CountTickets counts a person's tickets of a purpose created since.
+	CountTickets(ctx context.Context, user domain.UserID, purpose domain.TicketPurpose, since time.Time) (int, error)
+	// RedeemTicket atomically marks an unexpired, unused ticket used, sets
+	// the person's password to cred, and revokes every session of theirs.
+	// ErrNotFound for any ticket that cannot be redeemed.
+	RedeemTicket(ctx context.Context, digest string, cred domain.PasswordCredential, at time.Time) (domain.UserID, domain.TicketPurpose, error)
+}
+
+// IdentityProviderStore persists the SSO-ready provider model (D-63).
+type IdentityProviderStore interface {
+	CreateProvider(ctx context.Context, p domain.IdentityProvider) error
+	// ClaimDomain records a provider's claim; ErrDomainClaimed if another
+	// provider holds the domain.
+	ClaimDomain(ctx context.Context, claim domain.DomainClaim) error
+	VerifyDomain(ctx context.Context, domainName string, at time.Time) error
+	// ProviderForDomain returns the domain's verified claim and its
+	// provider, or ErrNotFound when no verified claim exists.
+	ProviderForDomain(ctx context.Context, domainName string) (domain.DomainClaim, domain.IdentityProvider, error)
+	// LinkExternalIdentity links (provider, subject) to a user;
+	// ErrAlreadyLinked when that pair is linked already.
+	LinkExternalIdentity(ctx context.Context, e domain.ExternalIdentity) error
+	UserForExternalIdentity(ctx context.Context, provider domain.IdentityProviderID, subject string) (domain.UserID, error)
+}
+
+// AuthEventStore appends authentication history. Append and read only:
+// no update or delete path exists, by construction (D-64).
+type AuthEventStore interface {
+	AppendAuthEvent(ctx context.Context, e domain.AuthEvent) error
+	ListAuthEvents(ctx context.Context, user domain.UserID, limit int) ([]domain.AuthEvent, error)
+}
+
+// LoginThrottle is the throttle's state (D-64). Keys are digests; the
+// policy that turns failures into a delay is the domain's.
+type LoginThrottle interface {
+	// BlockedFor returns the longest remaining block across keys at now.
+	BlockedFor(ctx context.Context, keys []string, now time.Time) (time.Duration, error)
+	// RecordFailure counts one failure on each key and blocks it for
+	// policy.Delay(failures) from now.
+	RecordFailure(ctx context.Context, keys []string, now time.Time, policy domain.ThrottlePolicy) error
+	// Clear resets a key, after a success.
+	Clear(ctx context.Context, key string) error
+}
+
+// LiveState is everything ValidateToken re-checks on every request,
+// read in one transaction (design D4).
+type LiveState struct {
+	Principal  domain.Principal
+	Tenant     domain.Tenant
+	UserStatus domain.UserStatus
+	MustChange bool
+	Bindings   []domain.RoleBinding
+	// Session is nil when no session was asked for.
+	Session *domain.Session
+}
+
+// LivenessReader reads a LiveState. ErrNotFound when the principal or
+// the session does not exist.
+type LivenessReader interface {
+	LiveState(ctx context.Context, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID, session domain.SessionID) (LiveState, error)
+}
+
+// Mailer sends one plain-text message. Identity composes every message;
+// the adapter only delivers it (design D10). The body may hold a link
+// secret, so an adapter must never log it.
+type Mailer interface {
+	Send(ctx context.Context, to, subject, body string) error
+}
+
+// FederatedAssertion is what an identity provider asserts about a
+// sign-in. Email is informational only: linking is by Issuer+Subject.
+type FederatedAssertion struct {
+	Issuer        string
+	Subject       string
+	Email         string
+	EmailVerified bool
+}
+
+// FederatedAuthenticator is the SSO seam (D-63). Declared now, with no
+// adapter: OIDC is its first implementation, in identity-oidc.
+type FederatedAuthenticator interface {
+	// Begin returns where to send the browser, and the state that must
+	// come back.
+	Begin(ctx context.Context, provider domain.IdentityProvider, returnTo string) (redirectURL, state string, err error)
+	// Complete verifies the provider's callback and returns its assertion.
+	Complete(ctx context.Context, provider domain.IdentityProvider, state string, callback map[string]string) (FederatedAssertion, error)
 }
 
 // RoleBindingStore persists role grants.

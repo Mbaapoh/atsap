@@ -31,11 +31,18 @@ type Store struct {
 }
 
 var (
-	_ ports.TenantStore      = (*Store)(nil)
-	_ ports.PrincipalStore   = (*Store)(nil)
-	_ ports.RoleBindingStore = (*Store)(nil)
-	_ ports.ApiKeyStore      = (*Store)(nil)
-	_ ports.AuditStore       = (*Store)(nil)
+	_ ports.TenantStore           = (*Store)(nil)
+	_ ports.PrincipalStore        = (*Store)(nil)
+	_ ports.RoleBindingStore      = (*Store)(nil)
+	_ ports.ApiKeyStore           = (*Store)(nil)
+	_ ports.AuditStore            = (*Store)(nil)
+	_ ports.UserStore             = (*Store)(nil)
+	_ ports.SessionStore          = (*Store)(nil)
+	_ ports.ResetTicketStore      = (*Store)(nil)
+	_ ports.IdentityProviderStore = (*Store)(nil)
+	_ ports.AuthEventStore        = (*Store)(nil)
+	_ ports.LoginThrottle         = (*Store)(nil)
+	_ ports.LivenessReader        = (*Store)(nil)
 )
 
 // NewStore returns a Store backed by pool.
@@ -146,18 +153,17 @@ func (s *Store) SetTenantStatus(ctx context.Context, id shareddomain.TenantID, s
 
 // --- principals ----------------------------------------------------
 
-// CreatePrincipal inserts a principal. A duplicate username within the
-// tenant is reported as ports.ErrUsernameTaken rather than a raw
-// constraint error, because the caller's response to it is a user-facing
-// message, not a retry.
+// CreatePrincipal inserts a membership. A second membership of the same
+// tenant for the same person is reported as ports.ErrAlreadyMember
+// rather than a raw constraint error.
 func (s *Store) CreatePrincipal(ctx context.Context, p domain.Principal) error {
 	return s.pool.WithTenant(ctx, p.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		`, p.ID.String(), p.TenantID.String(), p.Username, p.Email, p.PasswordHash, p.Role, string(p.Status), p.CreatedAt)
+			INSERT INTO principals (id, tenant_id, user_id, role, status, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, p.ID.String(), p.TenantID.String(), p.UserID.String(), p.Role, string(p.Status), p.CreatedAt)
 		if isUniqueViolation(err) {
-			return fmt.Errorf("username %q: %w", p.Username, ports.ErrUsernameTaken)
+			return fmt.Errorf("membership: %w", ports.ErrAlreadyMember)
 		}
 		if err != nil {
 			return fmt.Errorf("insert principal: %w", err)
@@ -166,29 +172,28 @@ func (s *Store) CreatePrincipal(ctx context.Context, p domain.Principal) error {
 	})
 }
 
-// GetPrincipal reads one principal within a tenant.
+// principalColumns selects a membership with its person's email and
+// display name. users carries no RLS; principals' RLS still decides which
+// memberships are visible, so the join cannot widen a read.
+const principalColumns = `p.id, p.tenant_id, p.user_id, u.email, u.display_name, p.role, p.status, p.created_at
+	FROM principals p JOIN users u ON u.id = p.user_id`
+
+// GetPrincipal reads one membership within a tenant.
 func (s *Store) GetPrincipal(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID) (domain.Principal, error) {
-	return s.queryPrincipal(ctx, tenantID,
-		`SELECT id, tenant_id, username, email, password_hash, role, status, created_at
-		 FROM principals WHERE id = $1`, id.String())
+	return s.queryPrincipal(ctx, tenantID, `SELECT `+principalColumns+` WHERE p.id = $1`, id.String())
 }
 
-// GetPrincipalByUsername resolves a login within a tenant.
-func (s *Store) GetPrincipalByUsername(ctx context.Context, tenantID shareddomain.TenantID, username string) (domain.Principal, error) {
-	return s.queryPrincipal(ctx, tenantID,
-		`SELECT id, tenant_id, username, email, password_hash, role, status, created_at
-		 FROM principals WHERE username = $1`, username)
+// GetPrincipalByUser resolves a person's membership of one tenant.
+func (s *Store) GetPrincipalByUser(ctx context.Context, tenantID shareddomain.TenantID, userID domain.UserID) (domain.Principal, error) {
+	return s.queryPrincipal(ctx, tenantID, `SELECT `+principalColumns+` WHERE p.user_id = $1`, userID.String())
 }
 
 func (s *Store) queryPrincipal(ctx context.Context, tenantID shareddomain.TenantID, query string, arg any) (domain.Principal, error) {
-	var (
-		p                domain.Principal
-		rawID, rawTenant string
-		status           string
-	)
+	var p domain.Principal
 	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
-		return tx.QueryRow(ctx, query, arg).Scan(
-			&rawID, &rawTenant, &p.Username, &p.Email, &p.PasswordHash, &p.Role, &status, &p.CreatedAt)
+		var err error
+		p, err = scanPrincipal(tx.QueryRow(ctx, query, arg))
+		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Principal{}, ports.ErrNotFound
@@ -196,12 +201,27 @@ func (s *Store) queryPrincipal(ctx context.Context, tenantID shareddomain.Tenant
 	if err != nil {
 		return domain.Principal{}, fmt.Errorf("query principal: %w", err)
 	}
+	return p, nil
+}
 
+func scanPrincipal(row pgx.Row) (domain.Principal, error) {
+	var (
+		p                         domain.Principal
+		rawID, rawTenant, rawUser string
+		status                    string
+	)
+	if err := row.Scan(&rawID, &rawTenant, &rawUser, &p.Email, &p.DisplayName, &p.Role, &status, &p.CreatedAt); err != nil {
+		return domain.Principal{}, err
+	}
+	var err error
 	if p.ID, err = shareddomain.ParsePrincipalID(rawID); err != nil {
 		return domain.Principal{}, fmt.Errorf("decode principal id: %w", err)
 	}
 	if p.TenantID, err = shareddomain.ParseTenantID(rawTenant); err != nil {
 		return domain.Principal{}, fmt.Errorf("decode tenant id: %w", err)
+	}
+	if p.UserID, err = domain.ParseUserID(rawUser); err != nil {
+		return domain.Principal{}, fmt.Errorf("decode user id: %w", err)
 	}
 	p.Status = domain.PrincipalStatus(status)
 	return p, nil
@@ -501,35 +521,22 @@ func isUniqueViolation(err error) bool {
 
 // --- console listing and revocation (console-apis-phase-a) ------------
 
-// ListPrincipals returns one page of the tenant's principals, ordered by
-// username. The password hash is not selected: a listing has no use for
-// it, so it cannot leak through one.
+// ListPrincipals returns one page of the tenant's members, ordered by
+// email. No credential is selected: credentials live on the person, in a
+// table this query does not touch.
 func (s *Store) ListPrincipals(ctx context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error) {
 	var out []domain.Principal
 	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `
-			SELECT id, tenant_id, username, email, role, status, created_at
-			FROM principals ORDER BY username, id LIMIT $1 OFFSET $2
-		`, limit, offset)
+		rows, err := tx.Query(ctx, `SELECT `+principalColumns+` ORDER BY u.email, p.id LIMIT $1 OFFSET $2`, limit, offset)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var (
-				p                        domain.Principal
-				rawID, rawTenant, status string
-			)
-			if err := rows.Scan(&rawID, &rawTenant, &p.Username, &p.Email, &p.Role, &status, &p.CreatedAt); err != nil {
+			p, err := scanPrincipal(rows)
+			if err != nil {
 				return err
 			}
-			if p.ID, err = shareddomain.ParsePrincipalID(rawID); err != nil {
-				return fmt.Errorf("decode principal id: %w", err)
-			}
-			if p.TenantID, err = shareddomain.ParseTenantID(rawTenant); err != nil {
-				return fmt.Errorf("decode tenant id: %w", err)
-			}
-			p.Status = domain.PrincipalStatus(status)
 			out = append(out, p)
 		}
 		return rows.Err()
@@ -597,6 +604,7 @@ func (s *Store) RevokeRoleBinding(ctx context.Context, b domain.RoleBinding) err
 			if err := tx.QueryRow(ctx, `
 				SELECT count(*) FROM role_bindings b JOIN principals p ON p.id = b.principal_id
 				WHERE b.role = 'TENANT_ADMIN' AND b.scope = $1 AND p.status = 'ACTIVE'
+				  AND p.tenant_id = current_setting('app.tenant_id')::uuid
 			`, domain.ScopeTenant).Scan(&admins); err != nil {
 				return fmt.Errorf("count tenant administrators: %w", err)
 			}

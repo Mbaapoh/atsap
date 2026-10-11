@@ -71,8 +71,8 @@ both, and it is the one moment where a command line is defensible.
 |---|---|
 | `atsap-api bootstrap` (CLI, not an RPC) | **Exists**; takes an email from revision 2 |
 | `AuthenticateUser` | **Exists**; deprecated for people by revision 2, kept for machines and harnesses |
-| `DiscoverSignIn`, `SignIn`, `RefreshSession`, `SignOut` (console session, D-62) | **Proposed**: `identity-accounts-and-sessions` |
-| `ChangePassword`, `RequestPasswordReset`, `CompletePasswordReset` | **Proposed**: same change |
+| `DiscoverSignIn`, `SignIn`, `RefreshSession`, `SignOut` (console session, D-62) | **Built**: `identity-accounts-and-sessions` |
+| `ChangePassword`, `RequestPasswordReset`, `CompletePasswordReset` | **Built**: same change |
 | `ApplyLicenseKey`, `GetLicenseStatus` | **Built**: `console-apis-phase-a` |
 
 ## 3. Flow A2 — Add a user and give them a role
@@ -109,7 +109,7 @@ drawn as part of creation rather than an optional extra.
 |---|---|
 | `ProvisionPrincipal` | **Exists**; by email, with an invitation, from revision 2 (D-61) |
 | `ListPrincipals`, `RevokeRole` | **Built**: `console-apis-phase-a` |
-| `ResetPrincipalPassword` (administrator reset, must change at next sign-in) | **Proposed**: `identity-accounts-and-sessions` (D-64) |
+| `ResetPrincipalPassword` (administrator reset, must change at next sign-in) | **Built**: `identity-accounts-and-sessions` (D-64) |
 | `GrantRole` | **Exists** |
 | `SetPrincipalStatus` (disable) | **Exists** |
 | `ListAudit` | **Exists** |

@@ -24,9 +24,9 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | RPC | Service | Landed in | Consumer |
 |---|---|---|---|
 | `GetCall` | `atsapbx.v1.TelephonyService` | `telephony-core-originate-bridge-hangup` (LLD-01) | e2e harness; the portal's future call view |
-| `AuthenticateUser` | `atsapbx.v1.IdentityService` | `identity-api` | Portal login; partner developers; the UAT harness after cutover |
+| `AuthenticateUser` | `atsapbx.v1.IdentityService` | `identity-api` | **Deprecated for people** since `identity-accounts-and-sessions`: machines and harnesses; `username` is read as the email; no session; throttled |
 | `ProvisionTenant` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 admin stories; the portal's first screens |
-| `ProvisionPrincipal` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 admin stories; the portal's first screens |
+| `ProvisionPrincipal` | `atsapbx.v1.IdentityService` | `identity-api`; by email since `identity-accounts-and-sessions` | Console users screen (A2): adds a person by email; a new person without a password is invited; the response never reveals an existing account (D-61) |
 | `SetTenantStatus` | `atsapbx.v1.IdentityService` | `identity-api` | AC-01.7 — suspend is a console action |
 | `SetPrincipalStatus` | `atsapbx.v1.IdentityService` | `identity-api` | AC-01.5 — disable is a console action |
 | `GrantRole` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 RBAC management |
@@ -38,6 +38,15 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `ListCalls` | `atsapbx.v1.TelephonyService` | `console-apis-phase-a` | Console call history (A5): newest first, filtered, paged; no engine identifiers |
 | `GetLicenseStatus` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Console header and licence screen (A1); any authenticated caller |
 | `ApplyLicenseKey` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Licence activation (A1, EPIC-06); system scope; no restart; the token is never echoed |
+| `ResetPrincipalPassword` | `atsapbx.v1.IdentityService` | `identity-accounts-and-sessions` (LLD-02 rev 2) | Console users screen: administrator reset; the member must change it at next sign-in; a shared person needs system scope (D-64) |
+| `SetUserStatus` | `atsapbx.v1.IdentityService` | `identity-accounts-and-sessions` | Operator console: disable a person in every tenant at once; system scope only (D-61) |
+| `DiscoverSignIn` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console sign-in, step 1: how an email signs in; the same answer for unknown emails (D-63) |
+| `SignIn` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console sign-in: a session, the refresh cookie, an access token and the person's memberships; throttled (D-62, D-64) |
+| `RefreshSession` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console session keep-alive and tenant switch; authenticated by the refresh cookie; a replay revokes the session |
+| `SignOut` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console sign-out; access ends on the next request |
+| `ChangePassword` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console account screen; ends the person's other sessions; the one call a must-change token may make besides `SignOut` |
+| `RequestPasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console "forgot password": a single-use emailed link; the same answer for every email |
+| `CompletePasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console reset and invitation pages: redeems the link and ends every session |
 | `CreateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions screen; the only response carrying a generated secret |
 | `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
 | `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |
@@ -87,8 +96,19 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
   e2e suite a token. That is closed: `GetCall` requires a token and the
   body's tenant must match it.
 
-**The posture is now uniform across the API.** Obtaining a token is the
-only operation reachable without one, in any service. No operation
+**`AuthService` (since `identity-accounts-and-sessions`)** exempts
+exactly the five calls a person needs before holding a token, or after
+losing one — `DiscoverSignIn`, `SignIn`, `RefreshSession`,
+`RequestPasswordReset`, `CompletePasswordReset` — each by its exact
+procedure name. `SignOut` and `ChangePassword` need a bearer token. The
+refresh secret travels only in the `atsa_refresh` cookie (`HttpOnly`,
+`SameSite=Strict`, scoped to `AuthService`), never in a body. A token
+for a must-change password is refused everywhere, in every service,
+except `ChangePassword` and `SignOut`. Throttled calls return
+`resource_exhausted` (HTTP 429) with a `Retry-After`.
+
+**The posture is now uniform across the API.** Obtaining or recovering a
+token is the only kind of operation reachable without one, in any service. No operation
 derives the tenant it acts on from the request alone — a caller-supplied
 tenant never checked against a token is indistinguishable from no
 tenancy at all.
@@ -134,27 +154,13 @@ What each LLD is expected to put on the wire. This is a plan, not a
 promise: a capability arrives here only when it has a named consumer,
 and the owning change is where that is decided and recorded.
 
-### LLD-02 — identity, revision 2
+### LLD-02 — identity
 
-Proposed by `identity-accounts-and-sessions` (D-61–D-64, LLD-02 §6). The
-consumer is console slice A's sign-in, account and users screens.
-
-| RPC | Service | Auth | Note |
-|---|---|---|---|
-| `DiscoverSignIn` | **`AuthService`** (new) | None | Sign-in methods for an email; identical for unknown emails |
-| `SignIn` | `AuthService` | None, throttled | Creates a session, sets the refresh cookie, and returns an access token and memberships |
-| `RefreshSession` | `AuthService` | Refresh cookie | Rotates the session; `tenant_id` chooses the membership |
-| `SignOut` | `AuthService` | Bearer | Revokes the session |
-| `ChangePassword` | `AuthService` | Bearer | Revokes the user's other sessions |
-| `RequestPasswordReset`, `CompletePasswordReset` | `AuthService` | None, throttled | Email link; always the same answer |
-| `ResetPrincipalPassword` | `IdentityService` | Bearer, `principal.password.reset` | Administrator reset; the user must change it at next sign-in |
-
-**Changed:** `ProvisionPrincipal` identifies the person by `email` and
-`display_name`, and invites by email when no password is given;
-`username` is deprecated. `ListPrincipals` returns email and display
-name. **Deprecated, kept:** `AuthenticateUser` (machines and harnesses;
-`username` is read as the email; no session). Port only, by D-43:
-`FederatedAuthenticator` (SSO), until the OIDC change has a consumer.
+Revision 2 landed with `identity-accounts-and-sessions` (§1). Pending,
+by D-43 (port only until a consumer exists): `FederatedAuthenticator`,
+the SSO seam, until `identity-oidc`; provider administration and SCIM
+with `identity-oidc` and `identity-scim`; MFA with `identity-mfa`, before
+GA (D-66).
 
 ### LLD-08 — licensing
 

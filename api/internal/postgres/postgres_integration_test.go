@@ -212,11 +212,13 @@ func TestRLSIsolation_IdentityTables(t *testing.T) {
 	}
 
 	principalA := domain.NewPrincipalID()
+	var userA string
+	require.NoError(t, pool.Unwrap().QueryRow(ctx,
+		`INSERT INTO users (email) VALUES ('admin@example.test') RETURNING id`).Scan(&userA))
 	err = pool.WithTenant(ctx, tenantA, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO principals (id, tenant_id, username, email, password_hash)
-			 VALUES ($1, $2, 'admin', 'admin@example.test', 'not-a-real-hash')`,
-			principalA.String(), tenantA.String()); err != nil {
+			`INSERT INTO principals (id, tenant_id, user_id) VALUES ($1, $2, $3)`,
+			principalA.String(), tenantA.String(), userA); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx,

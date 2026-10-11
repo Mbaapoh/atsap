@@ -520,11 +520,39 @@ func authenticateFixtureOperator(t *testing.T, ctx context.Context, pool *corepo
 	principalID := shareddomain.NewPrincipalID()
 	username := fmt.Sprintf("e2e-op-%d", time.Now().UnixNano())
 
+	// A person (D-61) with a password credential, then their membership.
+	var userID string
+	if err := pool.Unwrap().QueryRow(ctx,
+		`INSERT INTO users (email, display_name) VALUES ($1, 'e2e operator') RETURNING id`,
+		username+"@e2e.invalid").Scan(&userID); err != nil {
+		t.Fatalf("seed fixture person: %v", err)
+	}
+	if _, err := pool.Unwrap().Exec(ctx,
+		`INSERT INTO user_credentials (user_id, kind, secret) VALUES ($1, 'password', $2)`,
+		userID, fixtureOperatorHash); err != nil {
+		t.Fatalf("seed fixture credential: %v", err)
+	}
+	// The caller's pool is closed by its own defer before t.Cleanup runs,
+	// so the cleanup opens a short-lived pool of its own.
+	t.Cleanup(func() {
+		cctx := context.Background()
+		pool, err := corepostgres.Open(cctx, pgURL)
+		if err != nil {
+			return
+		}
+		defer pool.Close()
+		_ = pool.WithTenant(cctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+			_, _ = tx.Exec(ctx, `DELETE FROM role_bindings WHERE principal_id = $1`, principalID.String())
+			_, err := tx.Exec(ctx, `DELETE FROM principals WHERE id = $1`, principalID.String())
+			return err
+		})
+		_, _ = pool.Unwrap().Exec(cctx, `DELETE FROM users WHERE id = $1`, userID)
+	})
 	if err := pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status)
-			 VALUES ($1,$2,$3,$4,$5,'TENANT_ADMIN','ACTIVE')`,
-			principalID.String(), tenantID.String(), username, username+"@e2e.invalid", fixtureOperatorHash); err != nil {
+			`INSERT INTO principals (id, tenant_id, user_id, role, status)
+			 VALUES ($1,$2,$3,'TENANT_ADMIN','ACTIVE')`,
+			principalID.String(), tenantID.String(), userID); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx,
@@ -537,7 +565,7 @@ func authenticateFixtureOperator(t *testing.T, ctx context.Context, pool *corepo
 	}
 
 	body := fmt.Sprintf(`{"tenantId":%q,"username":%q,"password":%q}`,
-		tenantID.String(), username, fixtureOperatorPassword)
+		tenantID.String(), username+"@e2e.invalid", fixtureOperatorPassword)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		appAPI+"/atsapbx.v1.IdentityService/AuthenticateUser", strings.NewReader(body))
 	if err != nil {

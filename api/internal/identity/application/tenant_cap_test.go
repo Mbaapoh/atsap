@@ -22,42 +22,42 @@ func provision(h *harness, name string) (domain.Tenant, error) {
 func TestProvisionTenant_RefusesAtTheCap(t *testing.T) {
 	for _, maxTenants := range []int{1, 3} {
 		h := newHarness(t)
-		h.stores.tenantCap = maxTenants
+		h.stores.TenantCap = maxTenants
 
 		for i := 0; i < maxTenants; i++ {
 			_, err := provision(h, "within-cap")
 			require.NoError(t, err, "tenant %d of %d is within the cap", i+1, maxTenants)
 		}
-		auditBefore := len(h.stores.audit)
+		auditBefore := len(h.stores.Audit)
 
 		_, err := provision(h, "over-cap")
 		require.ErrorIs(t, err, ports.ErrEntitlementExceeded)
 		assert.NotErrorIs(t, err, ports.ErrPermissionDenied,
 			"a licence refusal is not an authorization failure (AC-06.14)")
-		assert.Len(t, h.stores.tenants, maxTenants, "the refused tenant must not exist")
-		assert.Len(t, h.stores.audit, auditBefore, "a refusal is not a mutation and records no tenant.create")
+		assert.Equal(t, maxTenants, h.stores.TenantCount(), "the refused tenant must not exist")
+		assert.Len(t, h.stores.Audit, auditBefore, "a refusal is not a mutation and records no tenant.create")
 	}
 }
 
 func TestProvisionTenant_ZeroCapIsUnlimited(t *testing.T) {
 	h := newHarness(t)
-	h.stores.tenantCap = 0
+	h.stores.TenantCap = 0
 	for i := 0; i < 25; i++ {
 		_, err := provision(h, "tenant")
 		require.NoError(t, err)
 	}
-	assert.Len(t, h.stores.tenants, 25)
+	assert.Equal(t, 25, h.stores.TenantCount())
 }
 
 // An installation that cannot read its licence does not get to guess:
 // defaulting to zero here would mean "unlimited".
 func TestProvisionTenant_CapReadFailureFailsClosed(t *testing.T) {
 	h := newHarness(t)
-	h.stores.tenantCapErr = errors.New("entitlement unreadable")
+	h.stores.TenantCapErr = errors.New("entitlement unreadable")
 
 	_, err := provision(h, "tenant")
 	require.Error(t, err)
-	assert.Empty(t, h.stores.tenants)
+	assert.Zero(t, h.stores.TenantCount())
 }
 
 // A cap below the existing count removes nothing, hides nothing, and
@@ -72,7 +72,7 @@ func TestProvisionTenant_LoweredCapGrandfathersExistingTenants(t *testing.T) {
 		existing = append(existing, tenant)
 	}
 
-	h.stores.tenantCap = 1 // the licence in force now allows fewer than exist
+	h.stores.TenantCap = 1 // the licence in force now allows fewer than exist
 
 	for _, tenant := range existing {
 		got, err := h.svc.LoadTenant(context.Background(), tenant.ID)
@@ -84,5 +84,5 @@ func TestProvisionTenant_LoweredCapGrandfathersExistingTenants(t *testing.T) {
 
 	_, err := provision(h, "new")
 	require.ErrorIs(t, err, ports.ErrEntitlementExceeded)
-	assert.Len(t, h.stores.tenants, 3)
+	assert.Equal(t, 3, h.stores.TenantCount())
 }

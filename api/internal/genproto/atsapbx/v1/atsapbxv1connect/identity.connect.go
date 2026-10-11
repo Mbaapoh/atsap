@@ -66,17 +66,29 @@ const (
 	// IdentityServiceRevokeRoleProcedure is the fully-qualified name of the IdentityService's
 	// RevokeRole RPC.
 	IdentityServiceRevokeRoleProcedure = "/atsapbx.v1.IdentityService/RevokeRole"
+	// IdentityServiceResetPrincipalPasswordProcedure is the fully-qualified name of the
+	// IdentityService's ResetPrincipalPassword RPC.
+	IdentityServiceResetPrincipalPasswordProcedure = "/atsapbx.v1.IdentityService/ResetPrincipalPassword"
+	// IdentityServiceSetUserStatusProcedure is the fully-qualified name of the IdentityService's
+	// SetUserStatus RPC.
+	IdentityServiceSetUserStatusProcedure = "/atsapbx.v1.IdentityService/SetUserStatus"
 )
 
 // IdentityServiceClient is a client for the atsapbx.v1.IdentityService service.
 type IdentityServiceClient interface {
-	// AuthenticateUser exchanges a username and password for a
-	// short-lived token. The only method reachable without one.
+	// AuthenticateUser exchanges an email and password for a short-lived
+	// token for one tenant, tied to no session. Deprecated for people — the
+	// console signs in through AuthService.SignIn — and kept for machines
+	// and harnesses (LLD-02 §6). Reachable without a token; throttled.
 	AuthenticateUser(context.Context, *connect.Request[v1.AuthenticateUserRequest]) (*connect.Response[v1.AuthenticateUserResponse], error)
 	// ProvisionTenant creates a tenant. Its residency zone is fixed here
 	// and cannot be changed afterwards.
 	ProvisionTenant(context.Context, *connect.Request[v1.ProvisionTenantRequest]) (*connect.Response[v1.ProvisionTenantResponse], error)
-	// ProvisionPrincipal creates a user account within a tenant.
+	// ProvisionPrincipal adds a person to a tenant by email (D-61). A new
+	// email creates the person, with the given password or, without one,
+	// an emailed invitation. An existing email adds a membership only and
+	// the person keeps their own password. The response is the same either
+	// way, so nothing reveals that the person already had an account.
 	ProvisionPrincipal(context.Context, *connect.Request[v1.ProvisionPrincipalRequest]) (*connect.Response[v1.ProvisionPrincipalResponse], error)
 	// SetTenantStatus suspends or reactivates a tenant. Reversible, and it
 	// never terminates a call already in progress (INV-03).
@@ -100,6 +112,15 @@ type IdentityServiceClient interface {
 	// GrantRole. The last tenant administrator of a tenant cannot be
 	// revoked, so no tenant is left without anyone able to administer it.
 	RevokeRole(context.Context, *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error)
+	// ResetPrincipalPassword sets a temporary password a member must change
+	// at their next sign-in, and ends their sessions (D-64). A tenant
+	// administrator may reset only a person who belongs to no tenant they do
+	// not administer; otherwise system scope is required.
+	ResetPrincipalPassword(context.Context, *connect.Request[v1.ResetPrincipalPasswordRequest]) (*connect.Response[v1.ResetPrincipalPasswordResponse], error)
+	// SetUserStatus disables or restores a person in every tenant at once,
+	// ending their sessions. System scope only: a tenant administrator
+	// governs memberships (SetPrincipalStatus), never the person (D-61).
+	SetUserStatus(context.Context, *connect.Request[v1.SetUserStatusRequest]) (*connect.Response[v1.SetUserStatusResponse], error)
 }
 
 // NewIdentityServiceClient constructs a client for the atsapbx.v1.IdentityService service. By
@@ -179,22 +200,36 @@ func NewIdentityServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(identityServiceMethods.ByName("RevokeRole")),
 			connect.WithClientOptions(opts...),
 		),
+		resetPrincipalPassword: connect.NewClient[v1.ResetPrincipalPasswordRequest, v1.ResetPrincipalPasswordResponse](
+			httpClient,
+			baseURL+IdentityServiceResetPrincipalPasswordProcedure,
+			connect.WithSchema(identityServiceMethods.ByName("ResetPrincipalPassword")),
+			connect.WithClientOptions(opts...),
+		),
+		setUserStatus: connect.NewClient[v1.SetUserStatusRequest, v1.SetUserStatusResponse](
+			httpClient,
+			baseURL+IdentityServiceSetUserStatusProcedure,
+			connect.WithSchema(identityServiceMethods.ByName("SetUserStatus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // identityServiceClient implements IdentityServiceClient.
 type identityServiceClient struct {
-	authenticateUser   *connect.Client[v1.AuthenticateUserRequest, v1.AuthenticateUserResponse]
-	provisionTenant    *connect.Client[v1.ProvisionTenantRequest, v1.ProvisionTenantResponse]
-	provisionPrincipal *connect.Client[v1.ProvisionPrincipalRequest, v1.ProvisionPrincipalResponse]
-	setTenantStatus    *connect.Client[v1.SetTenantStatusRequest, v1.SetTenantStatusResponse]
-	setPrincipalStatus *connect.Client[v1.SetPrincipalStatusRequest, v1.SetPrincipalStatusResponse]
-	grantRole          *connect.Client[v1.GrantRoleRequest, v1.GrantRoleResponse]
-	issueApiKey        *connect.Client[v1.IssueApiKeyRequest, v1.IssueApiKeyResponse]
-	revokeApiKey       *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
-	listAudit          *connect.Client[v1.ListAuditRequest, v1.ListAuditResponse]
-	listPrincipals     *connect.Client[v1.ListPrincipalsRequest, v1.ListPrincipalsResponse]
-	revokeRole         *connect.Client[v1.RevokeRoleRequest, v1.RevokeRoleResponse]
+	authenticateUser       *connect.Client[v1.AuthenticateUserRequest, v1.AuthenticateUserResponse]
+	provisionTenant        *connect.Client[v1.ProvisionTenantRequest, v1.ProvisionTenantResponse]
+	provisionPrincipal     *connect.Client[v1.ProvisionPrincipalRequest, v1.ProvisionPrincipalResponse]
+	setTenantStatus        *connect.Client[v1.SetTenantStatusRequest, v1.SetTenantStatusResponse]
+	setPrincipalStatus     *connect.Client[v1.SetPrincipalStatusRequest, v1.SetPrincipalStatusResponse]
+	grantRole              *connect.Client[v1.GrantRoleRequest, v1.GrantRoleResponse]
+	issueApiKey            *connect.Client[v1.IssueApiKeyRequest, v1.IssueApiKeyResponse]
+	revokeApiKey           *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
+	listAudit              *connect.Client[v1.ListAuditRequest, v1.ListAuditResponse]
+	listPrincipals         *connect.Client[v1.ListPrincipalsRequest, v1.ListPrincipalsResponse]
+	revokeRole             *connect.Client[v1.RevokeRoleRequest, v1.RevokeRoleResponse]
+	resetPrincipalPassword *connect.Client[v1.ResetPrincipalPasswordRequest, v1.ResetPrincipalPasswordResponse]
+	setUserStatus          *connect.Client[v1.SetUserStatusRequest, v1.SetUserStatusResponse]
 }
 
 // AuthenticateUser calls atsapbx.v1.IdentityService.AuthenticateUser.
@@ -252,15 +287,31 @@ func (c *identityServiceClient) RevokeRole(ctx context.Context, req *connect.Req
 	return c.revokeRole.CallUnary(ctx, req)
 }
 
+// ResetPrincipalPassword calls atsapbx.v1.IdentityService.ResetPrincipalPassword.
+func (c *identityServiceClient) ResetPrincipalPassword(ctx context.Context, req *connect.Request[v1.ResetPrincipalPasswordRequest]) (*connect.Response[v1.ResetPrincipalPasswordResponse], error) {
+	return c.resetPrincipalPassword.CallUnary(ctx, req)
+}
+
+// SetUserStatus calls atsapbx.v1.IdentityService.SetUserStatus.
+func (c *identityServiceClient) SetUserStatus(ctx context.Context, req *connect.Request[v1.SetUserStatusRequest]) (*connect.Response[v1.SetUserStatusResponse], error) {
+	return c.setUserStatus.CallUnary(ctx, req)
+}
+
 // IdentityServiceHandler is an implementation of the atsapbx.v1.IdentityService service.
 type IdentityServiceHandler interface {
-	// AuthenticateUser exchanges a username and password for a
-	// short-lived token. The only method reachable without one.
+	// AuthenticateUser exchanges an email and password for a short-lived
+	// token for one tenant, tied to no session. Deprecated for people — the
+	// console signs in through AuthService.SignIn — and kept for machines
+	// and harnesses (LLD-02 §6). Reachable without a token; throttled.
 	AuthenticateUser(context.Context, *connect.Request[v1.AuthenticateUserRequest]) (*connect.Response[v1.AuthenticateUserResponse], error)
 	// ProvisionTenant creates a tenant. Its residency zone is fixed here
 	// and cannot be changed afterwards.
 	ProvisionTenant(context.Context, *connect.Request[v1.ProvisionTenantRequest]) (*connect.Response[v1.ProvisionTenantResponse], error)
-	// ProvisionPrincipal creates a user account within a tenant.
+	// ProvisionPrincipal adds a person to a tenant by email (D-61). A new
+	// email creates the person, with the given password or, without one,
+	// an emailed invitation. An existing email adds a membership only and
+	// the person keeps their own password. The response is the same either
+	// way, so nothing reveals that the person already had an account.
 	ProvisionPrincipal(context.Context, *connect.Request[v1.ProvisionPrincipalRequest]) (*connect.Response[v1.ProvisionPrincipalResponse], error)
 	// SetTenantStatus suspends or reactivates a tenant. Reversible, and it
 	// never terminates a call already in progress (INV-03).
@@ -284,6 +335,15 @@ type IdentityServiceHandler interface {
 	// GrantRole. The last tenant administrator of a tenant cannot be
 	// revoked, so no tenant is left without anyone able to administer it.
 	RevokeRole(context.Context, *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error)
+	// ResetPrincipalPassword sets a temporary password a member must change
+	// at their next sign-in, and ends their sessions (D-64). A tenant
+	// administrator may reset only a person who belongs to no tenant they do
+	// not administer; otherwise system scope is required.
+	ResetPrincipalPassword(context.Context, *connect.Request[v1.ResetPrincipalPasswordRequest]) (*connect.Response[v1.ResetPrincipalPasswordResponse], error)
+	// SetUserStatus disables or restores a person in every tenant at once,
+	// ending their sessions. System scope only: a tenant administrator
+	// governs memberships (SetPrincipalStatus), never the person (D-61).
+	SetUserStatus(context.Context, *connect.Request[v1.SetUserStatusRequest]) (*connect.Response[v1.SetUserStatusResponse], error)
 }
 
 // NewIdentityServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -359,6 +419,18 @@ func NewIdentityServiceHandler(svc IdentityServiceHandler, opts ...connect.Handl
 		connect.WithSchema(identityServiceMethods.ByName("RevokeRole")),
 		connect.WithHandlerOptions(opts...),
 	)
+	identityServiceResetPrincipalPasswordHandler := connect.NewUnaryHandler(
+		IdentityServiceResetPrincipalPasswordProcedure,
+		svc.ResetPrincipalPassword,
+		connect.WithSchema(identityServiceMethods.ByName("ResetPrincipalPassword")),
+		connect.WithHandlerOptions(opts...),
+	)
+	identityServiceSetUserStatusHandler := connect.NewUnaryHandler(
+		IdentityServiceSetUserStatusProcedure,
+		svc.SetUserStatus,
+		connect.WithSchema(identityServiceMethods.ByName("SetUserStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.IdentityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IdentityServiceAuthenticateUserProcedure:
@@ -383,6 +455,10 @@ func NewIdentityServiceHandler(svc IdentityServiceHandler, opts ...connect.Handl
 			identityServiceListPrincipalsHandler.ServeHTTP(w, r)
 		case IdentityServiceRevokeRoleProcedure:
 			identityServiceRevokeRoleHandler.ServeHTTP(w, r)
+		case IdentityServiceResetPrincipalPasswordProcedure:
+			identityServiceResetPrincipalPasswordHandler.ServeHTTP(w, r)
+		case IdentityServiceSetUserStatusProcedure:
+			identityServiceSetUserStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -434,4 +510,12 @@ func (UnimplementedIdentityServiceHandler) ListPrincipals(context.Context, *conn
 
 func (UnimplementedIdentityServiceHandler) RevokeRole(context.Context, *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.IdentityService.RevokeRole is not implemented"))
+}
+
+func (UnimplementedIdentityServiceHandler) ResetPrincipalPassword(context.Context, *connect.Request[v1.ResetPrincipalPasswordRequest]) (*connect.Response[v1.ResetPrincipalPasswordResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.IdentityService.ResetPrincipalPassword is not implemented"))
+}
+
+func (UnimplementedIdentityServiceHandler) SetUserStatus(context.Context, *connect.Request[v1.SetUserStatusRequest]) (*connect.Response[v1.SetUserStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.IdentityService.SetUserStatus is not implemented"))
 }

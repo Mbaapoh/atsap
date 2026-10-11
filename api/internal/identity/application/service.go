@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,8 @@ var IdentityActions = []string{
 	"principal.status.set",
 	"principal.role.grant",
 	"principal.role.revoke",
+	"principal.password.reset",
+	"user.status.set",
 	"apikey.issue",
 	"apikey.revoke",
 	"audit.read",
@@ -44,7 +47,47 @@ var DefaultPermissions = map[string][]string{
 	"PLATFORM_ADMIN": append([]string{domain.Wildcard}, IdentityActions...),
 }
 
-// Service implements ports.IdentityService.
+// Stores bundles every storage port the service orchestrates.
+type Stores struct {
+	Tenants    ports.TenantStore
+	Principals ports.PrincipalStore
+	Bindings   ports.RoleBindingStore
+	ApiKeys    ports.ApiKeyStore
+	Audit      ports.AuditStore
+	Users      ports.UserStore
+	Sessions   ports.SessionStore
+	Tickets    ports.ResetTicketStore
+	Providers  ports.IdentityProviderStore
+	Events     ports.AuthEventStore
+	Throttle   ports.LoginThrottle
+	Liveness   ports.LivenessReader
+}
+
+// AllStores is one adapter implementing every storage port, as the
+// Postgres store and the in-memory test store both do.
+type AllStores interface {
+	ports.TenantStore
+	ports.PrincipalStore
+	ports.RoleBindingStore
+	ports.ApiKeyStore
+	ports.AuditStore
+	ports.UserStore
+	ports.SessionStore
+	ports.ResetTicketStore
+	ports.IdentityProviderStore
+	ports.AuthEventStore
+	ports.LoginThrottle
+	ports.LivenessReader
+}
+
+// StoresOf fills every port from one adapter.
+func StoresOf(a AllStores) Stores {
+	return Stores{Tenants: a, Principals: a, Bindings: a, ApiKeys: a, Audit: a, Users: a, Sessions: a,
+		Tickets: a, Providers: a, Events: a, Throttle: a, Liveness: a}
+}
+
+// Service implements ports.IdentityService, and the console account use
+// cases of revision 2 (accounts.go).
 type Service struct {
 	tenants     ports.TenantStore
 	tenantCap   ports.TenantCap
@@ -52,32 +95,65 @@ type Service struct {
 	bindings    ports.RoleBindingStore
 	apiKeys     ports.ApiKeyStore
 	audit       ports.AuditStore
+	users       ports.UserStore
+	sessions    ports.SessionStore
+	tickets     ports.ResetTicketStore
+	providers   ports.IdentityProviderStore
+	events      ports.AuthEventStore
+	throttle    ports.LoginThrottle
+	liveness    ports.LivenessReader
 	hasher      *PasswordHasher
 	tokens      *TokenIssuer
 	permissions map[string][]string
 	logger      *slog.Logger
 	now         func() time.Time
+
+	mailer     ports.Mailer
+	consoleURL string
+	policy     domain.ThrottlePolicy
+	// dummyHash is verified against when there is no account or no
+	// password, so an unknown email costs the same Argon2id work as a
+	// wrong password (LLD-02 §10.10).
+	dummyHash string
 }
 
 var _ ports.IdentityService = (*Service)(nil)
 
 // NewService wires the identity orchestrator.
-func NewService(
-	tenants ports.TenantStore,
-	tenantCap ports.TenantCap,
-	principals ports.PrincipalStore,
-	bindings ports.RoleBindingStore,
-	apiKeys ports.ApiKeyStore,
-	audit ports.AuditStore,
-	hasher *PasswordHasher,
-	tokens *TokenIssuer,
-	logger *slog.Logger,
-) *Service {
-	return &Service{
-		tenants: tenants, tenantCap: tenantCap, principals: principals, bindings: bindings,
-		apiKeys: apiKeys, audit: audit, hasher: hasher, tokens: tokens,
-		permissions: DefaultPermissions, logger: logger, now: time.Now,
+func NewService(stores Stores, tenantCap ports.TenantCap, hasher *PasswordHasher, tokens *TokenIssuer, logger *slog.Logger) *Service {
+	dummy, err := hasher.Hash("not-a-real-password:timing-equalizer")
+	if err != nil {
+		// Hashing a constant cannot fail short of a broken RNG; without a
+		// dummy hash the timing guarantee is gone, so fail loudly.
+		panic(fmt.Sprintf("identity: cannot compute dummy hash: %v", err))
 	}
+	return &Service{
+		tenants: stores.Tenants, tenantCap: tenantCap, principals: stores.Principals, bindings: stores.Bindings,
+		apiKeys: stores.ApiKeys, audit: stores.Audit, users: stores.Users, sessions: stores.Sessions,
+		tickets: stores.Tickets, providers: stores.Providers, events: stores.Events, throttle: stores.Throttle,
+		liveness: stores.Liveness, hasher: hasher, tokens: tokens,
+		permissions: DefaultPermissions, logger: logger, now: time.Now,
+		mailer: logMailer{logger: logger}, policy: domain.DefaultThrottlePolicy, dummyHash: dummy,
+	}
+}
+
+// WithMailer sets how reset and invitation mail is sent, and the console
+// base URL its links point at. Without it, a logging mailer records that
+// a mail would have been sent — never the link (design D10).
+func (s *Service) WithMailer(m ports.Mailer, consoleURL string) *Service {
+	clone := *s
+	if m != nil {
+		clone.mailer = m
+	}
+	clone.consoleURL = strings.TrimRight(consoleURL, "/")
+	return &clone
+}
+
+// WithThrottlePolicy replaces D-64's default policy, for tests.
+func (s *Service) WithThrottlePolicy(p domain.ThrottlePolicy) *Service {
+	clone := *s
+	clone.policy = p
+	return &clone
 }
 
 // WithClock replaces the service's time source, for deterministic tests.
@@ -126,21 +202,37 @@ func (s *Service) ProvisionTenant(ctx context.Context, actor Actor, name, reside
 	return tenant, nil
 }
 
-// ProvisionPrincipal creates a user account within a tenant.
-func (s *Service) ProvisionPrincipal(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, username, email, password, role string) (domain.Principal, error) {
-	if err := domain.ValidatePassword(password); err != nil {
+// ProvisionPrincipal adds a person to a tenant by email (D-61).
+//
+// A new email creates the person — with password if one is given,
+// otherwise without one and with an emailed invitation. An existing email
+// creates only the membership; a supplied password is NOT applied, since
+// the person keeps their own. Both cases return the same response apart
+// from identifiers, so the administrator never learns that the person
+// already had an account, let alone where (identity/user-accounts). The
+// password, when given, is validated in both cases for the same reason.
+func (s *Service) ProvisionPrincipal(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, email, displayName, password, role string) (domain.Principal, error) {
+	normalized, err := domain.NormalizeEmail(email)
+	if err != nil {
 		return domain.Principal{}, err
 	}
-	hash, err := s.hasher.Hash(password)
+	if password != "" {
+		if err := domain.ValidatePassword(password); err != nil {
+			return domain.Principal{}, err
+		}
+	}
+	now := s.now().UTC()
+
+	user, created, err := s.findOrCreateUser(ctx, normalized, displayName, password, now)
 	if err != nil {
-		return domain.Principal{}, fmt.Errorf("hash password: %w", err)
+		return domain.Principal{}, err
 	}
 
 	principal := domain.Principal{
-		ID: shareddomain.NewPrincipalID(), TenantID: tenantID,
-		Username: username, Email: email, PasswordHash: hash,
+		ID: shareddomain.NewPrincipalID(), TenantID: tenantID, UserID: user.ID,
+		Email: normalized, DisplayName: displayName,
 		Role: role, Status: domain.PrincipalActive,
-		CreatedAt: s.now().UTC(),
+		CreatedAt: now,
 	}
 	if err := s.principals.CreatePrincipal(ctx, principal); err != nil {
 		return domain.Principal{}, err
@@ -162,13 +254,47 @@ func (s *Service) ProvisionPrincipal(ctx context.Context, actor Actor, tenantID 
 		}
 	}
 
-	// The audit record names the account and its role. It carries no
+	// The audit record names the member and its role. It carries no
 	// password and no hash — NewAuditEntry would strip them anyway, but
-	// they are not passed in the first place.
+	// they are not passed in the first place — and nothing about whether
+	// the person already existed.
 	s.record(ctx, actor, tenantID, "principal.create", "principal", principal.ID.String(), nil, map[string]any{
-		"username": username, "email": email, "role": role, "status": string(principal.Status),
+		"email": normalized, "role": role, "status": string(principal.Status),
 	})
+
+	if created && password == "" {
+		s.sendTicket(ctx, user, domain.TicketInvite)
+	}
 	return principal, nil
+}
+
+// findOrCreateUser returns the person for a normalized email, creating
+// them when absent. created reports whether this call created them.
+func (s *Service) findOrCreateUser(ctx context.Context, email, displayName, password string, now time.Time) (domain.User, bool, error) {
+	if u, err := s.users.GetUserByEmail(ctx, email); err == nil {
+		return u, false, nil
+	} else if !errors.Is(err, ports.ErrNotFound) {
+		return domain.User{}, false, err
+	}
+	user := domain.User{ID: domain.NewUserID(), Email: email, DisplayName: displayName, Status: domain.UserActive, CreatedAt: now}
+	if password != "" {
+		hash, err := s.hasher.Hash(password)
+		if err != nil {
+			return domain.User{}, false, fmt.Errorf("hash password: %w", err)
+		}
+		user.Password = &domain.PasswordCredential{Hash: hash, ChangedAt: now}
+	}
+	err := s.users.CreateUser(ctx, user)
+	if errors.Is(err, ports.ErrEmailTaken) {
+		// Another request created the person first: they exist, so this is
+		// a membership of an existing person.
+		u, gerr := s.users.GetUserByEmail(ctx, email)
+		return u, false, gerr
+	}
+	if err != nil {
+		return domain.User{}, false, err
+	}
+	return user, true, nil
 }
 
 // ListedPrincipal is one row of a user listing: the account, without its
@@ -196,7 +322,6 @@ func (s *Service) ListPrincipals(ctx context.Context, tenantID shareddomain.Tena
 	}
 	out := make([]ListedPrincipal, len(principals))
 	for i, p := range principals {
-		p.PasswordHash = "" // belt and braces: the store never selects it
 		out[i] = ListedPrincipal{Principal: p, Bindings: bindings[p.ID]}
 	}
 	return out, nil
@@ -320,53 +445,49 @@ func (s *Service) IssueAPIKey(ctx context.Context, actor Actor, tenantID sharedd
 
 // --- authentication ------------------------------------------------
 
-// AuthenticateUser verifies credentials and issues a token.
+// AuthenticateUser verifies an email and password for one tenant and
+// issues a token tied to no session. Deprecated for people — the console
+// signs in with SignIn — and kept for machines and harnesses (LLD-02 §6).
+// It is throttled exactly like SignIn.
 //
-// Every failure — unknown username, wrong password, disabled principal,
-// suspended tenant — returns ports.ErrInvalidCredentials. The specific
-// cause is logged, never returned: telling a caller which of those it
-// was is free reconnaissance (INV-10).
-func (s *Service) AuthenticateUser(ctx context.Context, tenantID shareddomain.TenantID, username, password string) (*ports.AuthToken, error) {
-	principal, err := s.principals.GetPrincipalByUsername(ctx, tenantID, username)
-	if err != nil {
-		s.warnAuthFailure(ctx, "unknown username", tenantID, username, err)
-		return nil, ports.ErrInvalidCredentials
-	}
-
-	ok, err := s.hasher.Verify(password, principal.PasswordHash)
-	if err != nil {
-		// A corrupt stored hash is an operational fault, not a wrong
-		// password — it is logged as such, though the caller still sees
-		// only "invalid credentials".
-		s.logger.Error("identity: stored password hash is unusable",
-			"tenant_id", tenantID.String(), "principal_id", principal.ID.String(), "error", err)
-		return nil, ports.ErrInvalidCredentials
-	}
-	if !ok {
-		s.warnAuthFailure(ctx, "wrong password", tenantID, username, nil)
-		return nil, ports.ErrInvalidCredentials
-	}
-
-	if err := s.checkLiveStatus(ctx, tenantID, principal); err != nil {
-		s.warnAuthFailure(ctx, "account not active", tenantID, username, err)
-		return nil, ports.ErrInvalidCredentials
-	}
-
-	roles, err := s.rolesFor(ctx, tenantID, principal)
+// Every failure — unknown email, wrong password, no membership, disabled
+// membership or person, suspended tenant — returns
+// ports.ErrInvalidCredentials, after the same Argon2id work. The cause is
+// logged, never returned (INV-10).
+func (s *Service) AuthenticateUser(ctx context.Context, tenantID shareddomain.TenantID, email, password string) (*ports.AuthToken, error) {
+	user, err := s.checkPassword(ctx, email, password)
 	if err != nil {
 		return nil, err
 	}
+	principal, err := s.principals.GetPrincipalByUser(ctx, tenantID, user.ID)
+	if err != nil {
+		s.warnAuthFailure(ctx, "no membership of the tenant", tenantID, user.Email, err)
+		return nil, ports.ErrInvalidCredentials
+	}
+	return s.issueAccess(ctx, tenantID, principal.ID, domain.SessionID{})
+}
 
-	token, err := s.tokens.Issue(tenantID, principal.ID, roles)
+// issueAccess issues an access token for a membership after re-checking
+// it is live, and for a session when one is given.
+func (s *Service) issueAccess(ctx context.Context, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID, session domain.SessionID) (*ports.AuthToken, error) {
+	st, err := s.liveness.LiveState(ctx, tenantID, principalID, domain.SessionID{})
+	if err != nil {
+		s.warnAuthFailure(ctx, "membership missing", tenantID, "", err)
+		return nil, ports.ErrInvalidCredentials
+	}
+	if err := liveError(st); err != nil {
+		s.warnAuthFailure(ctx, "account not active", tenantID, st.Principal.Email, err)
+		return nil, ports.ErrInvalidCredentials
+	}
+	token, err := s.tokens.IssueFor(tenantID, principalID, rolesOf(st.Bindings), st.Principal.UserID, session)
 	if err != nil {
 		return nil, fmt.Errorf("issue token: %w", err)
 	}
-
 	return &ports.AuthToken{
 		Token:       token,
 		ExpiresAt:   s.now().UTC().Add(s.tokens.lifetime),
 		TenantID:    tenantID,
-		PrincipalID: principal.ID,
+		PrincipalID: principalID,
 	}, nil
 }
 
@@ -392,26 +513,26 @@ func (s *Service) AuthenticateAPIKey(ctx context.Context, rawKey string) (*ports
 		return nil, ports.ErrInvalidCredentials
 	}
 
-	principal, err := s.principals.GetPrincipal(ctx, tenantID, key.PrincipalID)
+	st, err := s.liveness.LiveState(ctx, tenantID, key.PrincipalID, domain.SessionID{})
 	if err != nil {
 		s.warnAuthFailure(ctx, "api key principal missing", tenantID, "", err)
 		return nil, ports.ErrInvalidCredentials
 	}
-	if err := s.checkLiveStatus(ctx, tenantID, principal); err != nil {
-		s.warnAuthFailure(ctx, "api key account not active", tenantID, principal.Username, err)
+	if err := liveError(st); err != nil {
+		s.warnAuthFailure(ctx, "api key account not active", tenantID, st.Principal.Email, err)
 		return nil, ports.ErrInvalidCredentials
 	}
-
-	return s.tenantContext(ctx, tenantID, principal)
+	return tenantContextOf(st, domain.SessionID{}), nil
 }
 
-// ValidateToken checks a token's signature and expiry, then the live
-// status of its principal and tenant.
+// ValidateToken checks a token's signature and expiry, then — in one
+// transaction — the live status of its membership, tenant, person and
+// session (LLD-02 §10.2, design D4).
 //
-// The live-status check is what makes disabling an account take effect
-// on the next request rather than whenever the token happens to expire
-// (LLD-02 §10.2). It costs a read per request, deliberately: the
-// alternative is a window in which a disabled account keeps working.
+// The live check is what makes disabling an account, signing out, or a
+// password change take effect on the next request rather than whenever
+// the token happens to expire. It costs a read per request, deliberately:
+// the alternative is a window in which a revoked token keeps working.
 func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*ports.TenantContext, error) {
 	claims, err := s.tokens.Validate(tokenString)
 	if err != nil {
@@ -430,17 +551,79 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*ports
 		return nil, ports.ErrInvalidCredentials
 	}
 
-	principal, err := s.principals.GetPrincipal(ctx, tenantID, principalID)
-	if err != nil {
-		s.warnAuthFailure(ctx, "token principal missing", tenantID, "", err)
-		return nil, ports.ErrInvalidCredentials
-	}
-	if err := s.checkLiveStatus(ctx, tenantID, principal); err != nil {
-		s.warnAuthFailure(ctx, "token account not active", tenantID, principal.Username, err)
-		return nil, ports.ErrInvalidCredentials
+	var sessionID domain.SessionID
+	if claims.SessionID != "" {
+		if sessionID, err = domain.ParseSessionID(claims.SessionID); err != nil {
+			s.warnAuthFailure(ctx, "token session unparseable", tenantID, "", err)
+			return nil, ports.ErrInvalidCredentials
+		}
 	}
 
-	return s.tenantContext(ctx, tenantID, principal)
+	st, err := s.liveness.LiveState(ctx, tenantID, principalID, sessionID)
+	if err != nil {
+		s.warnAuthFailure(ctx, "token principal or session missing", tenantID, "", err)
+		return nil, ports.ErrInvalidCredentials
+	}
+	if err := liveError(st); err != nil {
+		s.warnAuthFailure(ctx, "token account not active", tenantID, st.Principal.Email, err)
+		return nil, ports.ErrInvalidCredentials
+	}
+	if st.Session != nil {
+		if !st.Session.Live(s.now()) || st.Session.UserID != st.Principal.UserID {
+			s.warnAuthFailure(ctx, "token session ended", tenantID, st.Principal.Email, nil)
+			return nil, ports.ErrInvalidCredentials
+		}
+	}
+	return tenantContextOf(st, sessionID), nil
+}
+
+// liveError reports why a live state may not act, or nil.
+func liveError(st ports.LiveState) error {
+	switch {
+	case st.Principal.Status != domain.PrincipalActive:
+		return ports.ErrPrincipalNotActive
+	case st.Tenant.Status != domain.TenantActive:
+		return ports.ErrTenantNotActive
+	case st.UserStatus != domain.UserActive:
+		return ports.ErrUserNotActive
+	}
+	return nil
+}
+
+func rolesOf(bindings []domain.RoleBinding) []string {
+	// Bindings only — principal.Role is deliberately NOT included: it is
+	// the role provisioned with, and authorizes nothing (see rolesFor).
+	roles := make([]string, 0, len(bindings))
+	for _, b := range bindings {
+		roles = append(roles, b.Role)
+	}
+	return roles
+}
+
+func scopesOf(bindings []domain.RoleBinding) []string {
+	seen := map[string]struct{}{}
+	var scopes []string
+	for _, b := range bindings {
+		if _, ok := seen[b.Scope]; ok {
+			continue
+		}
+		seen[b.Scope] = struct{}{}
+		scopes = append(scopes, b.Scope)
+	}
+	return scopes
+}
+
+func tenantContextOf(st ports.LiveState, session domain.SessionID) *ports.TenantContext {
+	return &ports.TenantContext{
+		TenantID:           st.Tenant.ID,
+		PrincipalID:        st.Principal.ID,
+		Roles:              rolesOf(st.Bindings),
+		Scopes:             scopesOf(st.Bindings),
+		ResidencyZone:      st.Tenant.ResidencyZone,
+		UserID:             st.Principal.UserID,
+		SessionID:          session,
+		PasswordChangeOnly: st.MustChange,
+	}
 }
 
 // AuthorizeAction reports whether a principal may perform an action on
@@ -546,98 +729,19 @@ func (s *Service) record(ctx context.Context, actor Actor, tenantID shareddomain
 	}
 }
 
-// checkLiveStatus reports whether a principal and its tenant are both
-// active right now.
-func (s *Service) checkLiveStatus(ctx context.Context, tenantID shareddomain.TenantID, principal domain.Principal) error {
-	if principal.Status != domain.PrincipalActive {
-		return ports.ErrPrincipalNotActive
-	}
-	tenant, err := s.tenants.GetTenant(ctx, tenantID)
-	if err != nil {
-		return err
-	}
-	if tenant.Status != domain.TenantActive {
-		return ports.ErrTenantNotActive
-	}
-	return nil
-}
-
-func (s *Service) rolesFor(ctx context.Context, tenantID shareddomain.TenantID, principal domain.Principal) ([]string, error) {
-	bindings, err := s.bindings.ListRoleBindings(ctx, tenantID, principal.ID)
-	if err != nil {
-		return nil, fmt.Errorf("load role bindings: %w", err)
-	}
-	// Bindings only — principal.Role is deliberately NOT included.
-	//
-	// Authorization consults bindings and nothing else, so putting the
-	// principal.Role column in the token's roles claim advertised
-	// authority the caller did not have: a token could read
-	// "TENANT_ADMIN" while every action was denied, and a portal reading
-	// that claim would show administrative UI to a powerless account.
-	// One source of truth; ProvisionPrincipal creates the binding that
-	// makes the role real.
-	roles := make([]string, 0, len(bindings))
-	for _, b := range bindings {
-		roles = append(roles, b.Role)
-	}
-	return roles, nil
-}
-
-func (s *Service) tenantContext(ctx context.Context, tenantID shareddomain.TenantID, principal domain.Principal) (*ports.TenantContext, error) {
-	roles, err := s.rolesFor(ctx, tenantID, principal)
-	if err != nil {
-		return nil, err
-	}
-	scopes, err := s.scopesFor(ctx, tenantID, principal)
-	if err != nil {
-		return nil, err
-	}
-	tenant, err := s.tenants.GetTenant(ctx, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	return &ports.TenantContext{
-		TenantID:      tenantID,
-		PrincipalID:   principal.ID,
-		Roles:         roles,
-		Scopes:        scopes,
-		ResidencyZone: tenant.ResidencyZone,
-	}, nil
-}
-
-// scopesFor returns the distinct binding scopes a principal holds within
-// a tenant. A principal with no bindings has no scopes: any scope it
-// needs must be granted, it is never assumed.
-func (s *Service) scopesFor(ctx context.Context, tenantID shareddomain.TenantID, principal domain.Principal) ([]string, error) {
-	bindings, err := s.bindings.ListRoleBindings(ctx, tenantID, principal.ID)
-	if err != nil {
-		return nil, fmt.Errorf("load role bindings: %w", err)
-	}
-	seen := map[string]struct{}{}
-	var scopes []string
-	for _, b := range bindings {
-		if _, ok := seen[b.Scope]; ok {
-			continue
-		}
-		seen[b.Scope] = struct{}{}
-		scopes = append(scopes, b.Scope)
-	}
-	return scopes, nil
-}
-
 // warnAuthFailure logs a failed authentication attempt.
 //
 // Credential material never appears here: no password, no API key, no
 // token — only who was attempted and why it failed. Without these logs,
 // credential stuffing and brute force are invisible until the rate
 // limiter of a later LLD arrives (LLD-02 §10.8, OWASP A09).
-func (s *Service) warnAuthFailure(ctx context.Context, reason string, tenantID shareddomain.TenantID, username string, cause error) {
+func (s *Service) warnAuthFailure(ctx context.Context, reason string, tenantID shareddomain.TenantID, email string, cause error) {
 	attrs := []any{"reason", reason}
 	if !tenantID.IsZero() {
 		attrs = append(attrs, "tenant_id", tenantID.String())
 	}
-	if username != "" {
-		attrs = append(attrs, "username", username)
+	if email != "" {
+		attrs = append(attrs, "email", email)
 	}
 	if cause != nil {
 		attrs = append(attrs, "error", cause)

@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -61,12 +62,26 @@ func newStore(t *testing.T) (*identitypostgres.Store, shareddomain.TenantID, sha
 	return store, tenantA, tenantB
 }
 
-func newPrincipal(tenantID shareddomain.TenantID, username string) domain.Principal {
+// testHash is a well-formed Argon2id PHC string that verifies nothing.
+const testHash = "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA"
+
+// newPrincipal returns a membership (not yet stored) for the person
+// name@example.test, creating that person on first use.
+func newPrincipal(t *testing.T, store *identitypostgres.Store, tenantID shareddomain.TenantID, name string) domain.Principal {
+	t.Helper()
+	ctx := context.Background()
+	email := name + "@example.test"
+	u, err := store.GetUserByEmail(ctx, email)
+	if errors.Is(err, ports.ErrNotFound) {
+		u = domain.User{ID: domain.NewUserID(), Email: email, DisplayName: name, Status: domain.UserActive,
+			Password: &domain.PasswordCredential{Hash: testHash, ChangedAt: time.Now().UTC()}, CreatedAt: time.Now().UTC()}
+		require.NoError(t, store.CreateUser(ctx, u))
+	} else {
+		require.NoError(t, err)
+	}
 	return domain.Principal{
-		ID: shareddomain.NewPrincipalID(), TenantID: tenantID,
-		Username: username, Email: username + "@example.test",
-		PasswordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA",
-		Role:         "AGENT", Status: domain.PrincipalActive,
+		ID: shareddomain.NewPrincipalID(), TenantID: tenantID, UserID: u.ID,
+		Role: "AGENT", Status: domain.PrincipalActive, CreatedAt: time.Now().UTC(),
 	}
 }
 
@@ -94,18 +109,19 @@ func TestStore_PrincipalRoundTrip(t *testing.T) {
 	store, tenantA, _ := newStore(t)
 	ctx := context.Background()
 
-	p := newPrincipal(tenantA, "alice")
+	p := newPrincipal(t, store, tenantA, "alice")
 	require.NoError(t, store.CreatePrincipal(ctx, p))
 
 	byID, err := store.GetPrincipal(ctx, tenantA, p.ID)
 	require.NoError(t, err)
-	assert.Equal(t, p.Username, byID.Username)
-	assert.Equal(t, p.PasswordHash, byID.PasswordHash)
+	assert.Equal(t, "alice@example.test", byID.Email, "the person's email, through the join")
+	assert.Equal(t, "alice", byID.DisplayName)
+	assert.Equal(t, p.UserID, byID.UserID)
 	assert.Equal(t, domain.PrincipalActive, byID.Status)
 
-	byName, err := store.GetPrincipalByUsername(ctx, tenantA, "alice")
+	byUser, err := store.GetPrincipalByUser(ctx, tenantA, p.UserID)
 	require.NoError(t, err)
-	assert.Equal(t, p.ID, byName.ID)
+	assert.Equal(t, p.ID, byUser.ID)
 
 	require.NoError(t, store.SetPrincipalStatus(ctx, tenantA, p.ID, domain.PrincipalDisabled))
 	byID, err = store.GetPrincipal(ctx, tenantA, p.ID)
@@ -113,27 +129,29 @@ func TestStore_PrincipalRoundTrip(t *testing.T) {
 	assert.Equal(t, domain.PrincipalDisabled, byID.Status)
 }
 
-// TestStore_UsernamesAreUniquePerTenantNotGlobally is AC-01.2 at the
-// storage layer: the same username in two tenants must be two unrelated
-// principals, while a duplicate inside one tenant must be refused.
-func TestStore_UsernamesAreUniquePerTenantNotGlobally(t *testing.T) {
+// TestStore_OnePersonManyMemberships (identity/user-accounts): one person
+// is a member of two tenants as two independent memberships, and a second
+// membership of the same tenant is refused.
+func TestStore_OnePersonManyMemberships(t *testing.T) {
 	store, tenantA, tenantB := newStore(t)
 	ctx := context.Background()
 
-	inA := newPrincipal(tenantA, "admin")
-	inB := newPrincipal(tenantB, "admin")
+	inA := newPrincipal(t, store, tenantA, "admin")
+	inB := newPrincipal(t, store, tenantB, "admin")
+	require.Equal(t, inA.UserID, inB.UserID, "one person")
 	require.NoError(t, store.CreatePrincipal(ctx, inA))
-	require.NoError(t, store.CreatePrincipal(ctx, inB), "the same username in another tenant is a different account")
+	require.NoError(t, store.CreatePrincipal(ctx, inB), "a membership of another tenant")
+	assert.NotEqual(t, inA.ID, inB.ID, "two independent memberships")
 
-	fromA, err := store.GetPrincipalByUsername(ctx, tenantA, "admin")
-	require.NoError(t, err)
-	fromB, err := store.GetPrincipalByUsername(ctx, tenantB, "admin")
-	require.NoError(t, err)
-	assert.NotEqual(t, fromA.ID, fromB.ID, "they must be independent principals")
+	dup := newPrincipal(t, store, tenantA, "admin")
+	assert.ErrorIs(t, store.CreatePrincipal(ctx, dup), ports.ErrAlreadyMember)
 
-	dup := newPrincipal(tenantA, "admin")
-	err = store.CreatePrincipal(ctx, dup)
-	assert.ErrorIs(t, err, ports.ErrUsernameTaken, "a duplicate within one tenant is refused")
+	ms, err := store.ListMemberships(ctx, inA.UserID)
+	require.NoError(t, err)
+	assert.Len(t, ms, 2, "the person sees both memberships, across tenants")
+
+	err = store.CreateUser(ctx, domain.User{ID: domain.NewUserID(), Email: "ADMIN@example.test", Status: domain.UserActive})
+	assert.ErrorIs(t, err, ports.ErrEmailTaken, "emails are unique without regard to case")
 }
 
 // TestStore_CrossTenantReadsFindNothing: RLS is what enforces this, but
@@ -143,14 +161,14 @@ func TestStore_CrossTenantReadsFindNothing(t *testing.T) {
 	store, tenantA, tenantB := newStore(t)
 	ctx := context.Background()
 
-	p := newPrincipal(tenantA, "alice")
+	p := newPrincipal(t, store, tenantA, "alice")
 	require.NoError(t, store.CreatePrincipal(ctx, p))
 
 	_, err := store.GetPrincipal(ctx, tenantB, p.ID)
 	assert.ErrorIs(t, err, ports.ErrNotFound,
 		"tenant B asking for tenant A's principal by its real id gets the same answer as for one that does not exist")
 
-	_, err = store.GetPrincipalByUsername(ctx, tenantB, "alice")
+	_, err = store.GetPrincipalByUser(ctx, tenantB, p.UserID)
 	assert.ErrorIs(t, err, ports.ErrNotFound)
 
 	err = store.SetPrincipalStatus(ctx, tenantB, p.ID, domain.PrincipalDisabled)
@@ -161,7 +179,7 @@ func TestStore_RoleBindings(t *testing.T) {
 	store, tenantA, tenantB := newStore(t)
 	ctx := context.Background()
 
-	p := newPrincipal(tenantA, "alice")
+	p := newPrincipal(t, store, tenantA, "alice")
 	require.NoError(t, store.CreatePrincipal(ctx, p))
 
 	binding := domain.RoleBinding{
@@ -189,7 +207,7 @@ func TestStore_ApiKeys(t *testing.T) {
 	store, tenantA, _ := newStore(t)
 	ctx := context.Background()
 
-	p := newPrincipal(tenantA, "alice")
+	p := newPrincipal(t, store, tenantA, "alice")
 	require.NoError(t, store.CreatePrincipal(ctx, p))
 
 	expires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)

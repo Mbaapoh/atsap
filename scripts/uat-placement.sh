@@ -115,6 +115,7 @@ DELETE FROM audit_logs WHERE tenant_id = '$TENANT';
 DELETE FROM role_bindings WHERE tenant_id = '$TENANT';
 DELETE FROM principals WHERE tenant_id = '$TENANT';
 COMMIT;
+DELETE FROM users WHERE email = '$OP_USER@uat.invalid';
 DELETE FROM tenants WHERE id = '$TENANT';
 SQL
 }
@@ -141,14 +142,17 @@ HOST_ADDR="$(docker inspect deploy-asterisk-1 --format '{{range .NetworkSettings
 log "seeding a synthetic tenant and operator"
 psql_app >/dev/null <<SQL || fail "seeding the UAT tenant failed"
 INSERT INTO tenants (id, name, status, residency_zone) VALUES ('$TENANT', 'uat-placement', 'ACTIVE', 'EU');
+-- A person (D-61) with a password credential, then their membership.
+WITH u AS (INSERT INTO users (email, display_name) VALUES ('$OP_USER@uat.invalid', 'UAT operator') RETURNING id)
+INSERT INTO user_credentials (user_id, kind, secret) SELECT id, 'password', '$OP_HASH' FROM u;
 BEGIN;
 SELECT set_config('app.tenant_id', '$TENANT', true);
-INSERT INTO principals (id, tenant_id, username, email, password_hash, role, status)
-  VALUES ('$PRINCIPAL', '$TENANT', '$OP_USER', '$OP_USER@uat.invalid', '$OP_HASH', 'TENANT_ADMIN', 'ACTIVE');
+INSERT INTO principals (id, tenant_id, user_id, role, status)
+  VALUES ('$PRINCIPAL', '$TENANT', (SELECT id FROM users WHERE email = '$OP_USER@uat.invalid'), 'TENANT_ADMIN', 'ACTIVE');
 INSERT INTO role_bindings (principal_id, tenant_id, role, scope) VALUES ('$PRINCIPAL', '$TENANT', 'TENANT_ADMIN', 'tenant');
 COMMIT;
 SQL
-TOKEN="$(api IdentityService/AuthenticateUser "{\"tenantId\":\"$TENANT\",\"username\":\"$OP_USER\",\"password\":\"$OP_PASSWORD\"}" | field token)"
+TOKEN="$(api IdentityService/AuthenticateUser "{\"tenantId\":\"$TENANT\",\"username\":\"$OP_USER@uat.invalid\",\"password\":\"$OP_PASSWORD\"}" | field token)"
 [ -n "$TOKEN" ] || fail "AuthenticateUser returned no token"
 
 # --- 2. an extension, a carrier trunk and a route — all through the API --

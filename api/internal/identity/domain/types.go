@@ -80,20 +80,22 @@ type Tenant struct {
 	CreatedAt     time.Time
 }
 
-// Principal is one user account, meaningful only within its tenant.
+// Principal is one user's membership of one tenant: the identity that
+// acts in that tenant (D-61). Its id is stable across revision 2, so every
+// audit row and TenantContext naming it still names the same membership.
+// Status is the membership's, not the person's.
 type Principal struct {
 	ID       shareddomain.PrincipalID
 	TenantID shareddomain.TenantID
-	// Username is unique per tenant, never globally: two tenants may
-	// each have an "admin" and they are unrelated accounts (AC-01.2).
-	Username string
-	Email    string
-	// PasswordHash is an encoded Argon2id hash. No plaintext password
-	// is held anywhere in this struct's lifetime (INV-11).
-	PasswordHash string
-	Role         string
-	Status       PrincipalStatus
-	CreatedAt    time.Time
+	UserID   UserID
+	// Email and DisplayName are the member's user's, read through a join
+	// for listings and responses. They are never written through a
+	// principal: only the person or platform scope changes them.
+	Email       string
+	DisplayName string
+	Role        string
+	Status      PrincipalStatus
+	CreatedAt   time.Time
 }
 
 // RoleBinding grants one role to one principal within one scope.

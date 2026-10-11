@@ -31,16 +31,26 @@ import (
 
 // IdentityHandler implements atsapbxv1connect.IdentityServiceHandler.
 type IdentityHandler struct {
-	svc *application.Service
+	svc    *application.Service
+	source SourceResolver
 
 	atsapbxv1connect.UnimplementedIdentityServiceHandler
 }
 
 var _ atsapbxv1connect.IdentityServiceHandler = (*IdentityHandler)(nil)
 
-// NewIdentityHandler returns a handler backed by svc.
+// NewIdentityHandler returns a handler backed by svc, trusting no proxy
+// for the caller's address.
 func NewIdentityHandler(svc *application.Service) *IdentityHandler {
 	return &IdentityHandler{svc: svc}
+}
+
+// WithSourceResolver sets how the caller's address is resolved for
+// throttling (design D7).
+func (h *IdentityHandler) WithSourceResolver(r SourceResolver) *IdentityHandler {
+	clone := *h
+	clone.source = r
+	return &clone
 }
 
 // defaultAuditLimit bounds a ListAudit with no limit, so one call cannot
@@ -54,6 +64,7 @@ func (h *IdentityHandler) AuthenticateUser(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
 	}
+	ctx = application.WithSource(ctx, h.source.Resolve(req.Peer(), req.Header()))
 	token, err := h.svc.AuthenticateUser(ctx, tenantID, req.Msg.GetUsername(), req.Msg.GetPassword())
 	if err != nil {
 		return nil, mapErr(err)
@@ -97,7 +108,7 @@ func (h *IdentityHandler) ProvisionPrincipal(ctx context.Context, req *connect.R
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
 	}
 	principal, err := h.svc.ProvisionPrincipal(ctx, actor, tenantID,
-		req.Msg.GetUsername(), req.Msg.GetEmail(), req.Msg.GetPassword(), req.Msg.GetRole())
+		req.Msg.GetEmail(), req.Msg.GetDisplayName(), req.Msg.GetPassword(), req.Msg.GetRole())
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -340,6 +351,57 @@ func (h *IdentityHandler) RevokeRole(ctx context.Context, req *connect.Request[a
 // its own tenant (and the interceptor enforces the body match); a
 // system-scoped caller may act on any tenant, authorized through its
 // system binding.
+// --- Revision 2: administrator reset and person status (D-61, D-64) ----
+
+func (h *IdentityHandler) ResetPrincipalPassword(ctx context.Context, req *connect.Request[atsapbxv1.ResetPrincipalPasswordRequest]) (*connect.Response[atsapbxv1.ResetPrincipalPasswordResponse], error) {
+	actor, err := h.authorizeForTenant(ctx, "principal.password.reset", req, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	tc, _ := application.TenantContextFrom(ctx)
+	tenantID, err := shareddomain.ParseTenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
+	}
+	principalID, err := shareddomain.ParsePrincipalID(req.Msg.GetPrincipalId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid principal_id"))
+	}
+	if err := h.svc.ResetPrincipalPassword(ctx, tc, actor, tenantID, principalID, req.Msg.GetTemporaryPassword()); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.ResetPrincipalPasswordResponse{}), nil
+}
+
+func (h *IdentityHandler) SetUserStatus(ctx context.Context, req *connect.Request[atsapbxv1.SetUserStatusRequest]) (*connect.Response[atsapbxv1.SetUserStatusResponse], error) {
+	tc, err := requireContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// The person spans tenants, so this is installation authority only: a
+	// TENANT_ADMIN's wildcard, bound at tenant scope, never reaches it.
+	if err := h.svc.AuthorizeSystem(ctx, tc.PrincipalID, tc.TenantID, "user.status.set"); err != nil {
+		return nil, mapErr(err)
+	}
+	userID, err := domain.ParseUserID(req.Msg.GetUserId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid user_id"))
+	}
+	var status domain.UserStatus
+	switch req.Msg.GetStatus() {
+	case atsapbxv1.UserStatus_USER_STATUS_ACTIVE:
+		status = domain.UserActive
+	case atsapbxv1.UserStatus_USER_STATUS_DISABLED:
+		status = domain.UserDisabled
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("status is required"))
+	}
+	if err := h.svc.SetUserStatus(ctx, h.actor(tc, req), tc.TenantID, userID, status); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.SetUserStatusResponse{}), nil
+}
+
 func (h *IdentityHandler) authorizeForTenant(ctx context.Context, action string, req connect.AnyRequest, targetTenant string) (application.Actor, error) {
 	tc, err := requireContext(ctx)
 	if err != nil {
@@ -389,10 +451,19 @@ func clientIP(peer connect.Peer) net.IP {
 // mapping is by sentinel and the message is fixed.
 func mapErr(err error) error {
 	switch {
+	case errors.Is(err, ports.ErrThrottled):
+		return throttledError(err)
 	case errors.Is(err, ports.ErrInvalidCredentials),
 		errors.Is(err, ports.ErrPrincipalNotActive),
-		errors.Is(err, ports.ErrTenantNotActive):
+		errors.Is(err, ports.ErrTenantNotActive),
+		errors.Is(err, ports.ErrUserNotActive),
+		errors.Is(err, ports.ErrSessionNotUsable):
 		return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid credentials"))
+	case errors.Is(err, domain.ErrInvalidEmail):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid email address"))
+	case errors.Is(err, domain.ErrPasswordTooShort), errors.Is(err, domain.ErrPasswordTooLong):
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("password must be %d to %d characters", domain.MinPasswordLength, domain.MaxPasswordLength))
 	case errors.Is(err, ports.ErrPermissionDenied):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("not permitted"))
 	case errors.Is(err, ports.ErrNotFound):
@@ -403,11 +474,27 @@ func mapErr(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("licence entitlement exceeded: tenant limit reached"))
 	case errors.Is(err, ports.ErrLastAdministrator):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot revoke the last tenant administrator"))
-	case errors.Is(err, ports.ErrUsernameTaken):
-		return connect.NewError(connect.CodeAlreadyExists, errors.New("username already exists in this tenant"))
+	case errors.Is(err, ports.ErrAlreadyMember):
+		return connect.NewError(connect.CodeAlreadyExists, errors.New("already a member of this tenant"))
 	default:
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("identity operation failed: %w", err))
+		// A constant message: an internal error's text can carry table
+		// names or values, and none of it is the caller's business.
+		return connect.NewError(connect.CodeInternal, errors.New("identity operation failed"))
 	}
+}
+
+// throttledError maps a throttled attempt to RESOURCE_EXHAUSTED, stating
+// the delay (D-64). The same for every email, so it reveals nothing.
+func throttledError(err error) error {
+	wait := time.Minute
+	var te *ports.ThrottledError
+	if errors.As(err, &te) && te.RetryAfter > 0 {
+		wait = te.RetryAfter
+	}
+	secs := int((wait + time.Second - 1) / time.Second)
+	cerr := connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("too many attempts; retry after %d seconds", secs))
+	cerr.Meta().Set("Retry-After", fmt.Sprint(secs))
+	return cerr
 }
 
 // --- proto conversion helpers ---------------------------------------
@@ -426,11 +513,15 @@ func toProtoPrincipal(p domain.Principal) *atsapbxv1.Principal {
 	return &atsapbxv1.Principal{
 		PrincipalId: p.ID.String(),
 		TenantId:    p.TenantID.String(),
-		Username:    p.Username,
+		// The deprecated username carries the email, for clients that
+		// still read it (design D9).
+		Username:    p.Email, //nolint:staticcheck // deprecated field kept filled deliberately
 		Email:       p.Email,
 		Role:        p.Role,
 		Status:      principalStatusToProto(p.Status),
 		CreatedAt:   timestamppb.New(p.CreatedAt),
+		UserId:      p.UserID.String(),
+		DisplayName: p.DisplayName,
 	}
 }
 
@@ -528,6 +619,13 @@ func TenantID(request any) (string, bool) {
 		return r.GetTenantId(), r.GetTenantId() != ""
 	case *atsapbxv1.RevokeRoleRequest:
 		return r.GetTenantId(), r.GetTenantId() != ""
+	case *atsapbxv1.ResetPrincipalPasswordRequest:
+		return r.GetTenantId(), r.GetTenantId() != ""
+	case *atsapbxv1.RefreshSessionRequest:
+		// A refresh names the tenant to switch TO; it is authenticated by
+		// its cookie, not a bearer token, so the interceptor never matches
+		// it against one. Listed so the matcher's coverage is explicit.
+		return "", false
 	default:
 		return "", false
 	}

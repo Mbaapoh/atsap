@@ -75,14 +75,13 @@ func TestBootstrap_EmptyAndAlreadyBootstrapped(t *testing.T) {
 	// The tightest real cap (Free: one tenant) still admits the first
 	// tenant, which is why bootstrap needs no licence to run.
 	freeCap := ports.TenantCapFunc(func(context.Context) (int, error) { return 1, nil })
-	svc := application.NewService(store, freeCap, store, store, store, store,
+	svc := application.NewService(application.StoresOf(store), freeCap,
 		application.NewPasswordHasher(), issuer, logger)
 
 	// 1. Empty installation: bootstrap succeeds.
 	tenantID, err := bootstrap.Run(ctx, store, svc, bootstrap.Params{
 		TenantName:    "First Co",
 		ResidencyZone: "EU",
-		Username:      "root",
 		Email:         "root@first.test",
 		Password:      "a-correct-bootstrap-password",
 	})
@@ -91,7 +90,7 @@ func TestBootstrap_EmptyAndAlreadyBootstrapped(t *testing.T) {
 
 	// The administrator can authenticate over the wire surface (via the
 	// service) — the pair the spec scenario requires.
-	tok, err := svc.AuthenticateUser(ctx, tenantID, "root", "a-correct-bootstrap-password")
+	tok, err := svc.AuthenticateUser(ctx, tenantID, "root@first.test", "a-correct-bootstrap-password")
 	require.NoError(t, err, "bootstrapped administrator must be able to authenticate")
 	require.NotEmpty(t, tok.Token)
 
@@ -100,7 +99,6 @@ func TestBootstrap_EmptyAndAlreadyBootstrapped(t *testing.T) {
 	_, err = bootstrap.Run(ctx, store, svc, bootstrap.Params{
 		TenantName:    "Second Co",
 		ResidencyZone: "EU",
-		Username:      "root2",
 		Email:         "root2@second.test",
 		Password:      "another-correct-password",
 	})

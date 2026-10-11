@@ -49,6 +49,10 @@ func TestLoad_Defaults(t *testing.T) {
 		SIPRealm:           "asterisk",
 		SIPTransport:       "transport-udp",
 		SIPWebRTCTransport: "transport-wss",
+		// Links default to the dev console; mail is off until an SMTP
+		// server is named (identity-accounts-and-sessions D10).
+		ConsoleURL: "http://localhost:8080",
+		SMTPFrom:   "AtsaPBX <no-reply@localhost>",
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)

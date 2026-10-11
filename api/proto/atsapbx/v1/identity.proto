@@ -26,15 +26,21 @@ option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
 // cause, and a resource in another tenant answers as though it did not
 // exist (INV-10).
 service IdentityService {
-  // AuthenticateUser exchanges a username and password for a
-  // short-lived token. The only method reachable without one.
+  // AuthenticateUser exchanges an email and password for a short-lived
+  // token for one tenant, tied to no session. Deprecated for people — the
+  // console signs in through AuthService.SignIn — and kept for machines
+  // and harnesses (LLD-02 §6). Reachable without a token; throttled.
   rpc AuthenticateUser(AuthenticateUserRequest) returns (AuthenticateUserResponse);
 
   // ProvisionTenant creates a tenant. Its residency zone is fixed here
   // and cannot be changed afterwards.
   rpc ProvisionTenant(ProvisionTenantRequest) returns (ProvisionTenantResponse);
 
-  // ProvisionPrincipal creates a user account within a tenant.
+  // ProvisionPrincipal adds a person to a tenant by email (D-61). A new
+  // email creates the person, with the given password or, without one,
+  // an emailed invitation. An existing email adds a membership only and
+  // the person keeps their own password. The response is the same either
+  // way, so nothing reveals that the person already had an account.
   rpc ProvisionPrincipal(ProvisionPrincipalRequest) returns (ProvisionPrincipalResponse);
 
   // SetTenantStatus suspends or reactivates a tenant. Reversible, and it
@@ -66,6 +72,17 @@ service IdentityService {
   // GrantRole. The last tenant administrator of a tenant cannot be
   // revoked, so no tenant is left without anyone able to administer it.
   rpc RevokeRole(RevokeRoleRequest) returns (RevokeRoleResponse);
+
+  // ResetPrincipalPassword sets a temporary password a member must change
+  // at their next sign-in, and ends their sessions (D-64). A tenant
+  // administrator may reset only a person who belongs to no tenant they do
+  // not administer; otherwise system scope is required.
+  rpc ResetPrincipalPassword(ResetPrincipalPasswordRequest) returns (ResetPrincipalPasswordResponse);
+
+  // SetUserStatus disables or restores a person in every tenant at once,
+  // ending their sessions. System scope only: a tenant administrator
+  // governs memberships (SetPrincipalStatus), never the person (D-61).
+  rpc SetUserStatus(SetUserStatusRequest) returns (SetUserStatusResponse);
 }
 
 // TenantStatus mirrors the domain's tenant lifecycle.
@@ -91,23 +108,30 @@ message Tenant {
   google.protobuf.Timestamp created_at = 5;
 }
 
-// Principal is a user account. It carries no credential representation:
-// there is deliberately no password or hash field here.
+// Principal is a person's membership of one tenant (D-61). It carries no
+// credential representation: there is deliberately no password or hash
+// field here. status is the membership's, not the person's.
 message Principal {
   string principal_id = 1;
   string tenant_id = 2;
-  string username = 3;
+  // Deprecated: usernames no longer exist. Filled with the email for
+  // clients that still read it.
+  string username = 3 [deprecated = true];
   string email = 4;
   string role = 5;
   PrincipalStatus status = 6;
   google.protobuf.Timestamp created_at = 7;
+  // user_id identifies the person behind the membership.
+  string user_id = 8;
+  string display_name = 9;
 }
 
 message AuthenticateUserRequest {
-  // tenant_id is explicit because usernames are unique per tenant, never
-  // globally (AC-01.2) — two tenants may each have an "admin", and
-  // without a tenant there is no single account to resolve to.
+  // tenant_id names the membership the token acts for: one person may be
+  // a member of several tenants.
   string tenant_id = 1;
+  // username is read as the person's email. The field keeps its name and
+  // number for wire compatibility; usernames no longer exist (D-61).
   string username = 2;
   string password = 3;
 }
@@ -131,12 +155,15 @@ message ProvisionTenantResponse {
 
 message ProvisionPrincipalRequest {
   string tenant_id = 1;
-  string username = 2;
+  // Deprecated and ignored: the person is identified by email.
+  string username = 2 [deprecated = true];
   string email = 3;
-  // password is accepted here and never echoed back: the response
-  // carries a Principal, which has no field for it.
+  // password is optional and never echoed back. Without it, a new person
+  // is invited by email. It is never applied to a person who already has
+  // an account.
   string password = 4;
   string role = 5;
+  string display_name = 6;
 }
 
 message ProvisionPrincipalResponse {
@@ -255,3 +282,27 @@ message RevokeRoleRequest {
 }
 
 message RevokeRoleResponse {}
+
+message ResetPrincipalPasswordRequest {
+  string tenant_id = 1;
+  string principal_id = 2;
+  // The temporary password, chosen by the administrator and given to the
+  // member out of band. Never echoed back.
+  string temporary_password = 3;
+}
+
+message ResetPrincipalPasswordResponse {}
+
+// UserStatus mirrors the domain's person lifecycle.
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_DISABLED = 2;
+}
+
+message SetUserStatusRequest {
+  string user_id = 1;
+  UserStatus status = 2;
+}
+
+message SetUserStatusResponse {}
