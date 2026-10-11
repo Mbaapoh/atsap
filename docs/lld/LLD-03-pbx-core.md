@@ -13,6 +13,7 @@
 |---|---|
 | 2026-09-07 | Initial draft. |
 | 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
+| 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
 
 ## 1. Scope
 
@@ -32,8 +33,10 @@ whole context with the phase marked on every part.
   from a dialled number to an extension.
 - **Emergency-number recognition and bypass** (INV-01) — deferred to this
   LLD by LLD-02 §1, because no inbound path existed to trigger it.
-- **Capacity rejection at the SIP edge**: `503` with `Retry-After` when
-  licensing declines a call — also deferred here by LLD-02 §1.
+- **Capacity rejection at the SIP edge**: `503` when licensing
+  declines a call — also deferred here by LLD-02 §1. (`Retry-After` was
+  intended, but the engine cannot emit it on an unanswered inbound
+  channel — recorded gap, see the 2026-10-11 history row.)
 - **The Asterisk projection** (D-47): domain rows become live PJSIP
   Realtime state inside the same transaction.
 - **The ConnectRPC surface** for all of the above, because every one of
@@ -186,16 +189,50 @@ The answer is the same dependency inversion already used for
 port, `pbx-core` implements it, the composition root wires it.**
 
 ```go
-// telephony/ports — ADDED by LLD-03
-type InboundRouter interface {
-    ResolveInbound(ctx context.Context, tenantID shareddomain.TenantID, dialled string) (InboundDestination, error)
+// telephony/ports — ADDED by LLD-03, widened by pbx-inbound-and-emergency
+// (design D2): the original ResolveInbound(tenant, dialled) could not
+// tell a carrier call from a desk phone dialling, and gave pbx-core no
+// call id to reserve a trunk channel under. The source endpoint and the
+// call id travel with the request; the decision carries the refusal (or
+// the destination) plus the screening bypass for emergency matches.
+type InboundRequest struct {
+    TenantID       shareddomain.TenantID
+    CallID         shareddomain.CallID
+    SourceEndpoint string // opaque: the arriving channel's endpoint
+    Dialled        string
+    CallerNumber   string
 }
 
-type InboundDestination struct {
-    EndpointURI string // opaque to telephony-core, produced by pbx-core
-    NotFound    bool   // no extension matched; caller gets a clean rejection
+type RefusalCause int // zero value connects; NotFound | Unavailable | Forbidden refuse
+
+type InboundDecision struct {
+    Refuse          RefusalCause // "" to connect
+    DestinationURI  string       // opaque to telephony-core
+    Direction       domain.Direction
+    BypassScreening bool // assigned only in pbx/application (archtest)
+}
+
+type InboundRouter interface {
+    ResolveInbound(ctx context.Context, req InboundRequest) (InboundDecision, error)
 }
 ```
+
+**The tenant arrives on the channel, set by endpoint configuration
+(design D1).** Every projected endpoint carries
+`set_var=ATSA_TENANT_ID=<tenant>`, so a channel created on it carries
+its tenant and the ACL reads it on StasisStart. Configuration sets it,
+so no SIP header can forge it; a channel without it has no tenant and
+is refused `NotFound` without the router ever being consulted. The
+rejected alternative — looking `e_`/`t_` up across tenants — needs an
+RLS-bypassing role, which D-24 forbids.
+
+**`pbx-core`'s router reuses the dial plan (design D4).** A trunk
+source resolves the dialled DID through the per-tenant inbound-numbers
+table; an extension source runs `ResolveDestination` with the tenant's
+effective emergency set, exactly as `PlaceCall`. An unknown source is
+refused `NotFound`. Translating the source endpoint string to a trunk
+or extension identity happens in `pbx/acl/asterisk`
+(`EndpointAddresser.Identify`), not in `pbx/application`.
 
 **The alternative was rejected on latency and failure modes.** Publishing
 `event.call.initiated` and having `pbx-core` react over NATS would keep
@@ -619,18 +656,27 @@ sequenceDiagram
     participant PBX as pbx-core (InboundRouter)
     participant DB as PostgreSQL
 
-    AST->>TC: StasisStart, dialled number
-    TC->>DB: INSERT calls state=Initiated
-    TC->>PBX: ResolveInbound(tenant, dialled)
-    PBX->>DB: SELECT extensions WHERE number
-    alt no extension matches
-        PBX-->>TC: NotFound
-        TC->>AST: Hang up, reason unallocated_number
-    else extension found
-        PBX-->>TC: EndpointURI
-        TC->>AST: Originate to the extension, bridge
-        TC->>DB: participants + outbox, state=Active
+    AST->>TC: StasisStart (uncorrelated): tenant var, endpoint, dialled, caller
+    TC->>DB: INSERT calls state=Initiated (caller = arriving channel)
+    TC->>PBX: ResolveInbound(tenant, call, source, dialled, caller)
+    alt trunk source, DID assigned
+        PBX->>DB: SELECT inbound_numbers WHERE number
+        PBX-->>TC: DestinationURI (extension)
+    else trunk source, DID unassigned
+        PBX-->>TC: Refuse NotFound
+        TC->>AST: Hang up, reason unallocated (SIP 404)
+    else extension source
+        PBX->>PBX: dial plan: emergency, internal, routes
+        PBX-->>TC: DestinationURI (+ BypassScreening if emergency)
+    else unknown source
+        PBX-->>TC: Refuse NotFound
+        TC->>AST: Hang up, reason unallocated (SIP 404)
     end
+    TC->>TC: Screening unless bypassed (capacity→Unavailable/503, compliance→Forbidden/403)
+    TC->>AST: Ring arriving channel (180), originate destination
+    AST->>TC: StasisStart (correlated destination leg answers)
+    TC->>AST: Answer arriving channel, bridge both
+    TC->>DB: participants + outbox, state=Active
 ```
 
 `telephony-core` never learns why an endpoint URI has the value it does,
@@ -678,7 +724,7 @@ after the Phase A console slice exists, per D-46.
 | `pbx-extensions-projection` | A | Extension domain + store + the `pbx/acl/asterisk` projector, migration `0004`, `asterisk_engine` role, `CreateExtension`/`List`/`Update`/`Delete` RPCs | First: it establishes the projection pattern every later change reuses, and it is the smallest slice that produces a registrable phone |
 | `pbx-trunks-routes` | A | Trunk and route domain, health observation, CRUD RPCs, `SelectRoutes` | Second: needs the projector from the first change |
 | `pbx-call-placement` | A | `PlaceCall`/`HangupCall` RPCs, outbound path into `telephony-core`, `Outbound` class enforcement | Third: needs routes to route to |
-| `pbx-inbound-and-emergency` | A | `InboundRouter` port on `telephony-core`, Stasis inbound wiring, `emergency_numbers`, `BypassScreening`, SIP `503` + `Retry-After` | Fourth, and the only change that edits `telephony-core`. Isolated deliberately: it is the riskiest slice and the one a reviewer must look at hardest |
+| `pbx-inbound-and-emergency` | A | `InboundRouter` port on `telephony-core`, Stasis inbound wiring, `emergency_numbers`, `BypassScreening`, SIP `503` (plain — `Retry-After` is a recorded engine gap) | Fourth, and the only change that edits `telephony-core`. Isolated deliberately: it is the riskiest slice and the one a reviewer must look at hardest |
 | `pbx-ivr-flows` | B | `FlowInterpreter`, flow-as-data execution, publish/version/rollback (AC-03.7, AC-03.8) | Phase B opens here |
 | `pbx-queues` | B | ACD queues, agent state | After IVR |
 
