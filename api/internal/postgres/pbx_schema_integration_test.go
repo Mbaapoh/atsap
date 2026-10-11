@@ -183,7 +183,9 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 
 // TestPbxSchema_PsAorsCarriesStaticContactColumn covers 0006: Asterisk
 // polls AoRs itself with
-//     SELECT * FROM ps_aors WHERE contact != '' ORDER BY contact
+//
+//	SELECT * FROM ps_aors WHERE contact != '' ORDER BY contact
+//
 // and our original four-column subset had no `contact`, so every poll
 // failed with `column "contact" does not exist` while nothing
 // user-visible broke. The added columns are Asterisk's own alembic set

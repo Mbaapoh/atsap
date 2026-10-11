@@ -92,8 +92,14 @@ func TestEndpointIdentifier_IsNotDerivedFromTheNumber(t *testing.T) {
 		identifier := domain.EndpointIdentifier(id)
 
 		assert.NotEqual(t, number, identifier, "the identifier must never be the extension number")
-		assert.NotContains(t, identifier, number,
-			"the identifier must not contain the extension number: knowing the numbering plan must not reveal it")
+		// Not NotContains(identifier, number): the identifier is random
+		// hex, so any 4-digit number appears in it by chance (~5.7% of
+		// runs over 128 iterations — observed 2026-10-07 as
+		// "e_1000096…"). Non-derivation is structural — EndpointIdentifier
+		// takes no number — so assert the exact shape instead: a fixed
+		// prefix and the extension's opaque ID, nothing else.
+		assert.Equal(t, "e_"+strings.ReplaceAll(id.String(), "-", ""), identifier,
+			"the identifier is the extension's opaque ID and nothing else: knowing the numbering plan must not reveal it")
 
 		_, dup := seen[identifier]
 		require.False(t, dup, "identifiers must be unique across extensions — ps_* is one namespace for every tenant")
