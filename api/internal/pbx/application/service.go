@@ -55,6 +55,8 @@ type AuditAppender interface {
 type Service struct {
 	pool      *corepostgres.Pool
 	store     ports.ExtensionStore
+	trunks    ports.TrunkStore
+	routes    ports.RouteStore
 	extCap    ports.ExtensionCap
 	projector ports.EndpointProjector
 	authz     Authorizer
@@ -74,6 +76,8 @@ var _ ports.ConfigService = (*Service)(nil)
 func NewService(
 	pool *corepostgres.Pool,
 	store ports.ExtensionStore,
+	trunks ports.TrunkStore,
+	routes ports.RouteStore,
 	extCap ports.ExtensionCap,
 	projector ports.EndpointProjector,
 	authz Authorizer,
@@ -83,6 +87,8 @@ func NewService(
 	return &Service{
 		pool:      pool,
 		store:     store,
+		trunks:    trunks,
+		routes:    routes,
 		extCap:    extCap,
 		projector: projector,
 		authz:     authz,
@@ -385,12 +391,23 @@ func (s *Service) appendAudit(
 	action string, subject domain.Extension,
 	before, after *domain.Extension,
 ) error {
+	return s.appendAuditEntry(ctx, tx, actor, subject.TenantID, action, auditResourceType,
+		subject.ID.String(), auditState(before), auditState(after))
+}
+
+// appendAuditEntry writes one audit row from states already rendered by
+// a redacting constructor (auditState, trunkAuditState, routeAuditState).
+// It never renders a domain value itself, so it has no path to a secret.
+func (s *Service) appendAuditEntry(
+	ctx context.Context, tx pgx.Tx, actor Actor, tenantID shareddomain.TenantID,
+	action, resourceType, resourceID string, before, after map[string]any,
+) error {
 	entry := identitydomain.NewAuditEntry(
-		subject.TenantID,
+		tenantID,
 		uuid.UUID(actor.PrincipalID),
 		identitydomain.ActorPrincipal,
-		action, auditResourceType, subject.ID.String(),
-		auditState(before), auditState(after),
+		action, resourceType, resourceID,
+		before, after,
 		nil, s.now(),
 	)
 	return s.audit.AppendAuditTx(ctx, tx, entry)

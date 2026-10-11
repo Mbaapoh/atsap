@@ -259,6 +259,73 @@ func TestRLSIsolation_IdentityTables(t *testing.T) {
 	}
 }
 
+// TestRLSIsolation_CarrierTables extends the isolation test to the
+// pbx-trunks-routes tables (LLD-03 DoD 12): a trunk and a route written
+// under tenant A are invisible with no tenant context and under tenant
+// B, and visible to A. The ps_* half of DoD 12 — trunk engine rows carry
+// no tenant_id and no RLS, deliberately — is
+// TestPbxSchema_ProjectionTablesHaveNoTenancy, which runs against the
+// schema 0007 leaves.
+func TestRLSIsolation_CarrierTables(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	pool, err := postgres.Open(context.Background(), databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	ctx := context.Background()
+	tenantA, tenantB := domain.NewTenantID(), domain.NewTenantID()
+	for _, id := range []domain.TenantID{tenantA, tenantB} {
+		_, err := pool.Unwrap().Exec(ctx,
+			`INSERT INTO tenants (id, name) VALUES ($1, $2)`, id.String(), "tenant-"+id.String())
+		require.NoError(t, err)
+	}
+
+	trunkA := domain.NewTrunkID()
+	require.NoError(t, pool.WithTenant(ctx, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO carrier_trunks (id, tenant_id, name, host) VALUES ($1, $2, 'carrier', 'sip.example.net')`,
+			trunkA.String(), tenantA.String()); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx,
+			`INSERT INTO carrier_routes (tenant_id, prefix_pattern, trunk_id) VALUES ($1, '44', $2)`,
+			tenantA.String(), trunkA.String())
+		return err
+	}))
+
+	for _, table := range []string{"carrier_trunks", "carrier_routes"} {
+		t.Run(table, func(t *testing.T) {
+			query := `SELECT count(*) FROM ` + table // #nosec G202 -- fixed test table names, not input
+
+			var count int
+			require.NoError(t, pool.Unwrap().QueryRow(ctx, query).Scan(&count))
+			assert.Zero(t, count, "%s must fail closed with no app.tenant_id set", table)
+
+			require.NoError(t, pool.WithTenant(ctx, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, query).Scan(&count)
+			}))
+			assert.Zero(t, count, "tenant B must not see tenant A's %s row", table)
+
+			require.NoError(t, pool.WithTenant(ctx, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+				return tx.QueryRow(ctx, query).Scan(&count)
+			}))
+			assert.Equal(t, 1, count, "tenant A must see its own %s row", table)
+		})
+	}
+
+	// Writes are isolated too, not only reads: tenant B cannot alter or
+	// remove tenant A's trunk even by naming its id.
+	require.NoError(t, pool.WithTenant(ctx, tenantB, func(ctx context.Context, tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE carrier_trunks SET host = 'evil.example' WHERE id = $1`, trunkA.String())
+		if err == nil {
+			assert.Zero(t, tag.RowsAffected(), "tenant B must not update tenant A's trunk")
+		}
+		return err
+	}))
+}
+
 // TestOutboxWorkerRole verifies the design.md "Outbox worker runs as a
 // narrow BYPASSRLS platform role" exception: the worker role reads across
 // tenants on outbox, but sees nothing on calls/call_participants.

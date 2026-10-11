@@ -563,6 +563,274 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.RegenerateSecretResponse'
+  /atsapbx.v1.PbxService/CreateTrunk:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: CreateTrunk
+      description: |-
+        CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
+         secret, if any, is accepted here and on UpdateTrunk and is never
+         returned by any call — unlike an extension secret, it was chosen by
+         the carrier, not generated, so there is nothing to show once.
+      operationId: atsapbx.v1.PbxService.CreateTrunk
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CreateTrunkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.CreateTrunkResponse'
+  /atsapbx.v1.PbxService/ListTrunks:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListTrunks
+      description: |-
+        ListTrunks returns a page of the calling tenant's trunks, with the
+         health the platform has observed for each.
+      operationId: atsapbx.v1.PbxService.ListTrunks
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListTrunksRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListTrunksResponse'
+  /atsapbx.v1.PbxService/UpdateTrunk:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: UpdateTrunk
+      description: |-
+        UpdateTrunk replaces a trunk's configuration. An empty secret keeps
+         the stored one; an empty auth_username makes the trunk
+         IP-authenticated and discards any stored secret. Health is not an
+         input: it is observed, never set.
+      operationId: atsapbx.v1.PbxService.UpdateTrunk
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.UpdateTrunkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.UpdateTrunkResponse'
+  /atsapbx.v1.PbxService/DeleteTrunk:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteTrunk
+      description: |-
+        DeleteTrunk disconnects a carrier, together with every route that
+         sends to it. It is never selected again from the moment this
+         returns; calls already in progress are unaffected.
+      operationId: atsapbx.v1.PbxService.DeleteTrunk
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteTrunkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.DeleteTrunkResponse'
+  /atsapbx.v1.PbxService/CreateRoute:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: CreateRoute
+      description: |-
+        CreateRoute sends dialled numbers matching a prefix pattern to one of
+         the tenant's own trunks. Overlapping patterns are allowed: overlap is
+         how least-cost preference is expressed.
+      operationId: atsapbx.v1.PbxService.CreateRoute
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CreateRouteRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.CreateRouteResponse'
+  /atsapbx.v1.PbxService/ListRoutes:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListRoutes
+      description: ListRoutes returns a page of the calling tenant's outbound routes.
+      operationId: atsapbx.v1.PbxService.ListRoutes
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListRoutesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListRoutesResponse'
+  /atsapbx.v1.PbxService/DeleteRoute:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteRoute
+      description: DeleteRoute removes an outbound route.
+      operationId: atsapbx.v1.PbxService.DeleteRoute
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteRouteRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.DeleteRouteResponse'
   /atsapbx.v1.TelephonyService/GetCall:
     post:
       tags:
@@ -1109,6 +1377,18 @@ components:
          extension is configured and live from the moment it is created,
          whether or not anything has registered to it — there is no "pending"
          state, because there is nothing to apply.
+    atsapbx.v1.TrunkHealth:
+      type: string
+      title: TrunkHealth
+      enum:
+        - TRUNK_HEALTH_UNSPECIFIED
+        - TRUNK_HEALTH_HEALTHY
+        - TRUNK_HEALTH_DEGRADED
+        - TRUNK_HEALTH_UNHEALTHY
+      description: |-
+        TrunkHealth is what the platform has OBSERVED about a carrier from
+         call outcomes. No request carries it: a trunk shown healthy because
+         someone ticked a box would be worse than showing nothing.
     atsapbx.v1.CreateExtensionRequest:
       type: object
       properties:
@@ -1144,6 +1424,83 @@ components:
              audited, never retrievable by any later call.
       title: CreateExtensionResponse
       additionalProperties: false
+    atsapbx.v1.CreateRouteRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        prefixPattern:
+          type: string
+          title: prefix_pattern
+        trunkId:
+          type: string
+          title: trunk_id
+        costPerMinuteMicros:
+          type:
+            - integer
+            - string
+          title: cost_per_minute_micros
+          format: int64
+        priority:
+          type: integer
+          title: priority
+          format: int32
+      title: CreateRouteRequest
+      additionalProperties: false
+    atsapbx.v1.CreateRouteResponse:
+      type: object
+      properties:
+        route:
+          title: route
+          $ref: '#/components/schemas/atsapbx.v1.Route'
+      title: CreateRouteResponse
+      additionalProperties: false
+    atsapbx.v1.CreateTrunkRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        name:
+          type: string
+          title: name
+        host:
+          type: string
+          title: host
+        port:
+          type: integer
+          title: port
+          format: int32
+          description: 0 means the SIP default, 5060.
+        authUsername:
+          type: string
+          title: auth_username
+          description: |-
+            Leave auth_username and secret empty for a carrier that
+             authenticates by source IP. A secret requires a username.
+        secret:
+          type: string
+          title: secret
+        channelLimit:
+          type: integer
+          title: channel_limit
+          format: int32
+          description: Concurrent-call cap on this trunk; must be positive.
+        priority:
+          type: integer
+          title: priority
+          format: int32
+      title: CreateTrunkRequest
+      additionalProperties: false
+    atsapbx.v1.CreateTrunkResponse:
+      type: object
+      properties:
+        trunk:
+          title: trunk
+          $ref: '#/components/schemas/atsapbx.v1.Trunk'
+      title: CreateTrunkResponse
+      additionalProperties: false
     atsapbx.v1.DeleteExtensionRequest:
       type: object
       properties:
@@ -1158,6 +1515,36 @@ components:
     atsapbx.v1.DeleteExtensionResponse:
       type: object
       title: DeleteExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.DeleteRouteRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        routeId:
+          type: string
+          title: route_id
+      title: DeleteRouteRequest
+      additionalProperties: false
+    atsapbx.v1.DeleteRouteResponse:
+      type: object
+      title: DeleteRouteResponse
+      additionalProperties: false
+    atsapbx.v1.DeleteTrunkRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        trunkId:
+          type: string
+          title: trunk_id
+      title: DeleteTrunkRequest
+      additionalProperties: false
+    atsapbx.v1.DeleteTrunkResponse:
+      type: object
+      title: DeleteTrunkResponse
       additionalProperties: false
     atsapbx.v1.Extension:
       type: object
@@ -1237,6 +1624,58 @@ components:
           title: extensions
       title: ListExtensionsResponse
       additionalProperties: false
+    atsapbx.v1.ListRoutesRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        offset:
+          type: integer
+          title: offset
+          format: int32
+      title: ListRoutesRequest
+      additionalProperties: false
+    atsapbx.v1.ListRoutesResponse:
+      type: object
+      properties:
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.Route'
+          title: routes
+      title: ListRoutesResponse
+      additionalProperties: false
+    atsapbx.v1.ListTrunksRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        offset:
+          type: integer
+          title: offset
+          format: int32
+      title: ListTrunksRequest
+      additionalProperties: false
+    atsapbx.v1.ListTrunksResponse:
+      type: object
+      properties:
+        trunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.Trunk'
+          title: trunks
+      title: ListTrunksResponse
+      additionalProperties: false
     atsapbx.v1.RegenerateSecretRequest:
       type: object
       properties:
@@ -1260,6 +1699,84 @@ components:
           description: The new secret, returned exactly once, as at creation.
       title: RegenerateSecretResponse
       additionalProperties: false
+    atsapbx.v1.Route:
+      type: object
+      properties:
+        routeId:
+          type: string
+          title: route_id
+        prefixPattern:
+          type: string
+          title: prefix_pattern
+          description: |-
+            An optional leading + then digits and X (any one digit), e.g. "44",
+             "+1", "447X". Not an expression language.
+        trunkId:
+          type: string
+          title: trunk_id
+        costPerMinuteMicros:
+          type:
+            - integer
+            - string
+          title: cost_per_minute_micros
+          format: int64
+          description: |-
+            Stored cost in millionths of the currency unit per minute. Used only
+             to break ties; it is not a rating model.
+        priority:
+          type: integer
+          title: priority
+          format: int32
+          description: Lower wins among patterns of equal length.
+      title: Route
+      additionalProperties: false
+      description: Route sends dialled numbers matching prefix_pattern to trunk_id.
+    atsapbx.v1.Trunk:
+      type: object
+      properties:
+        trunkId:
+          type: string
+          title: trunk_id
+        name:
+          type: string
+          title: name
+        host:
+          type: string
+          title: host
+          description: A hostname or IP address — no scheme, port or user part.
+        port:
+          type: integer
+          title: port
+          format: int32
+        authUsername:
+          type: string
+          title: auth_username
+          description: |-
+            The carrier digest username, if the carrier uses one. Configuration,
+             not a secret, so it is shown, as every SIP-trunk interface shows it.
+        hasSecret:
+          type: boolean
+          title: has_secret
+          description: |-
+            Whether a carrier secret is stored. The secret itself is never
+             returned.
+        channelLimit:
+          type: integer
+          title: channel_limit
+          format: int32
+        priority:
+          type: integer
+          title: priority
+          format: int32
+          description: Lower is preferred.
+        health:
+          title: health
+          $ref: '#/components/schemas/atsapbx.v1.TrunkHealth'
+      title: Trunk
+      additionalProperties: false
+      description: |-
+        Trunk is what a caller sees of a carrier connection. It carries no
+         secret and no engine object of any kind.
     atsapbx.v1.UpdateExtensionRequest:
       type: object
       properties:
@@ -1284,6 +1801,51 @@ components:
           title: extension
           $ref: '#/components/schemas/atsapbx.v1.Extension'
       title: UpdateExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.UpdateTrunkRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        trunkId:
+          type: string
+          title: trunk_id
+        name:
+          type: string
+          title: name
+        host:
+          type: string
+          title: host
+        port:
+          type: integer
+          title: port
+          format: int32
+          description: 0 means the SIP default, 5060.
+        authUsername:
+          type: string
+          title: auth_username
+        secret:
+          type: string
+          title: secret
+          description: Empty keeps the stored secret; non-empty replaces it.
+        channelLimit:
+          type: integer
+          title: channel_limit
+          format: int32
+        priority:
+          type: integer
+          title: priority
+          format: int32
+      title: UpdateTrunkRequest
+      additionalProperties: false
+    atsapbx.v1.UpdateTrunkResponse:
+      type: object
+      properties:
+        trunk:
+          title: trunk
+          $ref: '#/components/schemas/atsapbx.v1.Trunk'
+      title: UpdateTrunkResponse
       additionalProperties: false
     atsapbx.v1.GetCallRequest:
       type: object

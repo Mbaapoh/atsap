@@ -124,6 +124,63 @@ func (RegistrationStatus) EnumDescriptor() ([]byte, []int) {
 	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{1}
 }
 
+// TrunkHealth is what the platform has OBSERVED about a carrier from
+// call outcomes. No request carries it: a trunk shown healthy because
+// someone ticked a box would be worse than showing nothing.
+type TrunkHealth int32
+
+const (
+	TrunkHealth_TRUNK_HEALTH_UNSPECIFIED TrunkHealth = 0
+	TrunkHealth_TRUNK_HEALTH_HEALTHY     TrunkHealth = 1
+	// Still selected, but only after every healthy trunk.
+	TrunkHealth_TRUNK_HEALTH_DEGRADED TrunkHealth = 2
+	// Skipped by route selection until a good outcome is observed.
+	TrunkHealth_TRUNK_HEALTH_UNHEALTHY TrunkHealth = 3
+)
+
+// Enum value maps for TrunkHealth.
+var (
+	TrunkHealth_name = map[int32]string{
+		0: "TRUNK_HEALTH_UNSPECIFIED",
+		1: "TRUNK_HEALTH_HEALTHY",
+		2: "TRUNK_HEALTH_DEGRADED",
+		3: "TRUNK_HEALTH_UNHEALTHY",
+	}
+	TrunkHealth_value = map[string]int32{
+		"TRUNK_HEALTH_UNSPECIFIED": 0,
+		"TRUNK_HEALTH_HEALTHY":     1,
+		"TRUNK_HEALTH_DEGRADED":    2,
+		"TRUNK_HEALTH_UNHEALTHY":   3,
+	}
+)
+
+func (x TrunkHealth) Enum() *TrunkHealth {
+	p := new(TrunkHealth)
+	*p = x
+	return p
+}
+
+func (x TrunkHealth) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TrunkHealth) Descriptor() protoreflect.EnumDescriptor {
+	return file_atsapbx_v1_pbx_proto_enumTypes[2].Descriptor()
+}
+
+func (TrunkHealth) Type() protoreflect.EnumType {
+	return &file_atsapbx_v1_pbx_proto_enumTypes[2]
+}
+
+func (x TrunkHealth) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TrunkHealth.Descriptor instead.
+func (TrunkHealth) EnumDescriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{2}
+}
+
 // Extension is what a caller sees. It carries no credential digest and
 // no engine object of any kind.
 type Extension struct {
@@ -842,6 +899,1010 @@ func (x *RegenerateSecretResponse) GetSecret() string {
 	return ""
 }
 
+// Trunk is what a caller sees of a carrier connection. It carries no
+// secret and no engine object of any kind.
+type Trunk struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	TrunkId string                 `protobuf:"bytes,1,opt,name=trunk_id,json=trunkId,proto3" json:"trunk_id,omitempty"`
+	Name    string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// A hostname or IP address — no scheme, port or user part.
+	Host string `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
+	Port int32  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	// The carrier digest username, if the carrier uses one. Configuration,
+	// not a secret, so it is shown, as every SIP-trunk interface shows it.
+	AuthUsername string `protobuf:"bytes,5,opt,name=auth_username,json=authUsername,proto3" json:"auth_username,omitempty"`
+	// Whether a carrier secret is stored. The secret itself is never
+	// returned.
+	HasSecret    bool  `protobuf:"varint,6,opt,name=has_secret,json=hasSecret,proto3" json:"has_secret,omitempty"`
+	ChannelLimit int32 `protobuf:"varint,7,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
+	// Lower is preferred.
+	Priority      int32       `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	Health        TrunkHealth `protobuf:"varint,9,opt,name=health,proto3,enum=atsapbx.v1.TrunkHealth" json:"health,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Trunk) Reset() {
+	*x = Trunk{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Trunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Trunk) ProtoMessage() {}
+
+func (x *Trunk) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Trunk.ProtoReflect.Descriptor instead.
+func (*Trunk) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *Trunk) GetTrunkId() string {
+	if x != nil {
+		return x.TrunkId
+	}
+	return ""
+}
+
+func (x *Trunk) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Trunk) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *Trunk) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *Trunk) GetAuthUsername() string {
+	if x != nil {
+		return x.AuthUsername
+	}
+	return ""
+}
+
+func (x *Trunk) GetHasSecret() bool {
+	if x != nil {
+		return x.HasSecret
+	}
+	return false
+}
+
+func (x *Trunk) GetChannelLimit() int32 {
+	if x != nil {
+		return x.ChannelLimit
+	}
+	return 0
+}
+
+func (x *Trunk) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+func (x *Trunk) GetHealth() TrunkHealth {
+	if x != nil {
+		return x.Health
+	}
+	return TrunkHealth_TRUNK_HEALTH_UNSPECIFIED
+}
+
+type CreateTrunkRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Name     string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Host     string                 `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
+	// 0 means the SIP default, 5060.
+	Port int32 `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	// Leave auth_username and secret empty for a carrier that
+	// authenticates by source IP. A secret requires a username.
+	AuthUsername string `protobuf:"bytes,5,opt,name=auth_username,json=authUsername,proto3" json:"auth_username,omitempty"`
+	Secret       string `protobuf:"bytes,6,opt,name=secret,proto3" json:"secret,omitempty"`
+	// Concurrent-call cap on this trunk; must be positive.
+	ChannelLimit  int32 `protobuf:"varint,7,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
+	Priority      int32 `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTrunkRequest) Reset() {
+	*x = CreateTrunkRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTrunkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTrunkRequest) ProtoMessage() {}
+
+func (x *CreateTrunkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTrunkRequest.ProtoReflect.Descriptor instead.
+func (*CreateTrunkRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CreateTrunkRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *CreateTrunkRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateTrunkRequest) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *CreateTrunkRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *CreateTrunkRequest) GetAuthUsername() string {
+	if x != nil {
+		return x.AuthUsername
+	}
+	return ""
+}
+
+func (x *CreateTrunkRequest) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+func (x *CreateTrunkRequest) GetChannelLimit() int32 {
+	if x != nil {
+		return x.ChannelLimit
+	}
+	return 0
+}
+
+func (x *CreateTrunkRequest) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+type CreateTrunkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Trunk         *Trunk                 `protobuf:"bytes,1,opt,name=trunk,proto3" json:"trunk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTrunkResponse) Reset() {
+	*x = CreateTrunkResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTrunkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTrunkResponse) ProtoMessage() {}
+
+func (x *CreateTrunkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTrunkResponse.ProtoReflect.Descriptor instead.
+func (*CreateTrunkResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CreateTrunkResponse) GetTrunk() *Trunk {
+	if x != nil {
+		return x.Trunk
+	}
+	return nil
+}
+
+type ListTrunksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTrunksRequest) Reset() {
+	*x = ListTrunksRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTrunksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTrunksRequest) ProtoMessage() {}
+
+func (x *ListTrunksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTrunksRequest.ProtoReflect.Descriptor instead.
+func (*ListTrunksRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListTrunksRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListTrunksRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListTrunksRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type ListTrunksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Trunks        []*Trunk               `protobuf:"bytes,1,rep,name=trunks,proto3" json:"trunks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTrunksResponse) Reset() {
+	*x = ListTrunksResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTrunksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTrunksResponse) ProtoMessage() {}
+
+func (x *ListTrunksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTrunksResponse.ProtoReflect.Descriptor instead.
+func (*ListTrunksResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListTrunksResponse) GetTrunks() []*Trunk {
+	if x != nil {
+		return x.Trunks
+	}
+	return nil
+}
+
+type UpdateTrunkRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	TrunkId  string                 `protobuf:"bytes,2,opt,name=trunk_id,json=trunkId,proto3" json:"trunk_id,omitempty"`
+	Name     string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Host     string                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	// 0 means the SIP default, 5060.
+	Port         int32  `protobuf:"varint,5,opt,name=port,proto3" json:"port,omitempty"`
+	AuthUsername string `protobuf:"bytes,6,opt,name=auth_username,json=authUsername,proto3" json:"auth_username,omitempty"`
+	// Empty keeps the stored secret; non-empty replaces it.
+	Secret        string `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"`
+	ChannelLimit  int32  `protobuf:"varint,8,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
+	Priority      int32  `protobuf:"varint,9,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateTrunkRequest) Reset() {
+	*x = UpdateTrunkRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateTrunkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateTrunkRequest) ProtoMessage() {}
+
+func (x *UpdateTrunkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateTrunkRequest.ProtoReflect.Descriptor instead.
+func (*UpdateTrunkRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *UpdateTrunkRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *UpdateTrunkRequest) GetTrunkId() string {
+	if x != nil {
+		return x.TrunkId
+	}
+	return ""
+}
+
+func (x *UpdateTrunkRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateTrunkRequest) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *UpdateTrunkRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *UpdateTrunkRequest) GetAuthUsername() string {
+	if x != nil {
+		return x.AuthUsername
+	}
+	return ""
+}
+
+func (x *UpdateTrunkRequest) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+func (x *UpdateTrunkRequest) GetChannelLimit() int32 {
+	if x != nil {
+		return x.ChannelLimit
+	}
+	return 0
+}
+
+func (x *UpdateTrunkRequest) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+type UpdateTrunkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Trunk         *Trunk                 `protobuf:"bytes,1,opt,name=trunk,proto3" json:"trunk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateTrunkResponse) Reset() {
+	*x = UpdateTrunkResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateTrunkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateTrunkResponse) ProtoMessage() {}
+
+func (x *UpdateTrunkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateTrunkResponse.ProtoReflect.Descriptor instead.
+func (*UpdateTrunkResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *UpdateTrunkResponse) GetTrunk() *Trunk {
+	if x != nil {
+		return x.Trunk
+	}
+	return nil
+}
+
+type DeleteTrunkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	TrunkId       string                 `protobuf:"bytes,2,opt,name=trunk_id,json=trunkId,proto3" json:"trunk_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTrunkRequest) Reset() {
+	*x = DeleteTrunkRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTrunkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTrunkRequest) ProtoMessage() {}
+
+func (x *DeleteTrunkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTrunkRequest.ProtoReflect.Descriptor instead.
+func (*DeleteTrunkRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *DeleteTrunkRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *DeleteTrunkRequest) GetTrunkId() string {
+	if x != nil {
+		return x.TrunkId
+	}
+	return ""
+}
+
+type DeleteTrunkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTrunkResponse) Reset() {
+	*x = DeleteTrunkResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTrunkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTrunkResponse) ProtoMessage() {}
+
+func (x *DeleteTrunkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTrunkResponse.ProtoReflect.Descriptor instead.
+func (*DeleteTrunkResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{21}
+}
+
+// Route sends dialled numbers matching prefix_pattern to trunk_id.
+type Route struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	RouteId string                 `protobuf:"bytes,1,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
+	// An optional leading + then digits and X (any one digit), e.g. "44",
+	// "+1", "447X". Not an expression language.
+	PrefixPattern string `protobuf:"bytes,2,opt,name=prefix_pattern,json=prefixPattern,proto3" json:"prefix_pattern,omitempty"`
+	TrunkId       string `protobuf:"bytes,3,opt,name=trunk_id,json=trunkId,proto3" json:"trunk_id,omitempty"`
+	// Stored cost in millionths of the currency unit per minute. Used only
+	// to break ties; it is not a rating model.
+	CostPerMinuteMicros int64 `protobuf:"varint,4,opt,name=cost_per_minute_micros,json=costPerMinuteMicros,proto3" json:"cost_per_minute_micros,omitempty"`
+	// Lower wins among patterns of equal length.
+	Priority      int32 `protobuf:"varint,5,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Route) Reset() {
+	*x = Route{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Route) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Route) ProtoMessage() {}
+
+func (x *Route) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Route.ProtoReflect.Descriptor instead.
+func (*Route) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *Route) GetRouteId() string {
+	if x != nil {
+		return x.RouteId
+	}
+	return ""
+}
+
+func (x *Route) GetPrefixPattern() string {
+	if x != nil {
+		return x.PrefixPattern
+	}
+	return ""
+}
+
+func (x *Route) GetTrunkId() string {
+	if x != nil {
+		return x.TrunkId
+	}
+	return ""
+}
+
+func (x *Route) GetCostPerMinuteMicros() int64 {
+	if x != nil {
+		return x.CostPerMinuteMicros
+	}
+	return 0
+}
+
+func (x *Route) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+type CreateRouteRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	TenantId            string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	PrefixPattern       string                 `protobuf:"bytes,2,opt,name=prefix_pattern,json=prefixPattern,proto3" json:"prefix_pattern,omitempty"`
+	TrunkId             string                 `protobuf:"bytes,3,opt,name=trunk_id,json=trunkId,proto3" json:"trunk_id,omitempty"`
+	CostPerMinuteMicros int64                  `protobuf:"varint,4,opt,name=cost_per_minute_micros,json=costPerMinuteMicros,proto3" json:"cost_per_minute_micros,omitempty"`
+	Priority            int32                  `protobuf:"varint,5,opt,name=priority,proto3" json:"priority,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *CreateRouteRequest) Reset() {
+	*x = CreateRouteRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRouteRequest) ProtoMessage() {}
+
+func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRouteRequest.ProtoReflect.Descriptor instead.
+func (*CreateRouteRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *CreateRouteRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *CreateRouteRequest) GetPrefixPattern() string {
+	if x != nil {
+		return x.PrefixPattern
+	}
+	return ""
+}
+
+func (x *CreateRouteRequest) GetTrunkId() string {
+	if x != nil {
+		return x.TrunkId
+	}
+	return ""
+}
+
+func (x *CreateRouteRequest) GetCostPerMinuteMicros() int64 {
+	if x != nil {
+		return x.CostPerMinuteMicros
+	}
+	return 0
+}
+
+func (x *CreateRouteRequest) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+type CreateRouteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Route         *Route                 `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateRouteResponse) Reset() {
+	*x = CreateRouteResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRouteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRouteResponse) ProtoMessage() {}
+
+func (x *CreateRouteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRouteResponse.ProtoReflect.Descriptor instead.
+func (*CreateRouteResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *CreateRouteResponse) GetRoute() *Route {
+	if x != nil {
+		return x.Route
+	}
+	return nil
+}
+
+type ListRoutesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRoutesRequest) Reset() {
+	*x = ListRoutesRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRoutesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRoutesRequest) ProtoMessage() {}
+
+func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
+func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ListRoutesRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListRoutesRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListRoutesRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type ListRoutesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Routes        []*Route               `protobuf:"bytes,1,rep,name=routes,proto3" json:"routes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRoutesResponse) Reset() {
+	*x = ListRoutesResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRoutesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRoutesResponse) ProtoMessage() {}
+
+func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
+func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ListRoutesResponse) GetRoutes() []*Route {
+	if x != nil {
+		return x.Routes
+	}
+	return nil
+}
+
+type DeleteRouteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	RouteId       string                 `protobuf:"bytes,2,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteRouteRequest) Reset() {
+	*x = DeleteRouteRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteRouteRequest) ProtoMessage() {}
+
+func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteRouteRequest.ProtoReflect.Descriptor instead.
+func (*DeleteRouteRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DeleteRouteRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *DeleteRouteRequest) GetRouteId() string {
+	if x != nil {
+		return x.RouteId
+	}
+	return ""
+}
+
+type DeleteRouteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteRouteResponse) Reset() {
+	*x = DeleteRouteResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteRouteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteRouteResponse) ProtoMessage() {}
+
+func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteRouteResponse.ProtoReflect.Descriptor instead.
+func (*DeleteRouteResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{28}
+}
+
 var File_atsapbx_v1_pbx_proto protoreflect.FileDescriptor
 
 const file_atsapbx_v1_pbx_proto_rawDesc = "" +
@@ -895,7 +1956,75 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\fextension_id\x18\x02 \x01(\tR\vextensionId\"g\n" +
 	"\x18RegenerateSecretResponse\x123\n" +
 	"\textension\x18\x01 \x01(\v2\x15.atsapbx.v1.ExtensionR\textension\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret*V\n" +
+	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x94\x02\n" +
+	"\x05Trunk\x12\x19\n" +
+	"\btrunk_id\x18\x01 \x01(\tR\atrunkId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\x12#\n" +
+	"\rauth_username\x18\x05 \x01(\tR\fauthUsername\x12\x1d\n" +
+	"\n" +
+	"has_secret\x18\x06 \x01(\bR\thasSecret\x12#\n" +
+	"\rchannel_limit\x18\a \x01(\x05R\fchannelLimit\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\x12/\n" +
+	"\x06health\x18\t \x01(\x0e2\x17.atsapbx.v1.TrunkHealthR\x06health\"\xeb\x01\n" +
+	"\x12CreateTrunkRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04host\x18\x03 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\x12#\n" +
+	"\rauth_username\x18\x05 \x01(\tR\fauthUsername\x12\x16\n" +
+	"\x06secret\x18\x06 \x01(\tR\x06secret\x12#\n" +
+	"\rchannel_limit\x18\a \x01(\x05R\fchannelLimit\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\">\n" +
+	"\x13CreateTrunkResponse\x12'\n" +
+	"\x05trunk\x18\x01 \x01(\v2\x11.atsapbx.v1.TrunkR\x05trunk\"^\n" +
+	"\x11ListTrunksRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"?\n" +
+	"\x12ListTrunksResponse\x12)\n" +
+	"\x06trunks\x18\x01 \x03(\v2\x11.atsapbx.v1.TrunkR\x06trunks\"\x86\x02\n" +
+	"\x12UpdateTrunkRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
+	"\btrunk_id\x18\x02 \x01(\tR\atrunkId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x12\n" +
+	"\x04host\x18\x04 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x05 \x01(\x05R\x04port\x12#\n" +
+	"\rauth_username\x18\x06 \x01(\tR\fauthUsername\x12\x16\n" +
+	"\x06secret\x18\a \x01(\tR\x06secret\x12#\n" +
+	"\rchannel_limit\x18\b \x01(\x05R\fchannelLimit\x12\x1a\n" +
+	"\bpriority\x18\t \x01(\x05R\bpriority\">\n" +
+	"\x13UpdateTrunkResponse\x12'\n" +
+	"\x05trunk\x18\x01 \x01(\v2\x11.atsapbx.v1.TrunkR\x05trunk\"L\n" +
+	"\x12DeleteTrunkRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
+	"\btrunk_id\x18\x02 \x01(\tR\atrunkId\"\x15\n" +
+	"\x13DeleteTrunkResponse\"\xb5\x01\n" +
+	"\x05Route\x12\x19\n" +
+	"\broute_id\x18\x01 \x01(\tR\arouteId\x12%\n" +
+	"\x0eprefix_pattern\x18\x02 \x01(\tR\rprefixPattern\x12\x19\n" +
+	"\btrunk_id\x18\x03 \x01(\tR\atrunkId\x123\n" +
+	"\x16cost_per_minute_micros\x18\x04 \x01(\x03R\x13costPerMinuteMicros\x12\x1a\n" +
+	"\bpriority\x18\x05 \x01(\x05R\bpriority\"\xc4\x01\n" +
+	"\x12CreateRouteRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
+	"\x0eprefix_pattern\x18\x02 \x01(\tR\rprefixPattern\x12\x19\n" +
+	"\btrunk_id\x18\x03 \x01(\tR\atrunkId\x123\n" +
+	"\x16cost_per_minute_micros\x18\x04 \x01(\x03R\x13costPerMinuteMicros\x12\x1a\n" +
+	"\bpriority\x18\x05 \x01(\x05R\bpriority\">\n" +
+	"\x13CreateRouteResponse\x12'\n" +
+	"\x05route\x18\x01 \x01(\v2\x11.atsapbx.v1.RouteR\x05route\"^\n" +
+	"\x11ListRoutesRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"?\n" +
+	"\x12ListRoutesResponse\x12)\n" +
+	"\x06routes\x18\x01 \x03(\v2\x11.atsapbx.v1.RouteR\x06routes\"L\n" +
+	"\x12DeleteRouteRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
+	"\broute_id\x18\x02 \x01(\tR\arouteId\"\x15\n" +
+	"\x13DeleteRouteResponse*V\n" +
 	"\n" +
 	"DeviceType\x12\x1b\n" +
 	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -904,7 +2033,12 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x12RegistrationStatus\x12#\n" +
 	"\x1fREGISTRATION_STATUS_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"REGISTRATION_STATUS_NOT_REGISTERED\x10\x01\x12\"\n" +
-	"\x1eREGISTRATION_STATUS_REGISTERED\x10\x022\xab\x04\n" +
+	"\x1eREGISTRATION_STATUS_REGISTERED\x10\x02*|\n" +
+	"\vTrunkHealth\x12\x1c\n" +
+	"\x18TRUNK_HEALTH_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14TRUNK_HEALTH_HEALTHY\x10\x01\x12\x19\n" +
+	"\x15TRUNK_HEALTH_DEGRADED\x10\x02\x12\x1a\n" +
+	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x032\xd5\b\n" +
 	"\n" +
 	"PbxService\x12Z\n" +
 	"\x0fCreateExtension\x12\".atsapbx.v1.CreateExtensionRequest\x1a#.atsapbx.v1.CreateExtensionResponse\x12Q\n" +
@@ -912,7 +2046,16 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x0eListExtensions\x12!.atsapbx.v1.ListExtensionsRequest\x1a\".atsapbx.v1.ListExtensionsResponse\x12Z\n" +
 	"\x0fUpdateExtension\x12\".atsapbx.v1.UpdateExtensionRequest\x1a#.atsapbx.v1.UpdateExtensionResponse\x12Z\n" +
 	"\x0fDeleteExtension\x12\".atsapbx.v1.DeleteExtensionRequest\x1a#.atsapbx.v1.DeleteExtensionResponse\x12]\n" +
-	"\x10RegenerateSecret\x12#.atsapbx.v1.RegenerateSecretRequest\x1a$.atsapbx.v1.RegenerateSecretResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
+	"\x10RegenerateSecret\x12#.atsapbx.v1.RegenerateSecretRequest\x1a$.atsapbx.v1.RegenerateSecretResponse\x12N\n" +
+	"\vCreateTrunk\x12\x1e.atsapbx.v1.CreateTrunkRequest\x1a\x1f.atsapbx.v1.CreateTrunkResponse\x12K\n" +
+	"\n" +
+	"ListTrunks\x12\x1d.atsapbx.v1.ListTrunksRequest\x1a\x1e.atsapbx.v1.ListTrunksResponse\x12N\n" +
+	"\vUpdateTrunk\x12\x1e.atsapbx.v1.UpdateTrunkRequest\x1a\x1f.atsapbx.v1.UpdateTrunkResponse\x12N\n" +
+	"\vDeleteTrunk\x12\x1e.atsapbx.v1.DeleteTrunkRequest\x1a\x1f.atsapbx.v1.DeleteTrunkResponse\x12N\n" +
+	"\vCreateRoute\x12\x1e.atsapbx.v1.CreateRouteRequest\x1a\x1f.atsapbx.v1.CreateRouteResponse\x12K\n" +
+	"\n" +
+	"ListRoutes\x12\x1d.atsapbx.v1.ListRoutesRequest\x1a\x1e.atsapbx.v1.ListRoutesResponse\x12N\n" +
+	"\vDeleteRoute\x12\x1e.atsapbx.v1.DeleteRouteRequest\x1a\x1f.atsapbx.v1.DeleteRouteResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
 
 var (
 	file_atsapbx_v1_pbx_proto_rawDescOnce sync.Once
@@ -926,52 +2069,89 @@ func file_atsapbx_v1_pbx_proto_rawDescGZIP() []byte {
 	return file_atsapbx_v1_pbx_proto_rawDescData
 }
 
-var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(DeviceType)(0),                  // 0: atsapbx.v1.DeviceType
 	(RegistrationStatus)(0),          // 1: atsapbx.v1.RegistrationStatus
-	(*Extension)(nil),                // 2: atsapbx.v1.Extension
-	(*CreateExtensionRequest)(nil),   // 3: atsapbx.v1.CreateExtensionRequest
-	(*CreateExtensionResponse)(nil),  // 4: atsapbx.v1.CreateExtensionResponse
-	(*GetExtensionRequest)(nil),      // 5: atsapbx.v1.GetExtensionRequest
-	(*GetExtensionResponse)(nil),     // 6: atsapbx.v1.GetExtensionResponse
-	(*ListExtensionsRequest)(nil),    // 7: atsapbx.v1.ListExtensionsRequest
-	(*ListExtensionsResponse)(nil),   // 8: atsapbx.v1.ListExtensionsResponse
-	(*UpdateExtensionRequest)(nil),   // 9: atsapbx.v1.UpdateExtensionRequest
-	(*UpdateExtensionResponse)(nil),  // 10: atsapbx.v1.UpdateExtensionResponse
-	(*DeleteExtensionRequest)(nil),   // 11: atsapbx.v1.DeleteExtensionRequest
-	(*DeleteExtensionResponse)(nil),  // 12: atsapbx.v1.DeleteExtensionResponse
-	(*RegenerateSecretRequest)(nil),  // 13: atsapbx.v1.RegenerateSecretRequest
-	(*RegenerateSecretResponse)(nil), // 14: atsapbx.v1.RegenerateSecretResponse
+	(TrunkHealth)(0),                 // 2: atsapbx.v1.TrunkHealth
+	(*Extension)(nil),                // 3: atsapbx.v1.Extension
+	(*CreateExtensionRequest)(nil),   // 4: atsapbx.v1.CreateExtensionRequest
+	(*CreateExtensionResponse)(nil),  // 5: atsapbx.v1.CreateExtensionResponse
+	(*GetExtensionRequest)(nil),      // 6: atsapbx.v1.GetExtensionRequest
+	(*GetExtensionResponse)(nil),     // 7: atsapbx.v1.GetExtensionResponse
+	(*ListExtensionsRequest)(nil),    // 8: atsapbx.v1.ListExtensionsRequest
+	(*ListExtensionsResponse)(nil),   // 9: atsapbx.v1.ListExtensionsResponse
+	(*UpdateExtensionRequest)(nil),   // 10: atsapbx.v1.UpdateExtensionRequest
+	(*UpdateExtensionResponse)(nil),  // 11: atsapbx.v1.UpdateExtensionResponse
+	(*DeleteExtensionRequest)(nil),   // 12: atsapbx.v1.DeleteExtensionRequest
+	(*DeleteExtensionResponse)(nil),  // 13: atsapbx.v1.DeleteExtensionResponse
+	(*RegenerateSecretRequest)(nil),  // 14: atsapbx.v1.RegenerateSecretRequest
+	(*RegenerateSecretResponse)(nil), // 15: atsapbx.v1.RegenerateSecretResponse
+	(*Trunk)(nil),                    // 16: atsapbx.v1.Trunk
+	(*CreateTrunkRequest)(nil),       // 17: atsapbx.v1.CreateTrunkRequest
+	(*CreateTrunkResponse)(nil),      // 18: atsapbx.v1.CreateTrunkResponse
+	(*ListTrunksRequest)(nil),        // 19: atsapbx.v1.ListTrunksRequest
+	(*ListTrunksResponse)(nil),       // 20: atsapbx.v1.ListTrunksResponse
+	(*UpdateTrunkRequest)(nil),       // 21: atsapbx.v1.UpdateTrunkRequest
+	(*UpdateTrunkResponse)(nil),      // 22: atsapbx.v1.UpdateTrunkResponse
+	(*DeleteTrunkRequest)(nil),       // 23: atsapbx.v1.DeleteTrunkRequest
+	(*DeleteTrunkResponse)(nil),      // 24: atsapbx.v1.DeleteTrunkResponse
+	(*Route)(nil),                    // 25: atsapbx.v1.Route
+	(*CreateRouteRequest)(nil),       // 26: atsapbx.v1.CreateRouteRequest
+	(*CreateRouteResponse)(nil),      // 27: atsapbx.v1.CreateRouteResponse
+	(*ListRoutesRequest)(nil),        // 28: atsapbx.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),       // 29: atsapbx.v1.ListRoutesResponse
+	(*DeleteRouteRequest)(nil),       // 30: atsapbx.v1.DeleteRouteRequest
+	(*DeleteRouteResponse)(nil),      // 31: atsapbx.v1.DeleteRouteResponse
 }
 var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.Extension.device_type:type_name -> atsapbx.v1.DeviceType
 	1,  // 1: atsapbx.v1.Extension.registration:type_name -> atsapbx.v1.RegistrationStatus
 	0,  // 2: atsapbx.v1.CreateExtensionRequest.device_type:type_name -> atsapbx.v1.DeviceType
-	2,  // 3: atsapbx.v1.CreateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	2,  // 4: atsapbx.v1.GetExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	2,  // 5: atsapbx.v1.ListExtensionsResponse.extensions:type_name -> atsapbx.v1.Extension
+	3,  // 3: atsapbx.v1.CreateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	3,  // 4: atsapbx.v1.GetExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	3,  // 5: atsapbx.v1.ListExtensionsResponse.extensions:type_name -> atsapbx.v1.Extension
 	0,  // 6: atsapbx.v1.UpdateExtensionRequest.device_type:type_name -> atsapbx.v1.DeviceType
-	2,  // 7: atsapbx.v1.UpdateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	2,  // 8: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
-	3,  // 9: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
-	5,  // 10: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
-	7,  // 11: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
-	9,  // 12: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
-	11, // 13: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
-	13, // 14: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
-	4,  // 15: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
-	6,  // 16: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
-	8,  // 17: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
-	10, // 18: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
-	12, // 19: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
-	14, // 20: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
-	15, // [15:21] is the sub-list for method output_type
-	9,  // [9:15] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	3,  // 7: atsapbx.v1.UpdateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	3,  // 8: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
+	2,  // 9: atsapbx.v1.Trunk.health:type_name -> atsapbx.v1.TrunkHealth
+	16, // 10: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	16, // 11: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
+	16, // 12: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	25, // 13: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
+	25, // 14: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
+	4,  // 15: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
+	6,  // 16: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
+	8,  // 17: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
+	10, // 18: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
+	12, // 19: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
+	14, // 20: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
+	17, // 21: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
+	19, // 22: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
+	21, // 23: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
+	23, // 24: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
+	26, // 25: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
+	28, // 26: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
+	30, // 27: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
+	5,  // 28: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
+	7,  // 29: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
+	9,  // 30: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
+	11, // 31: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
+	13, // 32: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
+	15, // 33: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
+	18, // 34: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
+	20, // 35: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
+	22, // 36: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
+	24, // 37: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
+	27, // 38: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
+	29, // 39: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
+	31, // 40: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
+	28, // [28:41] is the sub-list for method output_type
+	15, // [15:28] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_pbx_proto_init() }
@@ -984,8 +2164,8 @@ func file_atsapbx_v1_pbx_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_pbx_proto_rawDesc), len(file_atsapbx_v1_pbx_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   13,
+			NumEnums:      3,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

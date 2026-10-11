@@ -181,3 +181,61 @@ func (id ExtensionID) String() string {
 func (id ExtensionID) IsZero() bool {
 	return id == ExtensionID{}
 }
+
+// TrunkID identifies a carrier trunk. The zero value is invalid.
+//
+// Like ExtensionID it is the source of a projected engine identifier
+// ("t_" + hex, LLD-03 §7.1), so it must stay a globally unique UUID.
+type TrunkID uuid.UUID
+
+// NewTrunkID generates a new random TrunkID.
+func NewTrunkID() TrunkID {
+	return TrunkID(uuid.New())
+}
+
+// ParseTrunkID parses s as a TrunkID.
+func ParseTrunkID(s string) (TrunkID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return TrunkID{}, fmt.Errorf("parse trunk id: %w", err)
+	}
+	return TrunkID(id), nil
+}
+
+// String returns the canonical UUID string form.
+func (id TrunkID) String() string {
+	return uuid.UUID(id).String()
+}
+
+// IsZero reports whether id is the zero value.
+func (id TrunkID) IsZero() bool {
+	return id == TrunkID{}
+}
+
+// RouteID identifies an outbound carrier route. The zero value is
+// invalid.
+type RouteID uuid.UUID
+
+// NewRouteID generates a new random RouteID.
+func NewRouteID() RouteID {
+	return RouteID(uuid.New())
+}
+
+// ParseRouteID parses s as a RouteID.
+func ParseRouteID(s string) (RouteID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return RouteID{}, fmt.Errorf("parse route id: %w", err)
+	}
+	return RouteID(id), nil
+}
+
+// String returns the canonical UUID string form.
+func (id RouteID) String() string {
+	return uuid.UUID(id).String()
+}
+
+// IsZero reports whether id is the zero value.
+func (id RouteID) IsZero() bool {
+	return id == RouteID{}
+}

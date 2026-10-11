@@ -64,6 +64,36 @@ func (f *fakeService) RegenerateSecret(_ context.Context, tenantID shareddomain.
 	return f.created, f.err
 }
 
+// Trunk and route operations are exercised in trunks_test.go through
+// their own fake; these satisfy the interface for the extension tests.
+func (f *fakeService) CreateTrunk(context.Context, ports.CreateTrunkCommand) (ports.TrunkView, error) {
+	return ports.TrunkView{}, f.err
+}
+
+func (f *fakeService) UpdateTrunk(context.Context, ports.UpdateTrunkCommand) (ports.TrunkView, error) {
+	return ports.TrunkView{}, f.err
+}
+
+func (f *fakeService) DeleteTrunk(context.Context, shareddomain.TenantID, shareddomain.TrunkID) error {
+	return f.err
+}
+
+func (f *fakeService) ListTrunks(context.Context, shareddomain.TenantID, ports.Page) ([]ports.TrunkView, error) {
+	return nil, f.err
+}
+
+func (f *fakeService) CreateRoute(context.Context, ports.CreateRouteCommand) (ports.RouteView, error) {
+	return ports.RouteView{}, f.err
+}
+
+func (f *fakeService) DeleteRoute(context.Context, shareddomain.TenantID, shareddomain.RouteID) error {
+	return f.err
+}
+
+func (f *fakeService) ListRoutes(context.Context, shareddomain.TenantID, ports.Page) ([]ports.RouteView, error) {
+	return nil, f.err
+}
+
 func sampleView() ports.ExtensionView {
 	id := shareddomain.NewExtensionID()
 	return ports.ExtensionView{

@@ -66,7 +66,7 @@ func runPbx(cfg config.Config) int {
 		SIPTransport:    cfg.SIPTransport,
 		WebRTCTransport: cfg.SIPWebRTCTransport,
 	}, pool)
-	reconciler := pbxapp.NewReconciler(pool, pbxpostgres.NewStore(), projector, projector)
+	reconciler := pbxapp.NewReconciler(pool, pbxpostgres.NewStore(), pbxpostgres.NewTrunkStore(), projector, projector)
 
 	report, err := reconciler.Reconcile(ctx)
 	if err != nil {
@@ -104,15 +104,19 @@ func runPbx(cfg config.Config) int {
 		fmt.Println("Verified: the engine now matches the platform.")
 		return exitOK
 
-	case len(after.Diverged) == 0 && len(after.Orphaned) == 0:
+	case !after.Repairable():
 		// Everything repairable was repaired. What is left is rows this
-		// platform did not write, which repair deliberately never touches —
-		// saying "divergence remains" without that distinction reads like a
+		// platform did not write, which repair deliberately never touches,
+		// and trunk secrets the platform never held a copy of. Saying
+		// "divergence remains" without that distinction reads like a
 		// failure and sends an operator hunting for a bug that is not there.
-		fmt.Printf("\nRepair complete. %d engine row(s) remain that this platform did not write;\n"+
-			"they are left alone by design and need a human decision:\n", len(after.Unattributable))
+		fmt.Println("\nRepair complete. What remains needs a human decision:")
 		for _, id := range after.Unattributable {
-			fmt.Printf("  UNKNOWN   %q\n", id)
+			fmt.Printf("  UNKNOWN   %q was not written by this platform; left alone by design\n", id)
+		}
+		for _, d := range after.SecretsMissing {
+			fmt.Printf("  SECRET    trunk %q (%s, tenant %s) has lost its carrier secret; supply it again with UpdateTrunk\n",
+				d.Name, d.TrunkID, d.TenantID)
 		}
 		// Still non-zero: an unexplained row in the engine is something an
 		// operator should keep being told about until they deal with it.
@@ -126,7 +130,7 @@ func runPbx(cfg config.Config) int {
 }
 
 func printReport(r pbxapp.Report) {
-	fmt.Printf("Checked %d extension(s).\n", r.Checked)
+	fmt.Printf("Checked %d extension(s) and %d trunk(s).\n", r.Checked, r.TrunksChecked)
 
 	if r.Clean() {
 		fmt.Println("No divergence: the engine matches the platform.")
@@ -139,6 +143,16 @@ func printReport(r pbxapp.Report) {
 	}
 	for _, id := range r.Orphaned {
 		fmt.Printf("  ORPHANED  projected endpoint for extension %s, which no longer exists\n", id)
+	}
+	for _, d := range r.TrunksDiverged {
+		fmt.Printf("  DIVERGED  trunk %q (%s, tenant %s): %v\n", d.Name, d.TrunkID, d.TenantID, d.Fields)
+	}
+	for _, id := range r.OrphanedTrunks {
+		fmt.Printf("  ORPHANED  projected endpoint for trunk %s, which no longer exists\n", id)
+	}
+	for _, d := range r.SecretsMissing {
+		fmt.Printf("  SECRET    trunk %q (%s, tenant %s) has lost its carrier secret; repair cannot restore it\n",
+			d.Name, d.TrunkID, d.TenantID)
 	}
 	for _, id := range r.Unattributable {
 		fmt.Printf("  UNKNOWN   engine row %q was not written by this platform; left alone\n", id)

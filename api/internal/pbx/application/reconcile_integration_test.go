@@ -23,7 +23,7 @@ func (h *harness) reconciler(t *testing.T) *application.Reconciler {
 		SIPTransport:    "transport-udp",
 		WebRTCTransport: "transport-wss",
 	}, h.pool)
-	return application.NewReconciler(h.pool, pbxpg.NewStore(), projector, projector)
+	return application.NewReconciler(h.pool, pbxpg.NewStore(), pbxpg.NewTrunkStore(), projector, projector)
 }
 
 // A freshly written estate must reconcile clean. If this ever fails, the

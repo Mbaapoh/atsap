@@ -29,6 +29,7 @@ import (
 type Reconciler struct {
 	pool      *corepostgres.Pool
 	store     ports.ExtensionStore
+	trunks    ports.TrunkStore
 	projector ports.EndpointProjector
 	inspector ports.ProjectionReconciler
 }
@@ -40,10 +41,20 @@ type Reconciler struct {
 func NewReconciler(
 	pool *corepostgres.Pool,
 	store ports.ExtensionStore,
+	trunks ports.TrunkStore,
 	projector ports.EndpointProjector,
 	inspector ports.ProjectionReconciler,
 ) *Reconciler {
-	return &Reconciler{pool: pool, store: store, projector: projector, inspector: inspector}
+	return &Reconciler{pool: pool, store: store, trunks: trunks, projector: projector, inspector: inspector}
+}
+
+// TrunkDivergence is one trunk whose engine state disagrees with the
+// platform's.
+type TrunkDivergence struct {
+	TrunkID  shareddomain.TrunkID
+	TenantID shareddomain.TenantID
+	Name     string
+	Fields   []string
 }
 
 // Divergence is one extension whose engine state disagrees with the
@@ -73,11 +84,30 @@ type Report struct {
 	// Checked is how many extensions were compared, so a clean report is
 	// distinguishable from one that examined nothing.
 	Checked int
+
+	// TrunksDiverged, OrphanedTrunks and TrunksChecked are the same three
+	// answers for carrier trunks.
+	TrunksDiverged []TrunkDivergence
+	OrphanedTrunks []shareddomain.TrunkID
+	TrunksChecked  int
+
+	// SecretsMissing are trunks whose engine state has lost the carrier
+	// secret. Repair cannot restore it — the platform holds no copy, by
+	// design (LLD-03 §7.4) — so these are reported apart from what repair
+	// fixes, and need an operator to supply the secret again through
+	// UpdateTrunk.
+	SecretsMissing []TrunkDivergence
 }
 
 // Clean reports whether the engine and the platform agree.
 func (r Report) Clean() bool {
-	return len(r.Diverged) == 0 && len(r.Orphaned) == 0 && len(r.Unattributable) == 0
+	return len(r.Diverged) == 0 && len(r.Orphaned) == 0 && len(r.Unattributable) == 0 &&
+		len(r.TrunksDiverged) == 0 && len(r.OrphanedTrunks) == 0 && len(r.SecretsMissing) == 0
+}
+
+// Repairable reports whether Repair has anything to do.
+func (r Report) Repairable() bool {
+	return len(r.Diverged) > 0 || len(r.Orphaned) > 0 || len(r.TrunksDiverged) > 0 || len(r.OrphanedTrunks) > 0
 }
 
 // Reconcile compares every tenant's extensions against the engine.
@@ -145,7 +175,68 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Report, error) {
 		return report.Orphaned[i].String() < report.Orphaned[j].String()
 	})
 
+	if err := r.reconcileTrunks(ctx, tenants, inventory.Trunks, &report); err != nil {
+		return Report{}, err
+	}
 	return report, nil
+}
+
+// reconcileTrunks is Reconcile for carrier trunks: the same comparison,
+// with the one difference that a lost secret is reported apart, because
+// nothing on the platform's side can put it back.
+func (r *Reconciler) reconcileTrunks(ctx context.Context, tenants []shareddomain.TenantID,
+	projectedIDs []shareddomain.TrunkID, report *Report) error {
+	projected := make(map[shareddomain.TrunkID]struct{}, len(projectedIDs))
+	for _, id := range projectedIDs {
+		projected[id] = struct{}{}
+	}
+
+	known := make(map[shareddomain.TrunkID]struct{}, len(projected))
+	for _, tenantID := range tenants {
+		var trunks []domain.Trunk
+		if err := r.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+			var err error
+			trunks, err = r.trunks.List(ctx, tx, ports.Page{Limit: allExtensions})
+			return err
+		}); err != nil {
+			return fmt.Errorf("list trunks for tenant %s: %w", tenantID, err)
+		}
+
+		for _, t := range trunks {
+			known[t.ID] = struct{}{}
+			report.TrunksChecked++
+
+			fields, err := r.inspector.DiffTrunk(ctx, t)
+			if err != nil {
+				return err
+			}
+			var repairable []string
+			for _, f := range fields {
+				if f == "secret" {
+					report.SecretsMissing = append(report.SecretsMissing, TrunkDivergence{
+						TrunkID: t.ID, TenantID: t.TenantID, Name: t.Name, Fields: []string{f},
+					})
+					continue
+				}
+				repairable = append(repairable, f)
+			}
+			if len(repairable) > 0 {
+				report.TrunksDiverged = append(report.TrunksDiverged, TrunkDivergence{
+					TrunkID: t.ID, TenantID: t.TenantID, Name: t.Name, Fields: repairable,
+				})
+			}
+		}
+	}
+
+	for id := range projected {
+		if _, ok := known[id]; !ok {
+			report.OrphanedTrunks = append(report.OrphanedTrunks, id)
+		}
+	}
+	sort.Slice(report.OrphanedTrunks, func(i, j int) bool {
+		return report.OrphanedTrunks[i].String() < report.OrphanedTrunks[j].String()
+	})
+	return nil
 }
 
 // allExtensions is the page size reconciliation reads with. Drift is
@@ -186,6 +277,37 @@ func (r *Reconciler) Repair(ctx context.Context, report Report) (repaired int, e
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return repaired, fmt.Errorf("commit orphan removal: %w", err)
+		}
+		repaired++
+	}
+
+	// A trunk is re-projected with a nil secret, which keeps whatever
+	// secret the engine still holds — the only one there is. A secret
+	// already lost stays in SecretsMissing; this cannot invent it.
+	for _, d := range report.TrunksDiverged {
+		if err := r.pool.WithTenant(ctx, d.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+			t, err := r.trunks.Get(ctx, tx, d.TrunkID)
+			if err != nil {
+				return err
+			}
+			return r.projector.ProjectTrunk(ctx, tx, t, nil)
+		}); err != nil {
+			return repaired, fmt.Errorf("repair trunk %s: %w", d.TrunkID, err)
+		}
+		repaired++
+	}
+
+	for _, id := range report.OrphanedTrunks {
+		tx, err := r.pool.Unwrap().Begin(ctx)
+		if err != nil {
+			return repaired, fmt.Errorf("begin orphan trunk removal: %w", err)
+		}
+		if err := r.projector.RemoveTrunk(ctx, tx, id); err != nil {
+			_ = tx.Rollback(ctx)
+			return repaired, fmt.Errorf("remove orphan trunk %s: %w", id, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return repaired, fmt.Errorf("commit orphan trunk removal: %w", err)
 		}
 		repaired++
 	}

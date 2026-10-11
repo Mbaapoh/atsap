@@ -68,7 +68,7 @@ func TestCreateExtension_CapReadFailureFailsClosed(t *testing.T) {
 	failing := ports.ExtensionCapFunc(func(context.Context) (int, error) {
 		return 0, errors.New("entitlement unreadable")
 	})
-	svc := application.NewService(h.pool, pbxpg.NewStore(), failing, h.projector, h.authz,
+	svc := application.NewService(h.pool, pbxpg.NewStore(), pbxpg.NewTrunkStore(), pbxpg.NewRouteStore(), failing, h.projector, h.authz,
 		identitypg.NewStore(h.pool), testRealm)
 
 	_, err := svc.CreateExtension(h.ctx, ports.CreateExtensionCommand{

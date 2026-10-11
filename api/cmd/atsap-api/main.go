@@ -221,6 +221,8 @@ func main() {
 	pbxSvc := pbxapp.NewService(
 		appPool,
 		pbxpostgres.NewStore(),
+		pbxpostgres.NewTrunkStore(),
+		pbxpostgres.NewRouteStore(),
 		licenseManager,
 		pbxasterisk.NewProjector(pbxasterisk.Config{
 			Realm:           cfg.SIPRealm,

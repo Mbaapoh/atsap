@@ -110,3 +110,33 @@ func TestExtensionID(t *testing.T) {
 	var zero domain.ExtensionID
 	assert.True(t, zero.IsZero())
 }
+
+func TestTrunkID(t *testing.T) {
+	id := domain.NewTrunkID()
+	assert.False(t, id.IsZero(), "NewTrunkID() should not be zero")
+
+	parsed, err := domain.ParseTrunkID(id.String())
+	require.NoError(t, err)
+	assert.Equal(t, id, parsed)
+
+	_, err = domain.ParseTrunkID("not-a-uuid")
+	assert.Error(t, err)
+
+	var zero domain.TrunkID
+	assert.True(t, zero.IsZero())
+}
+
+func TestRouteID(t *testing.T) {
+	id := domain.NewRouteID()
+	assert.False(t, id.IsZero(), "NewRouteID() should not be zero")
+
+	parsed, err := domain.ParseRouteID(id.String())
+	require.NoError(t, err)
+	assert.Equal(t, id, parsed)
+
+	_, err = domain.ParseRouteID("not-a-uuid")
+	assert.Error(t, err)
+
+	var zero domain.RouteID
+	assert.True(t, zero.IsZero())
+}

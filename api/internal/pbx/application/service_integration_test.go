@@ -63,8 +63,9 @@ func (f *fakeAuthorizer) AuthorizeAction(_ context.Context, _ shareddomain.Princ
 // can be proven rather than assumed.
 type failingProjector struct {
 	ports.EndpointProjector
-	failProject error
-	failRemove  error
+	failProject      error
+	failRemove       error
+	failProjectTrunk error
 }
 
 func (f *failingProjector) ProjectExtension(ctx context.Context, tx pgx.Tx, e domain.Extension) error {
@@ -120,7 +121,7 @@ func newHarness(t *testing.T) *harness {
 
 	extCap := &atomic.Int64{}
 	capSource := ports.ExtensionCapFunc(func(context.Context) (int, error) { return int(extCap.Load()), nil })
-	svc := application.NewService(pool, pbxpg.NewStore(), capSource, projector, authz, identityStore, testRealm)
+	svc := application.NewService(pool, pbxpg.NewStore(), pbxpg.NewTrunkStore(), pbxpg.NewRouteStore(), capSource, projector, authz, identityStore, testRealm)
 
 	ctx := identityapp.WithTenantContext(context.Background(), &identityports.TenantContext{
 		TenantID:    tenant.ID,

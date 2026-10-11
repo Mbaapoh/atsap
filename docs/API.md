@@ -39,6 +39,13 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `UpdateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console rename and device-type change |
 | `DeleteExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console deprovisioning |
 | `RegenerateSecret` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Credential rotation; the second and last place a secret appears |
+| `CreateTrunk` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console trunks screen (flow A4); accepts the carrier secret, never returns it |
+| `ListTrunks` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console trunks list, with observed health |
+| `UpdateTrunk` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console trunk edit; optional replacement secret, health not an input |
+| `DeleteTrunk` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console carrier removal; takes the trunk's routes with it |
+| `CreateRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing (flow A4) |
+| `ListRoutes` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing table |
+| `DeleteRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing |
 
 ### Authentication
 
@@ -100,6 +107,8 @@ Each needs a reason, not merely an absence of demand.
 | `RecordAudit` | identity | A write path used by provisioning. Partners *read* audit; they do not author it |
 | `InitiateCall` | telephony-core | Works and is e2e-proven, but `pbx-core` (LLD-03) reshapes what origination means once routing and extensions exist. Freezing the contract now is what D-25 warns against |
 | `HangupCall` | telephony-core | Same reasoning; the likeliest early addition once the portal has a call view |
+| `SelectOutboundRoute` | pbx-core | Mechanism. Asking which trunk would be picked, separately from placing the call, is an oracle whose answer can change between the two calls (LLD-03 §6) |
+| `ReportRouteHealth` | pbx-core | Health is observed from call outcomes; a caller-facing setter would make it configured. Its first reporter is `pbx-call-placement` |
 | `AnswerParticipant`, `HoldParticipant`, `TransferParticipant` | telephony-core | Not implemented at all — `ErrNotImplemented`, out of LLD-01 scope |
 
 ---
@@ -134,9 +143,6 @@ of it lands on a new **`PbxService`**, not on `TelephonyService`:
 
 | RPC | Phase | Consumer |
 |---|---|---|
-| `CreateExtension`, `ListExtensions`, `UpdateExtension`, `DeleteExtension` | A | Console extensions screen |
-| `CreateTrunk`, `ListTrunks`, `UpdateTrunk`, `DeleteTrunk` | A | Console trunks screen |
-| `CreateRoute`, `ListRoutes`, `DeleteRoute` | A | Console outbound routing |
 | `PlaceCall`, `HangupCall` | A | The UAT harness, which BRD §16 requires to demonstrate Phase A through the public API; the Phase B agent UI second |
 | `IvrFlow*` (including publish, version, rollback) | B | Visual IVR builder |
 

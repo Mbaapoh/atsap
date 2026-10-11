@@ -7,12 +7,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"atsap-api/internal/postgres"
+	shareddomain "atsap-api/internal/shared/domain"
 )
 
 // engineDatabaseURL returns the URL for the media engine's own database
@@ -164,7 +166,7 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 			"the engine must NOT be able to write %s — we own those rows", table)
 	}
 
-	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs"} {
+	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs", "carrier_trunks", "carrier_routes"} {
 		var n int
 		err := conn.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n)
 		require.Error(t, err, "the engine must NOT be able to read %s: it has no grant on any domain table", table)
@@ -221,4 +223,85 @@ func TestPbxSchema_PsAorsCarriesStaticContactColumn(t *testing.T) {
 	defer rows.Close()
 	assert.False(t, rows.Next(), "no permanent contacts are configured, so the poll returns empty")
 	require.NoError(t, rows.Err())
+}
+
+// TestPbxSchema_CarrierTablesAreTenantScopedAndForced covers task 1.2:
+// both carrier tables carry tenant_id, RLS enabled AND forced, and their
+// isolation policy — the pattern extensions established.
+func TestPbxSchema_CarrierTablesAreTenantScopedAndForced(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	pool, err := postgres.Open(context.Background(), databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+	ctx := context.Background()
+
+	for _, table := range []string{"carrier_trunks", "carrier_routes"} {
+		t.Run(table, func(t *testing.T) {
+			var hasTenantID bool
+			require.NoError(t, pool.Unwrap().QueryRow(ctx,
+				`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+				 WHERE table_name = $1 AND column_name = 'tenant_id')`, table,
+			).Scan(&hasTenantID))
+			assert.True(t, hasTenantID, "%s must carry tenant_id (D-24 seam 1)", table)
+
+			var enabled, forced bool
+			require.NoError(t, pool.Unwrap().QueryRow(ctx,
+				`SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = $1`, table,
+			).Scan(&enabled, &forced))
+			assert.True(t, enabled, "%s must have RLS enabled", table)
+			assert.True(t, forced, "%s must have RLS FORCED: the owner is exempt from its own policies otherwise", table)
+
+			var policies int
+			require.NoError(t, pool.Unwrap().QueryRow(ctx,
+				`SELECT count(*) FROM pg_policies WHERE tablename = $1 AND policyname = $2`,
+				table, "tenant_isolation_"+table,
+			).Scan(&policies))
+			assert.Equal(t, 1, policies, "%s must have its tenant_isolation policy", table)
+		})
+	}
+}
+
+// TestPbxSchema_RouteCannotReferenceAnotherTenantsTrunk proves the
+// composite foreign key. Foreign-key checks bypass RLS, so with a plain
+// REFERENCES carrier_trunks(id) a route in tenant A could point at
+// tenant B's trunk given its id; the schema itself must refuse it.
+func TestPbxSchema_RouteCannotReferenceAnotherTenantsTrunk(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+
+	pool, err := postgres.Open(context.Background(), databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+	ctx := context.Background()
+
+	tenantA, tenantB := uuid.NewString(), uuid.NewString()
+	for _, id := range []string{tenantA, tenantB} {
+		_, err := pool.Unwrap().Exec(ctx,
+			`INSERT INTO tenants (id, name, status, residency_zone) VALUES ($1, $2, 'ACTIVE', 'EU')`, id, "t-"+id)
+		require.NoError(t, err)
+	}
+	trunkB := uuid.NewString()
+	require.NoError(t, pool.WithTenant(ctx, mustTenant(t, tenantB), func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO carrier_trunks (id, tenant_id, name, host) VALUES ($1, $2, 'b', 'sip.example.net')`,
+			trunkB, tenantB)
+		return err
+	}))
+
+	err = pool.WithTenant(ctx, mustTenant(t, tenantA), func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO carrier_routes (tenant_id, prefix_pattern, trunk_id) VALUES ($1, '44', $2)`,
+			tenantA, trunkB)
+		return err
+	})
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "a route must not reference another tenant's trunk")
+	assert.Equal(t, "23503", pgErr.Code, "refused by the foreign key, not by luck")
+}
+
+func mustTenant(t *testing.T, s string) shareddomain.TenantID {
+	t.Helper()
+	id, err := shareddomain.ParseTenantID(s)
+	require.NoError(t, err)
+	return id
 }

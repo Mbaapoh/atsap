@@ -49,6 +49,38 @@ service PbxService {
   // working the moment this returns — two live credentials for one
   // extension is the state a rotation exists to end.
   rpc RegenerateSecret(RegenerateSecretRequest) returns (RegenerateSecretResponse);
+
+  // CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
+  // secret, if any, is accepted here and on UpdateTrunk and is never
+  // returned by any call — unlike an extension secret, it was chosen by
+  // the carrier, not generated, so there is nothing to show once.
+  rpc CreateTrunk(CreateTrunkRequest) returns (CreateTrunkResponse);
+
+  // ListTrunks returns a page of the calling tenant's trunks, with the
+  // health the platform has observed for each.
+  rpc ListTrunks(ListTrunksRequest) returns (ListTrunksResponse);
+
+  // UpdateTrunk replaces a trunk's configuration. An empty secret keeps
+  // the stored one; an empty auth_username makes the trunk
+  // IP-authenticated and discards any stored secret. Health is not an
+  // input: it is observed, never set.
+  rpc UpdateTrunk(UpdateTrunkRequest) returns (UpdateTrunkResponse);
+
+  // DeleteTrunk disconnects a carrier, together with every route that
+  // sends to it. It is never selected again from the moment this
+  // returns; calls already in progress are unaffected.
+  rpc DeleteTrunk(DeleteTrunkRequest) returns (DeleteTrunkResponse);
+
+  // CreateRoute sends dialled numbers matching a prefix pattern to one of
+  // the tenant's own trunks. Overlapping patterns are allowed: overlap is
+  // how least-cost preference is expressed.
+  rpc CreateRoute(CreateRouteRequest) returns (CreateRouteResponse);
+
+  // ListRoutes returns a page of the calling tenant's outbound routes.
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+
+  // DeleteRoute removes an outbound route.
+  rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse);
 }
 
 // DeviceType is how a device attaches to an extension.
@@ -148,3 +180,132 @@ message RegenerateSecretResponse {
   // The new secret, returned exactly once, as at creation.
   string secret = 2;
 }
+
+// TrunkHealth is what the platform has OBSERVED about a carrier from
+// call outcomes. No request carries it: a trunk shown healthy because
+// someone ticked a box would be worse than showing nothing.
+enum TrunkHealth {
+  TRUNK_HEALTH_UNSPECIFIED = 0;
+  TRUNK_HEALTH_HEALTHY = 1;
+  // Still selected, but only after every healthy trunk.
+  TRUNK_HEALTH_DEGRADED = 2;
+  // Skipped by route selection until a good outcome is observed.
+  TRUNK_HEALTH_UNHEALTHY = 3;
+}
+
+// Trunk is what a caller sees of a carrier connection. It carries no
+// secret and no engine object of any kind.
+message Trunk {
+  string trunk_id = 1;
+  string name = 2;
+  // A hostname or IP address — no scheme, port or user part.
+  string host = 3;
+  int32 port = 4;
+  // The carrier digest username, if the carrier uses one. Configuration,
+  // not a secret, so it is shown, as every SIP-trunk interface shows it.
+  string auth_username = 5;
+  // Whether a carrier secret is stored. The secret itself is never
+  // returned.
+  bool has_secret = 6;
+  int32 channel_limit = 7;
+  // Lower is preferred.
+  int32 priority = 8;
+  TrunkHealth health = 9;
+}
+
+message CreateTrunkRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string host = 3;
+  // 0 means the SIP default, 5060.
+  int32 port = 4;
+  // Leave auth_username and secret empty for a carrier that
+  // authenticates by source IP. A secret requires a username.
+  string auth_username = 5;
+  string secret = 6;
+  // Concurrent-call cap on this trunk; must be positive.
+  int32 channel_limit = 7;
+  int32 priority = 8;
+}
+
+message CreateTrunkResponse {
+  Trunk trunk = 1;
+}
+
+message ListTrunksRequest {
+  string tenant_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListTrunksResponse {
+  repeated Trunk trunks = 1;
+}
+
+message UpdateTrunkRequest {
+  string tenant_id = 1;
+  string trunk_id = 2;
+  string name = 3;
+  string host = 4;
+  // 0 means the SIP default, 5060.
+  int32 port = 5;
+  string auth_username = 6;
+  // Empty keeps the stored secret; non-empty replaces it.
+  string secret = 7;
+  int32 channel_limit = 8;
+  int32 priority = 9;
+}
+
+message UpdateTrunkResponse {
+  Trunk trunk = 1;
+}
+
+message DeleteTrunkRequest {
+  string tenant_id = 1;
+  string trunk_id = 2;
+}
+
+message DeleteTrunkResponse {}
+
+// Route sends dialled numbers matching prefix_pattern to trunk_id.
+message Route {
+  string route_id = 1;
+  // An optional leading + then digits and X (any one digit), e.g. "44",
+  // "+1", "447X". Not an expression language.
+  string prefix_pattern = 2;
+  string trunk_id = 3;
+  // Stored cost in millionths of the currency unit per minute. Used only
+  // to break ties; it is not a rating model.
+  int64 cost_per_minute_micros = 4;
+  // Lower wins among patterns of equal length.
+  int32 priority = 5;
+}
+
+message CreateRouteRequest {
+  string tenant_id = 1;
+  string prefix_pattern = 2;
+  string trunk_id = 3;
+  int64 cost_per_minute_micros = 4;
+  int32 priority = 5;
+}
+
+message CreateRouteResponse {
+  Route route = 1;
+}
+
+message ListRoutesRequest {
+  string tenant_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+message DeleteRouteRequest {
+  string tenant_id = 1;
+  string route_id = 2;
+}
+
+message DeleteRouteResponse {}

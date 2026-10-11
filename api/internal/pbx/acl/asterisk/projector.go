@@ -274,6 +274,10 @@ func (p *Projector) ListProjected(ctx context.Context) (ports.ProjectionInventor
 			inv.Extensions = append(inv.Extensions, extID)
 			continue
 		}
+		if trunkID, ok := domain.TrunkIDFromIdentifier(id); ok {
+			inv.Trunks = append(inv.Trunks, trunkID)
+			continue
+		}
 		inv.Unattributable = append(inv.Unattributable, id)
 	}
 	if err := rows.Err(); err != nil {

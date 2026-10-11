@@ -10,6 +10,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -106,6 +107,76 @@ type Page struct {
 	Offset int
 }
 
+// CreateTrunkCommand is what a caller supplies to connect a carrier.
+//
+// AuthUsername and Secret are both optional: neither means an
+// IP-authenticated carrier, a secret without a username is refused
+// (design D7). There is deliberately no health field — health is
+// observed, never configured.
+type CreateTrunkCommand struct {
+	TenantID     shareddomain.TenantID
+	Name         string
+	Host         string
+	Port         int
+	AuthUsername string
+	// Secret is the carrier password. It is used once, for projection, and
+	// is never returned, logged or audited. Never log this struct.
+	Secret       string
+	ChannelLimit int
+	Priority     int
+}
+
+// UpdateTrunkCommand replaces a trunk's configuration.
+//
+// An empty Secret keeps the stored one; a non-empty Secret replaces it.
+// An empty AuthUsername turns the trunk into an IP-authenticated carrier
+// and drops any stored secret with it, since a secret without a
+// username cannot be presented. Health is not updatable.
+type UpdateTrunkCommand struct {
+	TenantID     shareddomain.TenantID
+	ID           shareddomain.TrunkID
+	Name         string
+	Host         string
+	Port         int
+	AuthUsername string
+	Secret       string
+	ChannelLimit int
+	Priority     int
+}
+
+// TrunkView is what a caller sees: never the secret, never an engine
+// identifier. HasSecret says whether one is stored, which is all a
+// console needs to render a password field as set.
+type TrunkView struct {
+	ID           shareddomain.TrunkID
+	Name         string
+	Host         string
+	Port         int
+	AuthUsername string
+	HasSecret    bool
+	ChannelLimit int
+	Priority     int
+	Health       domain.TrunkHealth
+}
+
+// CreateRouteCommand is what a caller supplies to add an outbound route.
+type CreateRouteCommand struct {
+	TenantID      shareddomain.TenantID
+	PrefixPattern string
+	TrunkID       shareddomain.TrunkID
+	CostPerMinute int64
+	Priority      int
+}
+
+// RouteView is what a caller sees of a route.
+type RouteView struct {
+	ID            shareddomain.RouteID
+	PrefixPattern string
+	TrunkID       shareddomain.TrunkID
+	CostPerMinute int64
+	Priority      int
+}
+
 // ConfigService is pbx-core's inbound port: the configuration API the
 // console drives and a partner may call directly. Every method
 // authorizes before acting and operates only within the caller's tenant.
@@ -116,6 +187,57 @@ type ConfigService interface {
 	ListExtensions(ctx context.Context, tenantID shareddomain.TenantID, page Page) ([]ExtensionView, error)
 	GetExtension(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) (ExtensionView, error)
 	RegenerateSecret(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) (CreatedExtension, error)
+
+	// Trunk and route operations mirror the extension ones (LLD-03 §4.4).
+	CreateTrunk(ctx context.Context, cmd CreateTrunkCommand) (TrunkView, error)
+	UpdateTrunk(ctx context.Context, cmd UpdateTrunkCommand) (TrunkView, error)
+	DeleteTrunk(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.TrunkID) error
+	ListTrunks(ctx context.Context, tenantID shareddomain.TenantID, page Page) ([]TrunkView, error)
+	CreateRoute(ctx context.Context, cmd CreateRouteCommand) (RouteView, error)
+	DeleteRoute(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.RouteID) error
+	ListRoutes(ctx context.Context, tenantID shareddomain.TenantID, page Page) ([]RouteView, error)
+}
+
+// RoutePlanner is exactly HLD 04 §2: no methods added, no signatures
+// changed. Port only — never on the wire (LLD-03 §6): a client asking
+// which trunk would be picked, separately from placing the call, is an
+// oracle whose answer can change between the two.
+//
+// ReportRouteHealth carries no tenant argument, because HLD 04 §2 fixes
+// the signature; the tenant is the authenticated caller's, read from ctx,
+// as every other pbx-core operation reads its actor.
+type RoutePlanner interface {
+	SelectOutboundRoute(ctx context.Context, tenantID shareddomain.TenantID, destination string) ([]domain.TrunkRoute, error)
+	ReportRouteHealth(ctx context.Context, trunkID shareddomain.TrunkID, statusCode int, latency time.Duration) error
+}
+
+// TrunkStore is the outbound storage port for trunks. Like
+// ExtensionStore, every method takes the caller's transaction, and
+// tenancy is enforced by its RLS context.
+type TrunkStore interface {
+	Insert(ctx context.Context, tx pgx.Tx, trunk domain.Trunk) error
+	Update(ctx context.Context, tx pgx.Tx, trunk domain.Trunk) error
+	// Delete MUST report ErrNotFound when it removed nothing: RemoveTrunk
+	// runs on tables with no RLS, and is gated by this (design D9 of the
+	// extensions change, unchanged).
+	Delete(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID) error
+	Get(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID) (domain.Trunk, error)
+	List(ctx context.Context, tx pgx.Tx, page Page) ([]domain.Trunk, error)
+	// SetHealth records an observed health. It is the only writer of
+	// health, and nothing on the configuration path calls it.
+	SetHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, health domain.TrunkHealth) error
+}
+
+// RouteStore is the outbound storage port for routes.
+type RouteStore interface {
+	Insert(ctx context.Context, tx pgx.Tx, route domain.CarrierRoute) error
+	// Delete reports ErrNotFound when it removed nothing.
+	Delete(ctx context.Context, tx pgx.Tx, id shareddomain.RouteID) error
+	Get(ctx context.Context, tx pgx.Tx, id shareddomain.RouteID) (domain.CarrierRoute, error)
+	List(ctx context.Context, tx pgx.Tx, page Page) ([]domain.CarrierRoute, error)
+	// DeleteByTrunk removes every route sending to trunkID and returns
+	// them, so a trunk deletion can audit what it took with it.
+	DeleteByTrunk(ctx context.Context, tx pgx.Tx, trunkID shareddomain.TrunkID) ([]domain.CarrierRoute, error)
 }
 
 // ExtensionStore is the outbound storage port.
@@ -156,6 +278,8 @@ type ProjectionInventory struct {
 	// Extensions are projected rows whose identifier maps back to an
 	// extension.
 	Extensions []shareddomain.ExtensionID
+	// Trunks are projected rows whose identifier maps back to a trunk.
+	Trunks []shareddomain.TrunkID
 	// Unattributable are rows this ACL did not write and cannot explain —
 	// hand-written, or left by a future object kind. Reported, never
 	// repaired: deleting a row nobody can account for is how a reconciler
@@ -179,6 +303,11 @@ type ProjectionReconciler interface {
 	// Presence alone is not agreement: a hand-edited row leaves the
 	// extension listed in the console and broken on the phone.
 	DiffExtension(ctx context.Context, ext domain.Extension) ([]string, error)
+
+	// DiffTrunk is DiffExtension for a trunk. The secret itself cannot be
+	// compared — the platform does not hold it — so a missing secret is
+	// reported as "secret", which no repair can restore.
+	DiffTrunk(ctx context.Context, trunk domain.Trunk) ([]string, error)
 }
 
 // EndpointProjector is the outbound port onto the media engine's own
@@ -196,6 +325,19 @@ type EndpointProjector interface {
 
 	// RemoveExtension deprovisions ext. Also inside tx.
 	RemoveExtension(ctx context.Context, tx pgx.Tx, id shareddomain.ExtensionID) error
+
+	// ProjectTrunk makes trunk usable as an outbound carrier, inside tx.
+	//
+	// secret is the carrier password and is written only to the engine's
+	// auth state (LLD-03 §7.4). nil keeps whatever secret is already
+	// projected, which is how an update that supplies no new secret
+	// leaves it unchanged; a trunk with no AuthUsername has no auth state
+	// at all.
+	ProjectTrunk(ctx context.Context, tx pgx.Tx, trunk domain.Trunk, secret []byte) error
+
+	// RemoveTrunk deprovisions a trunk. Also inside tx, and only after a
+	// domain delete RLS authorized.
+	RemoveTrunk(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID) error
 
 	// RegistrationStatus reports which of ids currently have a device
 	// registered. It takes a slice because the extensions list screen

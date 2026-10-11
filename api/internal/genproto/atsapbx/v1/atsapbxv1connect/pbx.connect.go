@@ -50,6 +50,20 @@ const (
 	// PbxServiceRegenerateSecretProcedure is the fully-qualified name of the PbxService's
 	// RegenerateSecret RPC.
 	PbxServiceRegenerateSecretProcedure = "/atsapbx.v1.PbxService/RegenerateSecret"
+	// PbxServiceCreateTrunkProcedure is the fully-qualified name of the PbxService's CreateTrunk RPC.
+	PbxServiceCreateTrunkProcedure = "/atsapbx.v1.PbxService/CreateTrunk"
+	// PbxServiceListTrunksProcedure is the fully-qualified name of the PbxService's ListTrunks RPC.
+	PbxServiceListTrunksProcedure = "/atsapbx.v1.PbxService/ListTrunks"
+	// PbxServiceUpdateTrunkProcedure is the fully-qualified name of the PbxService's UpdateTrunk RPC.
+	PbxServiceUpdateTrunkProcedure = "/atsapbx.v1.PbxService/UpdateTrunk"
+	// PbxServiceDeleteTrunkProcedure is the fully-qualified name of the PbxService's DeleteTrunk RPC.
+	PbxServiceDeleteTrunkProcedure = "/atsapbx.v1.PbxService/DeleteTrunk"
+	// PbxServiceCreateRouteProcedure is the fully-qualified name of the PbxService's CreateRoute RPC.
+	PbxServiceCreateRouteProcedure = "/atsapbx.v1.PbxService/CreateRoute"
+	// PbxServiceListRoutesProcedure is the fully-qualified name of the PbxService's ListRoutes RPC.
+	PbxServiceListRoutesProcedure = "/atsapbx.v1.PbxService/ListRoutes"
+	// PbxServiceDeleteRouteProcedure is the fully-qualified name of the PbxService's DeleteRoute RPC.
+	PbxServiceDeleteRouteProcedure = "/atsapbx.v1.PbxService/DeleteRoute"
 )
 
 // PbxServiceClient is a client for the atsapbx.v1.PbxService service.
@@ -73,6 +87,31 @@ type PbxServiceClient interface {
 	// working the moment this returns — two live credentials for one
 	// extension is the state a rotation exists to end.
 	RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error)
+	// CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
+	// secret, if any, is accepted here and on UpdateTrunk and is never
+	// returned by any call — unlike an extension secret, it was chosen by
+	// the carrier, not generated, so there is nothing to show once.
+	CreateTrunk(context.Context, *connect.Request[v1.CreateTrunkRequest]) (*connect.Response[v1.CreateTrunkResponse], error)
+	// ListTrunks returns a page of the calling tenant's trunks, with the
+	// health the platform has observed for each.
+	ListTrunks(context.Context, *connect.Request[v1.ListTrunksRequest]) (*connect.Response[v1.ListTrunksResponse], error)
+	// UpdateTrunk replaces a trunk's configuration. An empty secret keeps
+	// the stored one; an empty auth_username makes the trunk
+	// IP-authenticated and discards any stored secret. Health is not an
+	// input: it is observed, never set.
+	UpdateTrunk(context.Context, *connect.Request[v1.UpdateTrunkRequest]) (*connect.Response[v1.UpdateTrunkResponse], error)
+	// DeleteTrunk disconnects a carrier, together with every route that
+	// sends to it. It is never selected again from the moment this
+	// returns; calls already in progress are unaffected.
+	DeleteTrunk(context.Context, *connect.Request[v1.DeleteTrunkRequest]) (*connect.Response[v1.DeleteTrunkResponse], error)
+	// CreateRoute sends dialled numbers matching a prefix pattern to one of
+	// the tenant's own trunks. Overlapping patterns are allowed: overlap is
+	// how least-cost preference is expressed.
+	CreateRoute(context.Context, *connect.Request[v1.CreateRouteRequest]) (*connect.Response[v1.CreateRouteResponse], error)
+	// ListRoutes returns a page of the calling tenant's outbound routes.
+	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
+	// DeleteRoute removes an outbound route.
+	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
 }
 
 // NewPbxServiceClient constructs a client for the atsapbx.v1.PbxService service. By default, it
@@ -122,6 +161,48 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(pbxServiceMethods.ByName("RegenerateSecret")),
 			connect.WithClientOptions(opts...),
 		),
+		createTrunk: connect.NewClient[v1.CreateTrunkRequest, v1.CreateTrunkResponse](
+			httpClient,
+			baseURL+PbxServiceCreateTrunkProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("CreateTrunk")),
+			connect.WithClientOptions(opts...),
+		),
+		listTrunks: connect.NewClient[v1.ListTrunksRequest, v1.ListTrunksResponse](
+			httpClient,
+			baseURL+PbxServiceListTrunksProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListTrunks")),
+			connect.WithClientOptions(opts...),
+		),
+		updateTrunk: connect.NewClient[v1.UpdateTrunkRequest, v1.UpdateTrunkResponse](
+			httpClient,
+			baseURL+PbxServiceUpdateTrunkProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("UpdateTrunk")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteTrunk: connect.NewClient[v1.DeleteTrunkRequest, v1.DeleteTrunkResponse](
+			httpClient,
+			baseURL+PbxServiceDeleteTrunkProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("DeleteTrunk")),
+			connect.WithClientOptions(opts...),
+		),
+		createRoute: connect.NewClient[v1.CreateRouteRequest, v1.CreateRouteResponse](
+			httpClient,
+			baseURL+PbxServiceCreateRouteProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("CreateRoute")),
+			connect.WithClientOptions(opts...),
+		),
+		listRoutes: connect.NewClient[v1.ListRoutesRequest, v1.ListRoutesResponse](
+			httpClient,
+			baseURL+PbxServiceListRoutesProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListRoutes")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteRoute: connect.NewClient[v1.DeleteRouteRequest, v1.DeleteRouteResponse](
+			httpClient,
+			baseURL+PbxServiceDeleteRouteProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("DeleteRoute")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -133,6 +214,13 @@ type pbxServiceClient struct {
 	updateExtension  *connect.Client[v1.UpdateExtensionRequest, v1.UpdateExtensionResponse]
 	deleteExtension  *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
 	regenerateSecret *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
+	createTrunk      *connect.Client[v1.CreateTrunkRequest, v1.CreateTrunkResponse]
+	listTrunks       *connect.Client[v1.ListTrunksRequest, v1.ListTrunksResponse]
+	updateTrunk      *connect.Client[v1.UpdateTrunkRequest, v1.UpdateTrunkResponse]
+	deleteTrunk      *connect.Client[v1.DeleteTrunkRequest, v1.DeleteTrunkResponse]
+	createRoute      *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
+	listRoutes       *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
+	deleteRoute      *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
 }
 
 // CreateExtension calls atsapbx.v1.PbxService.CreateExtension.
@@ -165,6 +253,41 @@ func (c *pbxServiceClient) RegenerateSecret(ctx context.Context, req *connect.Re
 	return c.regenerateSecret.CallUnary(ctx, req)
 }
 
+// CreateTrunk calls atsapbx.v1.PbxService.CreateTrunk.
+func (c *pbxServiceClient) CreateTrunk(ctx context.Context, req *connect.Request[v1.CreateTrunkRequest]) (*connect.Response[v1.CreateTrunkResponse], error) {
+	return c.createTrunk.CallUnary(ctx, req)
+}
+
+// ListTrunks calls atsapbx.v1.PbxService.ListTrunks.
+func (c *pbxServiceClient) ListTrunks(ctx context.Context, req *connect.Request[v1.ListTrunksRequest]) (*connect.Response[v1.ListTrunksResponse], error) {
+	return c.listTrunks.CallUnary(ctx, req)
+}
+
+// UpdateTrunk calls atsapbx.v1.PbxService.UpdateTrunk.
+func (c *pbxServiceClient) UpdateTrunk(ctx context.Context, req *connect.Request[v1.UpdateTrunkRequest]) (*connect.Response[v1.UpdateTrunkResponse], error) {
+	return c.updateTrunk.CallUnary(ctx, req)
+}
+
+// DeleteTrunk calls atsapbx.v1.PbxService.DeleteTrunk.
+func (c *pbxServiceClient) DeleteTrunk(ctx context.Context, req *connect.Request[v1.DeleteTrunkRequest]) (*connect.Response[v1.DeleteTrunkResponse], error) {
+	return c.deleteTrunk.CallUnary(ctx, req)
+}
+
+// CreateRoute calls atsapbx.v1.PbxService.CreateRoute.
+func (c *pbxServiceClient) CreateRoute(ctx context.Context, req *connect.Request[v1.CreateRouteRequest]) (*connect.Response[v1.CreateRouteResponse], error) {
+	return c.createRoute.CallUnary(ctx, req)
+}
+
+// ListRoutes calls atsapbx.v1.PbxService.ListRoutes.
+func (c *pbxServiceClient) ListRoutes(ctx context.Context, req *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error) {
+	return c.listRoutes.CallUnary(ctx, req)
+}
+
+// DeleteRoute calls atsapbx.v1.PbxService.DeleteRoute.
+func (c *pbxServiceClient) DeleteRoute(ctx context.Context, req *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {
+	return c.deleteRoute.CallUnary(ctx, req)
+}
+
 // PbxServiceHandler is an implementation of the atsapbx.v1.PbxService service.
 type PbxServiceHandler interface {
 	// CreateExtension provisions an extension and makes it registrable by
@@ -186,6 +309,31 @@ type PbxServiceHandler interface {
 	// working the moment this returns — two live credentials for one
 	// extension is the state a rotation exists to end.
 	RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error)
+	// CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
+	// secret, if any, is accepted here and on UpdateTrunk and is never
+	// returned by any call — unlike an extension secret, it was chosen by
+	// the carrier, not generated, so there is nothing to show once.
+	CreateTrunk(context.Context, *connect.Request[v1.CreateTrunkRequest]) (*connect.Response[v1.CreateTrunkResponse], error)
+	// ListTrunks returns a page of the calling tenant's trunks, with the
+	// health the platform has observed for each.
+	ListTrunks(context.Context, *connect.Request[v1.ListTrunksRequest]) (*connect.Response[v1.ListTrunksResponse], error)
+	// UpdateTrunk replaces a trunk's configuration. An empty secret keeps
+	// the stored one; an empty auth_username makes the trunk
+	// IP-authenticated and discards any stored secret. Health is not an
+	// input: it is observed, never set.
+	UpdateTrunk(context.Context, *connect.Request[v1.UpdateTrunkRequest]) (*connect.Response[v1.UpdateTrunkResponse], error)
+	// DeleteTrunk disconnects a carrier, together with every route that
+	// sends to it. It is never selected again from the moment this
+	// returns; calls already in progress are unaffected.
+	DeleteTrunk(context.Context, *connect.Request[v1.DeleteTrunkRequest]) (*connect.Response[v1.DeleteTrunkResponse], error)
+	// CreateRoute sends dialled numbers matching a prefix pattern to one of
+	// the tenant's own trunks. Overlapping patterns are allowed: overlap is
+	// how least-cost preference is expressed.
+	CreateRoute(context.Context, *connect.Request[v1.CreateRouteRequest]) (*connect.Response[v1.CreateRouteResponse], error)
+	// ListRoutes returns a page of the calling tenant's outbound routes.
+	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
+	// DeleteRoute removes an outbound route.
+	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
 }
 
 // NewPbxServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -231,6 +379,48 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(pbxServiceMethods.ByName("RegenerateSecret")),
 		connect.WithHandlerOptions(opts...),
 	)
+	pbxServiceCreateTrunkHandler := connect.NewUnaryHandler(
+		PbxServiceCreateTrunkProcedure,
+		svc.CreateTrunk,
+		connect.WithSchema(pbxServiceMethods.ByName("CreateTrunk")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListTrunksHandler := connect.NewUnaryHandler(
+		PbxServiceListTrunksProcedure,
+		svc.ListTrunks,
+		connect.WithSchema(pbxServiceMethods.ByName("ListTrunks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceUpdateTrunkHandler := connect.NewUnaryHandler(
+		PbxServiceUpdateTrunkProcedure,
+		svc.UpdateTrunk,
+		connect.WithSchema(pbxServiceMethods.ByName("UpdateTrunk")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceDeleteTrunkHandler := connect.NewUnaryHandler(
+		PbxServiceDeleteTrunkProcedure,
+		svc.DeleteTrunk,
+		connect.WithSchema(pbxServiceMethods.ByName("DeleteTrunk")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceCreateRouteHandler := connect.NewUnaryHandler(
+		PbxServiceCreateRouteProcedure,
+		svc.CreateRoute,
+		connect.WithSchema(pbxServiceMethods.ByName("CreateRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListRoutesHandler := connect.NewUnaryHandler(
+		PbxServiceListRoutesProcedure,
+		svc.ListRoutes,
+		connect.WithSchema(pbxServiceMethods.ByName("ListRoutes")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceDeleteRouteHandler := connect.NewUnaryHandler(
+		PbxServiceDeleteRouteProcedure,
+		svc.DeleteRoute,
+		connect.WithSchema(pbxServiceMethods.ByName("DeleteRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.PbxService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PbxServiceCreateExtensionProcedure:
@@ -245,6 +435,20 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServiceDeleteExtensionHandler.ServeHTTP(w, r)
 		case PbxServiceRegenerateSecretProcedure:
 			pbxServiceRegenerateSecretHandler.ServeHTTP(w, r)
+		case PbxServiceCreateTrunkProcedure:
+			pbxServiceCreateTrunkHandler.ServeHTTP(w, r)
+		case PbxServiceListTrunksProcedure:
+			pbxServiceListTrunksHandler.ServeHTTP(w, r)
+		case PbxServiceUpdateTrunkProcedure:
+			pbxServiceUpdateTrunkHandler.ServeHTTP(w, r)
+		case PbxServiceDeleteTrunkProcedure:
+			pbxServiceDeleteTrunkHandler.ServeHTTP(w, r)
+		case PbxServiceCreateRouteProcedure:
+			pbxServiceCreateRouteHandler.ServeHTTP(w, r)
+		case PbxServiceListRoutesProcedure:
+			pbxServiceListRoutesHandler.ServeHTTP(w, r)
+		case PbxServiceDeleteRouteProcedure:
+			pbxServiceDeleteRouteHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -276,4 +480,32 @@ func (UnimplementedPbxServiceHandler) DeleteExtension(context.Context, *connect.
 
 func (UnimplementedPbxServiceHandler) RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.RegenerateSecret is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) CreateTrunk(context.Context, *connect.Request[v1.CreateTrunkRequest]) (*connect.Response[v1.CreateTrunkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.CreateTrunk is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListTrunks(context.Context, *connect.Request[v1.ListTrunksRequest]) (*connect.Response[v1.ListTrunksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListTrunks is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) UpdateTrunk(context.Context, *connect.Request[v1.UpdateTrunkRequest]) (*connect.Response[v1.UpdateTrunkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.UpdateTrunk is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) DeleteTrunk(context.Context, *connect.Request[v1.DeleteTrunkRequest]) (*connect.Response[v1.DeleteTrunkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteTrunk is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) CreateRoute(context.Context, *connect.Request[v1.CreateRouteRequest]) (*connect.Response[v1.CreateRouteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.CreateRoute is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListRoutes is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteRoute is not implemented"))
 }
