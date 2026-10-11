@@ -131,6 +131,13 @@ dc_resource(
     labels=['infra'],
 )
 
+# Captures dev mail (password resets, invitations); its web UI lists them.
+dc_resource(
+    'mailpit',
+    links=['http://localhost:8025'],
+    labels=['infra'],
+)
+
 dc_resource(
     'asterisk',
     resource_deps=['postgres'],
@@ -143,7 +150,7 @@ dc_resource(
 
 dc_resource(
     'app',
-    resource_deps=['postgres', 'nats', 'asterisk', 'env-guard'],
+    resource_deps=['postgres', 'nats', 'asterisk', 'mailpit', 'env-guard'],
     links=['http://localhost:8080/healthz'],
     labels=['app'],
 )

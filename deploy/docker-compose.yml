@@ -96,6 +96,19 @@ services:
     networks:
       - voip
 
+  # Mailpit captures every mail the dev app sends — password resets and
+  # invitations (identity-accounts-and-sessions D10) — so a developer, and
+  # the identity e2e suite, can read them without a real mailbox. Dev only:
+  # production names a real SMTP server via ATSAPBX_SMTP_ADDR. Pinned by
+  # version and digest (TOOLSET §6).
+  mailpit:
+    image: axllent/mailpit:v1.21.8@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
+    ports:
+      - "8025:8025"   # web UI and the HTTP API the e2e suite reads
+    restart: unless-stopped
+    networks:
+      - voip
+
   app:
     build:
       context: ../api
@@ -108,6 +121,13 @@ services:
     environment:
       ARI_URL: http://asterisk:8088/ari
       AMI_ADDR: asterisk:5038
+      # Dev rig mail and cookies (D-62, D-64): Mailpit has no TLS, and the
+      # rig serves plain HTTP, so both insecure flags are set HERE and
+      # nowhere else. The app logs a warning for each at startup.
+      ATSAPBX_SMTP_ADDR: mailpit:1025
+      ATSAPBX_SMTP_INSECURE: "true"
+      ATSAPBX_COOKIE_INSECURE: "true"
+      ATSAPBX_CONSOLE_URL: http://localhost:8080
     ports:
       - "8080:8080"
     # No healthcheck stanza yet: the image is distroless (no shell/curl),
@@ -125,6 +145,8 @@ services:
       nats:
         condition: service_healthy
       asterisk:
+        condition: service_started
+      mailpit:
         condition: service_started
     networks:
       - voip

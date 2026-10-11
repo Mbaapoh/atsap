@@ -164,6 +164,7 @@ All developer environments and CI pipelines execute tools managed strictly by `m
 | **docker** | `24+` | Host / CI | Local dev stack (`docker compose`) and production image builds |
 | **trivy** | `0.52.2` (pinned image in `Jenkinsfile`) | CI Pipeline | Container image security scanning for OS-level and binary CVEs |
 | **SIPp** | `3.7+` | Test harness | SIP load testing, CPS burst benchmarks, and WebRTC simulation |
+| **Mailpit** | `v1.21.8`, pinned by digest (MIT) | `deploy/docker-compose.yml` | **Dev rig only.** Captures the mail the app sends (password resets, invitations) so developers and the identity e2e suite can read it; production names a real SMTP server. Vetted under §6 for `identity-accounts-and-sessions` (design D10) |
 
 ### CI provider abstraction
 
