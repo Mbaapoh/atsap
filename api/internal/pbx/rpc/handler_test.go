@@ -33,6 +33,11 @@ type fakeService struct {
 	views     []ports.ExtensionView
 	lastPage  ports.Page
 	lastTenID shareddomain.TenantID
+	// Inbound-and-emergency surface (Group 4 stubs return these).
+	createdInbound ports.InboundNumberView
+	inboundViews   []ports.InboundNumberView
+	profile        ports.EmergencyProfile
+	emergencyViews []ports.EmergencyNumberView
 }
 
 func (f *fakeService) CreateExtension(_ context.Context, cmd ports.CreateExtensionCommand) (ports.CreatedExtension, error) {
@@ -106,11 +111,11 @@ func (f *fakeService) ListRoutes(context.Context, shareddomain.TenantID, ports.P
 // Stubs for the inbound-and-emergency surface: the handlers land in
 // Group 4, but the interface already carries them so the fake must too.
 func (f *fakeService) CreateInboundNumber(context.Context, ports.CreateInboundNumberCommand) (ports.InboundNumberView, error) {
-	return ports.InboundNumberView{}, f.err
+	return f.createdInbound, f.err
 }
 
 func (f *fakeService) ListInboundNumbers(context.Context, shareddomain.TenantID) ([]ports.InboundNumberView, error) {
-	return nil, f.err
+	return f.inboundViews, f.err
 }
 
 func (f *fakeService) DeleteInboundNumber(context.Context, shareddomain.TenantID, uuid.UUID) error {
@@ -122,7 +127,7 @@ func (f *fakeService) SetEmergencyProfile(context.Context, shareddomain.TenantID
 }
 
 func (f *fakeService) GetEmergencyProfile(context.Context, shareddomain.TenantID) (ports.EmergencyProfile, error) {
-	return ports.EmergencyProfile{}, f.err
+	return f.profile, f.err
 }
 
 func (f *fakeService) CreateEmergencyNumber(context.Context, shareddomain.TenantID, string) error {
@@ -130,7 +135,7 @@ func (f *fakeService) CreateEmergencyNumber(context.Context, shareddomain.Tenant
 }
 
 func (f *fakeService) ListEmergencyNumbers(context.Context, shareddomain.TenantID) ([]ports.EmergencyNumberView, error) {
-	return nil, f.err
+	return f.emergencyViews, f.err
 }
 
 func (f *fakeService) DeleteEmergencyNumber(context.Context, shareddomain.TenantID, string) error {

@@ -28,8 +28,8 @@ Ordered by dependency. Group 1 settles the engine facts (spike, schema, config) 
 
 ## 4. API
 
-- [ ] 4.1 Add the emergency-profile (`Set`/`GetEmergencyProfile`), emergency-number and inbound-number RPCs to `PbxService`, regenerated with the pinned plugins, with `docs/API.md` §1 rows. Verify `buf lint` and `buf breaking` against develop, and wire tests (invalid number → INVALID_ARGUMENT naming the field, deleting a built-in emergency number → FAILED_PRECONDITION, an invalid country code → INVALID_ARGUMENT, foreign extension → NOT_FOUND, unauthorized → PERMISSION_DENIED)
-- [ ] 4.2 DoD 13 for the new surface: render every response and error, including an internal failure naming engine objects, and assert no engine identifier, endpoint, context or `ATSA_` variable reaches a caller. Verify it fails when internal error text is passed through (fault-injected)
+- [x] 4.1 Add the emergency-profile (`Set`/`GetEmergencyProfile`), emergency-number and inbound-number RPCs to `PbxService`, regenerated with the pinned plugins, with `docs/API.md` §1 rows. Verify `buf lint` and `buf breaking` against develop, and wire tests (invalid number → INVALID_ARGUMENT naming the field, deleting a built-in emergency number → FAILED_PRECONDITION, an invalid country code → INVALID_ARGUMENT, foreign extension → NOT_FOUND, unauthorized → PERMISSION_DENIED) *(done — 8 RPCs, `buf lint`/`breaking`/`generate` clean incl. openapi.yaml; service errors name `number`/`country_code`; all six wire cases pinned.)*
+- [x] 4.2 DoD 13 for the new surface: render every response and error, including an internal failure naming engine objects, and assert no engine identifier, endpoint, context or `ATSA_` variable reaches a caller. Verify it fails when internal error text is passed through (fault-injected) *(done — response sweep + fault-injected internal on all 8 methods; negative control run: leaking mapper fails the test as required.)*
 
 ## 5. Gates
 

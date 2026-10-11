@@ -912,6 +912,310 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.HangupCallResponse'
+  /atsapbx.v1.PbxService/SetEmergencyProfile:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: SetEmergencyProfile
+      description: |-
+        SetEmergencyProfile sets the tenant's emergency country (ISO 3166-1
+         alpha-2, upper case). Its catalogue numbers join 112 in the
+         effective emergency set from the next call on.
+      operationId: atsapbx.v1.PbxService.SetEmergencyProfile
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.SetEmergencyProfileRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.SetEmergencyProfileResponse'
+  /atsapbx.v1.PbxService/GetEmergencyProfile:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: GetEmergencyProfile
+      description: |-
+        GetEmergencyProfile renders the tenant's effective emergency set:
+         112, its country's catalogue numbers, and its own additions, each
+         marked built-in or own. It also reports whether a country is set and
+         whether it names a catalogued country.
+      operationId: atsapbx.v1.PbxService.GetEmergencyProfile
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetEmergencyProfileRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetEmergencyProfileResponse'
+  /atsapbx.v1.PbxService/CreateEmergencyNumber:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: CreateEmergencyNumber
+      description: |-
+        CreateEmergencyNumber adds one of the tenant's own emergency
+         numbers. Numbers already effective (112, catalogue) cannot be added.
+      operationId: atsapbx.v1.PbxService.CreateEmergencyNumber
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CreateEmergencyNumberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.CreateEmergencyNumberResponse'
+  /atsapbx.v1.PbxService/ListEmergencyNumbers:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListEmergencyNumbers
+      description: ListEmergencyNumbers returns the tenant's effective emergency set.
+      operationId: atsapbx.v1.PbxService.ListEmergencyNumbers
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListEmergencyNumbersRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListEmergencyNumbersResponse'
+  /atsapbx.v1.PbxService/DeleteEmergencyNumber:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteEmergencyNumber
+      description: |-
+        DeleteEmergencyNumber removes one of the tenant's own numbers. 112
+         and catalogue numbers are built-in and cannot be removed.
+      operationId: atsapbx.v1.PbxService.DeleteEmergencyNumber
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteEmergencyNumberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.DeleteEmergencyNumberResponse'
+  /atsapbx.v1.PbxService/CreateInboundNumber:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: CreateInboundNumber
+      description: |-
+        CreateInboundNumber assigns one of the tenant's inbound numbers
+         (DIDs) to one of its extensions. A carrier call to the number rings
+         that extension.
+      operationId: atsapbx.v1.PbxService.CreateInboundNumber
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CreateInboundNumberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.CreateInboundNumberResponse'
+  /atsapbx.v1.PbxService/ListInboundNumbers:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListInboundNumbers
+      description: ListInboundNumbers returns the tenant's inbound numbers.
+      operationId: atsapbx.v1.PbxService.ListInboundNumbers
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListInboundNumbersRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListInboundNumbersResponse'
+  /atsapbx.v1.PbxService/DeleteInboundNumber:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteInboundNumber
+      description: |-
+        DeleteInboundNumber releases an inbound number. The extension keeps
+         working; only the public number stops ringing it.
+      operationId: atsapbx.v1.PbxService.DeleteInboundNumber
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteInboundNumberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.DeleteInboundNumberResponse'
   /atsapbx.v1.TelephonyService/GetCall:
     post:
       tags:
@@ -1470,6 +1774,22 @@ components:
         TrunkHealth is what the platform has OBSERVED about a carrier from
          call outcomes. No request carries it: a trunk shown healthy because
          someone ticked a box would be worse than showing nothing.
+    atsapbx.v1.CreateEmergencyNumberRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        number:
+          type: string
+          title: number
+          description: Digits with an optional leading +, e.g. "1500".
+      title: CreateEmergencyNumberRequest
+      additionalProperties: false
+    atsapbx.v1.CreateEmergencyNumberResponse:
+      type: object
+      title: CreateEmergencyNumberResponse
+      additionalProperties: false
     atsapbx.v1.CreateExtensionRequest:
       type: object
       properties:
@@ -1504,6 +1824,28 @@ components:
             The generated secret, returned exactly once. Never logged, never
              audited, never retrievable by any later call.
       title: CreateExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.CreateInboundNumberRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        number:
+          type: string
+          title: number
+        extensionId:
+          type: string
+          title: extension_id
+      title: CreateInboundNumberRequest
+      additionalProperties: false
+    atsapbx.v1.CreateInboundNumberResponse:
+      type: object
+      properties:
+        inboundNumber:
+          title: inbound_number
+          $ref: '#/components/schemas/atsapbx.v1.InboundNumber'
+      title: CreateInboundNumberResponse
       additionalProperties: false
     atsapbx.v1.CreateRouteRequest:
       type: object
@@ -1582,6 +1924,21 @@ components:
           $ref: '#/components/schemas/atsapbx.v1.Trunk'
       title: CreateTrunkResponse
       additionalProperties: false
+    atsapbx.v1.DeleteEmergencyNumberRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        number:
+          type: string
+          title: number
+      title: DeleteEmergencyNumberRequest
+      additionalProperties: false
+    atsapbx.v1.DeleteEmergencyNumberResponse:
+      type: object
+      title: DeleteEmergencyNumberResponse
+      additionalProperties: false
     atsapbx.v1.DeleteExtensionRequest:
       type: object
       properties:
@@ -1596,6 +1953,21 @@ components:
     atsapbx.v1.DeleteExtensionResponse:
       type: object
       title: DeleteExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.DeleteInboundNumberRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        inboundNumberId:
+          type: string
+          title: inbound_number_id
+      title: DeleteInboundNumberRequest
+      additionalProperties: false
+    atsapbx.v1.DeleteInboundNumberResponse:
+      type: object
+      title: DeleteInboundNumberResponse
       additionalProperties: false
     atsapbx.v1.DeleteRouteRequest:
       type: object
@@ -1627,6 +1999,21 @@ components:
       type: object
       title: DeleteTrunkResponse
       additionalProperties: false
+    atsapbx.v1.EmergencyNumber:
+      type: object
+      properties:
+        number:
+          type: string
+          title: number
+        builtIn:
+          type: boolean
+          title: built_in
+      title: EmergencyNumber
+      additionalProperties: false
+      description: |-
+        EmergencyNumber is one effective emergency number and where it comes
+         from. Built-in numbers (112, the country's catalogue) cannot be
+         removed; the tenant's own additions can.
     atsapbx.v1.Extension:
       type: object
       properties:
@@ -1660,6 +2047,37 @@ components:
       description: |-
         Extension is what a caller sees. It carries no credential digest and
          no engine object of any kind.
+    atsapbx.v1.GetEmergencyProfileRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: GetEmergencyProfileRequest
+      additionalProperties: false
+    atsapbx.v1.GetEmergencyProfileResponse:
+      type: object
+      properties:
+        countryCode:
+          type: string
+          title: country_code
+          description: Empty when no country was ever set.
+        countrySet:
+          type: boolean
+          title: country_set
+        inCatalogue:
+          type: boolean
+          title: in_catalogue
+          description: |-
+            False when no country is set or it names no catalogued country: the
+             console should prompt the tenant to enter its numbers.
+        numbers:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.EmergencyNumber'
+          title: numbers
+      title: GetEmergencyProfileResponse
+      additionalProperties: false
     atsapbx.v1.GetExtensionRequest:
       type: object
       properties:
@@ -1694,6 +2112,42 @@ components:
       type: object
       title: HangupCallResponse
       additionalProperties: false
+    atsapbx.v1.InboundNumber:
+      type: object
+      properties:
+        inboundNumberId:
+          type: string
+          title: inbound_number_id
+        number:
+          type: string
+          title: number
+          description: Digits as stored; a leading + is not significant.
+        extensionId:
+          type: string
+          title: extension_id
+      title: InboundNumber
+      additionalProperties: false
+      description: |-
+        InboundNumber is a public number that rings one of the tenant's
+         extensions. It carries no engine object of any kind.
+    atsapbx.v1.ListEmergencyNumbersRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ListEmergencyNumbersRequest
+      additionalProperties: false
+    atsapbx.v1.ListEmergencyNumbersResponse:
+      type: object
+      properties:
+        numbers:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.EmergencyNumber'
+          title: numbers
+      title: ListEmergencyNumbersResponse
+      additionalProperties: false
     atsapbx.v1.ListExtensionsRequest:
       type: object
       properties:
@@ -1719,6 +2173,24 @@ components:
             $ref: '#/components/schemas/atsapbx.v1.Extension'
           title: extensions
       title: ListExtensionsResponse
+      additionalProperties: false
+    atsapbx.v1.ListInboundNumbersRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ListInboundNumbersRequest
+      additionalProperties: false
+    atsapbx.v1.ListInboundNumbersResponse:
+      type: object
+      properties:
+        numbers:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.InboundNumber'
+          title: numbers
+      title: ListInboundNumbersResponse
       additionalProperties: false
     atsapbx.v1.ListRoutesRequest:
       type: object
@@ -1852,6 +2324,22 @@ components:
       title: Route
       additionalProperties: false
       description: Route sends dialled numbers matching prefix_pattern to trunk_id.
+    atsapbx.v1.SetEmergencyProfileRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        countryCode:
+          type: string
+          title: country_code
+          description: ISO 3166-1 alpha-2, upper case, e.g. "CM".
+      title: SetEmergencyProfileRequest
+      additionalProperties: false
+    atsapbx.v1.SetEmergencyProfileResponse:
+      type: object
+      title: SetEmergencyProfileResponse
+      additionalProperties: false
     atsapbx.v1.Trunk:
       type: object
       properties:

@@ -48,6 +48,14 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `DeleteRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing |
 | `PlaceCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | The UAT harness (BRD §16); the Phase B agent UI. Rings the caller's phone and the far end at once, connecting when both answer |
 | `HangupCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | Ends a call placed with `PlaceCall`; idempotent |
+| `SetEmergencyProfile` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console emergency-country setting; catalogue numbers join 112 from the next call on |
+| `GetEmergencyProfile` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console emergency view: country, flags, effective numbers marked built-in or own |
+| `CreateEmergencyNumber` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console tenant addition to its emergency set |
+| `ListEmergencyNumbers` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console effective emergency set |
+| `DeleteEmergencyNumber` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console removal of a tenant addition; built-ins refused |
+| `CreateInboundNumber` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console DID assignment: a carrier call to the number rings the extension |
+| `ListInboundNumbers` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console DID list |
+| `DeleteInboundNumber` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console DID release |
 
 ### Authentication
 

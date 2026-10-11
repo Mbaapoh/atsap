@@ -31,7 +31,7 @@ func (s *Service) CreateInboundNumber(ctx context.Context, cmd ports.CreateInbou
 	}
 	normalized, err := domain.NormalizeInboundNumber(cmd.Number)
 	if err != nil {
-		return ports.InboundNumberView{}, fmt.Errorf("%w: %v", ports.ErrInvalidInput, err)
+		return ports.InboundNumberView{}, fmt.Errorf("%w: number: %v", ports.ErrInvalidInput, err)
 	}
 
 	number := domain.InboundNumber{

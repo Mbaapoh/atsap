@@ -94,6 +94,40 @@ service PbxService {
   // HangupCall ends a call placed with PlaceCall. Ending a call that has
   // already ended succeeds and changes nothing.
   rpc HangupCall(HangupCallRequest) returns (HangupCallResponse);
+
+  // SetEmergencyProfile sets the tenant's emergency country (ISO 3166-1
+  // alpha-2, upper case). Its catalogue numbers join 112 in the
+  // effective emergency set from the next call on.
+  rpc SetEmergencyProfile(SetEmergencyProfileRequest) returns (SetEmergencyProfileResponse);
+
+  // GetEmergencyProfile renders the tenant's effective emergency set:
+  // 112, its country's catalogue numbers, and its own additions, each
+  // marked built-in or own. It also reports whether a country is set and
+  // whether it names a catalogued country.
+  rpc GetEmergencyProfile(GetEmergencyProfileRequest) returns (GetEmergencyProfileResponse);
+
+  // CreateEmergencyNumber adds one of the tenant's own emergency
+  // numbers. Numbers already effective (112, catalogue) cannot be added.
+  rpc CreateEmergencyNumber(CreateEmergencyNumberRequest) returns (CreateEmergencyNumberResponse);
+
+  // ListEmergencyNumbers returns the tenant's effective emergency set.
+  rpc ListEmergencyNumbers(ListEmergencyNumbersRequest) returns (ListEmergencyNumbersResponse);
+
+  // DeleteEmergencyNumber removes one of the tenant's own numbers. 112
+  // and catalogue numbers are built-in and cannot be removed.
+  rpc DeleteEmergencyNumber(DeleteEmergencyNumberRequest) returns (DeleteEmergencyNumberResponse);
+
+  // CreateInboundNumber assigns one of the tenant's inbound numbers
+  // (DIDs) to one of its extensions. A carrier call to the number rings
+  // that extension.
+  rpc CreateInboundNumber(CreateInboundNumberRequest) returns (CreateInboundNumberResponse);
+
+  // ListInboundNumbers returns the tenant's inbound numbers.
+  rpc ListInboundNumbers(ListInboundNumbersRequest) returns (ListInboundNumbersResponse);
+
+  // DeleteInboundNumber releases an inbound number. The extension keeps
+  // working; only the public number stops ringing it.
+  rpc DeleteInboundNumber(DeleteInboundNumberRequest) returns (DeleteInboundNumberResponse);
 }
 
 // DeviceType is how a device attaches to an extension.
@@ -342,3 +376,90 @@ message HangupCallRequest {
 }
 
 message HangupCallResponse {}
+
+// EmergencyNumber is one effective emergency number and where it comes
+// from. Built-in numbers (112, the country's catalogue) cannot be
+// removed; the tenant's own additions can.
+message EmergencyNumber {
+  string number = 1;
+  bool built_in = 2;
+}
+
+message SetEmergencyProfileRequest {
+  string tenant_id = 1;
+  // ISO 3166-1 alpha-2, upper case, e.g. "CM".
+  string country_code = 2;
+}
+
+message SetEmergencyProfileResponse {}
+
+message GetEmergencyProfileRequest {
+  string tenant_id = 1;
+}
+
+message GetEmergencyProfileResponse {
+  // Empty when no country was ever set.
+  string country_code = 1;
+  bool country_set = 2;
+  // False when no country is set or it names no catalogued country: the
+  // console should prompt the tenant to enter its numbers.
+  bool in_catalogue = 3;
+  repeated EmergencyNumber numbers = 4;
+}
+
+message CreateEmergencyNumberRequest {
+  string tenant_id = 1;
+  // Digits with an optional leading +, e.g. "1500".
+  string number = 2;
+}
+
+message CreateEmergencyNumberResponse {}
+
+message ListEmergencyNumbersRequest {
+  string tenant_id = 1;
+}
+
+message ListEmergencyNumbersResponse {
+  repeated EmergencyNumber numbers = 1;
+}
+
+message DeleteEmergencyNumberRequest {
+  string tenant_id = 1;
+  string number = 2;
+}
+
+message DeleteEmergencyNumberResponse {}
+
+// InboundNumber is a public number that rings one of the tenant's
+// extensions. It carries no engine object of any kind.
+message InboundNumber {
+  string inbound_number_id = 1;
+  // Digits as stored; a leading + is not significant.
+  string number = 2;
+  string extension_id = 3;
+}
+
+message CreateInboundNumberRequest {
+  string tenant_id = 1;
+  string number = 2;
+  string extension_id = 3;
+}
+
+message CreateInboundNumberResponse {
+  InboundNumber inbound_number = 1;
+}
+
+message ListInboundNumbersRequest {
+  string tenant_id = 1;
+}
+
+message ListInboundNumbersResponse {
+  repeated InboundNumber numbers = 1;
+}
+
+message DeleteInboundNumberRequest {
+  string tenant_id = 1;
+  string inbound_number_id = 2;
+}
+
+message DeleteInboundNumberResponse {}

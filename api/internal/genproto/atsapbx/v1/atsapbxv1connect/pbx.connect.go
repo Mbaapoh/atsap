@@ -68,6 +68,30 @@ const (
 	PbxServicePlaceCallProcedure = "/atsapbx.v1.PbxService/PlaceCall"
 	// PbxServiceHangupCallProcedure is the fully-qualified name of the PbxService's HangupCall RPC.
 	PbxServiceHangupCallProcedure = "/atsapbx.v1.PbxService/HangupCall"
+	// PbxServiceSetEmergencyProfileProcedure is the fully-qualified name of the PbxService's
+	// SetEmergencyProfile RPC.
+	PbxServiceSetEmergencyProfileProcedure = "/atsapbx.v1.PbxService/SetEmergencyProfile"
+	// PbxServiceGetEmergencyProfileProcedure is the fully-qualified name of the PbxService's
+	// GetEmergencyProfile RPC.
+	PbxServiceGetEmergencyProfileProcedure = "/atsapbx.v1.PbxService/GetEmergencyProfile"
+	// PbxServiceCreateEmergencyNumberProcedure is the fully-qualified name of the PbxService's
+	// CreateEmergencyNumber RPC.
+	PbxServiceCreateEmergencyNumberProcedure = "/atsapbx.v1.PbxService/CreateEmergencyNumber"
+	// PbxServiceListEmergencyNumbersProcedure is the fully-qualified name of the PbxService's
+	// ListEmergencyNumbers RPC.
+	PbxServiceListEmergencyNumbersProcedure = "/atsapbx.v1.PbxService/ListEmergencyNumbers"
+	// PbxServiceDeleteEmergencyNumberProcedure is the fully-qualified name of the PbxService's
+	// DeleteEmergencyNumber RPC.
+	PbxServiceDeleteEmergencyNumberProcedure = "/atsapbx.v1.PbxService/DeleteEmergencyNumber"
+	// PbxServiceCreateInboundNumberProcedure is the fully-qualified name of the PbxService's
+	// CreateInboundNumber RPC.
+	PbxServiceCreateInboundNumberProcedure = "/atsapbx.v1.PbxService/CreateInboundNumber"
+	// PbxServiceListInboundNumbersProcedure is the fully-qualified name of the PbxService's
+	// ListInboundNumbers RPC.
+	PbxServiceListInboundNumbersProcedure = "/atsapbx.v1.PbxService/ListInboundNumbers"
+	// PbxServiceDeleteInboundNumberProcedure is the fully-qualified name of the PbxService's
+	// DeleteInboundNumber RPC.
+	PbxServiceDeleteInboundNumberProcedure = "/atsapbx.v1.PbxService/DeleteInboundNumber"
 )
 
 // PbxServiceClient is a client for the atsapbx.v1.PbxService service.
@@ -127,6 +151,32 @@ type PbxServiceClient interface {
 	// HangupCall ends a call placed with PlaceCall. Ending a call that has
 	// already ended succeeds and changes nothing.
 	HangupCall(context.Context, *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error)
+	// SetEmergencyProfile sets the tenant's emergency country (ISO 3166-1
+	// alpha-2, upper case). Its catalogue numbers join 112 in the
+	// effective emergency set from the next call on.
+	SetEmergencyProfile(context.Context, *connect.Request[v1.SetEmergencyProfileRequest]) (*connect.Response[v1.SetEmergencyProfileResponse], error)
+	// GetEmergencyProfile renders the tenant's effective emergency set:
+	// 112, its country's catalogue numbers, and its own additions, each
+	// marked built-in or own. It also reports whether a country is set and
+	// whether it names a catalogued country.
+	GetEmergencyProfile(context.Context, *connect.Request[v1.GetEmergencyProfileRequest]) (*connect.Response[v1.GetEmergencyProfileResponse], error)
+	// CreateEmergencyNumber adds one of the tenant's own emergency
+	// numbers. Numbers already effective (112, catalogue) cannot be added.
+	CreateEmergencyNumber(context.Context, *connect.Request[v1.CreateEmergencyNumberRequest]) (*connect.Response[v1.CreateEmergencyNumberResponse], error)
+	// ListEmergencyNumbers returns the tenant's effective emergency set.
+	ListEmergencyNumbers(context.Context, *connect.Request[v1.ListEmergencyNumbersRequest]) (*connect.Response[v1.ListEmergencyNumbersResponse], error)
+	// DeleteEmergencyNumber removes one of the tenant's own numbers. 112
+	// and catalogue numbers are built-in and cannot be removed.
+	DeleteEmergencyNumber(context.Context, *connect.Request[v1.DeleteEmergencyNumberRequest]) (*connect.Response[v1.DeleteEmergencyNumberResponse], error)
+	// CreateInboundNumber assigns one of the tenant's inbound numbers
+	// (DIDs) to one of its extensions. A carrier call to the number rings
+	// that extension.
+	CreateInboundNumber(context.Context, *connect.Request[v1.CreateInboundNumberRequest]) (*connect.Response[v1.CreateInboundNumberResponse], error)
+	// ListInboundNumbers returns the tenant's inbound numbers.
+	ListInboundNumbers(context.Context, *connect.Request[v1.ListInboundNumbersRequest]) (*connect.Response[v1.ListInboundNumbersResponse], error)
+	// DeleteInboundNumber releases an inbound number. The extension keeps
+	// working; only the public number stops ringing it.
+	DeleteInboundNumber(context.Context, *connect.Request[v1.DeleteInboundNumberRequest]) (*connect.Response[v1.DeleteInboundNumberResponse], error)
 }
 
 // NewPbxServiceClient constructs a client for the atsapbx.v1.PbxService service. By default, it
@@ -230,26 +280,82 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(pbxServiceMethods.ByName("HangupCall")),
 			connect.WithClientOptions(opts...),
 		),
+		setEmergencyProfile: connect.NewClient[v1.SetEmergencyProfileRequest, v1.SetEmergencyProfileResponse](
+			httpClient,
+			baseURL+PbxServiceSetEmergencyProfileProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("SetEmergencyProfile")),
+			connect.WithClientOptions(opts...),
+		),
+		getEmergencyProfile: connect.NewClient[v1.GetEmergencyProfileRequest, v1.GetEmergencyProfileResponse](
+			httpClient,
+			baseURL+PbxServiceGetEmergencyProfileProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("GetEmergencyProfile")),
+			connect.WithClientOptions(opts...),
+		),
+		createEmergencyNumber: connect.NewClient[v1.CreateEmergencyNumberRequest, v1.CreateEmergencyNumberResponse](
+			httpClient,
+			baseURL+PbxServiceCreateEmergencyNumberProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("CreateEmergencyNumber")),
+			connect.WithClientOptions(opts...),
+		),
+		listEmergencyNumbers: connect.NewClient[v1.ListEmergencyNumbersRequest, v1.ListEmergencyNumbersResponse](
+			httpClient,
+			baseURL+PbxServiceListEmergencyNumbersProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListEmergencyNumbers")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteEmergencyNumber: connect.NewClient[v1.DeleteEmergencyNumberRequest, v1.DeleteEmergencyNumberResponse](
+			httpClient,
+			baseURL+PbxServiceDeleteEmergencyNumberProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("DeleteEmergencyNumber")),
+			connect.WithClientOptions(opts...),
+		),
+		createInboundNumber: connect.NewClient[v1.CreateInboundNumberRequest, v1.CreateInboundNumberResponse](
+			httpClient,
+			baseURL+PbxServiceCreateInboundNumberProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("CreateInboundNumber")),
+			connect.WithClientOptions(opts...),
+		),
+		listInboundNumbers: connect.NewClient[v1.ListInboundNumbersRequest, v1.ListInboundNumbersResponse](
+			httpClient,
+			baseURL+PbxServiceListInboundNumbersProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListInboundNumbers")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteInboundNumber: connect.NewClient[v1.DeleteInboundNumberRequest, v1.DeleteInboundNumberResponse](
+			httpClient,
+			baseURL+PbxServiceDeleteInboundNumberProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("DeleteInboundNumber")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // pbxServiceClient implements PbxServiceClient.
 type pbxServiceClient struct {
-	createExtension  *connect.Client[v1.CreateExtensionRequest, v1.CreateExtensionResponse]
-	getExtension     *connect.Client[v1.GetExtensionRequest, v1.GetExtensionResponse]
-	listExtensions   *connect.Client[v1.ListExtensionsRequest, v1.ListExtensionsResponse]
-	updateExtension  *connect.Client[v1.UpdateExtensionRequest, v1.UpdateExtensionResponse]
-	deleteExtension  *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
-	regenerateSecret *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
-	createTrunk      *connect.Client[v1.CreateTrunkRequest, v1.CreateTrunkResponse]
-	listTrunks       *connect.Client[v1.ListTrunksRequest, v1.ListTrunksResponse]
-	updateTrunk      *connect.Client[v1.UpdateTrunkRequest, v1.UpdateTrunkResponse]
-	deleteTrunk      *connect.Client[v1.DeleteTrunkRequest, v1.DeleteTrunkResponse]
-	createRoute      *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
-	listRoutes       *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
-	deleteRoute      *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
-	placeCall        *connect.Client[v1.PlaceCallRequest, v1.PlaceCallResponse]
-	hangupCall       *connect.Client[v1.HangupCallRequest, v1.HangupCallResponse]
+	createExtension       *connect.Client[v1.CreateExtensionRequest, v1.CreateExtensionResponse]
+	getExtension          *connect.Client[v1.GetExtensionRequest, v1.GetExtensionResponse]
+	listExtensions        *connect.Client[v1.ListExtensionsRequest, v1.ListExtensionsResponse]
+	updateExtension       *connect.Client[v1.UpdateExtensionRequest, v1.UpdateExtensionResponse]
+	deleteExtension       *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
+	regenerateSecret      *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
+	createTrunk           *connect.Client[v1.CreateTrunkRequest, v1.CreateTrunkResponse]
+	listTrunks            *connect.Client[v1.ListTrunksRequest, v1.ListTrunksResponse]
+	updateTrunk           *connect.Client[v1.UpdateTrunkRequest, v1.UpdateTrunkResponse]
+	deleteTrunk           *connect.Client[v1.DeleteTrunkRequest, v1.DeleteTrunkResponse]
+	createRoute           *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
+	listRoutes            *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
+	deleteRoute           *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
+	placeCall             *connect.Client[v1.PlaceCallRequest, v1.PlaceCallResponse]
+	hangupCall            *connect.Client[v1.HangupCallRequest, v1.HangupCallResponse]
+	setEmergencyProfile   *connect.Client[v1.SetEmergencyProfileRequest, v1.SetEmergencyProfileResponse]
+	getEmergencyProfile   *connect.Client[v1.GetEmergencyProfileRequest, v1.GetEmergencyProfileResponse]
+	createEmergencyNumber *connect.Client[v1.CreateEmergencyNumberRequest, v1.CreateEmergencyNumberResponse]
+	listEmergencyNumbers  *connect.Client[v1.ListEmergencyNumbersRequest, v1.ListEmergencyNumbersResponse]
+	deleteEmergencyNumber *connect.Client[v1.DeleteEmergencyNumberRequest, v1.DeleteEmergencyNumberResponse]
+	createInboundNumber   *connect.Client[v1.CreateInboundNumberRequest, v1.CreateInboundNumberResponse]
+	listInboundNumbers    *connect.Client[v1.ListInboundNumbersRequest, v1.ListInboundNumbersResponse]
+	deleteInboundNumber   *connect.Client[v1.DeleteInboundNumberRequest, v1.DeleteInboundNumberResponse]
 }
 
 // CreateExtension calls atsapbx.v1.PbxService.CreateExtension.
@@ -327,6 +433,46 @@ func (c *pbxServiceClient) HangupCall(ctx context.Context, req *connect.Request[
 	return c.hangupCall.CallUnary(ctx, req)
 }
 
+// SetEmergencyProfile calls atsapbx.v1.PbxService.SetEmergencyProfile.
+func (c *pbxServiceClient) SetEmergencyProfile(ctx context.Context, req *connect.Request[v1.SetEmergencyProfileRequest]) (*connect.Response[v1.SetEmergencyProfileResponse], error) {
+	return c.setEmergencyProfile.CallUnary(ctx, req)
+}
+
+// GetEmergencyProfile calls atsapbx.v1.PbxService.GetEmergencyProfile.
+func (c *pbxServiceClient) GetEmergencyProfile(ctx context.Context, req *connect.Request[v1.GetEmergencyProfileRequest]) (*connect.Response[v1.GetEmergencyProfileResponse], error) {
+	return c.getEmergencyProfile.CallUnary(ctx, req)
+}
+
+// CreateEmergencyNumber calls atsapbx.v1.PbxService.CreateEmergencyNumber.
+func (c *pbxServiceClient) CreateEmergencyNumber(ctx context.Context, req *connect.Request[v1.CreateEmergencyNumberRequest]) (*connect.Response[v1.CreateEmergencyNumberResponse], error) {
+	return c.createEmergencyNumber.CallUnary(ctx, req)
+}
+
+// ListEmergencyNumbers calls atsapbx.v1.PbxService.ListEmergencyNumbers.
+func (c *pbxServiceClient) ListEmergencyNumbers(ctx context.Context, req *connect.Request[v1.ListEmergencyNumbersRequest]) (*connect.Response[v1.ListEmergencyNumbersResponse], error) {
+	return c.listEmergencyNumbers.CallUnary(ctx, req)
+}
+
+// DeleteEmergencyNumber calls atsapbx.v1.PbxService.DeleteEmergencyNumber.
+func (c *pbxServiceClient) DeleteEmergencyNumber(ctx context.Context, req *connect.Request[v1.DeleteEmergencyNumberRequest]) (*connect.Response[v1.DeleteEmergencyNumberResponse], error) {
+	return c.deleteEmergencyNumber.CallUnary(ctx, req)
+}
+
+// CreateInboundNumber calls atsapbx.v1.PbxService.CreateInboundNumber.
+func (c *pbxServiceClient) CreateInboundNumber(ctx context.Context, req *connect.Request[v1.CreateInboundNumberRequest]) (*connect.Response[v1.CreateInboundNumberResponse], error) {
+	return c.createInboundNumber.CallUnary(ctx, req)
+}
+
+// ListInboundNumbers calls atsapbx.v1.PbxService.ListInboundNumbers.
+func (c *pbxServiceClient) ListInboundNumbers(ctx context.Context, req *connect.Request[v1.ListInboundNumbersRequest]) (*connect.Response[v1.ListInboundNumbersResponse], error) {
+	return c.listInboundNumbers.CallUnary(ctx, req)
+}
+
+// DeleteInboundNumber calls atsapbx.v1.PbxService.DeleteInboundNumber.
+func (c *pbxServiceClient) DeleteInboundNumber(ctx context.Context, req *connect.Request[v1.DeleteInboundNumberRequest]) (*connect.Response[v1.DeleteInboundNumberResponse], error) {
+	return c.deleteInboundNumber.CallUnary(ctx, req)
+}
+
 // PbxServiceHandler is an implementation of the atsapbx.v1.PbxService service.
 type PbxServiceHandler interface {
 	// CreateExtension provisions an extension and makes it registrable by
@@ -384,6 +530,32 @@ type PbxServiceHandler interface {
 	// HangupCall ends a call placed with PlaceCall. Ending a call that has
 	// already ended succeeds and changes nothing.
 	HangupCall(context.Context, *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error)
+	// SetEmergencyProfile sets the tenant's emergency country (ISO 3166-1
+	// alpha-2, upper case). Its catalogue numbers join 112 in the
+	// effective emergency set from the next call on.
+	SetEmergencyProfile(context.Context, *connect.Request[v1.SetEmergencyProfileRequest]) (*connect.Response[v1.SetEmergencyProfileResponse], error)
+	// GetEmergencyProfile renders the tenant's effective emergency set:
+	// 112, its country's catalogue numbers, and its own additions, each
+	// marked built-in or own. It also reports whether a country is set and
+	// whether it names a catalogued country.
+	GetEmergencyProfile(context.Context, *connect.Request[v1.GetEmergencyProfileRequest]) (*connect.Response[v1.GetEmergencyProfileResponse], error)
+	// CreateEmergencyNumber adds one of the tenant's own emergency
+	// numbers. Numbers already effective (112, catalogue) cannot be added.
+	CreateEmergencyNumber(context.Context, *connect.Request[v1.CreateEmergencyNumberRequest]) (*connect.Response[v1.CreateEmergencyNumberResponse], error)
+	// ListEmergencyNumbers returns the tenant's effective emergency set.
+	ListEmergencyNumbers(context.Context, *connect.Request[v1.ListEmergencyNumbersRequest]) (*connect.Response[v1.ListEmergencyNumbersResponse], error)
+	// DeleteEmergencyNumber removes one of the tenant's own numbers. 112
+	// and catalogue numbers are built-in and cannot be removed.
+	DeleteEmergencyNumber(context.Context, *connect.Request[v1.DeleteEmergencyNumberRequest]) (*connect.Response[v1.DeleteEmergencyNumberResponse], error)
+	// CreateInboundNumber assigns one of the tenant's inbound numbers
+	// (DIDs) to one of its extensions. A carrier call to the number rings
+	// that extension.
+	CreateInboundNumber(context.Context, *connect.Request[v1.CreateInboundNumberRequest]) (*connect.Response[v1.CreateInboundNumberResponse], error)
+	// ListInboundNumbers returns the tenant's inbound numbers.
+	ListInboundNumbers(context.Context, *connect.Request[v1.ListInboundNumbersRequest]) (*connect.Response[v1.ListInboundNumbersResponse], error)
+	// DeleteInboundNumber releases an inbound number. The extension keeps
+	// working; only the public number stops ringing it.
+	DeleteInboundNumber(context.Context, *connect.Request[v1.DeleteInboundNumberRequest]) (*connect.Response[v1.DeleteInboundNumberResponse], error)
 }
 
 // NewPbxServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -483,6 +655,54 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(pbxServiceMethods.ByName("HangupCall")),
 		connect.WithHandlerOptions(opts...),
 	)
+	pbxServiceSetEmergencyProfileHandler := connect.NewUnaryHandler(
+		PbxServiceSetEmergencyProfileProcedure,
+		svc.SetEmergencyProfile,
+		connect.WithSchema(pbxServiceMethods.ByName("SetEmergencyProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceGetEmergencyProfileHandler := connect.NewUnaryHandler(
+		PbxServiceGetEmergencyProfileProcedure,
+		svc.GetEmergencyProfile,
+		connect.WithSchema(pbxServiceMethods.ByName("GetEmergencyProfile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceCreateEmergencyNumberHandler := connect.NewUnaryHandler(
+		PbxServiceCreateEmergencyNumberProcedure,
+		svc.CreateEmergencyNumber,
+		connect.WithSchema(pbxServiceMethods.ByName("CreateEmergencyNumber")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListEmergencyNumbersHandler := connect.NewUnaryHandler(
+		PbxServiceListEmergencyNumbersProcedure,
+		svc.ListEmergencyNumbers,
+		connect.WithSchema(pbxServiceMethods.ByName("ListEmergencyNumbers")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceDeleteEmergencyNumberHandler := connect.NewUnaryHandler(
+		PbxServiceDeleteEmergencyNumberProcedure,
+		svc.DeleteEmergencyNumber,
+		connect.WithSchema(pbxServiceMethods.ByName("DeleteEmergencyNumber")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceCreateInboundNumberHandler := connect.NewUnaryHandler(
+		PbxServiceCreateInboundNumberProcedure,
+		svc.CreateInboundNumber,
+		connect.WithSchema(pbxServiceMethods.ByName("CreateInboundNumber")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListInboundNumbersHandler := connect.NewUnaryHandler(
+		PbxServiceListInboundNumbersProcedure,
+		svc.ListInboundNumbers,
+		connect.WithSchema(pbxServiceMethods.ByName("ListInboundNumbers")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceDeleteInboundNumberHandler := connect.NewUnaryHandler(
+		PbxServiceDeleteInboundNumberProcedure,
+		svc.DeleteInboundNumber,
+		connect.WithSchema(pbxServiceMethods.ByName("DeleteInboundNumber")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.PbxService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PbxServiceCreateExtensionProcedure:
@@ -515,6 +735,22 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServicePlaceCallHandler.ServeHTTP(w, r)
 		case PbxServiceHangupCallProcedure:
 			pbxServiceHangupCallHandler.ServeHTTP(w, r)
+		case PbxServiceSetEmergencyProfileProcedure:
+			pbxServiceSetEmergencyProfileHandler.ServeHTTP(w, r)
+		case PbxServiceGetEmergencyProfileProcedure:
+			pbxServiceGetEmergencyProfileHandler.ServeHTTP(w, r)
+		case PbxServiceCreateEmergencyNumberProcedure:
+			pbxServiceCreateEmergencyNumberHandler.ServeHTTP(w, r)
+		case PbxServiceListEmergencyNumbersProcedure:
+			pbxServiceListEmergencyNumbersHandler.ServeHTTP(w, r)
+		case PbxServiceDeleteEmergencyNumberProcedure:
+			pbxServiceDeleteEmergencyNumberHandler.ServeHTTP(w, r)
+		case PbxServiceCreateInboundNumberProcedure:
+			pbxServiceCreateInboundNumberHandler.ServeHTTP(w, r)
+		case PbxServiceListInboundNumbersProcedure:
+			pbxServiceListInboundNumbersHandler.ServeHTTP(w, r)
+		case PbxServiceDeleteInboundNumberProcedure:
+			pbxServiceDeleteInboundNumberHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -582,4 +818,36 @@ func (UnimplementedPbxServiceHandler) PlaceCall(context.Context, *connect.Reques
 
 func (UnimplementedPbxServiceHandler) HangupCall(context.Context, *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.HangupCall is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) SetEmergencyProfile(context.Context, *connect.Request[v1.SetEmergencyProfileRequest]) (*connect.Response[v1.SetEmergencyProfileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.SetEmergencyProfile is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) GetEmergencyProfile(context.Context, *connect.Request[v1.GetEmergencyProfileRequest]) (*connect.Response[v1.GetEmergencyProfileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.GetEmergencyProfile is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) CreateEmergencyNumber(context.Context, *connect.Request[v1.CreateEmergencyNumberRequest]) (*connect.Response[v1.CreateEmergencyNumberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.CreateEmergencyNumber is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListEmergencyNumbers(context.Context, *connect.Request[v1.ListEmergencyNumbersRequest]) (*connect.Response[v1.ListEmergencyNumbersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListEmergencyNumbers is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) DeleteEmergencyNumber(context.Context, *connect.Request[v1.DeleteEmergencyNumberRequest]) (*connect.Response[v1.DeleteEmergencyNumberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteEmergencyNumber is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) CreateInboundNumber(context.Context, *connect.Request[v1.CreateInboundNumberRequest]) (*connect.Response[v1.CreateInboundNumberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.CreateInboundNumber is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListInboundNumbers(context.Context, *connect.Request[v1.ListInboundNumbersRequest]) (*connect.Response[v1.ListInboundNumbersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListInboundNumbers is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) DeleteInboundNumber(context.Context, *connect.Request[v1.DeleteInboundNumberRequest]) (*connect.Response[v1.DeleteInboundNumberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteInboundNumber is not implemented"))
 }

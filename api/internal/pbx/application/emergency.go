@@ -50,10 +50,10 @@ func (s *Service) SetEmergencyProfile(ctx context.Context, tenantID shareddomain
 		return errors.New("emergency profile is not configured")
 	}
 	if countryCode == "" {
-		return fmt.Errorf("%w: country code is required", ports.ErrInvalidInput)
+		return fmt.Errorf("%w: country_code is required", ports.ErrInvalidInput)
 	}
 	if err := domain.ValidateCountryCode(countryCode); err != nil {
-		return fmt.Errorf("%w: %v", ports.ErrInvalidInput, err)
+		return fmt.Errorf("%w: country_code: %v", ports.ErrInvalidInput, err)
 	}
 
 	return s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
@@ -144,7 +144,7 @@ func (s *Service) CreateEmergencyNumber(ctx context.Context, tenantID shareddoma
 	}
 	normalized, err := domain.NormalizeInboundNumber(number)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ports.ErrInvalidInput, err)
+		return fmt.Errorf("%w: number: %v", ports.ErrInvalidInput, err)
 	}
 
 	return s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
@@ -189,7 +189,7 @@ func (s *Service) DeleteEmergencyNumber(ctx context.Context, tenantID shareddoma
 	}
 	normalized, err := domain.NormalizeInboundNumber(number)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ports.ErrInvalidInput, err)
+		return fmt.Errorf("%w: number: %v", ports.ErrInvalidInput, err)
 	}
 
 	return s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
