@@ -44,7 +44,8 @@ LLD exists for the context
         │      ↓ "tests pass" is not the bar; the DoD is
         │
         └─ /opsx:archive  → delta specs merge into openspec/specs/
-                            which becomes the new source of truth
+                            which becomes the new source of truth;
+                            docs/PROGRESS.md is updated in the same commit
 ```
 
 Build order is fixed by `docs/hld/04-bounded-contexts.md` §10 and

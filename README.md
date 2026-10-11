@@ -48,6 +48,9 @@ Makefile                     workflow entrypoint; every `mise run` task delegate
                                to the same-named target (D-60)
 ```
 
+**Where the project stands — phases, flows, done and active changes, open
+gaps — is tracked in [`docs/PROGRESS.md`](docs/PROGRESS.md).**
+
 **How work moves through this repo — and how to resume an in-flight
 change — is [`docs/WORKFLOW.md`](docs/WORKFLOW.md).** Start there after a
 break: it names the document chain, the propose → apply → archive loop,
