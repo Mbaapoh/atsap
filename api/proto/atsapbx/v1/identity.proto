@@ -57,6 +57,15 @@ service IdentityService {
 
   // ListAudit returns the calling tenant's most recent audit records.
   rpc ListAudit(ListAuditRequest) returns (ListAuditResponse);
+
+  // ListPrincipals returns a page of a tenant's users, each with its
+  // status and role bindings. No credential material is ever returned.
+  rpc ListPrincipals(ListPrincipalsRequest) returns (ListPrincipalsResponse);
+
+  // RevokeRole removes a role binding, under the same authority rules as
+  // GrantRole. The last tenant administrator of a tenant cannot be
+  // revoked, so no tenant is left without anyone able to administer it.
+  rpc RevokeRole(RevokeRoleRequest) returns (RevokeRoleResponse);
 }
 
 // TenantStatus mirrors the domain's tenant lifecycle.
@@ -215,3 +224,34 @@ message ListAuditRequest {
 message ListAuditResponse {
   repeated AuditRecord records = 1;
 }
+
+message RoleBinding {
+  string role = 1;
+  // "tenant" or "system".
+  string scope = 2;
+}
+
+message ListedPrincipal {
+  Principal principal = 1;
+  repeated RoleBinding role_bindings = 2;
+}
+
+message ListPrincipalsRequest {
+  string tenant_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListPrincipalsResponse {
+  repeated ListedPrincipal principals = 1;
+}
+
+message RevokeRoleRequest {
+  string tenant_id = 1;
+  string principal_id = 2;
+  string role = 3;
+  // "tenant" when omitted.
+  string scope = 4;
+}
+
+message RevokeRoleResponse {}

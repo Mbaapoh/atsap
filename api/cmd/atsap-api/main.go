@@ -24,6 +24,7 @@ import (
 	identityapp "atsap-api/internal/identity/application"
 	identitypostgres "atsap-api/internal/identity/postgres"
 	identityrpc "atsap-api/internal/identity/rpc"
+	licensingrpc "atsap-api/internal/licensing/rpc"
 	"atsap-api/internal/logging"
 	atsapnats "atsap-api/internal/nats"
 	pbxasterisk "atsap-api/internal/pbx/acl/asterisk"
@@ -203,7 +204,7 @@ func main() {
 	// TelephonyService carries its own tenant matcher, so the interceptor
 	// refuses a body tenant that is not the token's rather than trusting
 	// the caller's word for which tenant they are reading.
-	telephonyHandler := rpc.NewTelephonyHandler(callStore)
+	telephonyHandler := rpc.NewTelephonyHandler(callStore, callStore)
 	telephonyInterceptor := identityapp.NewAuthInterceptor(identitySvc, rpc.TenantID).
 		ExemptProcedure(identityapp.AuthenticateUserProcedure)
 	rpcPath, rpcHandler := atsapbxv1connect.NewTelephonyServiceHandler(telephonyHandler,
@@ -266,6 +267,16 @@ func main() {
 	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
 		connectrpc.WithInterceptors(authInterceptor))
 	handlers[pbxPath] = pbxRPC
+
+	// LicensingService: the installation's licence (LLD-08 §6). Mounted
+	// behind the same auth interceptor; its requests name no tenant.
+	licensingInterceptor := identityapp.NewAuthInterceptor(identitySvc, noTenantInRequest).
+		ExemptProcedure(identityapp.AuthenticateUserProcedure)
+	licensingPath, licensingRPC := atsapbxv1connect.NewLicensingServiceHandler(
+		licensingrpc.NewHandler(licenseManager.inner,
+			licenceAuthority{identity: identitySvc}, licenceAuditor{identity: identitySvc}),
+		connectrpc.WithInterceptors(licensingInterceptor))
+	handlers[licensingPath] = licensingRPC
 
 	checkers := []server.Checker{
 		{Name: "postgres", Check: func(ctx context.Context) error { return appPool.Unwrap().Ping(ctx) }},

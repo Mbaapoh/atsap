@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -488,6 +489,15 @@ func (m *memStores) SetPrincipalStatus(_ context.Context, tenantID shareddomain.
 func (m *memStores) CreateRoleBinding(_ context.Context, b domain.RoleBinding) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Idempotent like the real store (ON CONFLICT (principal_id, role,
+	// scope) DO NOTHING): a duplicate here would let a revocation remove
+	// one copy and leave the role in force — a fake more permissive than
+	// the database it stands for.
+	for _, x := range m.bindings {
+		if x.PrincipalID == b.PrincipalID && x.Role == b.Role && x.Scope == b.Scope {
+			return nil
+		}
+	}
 	m.bindings = append(m.bindings, b)
 	return nil
 }
@@ -565,4 +575,65 @@ func (m *memStores) ListAudit(_ context.Context, tenantID shareddomain.TenantID,
 		}
 	}
 	return out, nil
+}
+
+func (m *memStores) ListPrincipals(_ context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Principal
+	for _, p := range m.principals {
+		if p.TenantID == tenantID {
+			p.PasswordHash = ""
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
+	if offset >= len(out) {
+		return nil, nil
+	}
+	out = out[offset:]
+	if limit < len(out) {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (m *memStores) ListRoleBindingsFor(_ context.Context, tenantID shareddomain.TenantID, ids []shareddomain.PrincipalID) (map[shareddomain.PrincipalID][]domain.RoleBinding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	want := map[shareddomain.PrincipalID]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[shareddomain.PrincipalID][]domain.RoleBinding{}
+	for _, b := range m.bindings {
+		if b.TenantID == tenantID && want[b.PrincipalID] {
+			out[b.PrincipalID] = append(out[b.PrincipalID], b)
+		}
+	}
+	return out, nil
+}
+
+// RevokeRoleBinding mirrors the store: ErrNotFound for no such binding,
+// ErrLastAdministrator for the tenant's last tenant-scope TENANT_ADMIN.
+func (m *memStores) RevokeRoleBinding(_ context.Context, b domain.RoleBinding) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	idx, admins := -1, 0
+	for i, x := range m.bindings {
+		if x.TenantID == b.TenantID && x.Role == "TENANT_ADMIN" && x.Scope == domain.ScopeTenant {
+			admins++
+		}
+		if x.TenantID == b.TenantID && x.PrincipalID == b.PrincipalID && x.Role == b.Role && x.Scope == b.Scope {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return ports.ErrNotFound
+	}
+	if b.Role == "TENANT_ADMIN" && b.Scope == domain.ScopeTenant && admins <= 1 {
+		return ports.ErrLastAdministrator
+	}
+	m.bindings = append(m.bindings[:idx], m.bindings[idx+1:]...)
+	return nil
 }

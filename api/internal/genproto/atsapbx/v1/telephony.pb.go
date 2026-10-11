@@ -9,6 +9,7 @@ package atsapbxv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -252,12 +253,267 @@ func (x *Participant) GetBillableSeconds() int32 {
 	return 0
 }
 
+type ListCallsRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Limit    int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset   int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	// Optional filters; empty means "any".
+	State     string `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
+	Direction string `protobuf:"bytes,5,opt,name=direction,proto3" json:"direction,omitempty"`
+	// Calls started in [started_from, started_to).
+	StartedFrom   *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=started_from,json=startedFrom,proto3" json:"started_from,omitempty"`
+	StartedTo     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=started_to,json=startedTo,proto3" json:"started_to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCallsRequest) Reset() {
+	*x = ListCallsRequest{}
+	mi := &file_atsapbx_v1_telephony_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCallsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCallsRequest) ProtoMessage() {}
+
+func (x *ListCallsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_telephony_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCallsRequest.ProtoReflect.Descriptor instead.
+func (*ListCallsRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_telephony_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ListCallsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListCallsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListCallsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ListCallsRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ListCallsRequest) GetDirection() string {
+	if x != nil {
+		return x.Direction
+	}
+	return ""
+}
+
+func (x *ListCallsRequest) GetStartedFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedFrom
+	}
+	return nil
+}
+
+func (x *ListCallsRequest) GetStartedTo() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedTo
+	}
+	return nil
+}
+
+type CallSummary struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	CallId       string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	Direction    string                 `protobuf:"bytes,2,opt,name=direction,proto3" json:"direction,omitempty"`
+	State        string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	SourceNumber string                 `protobuf:"bytes,4,opt,name=source_number,json=sourceNumber,proto3" json:"source_number,omitempty"`
+	DestNumber   string                 `protobuf:"bytes,5,opt,name=dest_number,json=destNumber,proto3" json:"dest_number,omitempty"`
+	StartedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	AnsweredAt   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=answered_at,json=answeredAt,proto3" json:"answered_at,omitempty"`
+	EndedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
+	// Seconds from answer to end; 0 for a call never answered.
+	DurationSeconds   int32  `protobuf:"varint,9,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	TerminationReason string `protobuf:"bytes,10,opt,name=termination_reason,json=terminationReason,proto3" json:"termination_reason,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CallSummary) Reset() {
+	*x = CallSummary{}
+	mi := &file_atsapbx_v1_telephony_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CallSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CallSummary) ProtoMessage() {}
+
+func (x *CallSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_telephony_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CallSummary.ProtoReflect.Descriptor instead.
+func (*CallSummary) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_telephony_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CallSummary) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+func (x *CallSummary) GetDirection() string {
+	if x != nil {
+		return x.Direction
+	}
+	return ""
+}
+
+func (x *CallSummary) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *CallSummary) GetSourceNumber() string {
+	if x != nil {
+		return x.SourceNumber
+	}
+	return ""
+}
+
+func (x *CallSummary) GetDestNumber() string {
+	if x != nil {
+		return x.DestNumber
+	}
+	return ""
+}
+
+func (x *CallSummary) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *CallSummary) GetAnsweredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AnsweredAt
+	}
+	return nil
+}
+
+func (x *CallSummary) GetEndedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EndedAt
+	}
+	return nil
+}
+
+func (x *CallSummary) GetDurationSeconds() int32 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
+func (x *CallSummary) GetTerminationReason() string {
+	if x != nil {
+		return x.TerminationReason
+	}
+	return ""
+}
+
+type ListCallsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Calls         []*CallSummary         `protobuf:"bytes,1,rep,name=calls,proto3" json:"calls,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCallsResponse) Reset() {
+	*x = ListCallsResponse{}
+	mi := &file_atsapbx_v1_telephony_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCallsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCallsResponse) ProtoMessage() {}
+
+func (x *ListCallsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_telephony_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCallsResponse.ProtoReflect.Descriptor instead.
+func (*ListCallsResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_telephony_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListCallsResponse) GetCalls() []*CallSummary {
+	if x != nil {
+		return x.Calls
+	}
+	return nil
+}
+
 var File_atsapbx_v1_telephony_proto protoreflect.FileDescriptor
 
 const file_atsapbx_v1_telephony_proto_rawDesc = "" +
 	"\n" +
 	"\x1aatsapbx/v1/telephony.proto\x12\n" +
-	"atsapbx.v1\"F\n" +
+	"atsapbx.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"F\n" +
 	"\x0eGetCallRequest\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\xfe\x01\n" +
@@ -275,9 +531,36 @@ const file_atsapbx_v1_telephony_proto_rawDesc = "" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12!\n" +
 	"\fendpoint_uri\x18\x03 \x01(\tR\vendpointUri\x12\x14\n" +
 	"\x05state\x18\x04 \x01(\tR\x05state\x12)\n" +
-	"\x10billable_seconds\x18\x05 \x01(\x05R\x0fbillableSeconds2V\n" +
+	"\x10billable_seconds\x18\x05 \x01(\x05R\x0fbillableSeconds\"\x8b\x02\n" +
+	"\x10ListCallsRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x14\n" +
+	"\x05state\x18\x04 \x01(\tR\x05state\x12\x1c\n" +
+	"\tdirection\x18\x05 \x01(\tR\tdirection\x12=\n" +
+	"\fstarted_from\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\vstartedFrom\x129\n" +
+	"\n" +
+	"started_to\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tstartedTo\"\xa9\x03\n" +
+	"\vCallSummary\x12\x17\n" +
+	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1c\n" +
+	"\tdirection\x18\x02 \x01(\tR\tdirection\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12#\n" +
+	"\rsource_number\x18\x04 \x01(\tR\fsourceNumber\x12\x1f\n" +
+	"\vdest_number\x18\x05 \x01(\tR\n" +
+	"destNumber\x129\n" +
+	"\n" +
+	"started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
+	"\vanswered_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"answeredAt\x125\n" +
+	"\bended_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12)\n" +
+	"\x10duration_seconds\x18\t \x01(\x05R\x0fdurationSeconds\x12-\n" +
+	"\x12termination_reason\x18\n" +
+	" \x01(\tR\x11terminationReason\"B\n" +
+	"\x11ListCallsResponse\x12-\n" +
+	"\x05calls\x18\x01 \x03(\v2\x17.atsapbx.v1.CallSummaryR\x05calls2\xa0\x01\n" +
 	"\x10TelephonyService\x12B\n" +
-	"\aGetCall\x12\x1a.atsapbx.v1.GetCallRequest\x1a\x1b.atsapbx.v1.GetCallResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
+	"\aGetCall\x12\x1a.atsapbx.v1.GetCallRequest\x1a\x1b.atsapbx.v1.GetCallResponse\x12H\n" +
+	"\tListCalls\x12\x1c.atsapbx.v1.ListCallsRequest\x1a\x1d.atsapbx.v1.ListCallsResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
 
 var (
 	file_atsapbx_v1_telephony_proto_rawDescOnce sync.Once
@@ -291,21 +574,33 @@ func file_atsapbx_v1_telephony_proto_rawDescGZIP() []byte {
 	return file_atsapbx_v1_telephony_proto_rawDescData
 }
 
-var file_atsapbx_v1_telephony_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_atsapbx_v1_telephony_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_atsapbx_v1_telephony_proto_goTypes = []any{
-	(*GetCallRequest)(nil),  // 0: atsapbx.v1.GetCallRequest
-	(*GetCallResponse)(nil), // 1: atsapbx.v1.GetCallResponse
-	(*Participant)(nil),     // 2: atsapbx.v1.Participant
+	(*GetCallRequest)(nil),        // 0: atsapbx.v1.GetCallRequest
+	(*GetCallResponse)(nil),       // 1: atsapbx.v1.GetCallResponse
+	(*Participant)(nil),           // 2: atsapbx.v1.Participant
+	(*ListCallsRequest)(nil),      // 3: atsapbx.v1.ListCallsRequest
+	(*CallSummary)(nil),           // 4: atsapbx.v1.CallSummary
+	(*ListCallsResponse)(nil),     // 5: atsapbx.v1.ListCallsResponse
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_telephony_proto_depIdxs = []int32{
 	2, // 0: atsapbx.v1.GetCallResponse.participants:type_name -> atsapbx.v1.Participant
-	0, // 1: atsapbx.v1.TelephonyService.GetCall:input_type -> atsapbx.v1.GetCallRequest
-	1, // 2: atsapbx.v1.TelephonyService.GetCall:output_type -> atsapbx.v1.GetCallResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	6, // 1: atsapbx.v1.ListCallsRequest.started_from:type_name -> google.protobuf.Timestamp
+	6, // 2: atsapbx.v1.ListCallsRequest.started_to:type_name -> google.protobuf.Timestamp
+	6, // 3: atsapbx.v1.CallSummary.started_at:type_name -> google.protobuf.Timestamp
+	6, // 4: atsapbx.v1.CallSummary.answered_at:type_name -> google.protobuf.Timestamp
+	6, // 5: atsapbx.v1.CallSummary.ended_at:type_name -> google.protobuf.Timestamp
+	4, // 6: atsapbx.v1.ListCallsResponse.calls:type_name -> atsapbx.v1.CallSummary
+	0, // 7: atsapbx.v1.TelephonyService.GetCall:input_type -> atsapbx.v1.GetCallRequest
+	3, // 8: atsapbx.v1.TelephonyService.ListCalls:input_type -> atsapbx.v1.ListCallsRequest
+	1, // 9: atsapbx.v1.TelephonyService.GetCall:output_type -> atsapbx.v1.GetCallResponse
+	5, // 10: atsapbx.v1.TelephonyService.ListCalls:output_type -> atsapbx.v1.ListCallsResponse
+	9, // [9:11] is the sub-list for method output_type
+	7, // [7:9] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_telephony_proto_init() }
@@ -319,7 +614,7 @@ func file_atsapbx_v1_telephony_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_telephony_proto_rawDesc), len(file_atsapbx_v1_telephony_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

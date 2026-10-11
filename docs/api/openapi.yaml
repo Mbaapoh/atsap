@@ -335,6 +335,161 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.ListAuditResponse'
+  /atsapbx.v1.IdentityService/ListPrincipals:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: ListPrincipals
+      description: |-
+        ListPrincipals returns a page of a tenant's users, each with its
+         status and role bindings. No credential material is ever returned.
+      operationId: atsapbx.v1.IdentityService.ListPrincipals
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListPrincipalsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListPrincipalsResponse'
+  /atsapbx.v1.IdentityService/RevokeRole:
+    post:
+      tags:
+        - atsapbx.v1.IdentityService
+      summary: RevokeRole
+      description: |-
+        RevokeRole removes a role binding, under the same authority rules as
+         GrantRole. The last tenant administrator of a tenant cannot be
+         revoked, so no tenant is left without anyone able to administer it.
+      operationId: atsapbx.v1.IdentityService.RevokeRole
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.RevokeRoleRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.RevokeRoleResponse'
+  /atsapbx.v1.LicensingService/GetLicenseStatus:
+    post:
+      tags:
+        - atsapbx.v1.LicensingService
+      summary: GetLicenseStatus
+      description: |-
+        GetLicenseStatus returns the licence in force. Any authenticated
+         caller may read it: the console header shows it to every user.
+      operationId: atsapbx.v1.LicensingService.GetLicenseStatus
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetLicenseStatusRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetLicenseStatusResponse'
+  /atsapbx.v1.LicensingService/ApplyLicenseKey:
+    post:
+      tags:
+        - atsapbx.v1.LicensingService
+      summary: ApplyLicenseKey
+      description: |-
+        ApplyLicenseKey applies a signed licence token. It requires
+         installation-wide (system-scope) authority. A token that verifies
+         takes effect at once, with no restart and no call interrupted; one
+         that does not is refused and the licence in force is untouched.
+      operationId: atsapbx.v1.LicensingService.ApplyLicenseKey
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ApplyLicenseKeyRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ApplyLicenseKeyResponse'
   /atsapbx.v1.PbxService/CreateExtension:
     post:
       tags:
@@ -1252,6 +1407,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.GetCallResponse'
+  /atsapbx.v1.TelephonyService/ListCalls:
+    post:
+      tags:
+        - atsapbx.v1.TelephonyService
+      summary: ListCalls
+      description: |-
+        ListCalls returns the tenant's calls, newest first, page by page —
+         the console's read-only call history (HLD-18 flow A5). Entries carry
+         platform fields only: never a channel, bridge or engine identifier.
+         Rich call detail and reporting are LLD-09's.
+      operationId: atsapbx.v1.TelephonyService.ListCalls
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListCallsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListCallsResponse'
 components:
   schemas:
     atsapbx.v1.PrincipalStatus:
@@ -1433,6 +1628,45 @@ components:
           title: records
       title: ListAuditResponse
       additionalProperties: false
+    atsapbx.v1.ListPrincipalsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        offset:
+          type: integer
+          title: offset
+          format: int32
+      title: ListPrincipalsRequest
+      additionalProperties: false
+    atsapbx.v1.ListPrincipalsResponse:
+      type: object
+      properties:
+        principals:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.ListedPrincipal'
+          title: principals
+      title: ListPrincipalsResponse
+      additionalProperties: false
+    atsapbx.v1.ListedPrincipal:
+      type: object
+      properties:
+        principal:
+          title: principal
+          $ref: '#/components/schemas/atsapbx.v1.Principal'
+        roleBindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.RoleBinding'
+          title: role_bindings
+      title: ListedPrincipal
+      additionalProperties: false
     atsapbx.v1.Principal:
       type: object
       properties:
@@ -1526,6 +1760,40 @@ components:
     atsapbx.v1.RevokeApiKeyResponse:
       type: object
       title: RevokeApiKeyResponse
+      additionalProperties: false
+    atsapbx.v1.RevokeRoleRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        principalId:
+          type: string
+          title: principal_id
+        role:
+          type: string
+          title: role
+        scope:
+          type: string
+          title: scope
+          description: '"tenant" when omitted.'
+      title: RevokeRoleRequest
+      additionalProperties: false
+    atsapbx.v1.RevokeRoleResponse:
+      type: object
+      title: RevokeRoleResponse
+      additionalProperties: false
+    atsapbx.v1.RoleBinding:
+      type: object
+      properties:
+        role:
+          type: string
+          title: role
+        scope:
+          type: string
+          title: scope
+          description: '"tenant" or "system".'
+      title: RoleBinding
       additionalProperties: false
     atsapbx.v1.SetPrincipalStatusRequest:
       type: object
@@ -1742,6 +2010,89 @@ components:
           additionalProperties: true
       additionalProperties: true
       description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+    atsapbx.v1.LicenseState:
+      type: string
+      title: LicenseState
+      enum:
+        - LICENSE_STATE_UNSPECIFIED
+        - LICENSE_STATE_NOT_ACTIVATED
+        - LICENSE_STATE_VALID
+        - LICENSE_STATE_UNVERIFIED
+        - LICENSE_STATE_DEGRADED
+      description: LicenseState is where the licence stands.
+    atsapbx.v1.ApplyLicenseKeyRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          title: token
+          description: The signed licence token, exactly as issued. Never echoed back.
+      title: ApplyLicenseKeyRequest
+      additionalProperties: false
+    atsapbx.v1.ApplyLicenseKeyResponse:
+      type: object
+      properties:
+        status:
+          title: status
+          description: The licence now in force.
+          $ref: '#/components/schemas/atsapbx.v1.LicenseStatus'
+      title: ApplyLicenseKeyResponse
+      additionalProperties: false
+    atsapbx.v1.GetLicenseStatusRequest:
+      type: object
+      title: GetLicenseStatusRequest
+      additionalProperties: false
+    atsapbx.v1.GetLicenseStatusResponse:
+      type: object
+      properties:
+        status:
+          title: status
+          $ref: '#/components/schemas/atsapbx.v1.LicenseStatus'
+      title: GetLicenseStatusResponse
+      additionalProperties: false
+    atsapbx.v1.LicenseStatus:
+      type: object
+      properties:
+        state:
+          title: state
+          $ref: '#/components/schemas/atsapbx.v1.LicenseState'
+        edition:
+          type: string
+          title: edition
+        channels:
+          type: integer
+          title: channels
+          format: int32
+          description: Concurrent call channels the licence in force allows.
+        channelsInUse:
+          type: integer
+          title: channels_in_use
+          format: int32
+          description: Channels in use right now.
+        maxTenants:
+          type: integer
+          title: max_tenants
+          format: int32
+          description: 0 means unlimited.
+        maxExtensions:
+          type: integer
+          title: max_extensions
+          format: int32
+        expiresAt:
+          title: expires_at
+          description: Absent when the licence does not expire, or none is in force.
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        lastConfirmedAt:
+          title: last_confirmed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        reason:
+          type: string
+          title: reason
+          description: |-
+            Why the state is not VALID, e.g. "not_activated", "expired",
+             "tampered". Empty when VALID.
+      title: LicenseStatus
+      additionalProperties: false
     atsapbx.v1.DeviceType:
       type: string
       title: DeviceType
@@ -2456,6 +2807,43 @@ components:
           $ref: '#/components/schemas/atsapbx.v1.Trunk'
       title: UpdateTrunkResponse
       additionalProperties: false
+    atsapbx.v1.CallSummary:
+      type: object
+      properties:
+        callId:
+          type: string
+          title: call_id
+        direction:
+          type: string
+          title: direction
+        state:
+          type: string
+          title: state
+        sourceNumber:
+          type: string
+          title: source_number
+        destNumber:
+          type: string
+          title: dest_number
+        startedAt:
+          title: started_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        answeredAt:
+          title: answered_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        endedAt:
+          title: ended_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        durationSeconds:
+          type: integer
+          title: duration_seconds
+          format: int32
+          description: Seconds from answer to end; 0 for a call never answered.
+        terminationReason:
+          type: string
+          title: termination_reason
+      title: CallSummary
+      additionalProperties: false
     atsapbx.v1.GetCallRequest:
       type: object
       properties:
@@ -2505,6 +2893,46 @@ components:
           title: participants
       title: GetCallResponse
       additionalProperties: false
+    atsapbx.v1.ListCallsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        offset:
+          type: integer
+          title: offset
+          format: int32
+        state:
+          type: string
+          title: state
+          description: Optional filters; empty means "any".
+        direction:
+          type: string
+          title: direction
+        startedFrom:
+          title: started_from
+          description: Calls started in [started_from, started_to).
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        startedTo:
+          title: started_to
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: ListCallsRequest
+      additionalProperties: false
+    atsapbx.v1.ListCallsResponse:
+      type: object
+      properties:
+        calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.CallSummary'
+          title: calls
+      title: ListCallsResponse
+      additionalProperties: false
     atsapbx.v1.Participant:
       type: object
       properties:
@@ -2553,6 +2981,16 @@ tags:
        credential failure is the same Unauthenticated result whatever its
        cause, and a resource in another tenant answers as though it did not
        exist (INV-10).
+  - name: atsapbx.v1.LicensingService
+    description: |-
+      LicensingService is the installation's licence on the wire (LLD-08 §6):
+       what the console's licence screen and header show, and how a licence
+       is applied without editing configuration or restarting anything.
+
+       The licence belongs to the INSTALLATION, not to a tenant, so no
+       request names a tenant. Every method requires `Authorization: Bearer
+       <JWT>`. No response or error ever carries a licence token, its
+       signature, or any key.
   - name: atsapbx.v1.PbxService
     description: |-
       PbxService is pbx-core's public contract: the configuration a customer

@@ -31,6 +31,7 @@ var IdentityActions = []string{
 	"principal.create",
 	"principal.status.set",
 	"principal.role.grant",
+	"principal.role.revoke",
 	"apikey.issue",
 	"apikey.revoke",
 	"audit.read",
@@ -168,6 +169,54 @@ func (s *Service) ProvisionPrincipal(ctx context.Context, actor Actor, tenantID 
 		"username": username, "email": email, "role": role, "status": string(principal.Status),
 	})
 	return principal, nil
+}
+
+// ListedPrincipal is one row of a user listing: the account, without its
+// password hash, and every role binding it holds.
+type ListedPrincipal struct {
+	Principal domain.Principal
+	Bindings  []domain.RoleBinding
+}
+
+// ListPrincipals returns one page of a tenant's users with their role
+// bindings (console-apis-phase-a design D4). Two queries for the page,
+// never one per user.
+func (s *Service) ListPrincipals(ctx context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]ListedPrincipal, error) {
+	principals, err := s.principals.ListPrincipals(ctx, tenantID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]shareddomain.PrincipalID, len(principals))
+	for i, p := range principals {
+		ids[i] = p.ID
+	}
+	bindings, err := s.bindings.ListRoleBindingsFor(ctx, tenantID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ListedPrincipal, len(principals))
+	for i, p := range principals {
+		p.PasswordHash = "" // belt and braces: the store never selects it
+		out[i] = ListedPrincipal{Principal: p, Bindings: bindings[p.ID]}
+	}
+	return out, nil
+}
+
+// RevokeRole removes one role binding and records the revocation. The
+// last tenant-administrator binding of a tenant is refused
+// (ports.ErrLastAdministrator), decided under the store's per-tenant
+// lock. Authorization is the caller's — the RPC applies GrantRole's rules.
+func (s *Service) RevokeRole(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID, role, scope string) error {
+	if scope == "" {
+		scope = domain.ScopeTenant
+	}
+	b := domain.RoleBinding{PrincipalID: principalID, TenantID: tenantID, Role: role, Scope: scope}
+	if err := s.bindings.RevokeRoleBinding(ctx, b); err != nil {
+		return err
+	}
+	s.record(ctx, actor, tenantID, "principal.role.revoke", "principal", principalID.String(),
+		map[string]any{"role": role, "scope": scope}, nil)
+	return nil
 }
 
 // SetTenantStatus suspends or reactivates a tenant.

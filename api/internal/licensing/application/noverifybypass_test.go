@@ -81,7 +81,10 @@ func TestNoConfigurationCanSkipVerification(t *testing.T) {
 		// has not succeeded — which restricts nothing and skips nothing.
 		// Exempting the exact name rather than dropping the term keeps
 		// the guard able to catch the thing it is for.
-		exempt := map[string]bool{"StateUnverified": true}
+		// The wire enum for the same state (LicensingService, LLD-08 §6) is
+		// exempt on the same terms: an exact name, so AllowUnverified and
+		// its kin are still caught.
+		exempt := map[string]bool{"StateUnverified": true, "LicenseState_LICENSE_STATE_UNVERIFIED": true}
 
 		var found []string
 		fset := token.NewFileSet()

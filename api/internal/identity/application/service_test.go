@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -131,6 +132,12 @@ func (f *fakeStores) SetPrincipalStatus(_ context.Context, tenantID shareddomain
 }
 
 func (f *fakeStores) CreateRoleBinding(_ context.Context, b domain.RoleBinding) error {
+	// Idempotent like the real store's ON CONFLICT DO NOTHING.
+	for _, x := range f.bindings {
+		if x.PrincipalID == b.PrincipalID && x.Role == b.Role && x.Scope == b.Scope {
+			return nil
+		}
+	}
 	f.bindings = append(f.bindings, b)
 	return nil
 }
@@ -745,4 +752,59 @@ func TestAuthorizeSystem(t *testing.T) {
 		assert.ErrorIs(t, err, ports.ErrPermissionDenied,
 			"an unavailable store must never widen access — fail closed")
 	})
+}
+
+func (f *fakeStores) ListPrincipals(_ context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error) {
+	var out []domain.Principal
+	for _, p := range f.principals {
+		if p.TenantID == tenantID {
+			p.PasswordHash = ""
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
+	if offset >= len(out) {
+		return nil, nil
+	}
+	out = out[offset:]
+	if limit < len(out) {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (f *fakeStores) ListRoleBindingsFor(_ context.Context, tenantID shareddomain.TenantID, ids []shareddomain.PrincipalID) (map[shareddomain.PrincipalID][]domain.RoleBinding, error) {
+	want := map[shareddomain.PrincipalID]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[shareddomain.PrincipalID][]domain.RoleBinding{}
+	for _, b := range f.bindings {
+		if b.TenantID == tenantID && want[b.PrincipalID] {
+			out[b.PrincipalID] = append(out[b.PrincipalID], b)
+		}
+	}
+	return out, nil
+}
+
+// RevokeRoleBinding mirrors the store: ErrNotFound for no such binding,
+// ErrLastAdministrator for the tenant's last tenant-scope TENANT_ADMIN.
+func (f *fakeStores) RevokeRoleBinding(_ context.Context, b domain.RoleBinding) error {
+	idx, admins := -1, 0
+	for i, x := range f.bindings {
+		if x.TenantID == b.TenantID && x.Role == "TENANT_ADMIN" && x.Scope == domain.ScopeTenant {
+			admins++
+		}
+		if x.TenantID == b.TenantID && x.PrincipalID == b.PrincipalID && x.Role == b.Role && x.Scope == b.Scope {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return ports.ErrNotFound
+	}
+	if b.Role == "TENANT_ADMIN" && b.Scope == domain.ScopeTenant && admins <= 1 {
+		return ports.ErrLastAdministrator
+	}
+	f.bindings = append(f.bindings[:idx], f.bindings[idx+1:]...)
+	return nil
 }

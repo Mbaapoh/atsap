@@ -208,3 +208,63 @@ func nullableString(s string) *string {
 	}
 	return &s
 }
+
+// maxListCalls caps a listing page.
+const maxListCalls = 200
+
+// ListCalls returns one page of the tenant's calls, newest first, under
+// the tenant's RLS context. Every filter is a bound parameter; an empty
+// filter value means "any". It reads the calls table only — participants,
+// and with them every engine endpoint, are deliberately not joined.
+func (s *CallStore) ListCalls(ctx context.Context, tenantID shareddomain.TenantID, f ports.CallFilter, limit, offset int) ([]ports.CallSummary, error) {
+	if limit <= 0 || limit > maxListCalls {
+		limit = maxListCalls
+	}
+	var from, to *time.Time
+	if !f.From.IsZero() {
+		from = &f.From
+	}
+	if !f.To.IsZero() {
+		to = &f.To
+	}
+	var out []ports.CallSummary
+	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT id, direction, state, source_number, dest_number, started_at, answered_at, ended_at, termination_reason
+			FROM calls
+			WHERE ($1 = '' OR state = $1)
+			  AND ($2 = '' OR direction = $2)
+			  AND ($3::timestamptz IS NULL OR started_at >= $3)
+			  AND ($4::timestamptz IS NULL OR started_at < $4)
+			ORDER BY started_at DESC, id
+			LIMIT $5 OFFSET $6
+		`, string(f.State), string(f.Direction), from, to, limit, max(offset, 0))
+		if err != nil {
+			return fmt.Errorf("list calls: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				c                    ports.CallSummary
+				id, direction, state string
+				reason               *string
+			)
+			if err := rows.Scan(&id, &direction, &state, &c.SourceNumber, &c.DestNumber,
+				&c.StartedAt, &c.AnsweredAt, &c.EndedAt, &reason); err != nil {
+				return fmt.Errorf("scan call: %w", err)
+			}
+			if c.ID, err = shareddomain.ParseCallID(id); err != nil {
+				return fmt.Errorf("decode call id: %w", err)
+			}
+			c.Direction, c.State = domain.Direction(direction), domain.CallState(state)
+			if reason != nil {
+				c.TerminationReason = *reason
+			}
+			out = append(out, c)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+var _ ports.CallLister = (*CallStore)(nil)

@@ -498,3 +498,126 @@ func isUniqueViolation(err error) bool {
 	var pgErr interface{ SQLState() string }
 	return errors.As(err, &pgErr) && pgErr.SQLState() == "23505"
 }
+
+// --- console listing and revocation (console-apis-phase-a) ------------
+
+// ListPrincipals returns one page of the tenant's principals, ordered by
+// username. The password hash is not selected: a listing has no use for
+// it, so it cannot leak through one.
+func (s *Store) ListPrincipals(ctx context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error) {
+	var out []domain.Principal
+	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT id, tenant_id, username, email, role, status, created_at
+			FROM principals ORDER BY username, id LIMIT $1 OFFSET $2
+		`, limit, offset)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				p                        domain.Principal
+				rawID, rawTenant, status string
+			)
+			if err := rows.Scan(&rawID, &rawTenant, &p.Username, &p.Email, &p.Role, &status, &p.CreatedAt); err != nil {
+				return err
+			}
+			if p.ID, err = shareddomain.ParsePrincipalID(rawID); err != nil {
+				return fmt.Errorf("decode principal id: %w", err)
+			}
+			if p.TenantID, err = shareddomain.ParseTenantID(rawTenant); err != nil {
+				return fmt.Errorf("decode tenant id: %w", err)
+			}
+			p.Status = domain.PrincipalStatus(status)
+			out = append(out, p)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list principals: %w", err)
+	}
+	return out, nil
+}
+
+// ListRoleBindingsFor reads a page's bindings in one query rather than
+// one per principal.
+func (s *Store) ListRoleBindingsFor(ctx context.Context, tenantID shareddomain.TenantID, ids []shareddomain.PrincipalID) (map[shareddomain.PrincipalID][]domain.RoleBinding, error) {
+	out := make(map[shareddomain.PrincipalID][]domain.RoleBinding, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	raw := make([]string, len(ids))
+	for i, id := range ids {
+		raw[i] = id.String()
+	}
+	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT principal_id, role, scope, created_at FROM role_bindings
+			WHERE principal_id = ANY($1) ORDER BY principal_id, role, scope
+		`, raw)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				b     domain.RoleBinding
+				rawID string
+			)
+			if err := rows.Scan(&rawID, &b.Role, &b.Scope, &b.CreatedAt); err != nil {
+				return err
+			}
+			if b.PrincipalID, err = shareddomain.ParsePrincipalID(rawID); err != nil {
+				return fmt.Errorf("decode principal id: %w", err)
+			}
+			b.TenantID = tenantID
+			out[b.PrincipalID] = append(out[b.PrincipalID], b)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list role bindings: %w", err)
+	}
+	return out, nil
+}
+
+// RevokeRoleBinding deletes one binding under a per-tenant advisory
+// lock, refusing to delete the tenant's last tenant-scope TENANT_ADMIN.
+// Without the lock, two concurrent revocations of the last two
+// administrators would each count two and both succeed.
+func (s *Store) RevokeRoleBinding(ctx context.Context, b domain.RoleBinding) error {
+	return s.pool.WithTenant(ctx, b.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('identity.admins:' || $1, 0))`,
+			b.TenantID.String()); err != nil {
+			return fmt.Errorf("lock tenant administrators: %w", err)
+		}
+		if b.Role == "TENANT_ADMIN" && b.Scope == domain.ScopeTenant {
+			var admins int
+			if err := tx.QueryRow(ctx, `
+				SELECT count(*) FROM role_bindings b JOIN principals p ON p.id = b.principal_id
+				WHERE b.role = 'TENANT_ADMIN' AND b.scope = $1 AND p.status = 'ACTIVE'
+			`, domain.ScopeTenant).Scan(&admins); err != nil {
+				return fmt.Errorf("count tenant administrators: %w", err)
+			}
+			var holds bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM role_bindings
+				WHERE principal_id = $1 AND role = $2 AND scope = $3)`,
+				b.PrincipalID.String(), b.Role, b.Scope).Scan(&holds); err != nil {
+				return fmt.Errorf("read binding: %w", err)
+			}
+			if holds && admins <= 1 {
+				return ports.ErrLastAdministrator
+			}
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM role_bindings WHERE principal_id = $1 AND role = $2 AND scope = $3`,
+			b.PrincipalID.String(), b.Role, b.Scope)
+		if err != nil {
+			return fmt.Errorf("revoke role binding: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("role binding: %w", ports.ErrNotFound)
+		}
+		return nil
+	})
+}

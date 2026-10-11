@@ -282,3 +282,29 @@ func (s *Service) invalidate() {
 	s.cached = nil
 	s.mu.Unlock()
 }
+
+// Status is the licence as an administrator sees it (console-apis-phase-a
+// design D2). Setup is a status, never an error: a fresh installation
+// must be able to show "not activated" so someone can activate it.
+func (s *Service) Status(ctx context.Context) (ports.LicenseStatus, error) {
+	e, err := s.Entitlement(ctx)
+	if err != nil {
+		return ports.LicenseStatus{}, err
+	}
+	st := ports.LicenseStatus{Entitlement: e, ChannelsInUse: s.ChannelsInUse()}
+
+	// Entitlement caches the verified licence when one is in force; the
+	// dates come from it, never from the unverified display columns.
+	s.mu.RLock()
+	cached := s.cached
+	s.mu.RUnlock()
+	if cached != nil {
+		if exp := cached.token.ExpiresAt; !exp.IsZero() {
+			e := exp.UTC()
+			st.ExpiresAt = &e
+		}
+		lc := cached.lastConfirmedAt.UTC()
+		st.LastConfirmedAt = &lc
+	}
+	return st, nil
+}

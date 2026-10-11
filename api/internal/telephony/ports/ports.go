@@ -7,6 +7,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	shareddomain "atsap-api/internal/shared/domain"
 	"atsap-api/internal/shared/event"
@@ -305,3 +306,32 @@ type CorrelationRegistrar interface {
 // rows alike, not telephony-specific — so OutboxPublisher lives in
 // internal/shared/ports (D-57) and OutboxWorker in internal/postgres,
 // neither of them here.
+
+// CallFilter narrows a call listing. Zero values mean "any".
+type CallFilter struct {
+	State     domain.CallState
+	Direction domain.Direction
+	From, To  time.Time // started_at in [From, To); zero = unbounded
+}
+
+// CallSummary is one row of a call listing: platform fields only. It has
+// no participant, channel, bridge or endpoint field, so no engine
+// identifier can be listed (console-apis-phase-a design D5).
+type CallSummary struct {
+	ID                shareddomain.CallID
+	Direction         domain.Direction
+	State             domain.CallState
+	SourceNumber      string
+	DestNumber        string
+	StartedAt         time.Time
+	AnsweredAt        *time.Time
+	EndedAt           *time.Time
+	TerminationReason string
+}
+
+// CallLister reads a tenant's calls for the call-history screen. Separate
+// from CallStore, which the call path depends on: a read-only listing has
+// no business widening the interface call setup is written against.
+type CallLister interface {
+	ListCalls(ctx context.Context, tenantID shareddomain.TenantID, filter CallFilter, limit, offset int) ([]CallSummary, error)
+}

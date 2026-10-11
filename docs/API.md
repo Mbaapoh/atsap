@@ -33,6 +33,11 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `IssueApiKey` | `atsapbx.v1.IdentityService` | `identity-api` | Partner key self-service (US-05.1) |
 | `RevokeApiKey` | `atsapbx.v1.IdentityService` | `identity-api` | Partner key self-service (US-05.1) |
 | `ListAudit` | `atsapbx.v1.IdentityService` | `identity-api` | Audit review and compliance export (AC-01.3) |
+| `ListPrincipals` | `atsapbx.v1.IdentityService` | `console-apis-phase-a` | Console users screen (flow A2): users with status and role bindings, never a credential |
+| `RevokeRole` | `atsapbx.v1.IdentityService` | `console-apis-phase-a` | Console roles screen (A2); same authority as `GrantRole`; the last tenant administrator cannot be revoked |
+| `ListCalls` | `atsapbx.v1.TelephonyService` | `console-apis-phase-a` | Console call history (A5): newest first, filtered, paged; no engine identifiers |
+| `GetLicenseStatus` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Console header and licence screen (A1); any authenticated caller |
+| `ApplyLicenseKey` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Licence activation (A1, EPIC-06); system scope; no restart; the token is never echoed |
 | `CreateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions screen; the only response carrying a generated secret |
 | `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
 | `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |
@@ -129,19 +134,11 @@ What each LLD is expected to put on the wire. This is a plan, not a
 promise: a capability arrives here only when it has a named consumer,
 and the owning change is where that is decided and recorded.
 
-### LLD-08 — licensing (identity, LLD-02, is complete)
+### LLD-08 — licensing
 
-`identity-api` shipped the identity surface (§1) ahead of
-`auth-cutover-connectrpc`, which required it: without a wire-level
-`AuthenticateUser` there was no way to obtain a token in production, so
-enforcing JWTs would have locked every caller out. **Both have since
-landed** — the cutover is complete and the whole API is authenticated
-(§1). Licensing RPCs remain pending until the `licensing` context
-exists — they are specified in [`lld/LLD-08-licensing.md`](lld/LLD-08-licensing.md) §6, split out of LLD-02 on 2026-09-08 because `identity` and `licensing` are separate bounded contexts. Identity itself is complete.
-
-| RPC | Service | Consumer |
-|---|---|---|
-| `ApplyLicenseKey`, `GetLicenseStatus` | `LicensingService` | Partner licence application and entitlement display (EPIC-06); `licensing-apply-key` |
+`GetLicenseStatus` and `ApplyLicenseKey` landed with `console-apis-phase-a`
+(§1). What LLD-08 still holds pending is not RPC surface: hardware
+fingerprint collection, 3-of-5 matching and the licensing CLI.
 
 ### LLD-03 — pbx-core
 

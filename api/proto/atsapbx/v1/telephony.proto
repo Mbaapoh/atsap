@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package atsapbx.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
 
 // TelephonyService exposes telephony-core's public Call/Participant
@@ -13,6 +15,12 @@ option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
 service TelephonyService {
   // GetCall returns a Call's current state and participants.
   rpc GetCall(GetCallRequest) returns (GetCallResponse);
+
+  // ListCalls returns the tenant's calls, newest first, page by page —
+  // the console's read-only call history (HLD-18 flow A5). Entries carry
+  // platform fields only: never a channel, bridge or engine identifier.
+  // Rich call detail and reporting are LLD-09's.
+  rpc ListCalls(ListCallsRequest) returns (ListCallsResponse);
 }
 
 message GetCallRequest {
@@ -47,4 +55,34 @@ message Participant {
   // Disconnected.
   string state = 4;
   int32 billable_seconds = 5;
+}
+
+message ListCallsRequest {
+  string tenant_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  // Optional filters; empty means "any".
+  string state = 4;
+  string direction = 5;
+  // Calls started in [started_from, started_to).
+  google.protobuf.Timestamp started_from = 6;
+  google.protobuf.Timestamp started_to = 7;
+}
+
+message CallSummary {
+  string call_id = 1;
+  string direction = 2;
+  string state = 3;
+  string source_number = 4;
+  string dest_number = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp answered_at = 7;
+  google.protobuf.Timestamp ended_at = 8;
+  // Seconds from answer to end; 0 for a call never answered.
+  int32 duration_seconds = 9;
+  string termination_reason = 10;
+}
+
+message ListCallsResponse {
+  repeated CallSummary calls = 1;
 }

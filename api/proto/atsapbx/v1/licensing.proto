@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package atsapbx.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
+
+// LicensingService is the installation's licence on the wire (LLD-08 §6):
+// what the console's licence screen and header show, and how a licence
+// is applied without editing configuration or restarting anything.
+//
+// The licence belongs to the INSTALLATION, not to a tenant, so no
+// request names a tenant. Every method requires `Authorization: Bearer
+// <JWT>`. No response or error ever carries a licence token, its
+// signature, or any key.
+service LicensingService {
+  // GetLicenseStatus returns the licence in force. Any authenticated
+  // caller may read it: the console header shows it to every user.
+  rpc GetLicenseStatus(GetLicenseStatusRequest) returns (GetLicenseStatusResponse);
+
+  // ApplyLicenseKey applies a signed licence token. It requires
+  // installation-wide (system-scope) authority. A token that verifies
+  // takes effect at once, with no restart and no call interrupted; one
+  // that does not is refused and the licence in force is untouched.
+  rpc ApplyLicenseKey(ApplyLicenseKeyRequest) returns (ApplyLicenseKeyResponse);
+}
+
+// LicenseState is where the licence stands.
+enum LicenseState {
+  LICENSE_STATE_UNSPECIFIED = 0;
+  // Never activated: no call path until a licence is applied.
+  LICENSE_STATE_NOT_ACTIVATED = 1;
+  LICENSE_STATE_VALID = 2;
+  // In force, but the daily confirmation has not succeeded recently.
+  // Nothing is restricted yet; the console warns.
+  LICENSE_STATE_UNVERIFIED = 3;
+  // Reduced capacity — never disabled — after expiry, a grace period
+  // without confirmation, or a licence that failed verification.
+  LICENSE_STATE_DEGRADED = 4;
+}
+
+message LicenseStatus {
+  LicenseState state = 1;
+  string edition = 2;
+  // Concurrent call channels the licence in force allows.
+  int32 channels = 3;
+  // Channels in use right now.
+  int32 channels_in_use = 4;
+  // 0 means unlimited.
+  int32 max_tenants = 5;
+  int32 max_extensions = 6;
+  // Absent when the licence does not expire, or none is in force.
+  google.protobuf.Timestamp expires_at = 7;
+  google.protobuf.Timestamp last_confirmed_at = 8;
+  // Why the state is not VALID, e.g. "not_activated", "expired",
+  // "tampered". Empty when VALID.
+  string reason = 9;
+}
+
+message GetLicenseStatusRequest {}
+
+message GetLicenseStatusResponse {
+  LicenseStatus status = 1;
+}
+
+message ApplyLicenseKeyRequest {
+  // The signed licence token, exactly as issued. Never echoed back.
+  string token = 1;
+}
+
+message ApplyLicenseKeyResponse {
+  // The licence now in force.
+  LicenseStatus status = 1;
+}

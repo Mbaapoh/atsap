@@ -60,6 +60,12 @@ const (
 	// IdentityServiceListAuditProcedure is the fully-qualified name of the IdentityService's ListAudit
 	// RPC.
 	IdentityServiceListAuditProcedure = "/atsapbx.v1.IdentityService/ListAudit"
+	// IdentityServiceListPrincipalsProcedure is the fully-qualified name of the IdentityService's
+	// ListPrincipals RPC.
+	IdentityServiceListPrincipalsProcedure = "/atsapbx.v1.IdentityService/ListPrincipals"
+	// IdentityServiceRevokeRoleProcedure is the fully-qualified name of the IdentityService's
+	// RevokeRole RPC.
+	IdentityServiceRevokeRoleProcedure = "/atsapbx.v1.IdentityService/RevokeRole"
 )
 
 // IdentityServiceClient is a client for the atsapbx.v1.IdentityService service.
@@ -87,6 +93,13 @@ type IdentityServiceClient interface {
 	RevokeApiKey(context.Context, *connect.Request[v1.RevokeApiKeyRequest]) (*connect.Response[v1.RevokeApiKeyResponse], error)
 	// ListAudit returns the calling tenant's most recent audit records.
 	ListAudit(context.Context, *connect.Request[v1.ListAuditRequest]) (*connect.Response[v1.ListAuditResponse], error)
+	// ListPrincipals returns a page of a tenant's users, each with its
+	// status and role bindings. No credential material is ever returned.
+	ListPrincipals(context.Context, *connect.Request[v1.ListPrincipalsRequest]) (*connect.Response[v1.ListPrincipalsResponse], error)
+	// RevokeRole removes a role binding, under the same authority rules as
+	// GrantRole. The last tenant administrator of a tenant cannot be
+	// revoked, so no tenant is left without anyone able to administer it.
+	RevokeRole(context.Context, *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error)
 }
 
 // NewIdentityServiceClient constructs a client for the atsapbx.v1.IdentityService service. By
@@ -154,6 +167,18 @@ func NewIdentityServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(identityServiceMethods.ByName("ListAudit")),
 			connect.WithClientOptions(opts...),
 		),
+		listPrincipals: connect.NewClient[v1.ListPrincipalsRequest, v1.ListPrincipalsResponse](
+			httpClient,
+			baseURL+IdentityServiceListPrincipalsProcedure,
+			connect.WithSchema(identityServiceMethods.ByName("ListPrincipals")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeRole: connect.NewClient[v1.RevokeRoleRequest, v1.RevokeRoleResponse](
+			httpClient,
+			baseURL+IdentityServiceRevokeRoleProcedure,
+			connect.WithSchema(identityServiceMethods.ByName("RevokeRole")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -168,6 +193,8 @@ type identityServiceClient struct {
 	issueApiKey        *connect.Client[v1.IssueApiKeyRequest, v1.IssueApiKeyResponse]
 	revokeApiKey       *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
 	listAudit          *connect.Client[v1.ListAuditRequest, v1.ListAuditResponse]
+	listPrincipals     *connect.Client[v1.ListPrincipalsRequest, v1.ListPrincipalsResponse]
+	revokeRole         *connect.Client[v1.RevokeRoleRequest, v1.RevokeRoleResponse]
 }
 
 // AuthenticateUser calls atsapbx.v1.IdentityService.AuthenticateUser.
@@ -215,6 +242,16 @@ func (c *identityServiceClient) ListAudit(ctx context.Context, req *connect.Requ
 	return c.listAudit.CallUnary(ctx, req)
 }
 
+// ListPrincipals calls atsapbx.v1.IdentityService.ListPrincipals.
+func (c *identityServiceClient) ListPrincipals(ctx context.Context, req *connect.Request[v1.ListPrincipalsRequest]) (*connect.Response[v1.ListPrincipalsResponse], error) {
+	return c.listPrincipals.CallUnary(ctx, req)
+}
+
+// RevokeRole calls atsapbx.v1.IdentityService.RevokeRole.
+func (c *identityServiceClient) RevokeRole(ctx context.Context, req *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error) {
+	return c.revokeRole.CallUnary(ctx, req)
+}
+
 // IdentityServiceHandler is an implementation of the atsapbx.v1.IdentityService service.
 type IdentityServiceHandler interface {
 	// AuthenticateUser exchanges a username and password for a
@@ -240,6 +277,13 @@ type IdentityServiceHandler interface {
 	RevokeApiKey(context.Context, *connect.Request[v1.RevokeApiKeyRequest]) (*connect.Response[v1.RevokeApiKeyResponse], error)
 	// ListAudit returns the calling tenant's most recent audit records.
 	ListAudit(context.Context, *connect.Request[v1.ListAuditRequest]) (*connect.Response[v1.ListAuditResponse], error)
+	// ListPrincipals returns a page of a tenant's users, each with its
+	// status and role bindings. No credential material is ever returned.
+	ListPrincipals(context.Context, *connect.Request[v1.ListPrincipalsRequest]) (*connect.Response[v1.ListPrincipalsResponse], error)
+	// RevokeRole removes a role binding, under the same authority rules as
+	// GrantRole. The last tenant administrator of a tenant cannot be
+	// revoked, so no tenant is left without anyone able to administer it.
+	RevokeRole(context.Context, *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error)
 }
 
 // NewIdentityServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -303,6 +347,18 @@ func NewIdentityServiceHandler(svc IdentityServiceHandler, opts ...connect.Handl
 		connect.WithSchema(identityServiceMethods.ByName("ListAudit")),
 		connect.WithHandlerOptions(opts...),
 	)
+	identityServiceListPrincipalsHandler := connect.NewUnaryHandler(
+		IdentityServiceListPrincipalsProcedure,
+		svc.ListPrincipals,
+		connect.WithSchema(identityServiceMethods.ByName("ListPrincipals")),
+		connect.WithHandlerOptions(opts...),
+	)
+	identityServiceRevokeRoleHandler := connect.NewUnaryHandler(
+		IdentityServiceRevokeRoleProcedure,
+		svc.RevokeRole,
+		connect.WithSchema(identityServiceMethods.ByName("RevokeRole")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.IdentityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IdentityServiceAuthenticateUserProcedure:
@@ -323,6 +379,10 @@ func NewIdentityServiceHandler(svc IdentityServiceHandler, opts ...connect.Handl
 			identityServiceRevokeApiKeyHandler.ServeHTTP(w, r)
 		case IdentityServiceListAuditProcedure:
 			identityServiceListAuditHandler.ServeHTTP(w, r)
+		case IdentityServiceListPrincipalsProcedure:
+			identityServiceListPrincipalsHandler.ServeHTTP(w, r)
+		case IdentityServiceRevokeRoleProcedure:
+			identityServiceRevokeRoleHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -366,4 +426,12 @@ func (UnimplementedIdentityServiceHandler) RevokeApiKey(context.Context, *connec
 
 func (UnimplementedIdentityServiceHandler) ListAudit(context.Context, *connect.Request[v1.ListAuditRequest]) (*connect.Response[v1.ListAuditResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.IdentityService.ListAudit is not implemented"))
+}
+
+func (UnimplementedIdentityServiceHandler) ListPrincipals(context.Context, *connect.Request[v1.ListPrincipalsRequest]) (*connect.Response[v1.ListPrincipalsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.IdentityService.ListPrincipals is not implemented"))
+}
+
+func (UnimplementedIdentityServiceHandler) RevokeRole(context.Context, *connect.Request[v1.RevokeRoleRequest]) (*connect.Response[v1.RevokeRoleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.IdentityService.RevokeRole is not implemented"))
 }

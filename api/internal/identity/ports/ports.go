@@ -37,6 +37,11 @@ var (
 	ErrUsernameTaken      = errors.New("username already exists in this tenant")
 	ErrResidencyImmutable = errors.New("residency zone cannot be changed once set")
 
+	// ErrLastAdministrator refuses revoking a tenant's only remaining
+	// tenant-administrator binding: no tenant may be left without anyone
+	// able to administer it (console-apis-phase-a, identity/public-api).
+	ErrLastAdministrator = errors.New("cannot revoke the last tenant administrator")
+
 	// ErrEntitlementExceeded is the installation lacking the licence for
 	// an operation, as distinct from the caller lacking the permission.
 	// It is never folded into ErrPermissionDenied: a licence refusal in
@@ -154,6 +159,9 @@ type PrincipalStore interface {
 	// ErrInvalidCredentials a wrong password produces.
 	GetPrincipalByUsername(ctx context.Context, tenantID shareddomain.TenantID, username string) (domain.Principal, error)
 	SetPrincipalStatus(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID, status domain.PrincipalStatus) error
+	// ListPrincipals returns one page of the tenant's principals by
+	// username. The PasswordHash field is never populated.
+	ListPrincipals(ctx context.Context, tenantID shareddomain.TenantID, limit, offset int) ([]domain.Principal, error)
 }
 
 // RoleBindingStore persists role grants.
@@ -161,6 +169,15 @@ type RoleBindingStore interface {
 	CreateRoleBinding(ctx context.Context, binding domain.RoleBinding) error
 	ListRoleBindings(ctx context.Context, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID) ([]domain.RoleBinding, error)
 	DeleteRoleBinding(ctx context.Context, binding domain.RoleBinding) error
+	// ListRoleBindingsFor returns the bindings of several principals in
+	// one query, keyed by principal.
+	ListRoleBindingsFor(ctx context.Context, tenantID shareddomain.TenantID, principalIDs []shareddomain.PrincipalID) (map[shareddomain.PrincipalID][]domain.RoleBinding, error)
+	// RevokeRoleBinding deletes one binding. It reports ErrNotFound when
+	// no such binding exists, and ErrLastAdministrator when it is the
+	// tenant's only tenant-scope TENANT_ADMIN binding — decided under a
+	// per-tenant lock, so two concurrent revocations cannot strip both of
+	// the last two administrators.
+	RevokeRoleBinding(ctx context.Context, binding domain.RoleBinding) error
 }
 
 // ApiKeyStore persists API key records — digests only, never key

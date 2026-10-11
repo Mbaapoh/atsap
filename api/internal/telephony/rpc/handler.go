@@ -9,26 +9,103 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	atsapbxv1 "atsap-api/internal/genproto/atsapbx/v1"
 	"atsap-api/internal/genproto/atsapbx/v1/atsapbxv1connect"
 	shareddomain "atsap-api/internal/shared/domain"
+	"atsap-api/internal/telephony/domain"
 	"atsap-api/internal/telephony/ports"
 )
 
 // TelephonyHandler implements atsapbxv1connect.TelephonyServiceHandler.
 type TelephonyHandler struct {
 	callStore ports.CallStore
+	calls     ports.CallLister
 }
 
 var _ atsapbxv1connect.TelephonyServiceHandler = (*TelephonyHandler)(nil)
 
-// NewTelephonyHandler returns a handler backed by callStore.
-func NewTelephonyHandler(callStore ports.CallStore) *TelephonyHandler {
-	return &TelephonyHandler{callStore: callStore}
+// NewTelephonyHandler returns a handler backed by callStore, listing calls
+// through calls.
+func NewTelephonyHandler(callStore ports.CallStore, calls ports.CallLister) *TelephonyHandler {
+	return &TelephonyHandler{callStore: callStore, calls: calls}
+}
+
+// maxCallPage caps a ListCalls page; 50 when the caller names none.
+const maxCallPage = 200
+
+// ListCalls returns the tenant's calls, newest first (console-apis-phase-a
+// design D5). It is guarded exactly as GetCall is — the interceptor
+// authenticates and refuses a body tenant that is not the token's — and
+// adds no role check: the same exposure GetCall has, recorded, not
+// widened. CallSummary has no participant or endpoint field, so no
+// engine identifier can be listed.
+func (h *TelephonyHandler) ListCalls(ctx context.Context, req *connect.Request[atsapbxv1.ListCallsRequest]) (*connect.Response[atsapbxv1.ListCallsResponse], error) {
+	tenantID, err := shareddomain.ParseTenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
+	}
+	filter := ports.CallFilter{State: domain.CallState(req.Msg.GetState()), Direction: domain.Direction(req.Msg.GetDirection())}
+	if filter.State != "" && !validCallState(filter.State) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid state"))
+	}
+	if filter.Direction != "" && filter.Direction != domain.Inbound && filter.Direction != domain.Outbound && filter.Direction != domain.Internal {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid direction"))
+	}
+	if ts := req.Msg.GetStartedFrom(); ts != nil {
+		filter.From = ts.AsTime()
+	}
+	if ts := req.Msg.GetStartedTo(); ts != nil {
+		filter.To = ts.AsTime()
+	}
+	limit := int(req.Msg.GetLimit())
+	if limit <= 0 {
+		limit = 50
+	}
+	limit = min(limit, maxCallPage)
+
+	calls, err := h.calls.ListCalls(ctx, tenantID, filter, limit, max(int(req.Msg.GetOffset()), 0))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("call listing failed"))
+	}
+	out := make([]*atsapbxv1.CallSummary, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, toCallSummary(c))
+	}
+	return connect.NewResponse(&atsapbxv1.ListCallsResponse{Calls: out}), nil
+}
+
+func validCallState(s domain.CallState) bool {
+	switch s {
+	case domain.CallInitiated, domain.CallScreening, domain.CallRouting, domain.CallPresenting,
+		domain.CallActive, domain.CallDegraded, domain.CallTerminating, domain.CallTerminated:
+		return true
+	}
+	return false
+}
+
+func toCallSummary(c ports.CallSummary) *atsapbxv1.CallSummary {
+	out := &atsapbxv1.CallSummary{
+		CallId: c.ID.String(), Direction: string(c.Direction), State: string(c.State),
+		SourceNumber: c.SourceNumber, DestNumber: c.DestNumber,
+		StartedAt: timestamppb.New(c.StartedAt), TerminationReason: c.TerminationReason,
+	}
+	if c.AnsweredAt != nil {
+		out.AnsweredAt = timestamppb.New(*c.AnsweredAt)
+	}
+	if c.EndedAt != nil {
+		out.EndedAt = timestamppb.New(*c.EndedAt)
+	}
+	if c.AnsweredAt != nil && c.EndedAt != nil && c.EndedAt.After(*c.AnsweredAt) {
+		out.DurationSeconds = int32(c.EndedAt.Sub(*c.AnsweredAt) / time.Second)
+	}
+	return out
 }
 
 // GetCall returns a Call's current state and participants. The
@@ -83,6 +160,8 @@ func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[ats
 func TenantID(request any) (string, bool) {
 	switch r := request.(type) {
 	case *atsapbxv1.GetCallRequest:
+		return r.GetTenantId(), r.GetTenantId() != ""
+	case *atsapbxv1.ListCallsRequest:
 		return r.GetTenantId(), r.GetTenantId() != ""
 	default:
 		return "", false

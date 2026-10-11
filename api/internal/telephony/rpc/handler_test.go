@@ -69,7 +69,7 @@ func TestGetCall_Success(t *testing.T) {
 	call, tenantID := testCall(t)
 	store.calls[call.ID.String()] = call
 
-	handler := rpc.NewTelephonyHandler(store)
+	handler := rpc.NewTelephonyHandler(store, nil)
 	resp, err := handler.GetCall(context.Background(), connect.NewRequest(&atsapbxv1.GetCallRequest{
 		CallId: call.ID.String(), TenantId: tenantID.String(),
 	}))
@@ -85,7 +85,7 @@ func TestGetCall_Success(t *testing.T) {
 }
 
 func TestGetCall_NotFound(t *testing.T) {
-	handler := rpc.NewTelephonyHandler(newFakeCallStore())
+	handler := rpc.NewTelephonyHandler(newFakeCallStore(), nil)
 	_, err := handler.GetCall(context.Background(), connect.NewRequest(&atsapbxv1.GetCallRequest{
 		CallId: shareddomain.NewCallID().String(), TenantId: shareddomain.NewTenantID().String(),
 	}))
@@ -94,7 +94,7 @@ func TestGetCall_NotFound(t *testing.T) {
 }
 
 func TestGetCall_InvalidTenantID(t *testing.T) {
-	handler := rpc.NewTelephonyHandler(newFakeCallStore())
+	handler := rpc.NewTelephonyHandler(newFakeCallStore(), nil)
 	_, err := handler.GetCall(context.Background(), connect.NewRequest(&atsapbxv1.GetCallRequest{
 		CallId: shareddomain.NewCallID().String(), TenantId: "not-a-uuid",
 	}))
@@ -103,7 +103,7 @@ func TestGetCall_InvalidTenantID(t *testing.T) {
 }
 
 func TestGetCall_InvalidCallID(t *testing.T) {
-	handler := rpc.NewTelephonyHandler(newFakeCallStore())
+	handler := rpc.NewTelephonyHandler(newFakeCallStore(), nil)
 	_, err := handler.GetCall(context.Background(), connect.NewRequest(&atsapbxv1.GetCallRequest{
 		CallId: "not-a-uuid", TenantId: shareddomain.NewTenantID().String(),
 	}))
@@ -152,7 +152,7 @@ func TestGetCall_NoChannelIDInResponseContent(t *testing.T) {
 	call, tenantID := testCall(t)
 	store.calls[call.ID.String()] = call
 
-	handler := rpc.NewTelephonyHandler(store)
+	handler := rpc.NewTelephonyHandler(store, nil)
 	resp, err := handler.GetCall(context.Background(), connect.NewRequest(&atsapbxv1.GetCallRequest{
 		CallId: call.ID.String(), TenantId: tenantID.String(),
 	}))
@@ -183,4 +183,13 @@ func TestTenantID(t *testing.T) {
 
 	_, ok = rpc.TenantID(&atsapbxv1.AuthenticateUserRequest{TenantId: want})
 	assert.False(t, ok, "this matcher answers only for telephony requests; identity has its own")
+}
+
+// The interceptor refuses a body tenant that is not the token's only for
+// request types the matcher knows; ListCalls must be one of them, or a
+// caller could list another tenant's calls by naming it.
+func TestTenantID_CoversListCalls(t *testing.T) {
+	id, ok := rpc.TenantID(&atsapbxv1.ListCallsRequest{TenantId: "t-1"})
+	assert.True(t, ok)
+	assert.Equal(t, "t-1", id)
 }

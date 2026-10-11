@@ -36,12 +36,20 @@ const (
 	// TelephonyServiceGetCallProcedure is the fully-qualified name of the TelephonyService's GetCall
 	// RPC.
 	TelephonyServiceGetCallProcedure = "/atsapbx.v1.TelephonyService/GetCall"
+	// TelephonyServiceListCallsProcedure is the fully-qualified name of the TelephonyService's
+	// ListCalls RPC.
+	TelephonyServiceListCallsProcedure = "/atsapbx.v1.TelephonyService/ListCalls"
 )
 
 // TelephonyServiceClient is a client for the atsapbx.v1.TelephonyService service.
 type TelephonyServiceClient interface {
 	// GetCall returns a Call's current state and participants.
 	GetCall(context.Context, *connect.Request[v1.GetCallRequest]) (*connect.Response[v1.GetCallResponse], error)
+	// ListCalls returns the tenant's calls, newest first, page by page —
+	// the console's read-only call history (HLD-18 flow A5). Entries carry
+	// platform fields only: never a channel, bridge or engine identifier.
+	// Rich call detail and reporting are LLD-09's.
+	ListCalls(context.Context, *connect.Request[v1.ListCallsRequest]) (*connect.Response[v1.ListCallsResponse], error)
 }
 
 // NewTelephonyServiceClient constructs a client for the atsapbx.v1.TelephonyService service. By
@@ -61,12 +69,19 @@ func NewTelephonyServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(telephonyServiceMethods.ByName("GetCall")),
 			connect.WithClientOptions(opts...),
 		),
+		listCalls: connect.NewClient[v1.ListCallsRequest, v1.ListCallsResponse](
+			httpClient,
+			baseURL+TelephonyServiceListCallsProcedure,
+			connect.WithSchema(telephonyServiceMethods.ByName("ListCalls")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // telephonyServiceClient implements TelephonyServiceClient.
 type telephonyServiceClient struct {
-	getCall *connect.Client[v1.GetCallRequest, v1.GetCallResponse]
+	getCall   *connect.Client[v1.GetCallRequest, v1.GetCallResponse]
+	listCalls *connect.Client[v1.ListCallsRequest, v1.ListCallsResponse]
 }
 
 // GetCall calls atsapbx.v1.TelephonyService.GetCall.
@@ -74,10 +89,20 @@ func (c *telephonyServiceClient) GetCall(ctx context.Context, req *connect.Reque
 	return c.getCall.CallUnary(ctx, req)
 }
 
+// ListCalls calls atsapbx.v1.TelephonyService.ListCalls.
+func (c *telephonyServiceClient) ListCalls(ctx context.Context, req *connect.Request[v1.ListCallsRequest]) (*connect.Response[v1.ListCallsResponse], error) {
+	return c.listCalls.CallUnary(ctx, req)
+}
+
 // TelephonyServiceHandler is an implementation of the atsapbx.v1.TelephonyService service.
 type TelephonyServiceHandler interface {
 	// GetCall returns a Call's current state and participants.
 	GetCall(context.Context, *connect.Request[v1.GetCallRequest]) (*connect.Response[v1.GetCallResponse], error)
+	// ListCalls returns the tenant's calls, newest first, page by page —
+	// the console's read-only call history (HLD-18 flow A5). Entries carry
+	// platform fields only: never a channel, bridge or engine identifier.
+	// Rich call detail and reporting are LLD-09's.
+	ListCalls(context.Context, *connect.Request[v1.ListCallsRequest]) (*connect.Response[v1.ListCallsResponse], error)
 }
 
 // NewTelephonyServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -93,10 +118,18 @@ func NewTelephonyServiceHandler(svc TelephonyServiceHandler, opts ...connect.Han
 		connect.WithSchema(telephonyServiceMethods.ByName("GetCall")),
 		connect.WithHandlerOptions(opts...),
 	)
+	telephonyServiceListCallsHandler := connect.NewUnaryHandler(
+		TelephonyServiceListCallsProcedure,
+		svc.ListCalls,
+		connect.WithSchema(telephonyServiceMethods.ByName("ListCalls")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.TelephonyService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TelephonyServiceGetCallProcedure:
 			telephonyServiceGetCallHandler.ServeHTTP(w, r)
+		case TelephonyServiceListCallsProcedure:
+			telephonyServiceListCallsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -108,4 +141,8 @@ type UnimplementedTelephonyServiceHandler struct{}
 
 func (UnimplementedTelephonyServiceHandler) GetCall(context.Context, *connect.Request[v1.GetCallRequest]) (*connect.Response[v1.GetCallResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.TelephonyService.GetCall is not implemented"))
+}
+
+func (UnimplementedTelephonyServiceHandler) ListCalls(context.Context, *connect.Request[v1.ListCallsRequest]) (*connect.Response[v1.ListCallsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.TelephonyService.ListCalls is not implemented"))
 }

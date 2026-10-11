@@ -118,3 +118,18 @@ type DisplayClaims struct {
 // reports it on every load until a token is applied, and the caller
 // answers with domain.SetupEntitlement rather than a capacity floor.
 var ErrNoLicense = errors.New("licensing: no licence has been applied")
+
+// LicenseStatus is what an administrator is shown about the licence in
+// force: the entitlement (already evaluated for expiry and grace), live
+// usage, and the two dates that explain the state. It carries no token,
+// signature or key material by construction — there is no field for one.
+type LicenseStatus struct {
+	Entitlement   domain.Entitlement
+	ChannelsInUse int
+	// ExpiresAt is the verified token's expiry; nil when it never expires
+	// or no licence is in force.
+	ExpiresAt *time.Time
+	// LastConfirmedAt is when the entitlement was last confirmed; nil when
+	// no licence is in force.
+	LastConfirmedAt *time.Time
+}

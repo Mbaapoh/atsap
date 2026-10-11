@@ -270,6 +270,71 @@ func (h *IdentityHandler) ListAudit(ctx context.Context, req *connect.Request[at
 
 // --- authorization helpers ------------------------------------------
 
+// ListPrincipals lists a tenant's users with their role bindings
+// (console-apis-phase-a). The response type has no field for a password
+// hash or any other credential.
+func (h *IdentityHandler) ListPrincipals(ctx context.Context, req *connect.Request[atsapbxv1.ListPrincipalsRequest]) (*connect.Response[atsapbxv1.ListPrincipalsResponse], error) {
+	if _, err := h.authorizeForTenant(ctx, "principal.read", req, req.Msg.GetTenantId()); err != nil {
+		return nil, err
+	}
+	tenantID, err := shareddomain.ParseTenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
+	}
+	limit := int(req.Msg.GetLimit())
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	listed, err := h.svc.ListPrincipals(ctx, tenantID, limit, max(int(req.Msg.GetOffset()), 0))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*atsapbxv1.ListedPrincipal, 0, len(listed))
+	for _, l := range listed {
+		bindings := make([]*atsapbxv1.RoleBinding, 0, len(l.Bindings))
+		for _, b := range l.Bindings {
+			bindings = append(bindings, &atsapbxv1.RoleBinding{Role: b.Role, Scope: b.Scope})
+		}
+		out = append(out, &atsapbxv1.ListedPrincipal{Principal: toProtoPrincipal(l.Principal), RoleBindings: bindings})
+	}
+	return connect.NewResponse(&atsapbxv1.ListPrincipalsResponse{Principals: out}), nil
+}
+
+// RevokeRole removes a role binding under exactly GrantRole's authority
+// rules: the platform role or a system-scope binding takes platform
+// authority; anything else authorizes against the target tenant.
+func (h *IdentityHandler) RevokeRole(ctx context.Context, req *connect.Request[atsapbxv1.RevokeRoleRequest]) (*connect.Response[atsapbxv1.RevokeRoleResponse], error) {
+	tc, err := requireContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	scope := req.Msg.GetScope()
+	if scope == "" {
+		scope = domain.ScopeTenant
+	}
+	var actor application.Actor
+	if scope == domain.ScopeSystem || req.Msg.GetRole() == "PLATFORM_ADMIN" {
+		if err := h.svc.AuthorizeSystem(ctx, tc.PrincipalID, tc.TenantID, "principal.role.revoke"); err != nil {
+			return nil, mapErr(err)
+		}
+		actor = h.actor(tc, req)
+	} else if actor, err = h.authorizeForTenant(ctx, "principal.role.revoke", req, req.Msg.GetTenantId()); err != nil {
+		return nil, err
+	}
+	tenantID, err := shareddomain.ParseTenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
+	}
+	principalID, err := shareddomain.ParsePrincipalID(req.Msg.GetPrincipalId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid principal_id"))
+	}
+	if err := h.svc.RevokeRole(ctx, actor, tenantID, principalID, req.Msg.GetRole(), scope); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.RevokeRoleResponse{}), nil
+}
+
 // authorizeForTenant runs the actor/authorization preamble for an RPC
 // whose target tenant the body names. A tenant-scoped caller is bound to
 // its own tenant (and the interceptor enforces the body match); a
@@ -336,6 +401,8 @@ func mapErr(err error) error {
 		// FAILED_PRECONDITION, never PERMISSION_DENIED: the caller holds
 		// the permission, the installation lacks the licence (AC-06.14).
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("licence entitlement exceeded: tenant limit reached"))
+	case errors.Is(err, ports.ErrLastAdministrator):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot revoke the last tenant administrator"))
 	case errors.Is(err, ports.ErrUsernameTaken):
 		return connect.NewError(connect.CodeAlreadyExists, errors.New("username already exists in this tenant"))
 	default:
@@ -456,6 +523,10 @@ func TenantID(request any) (string, bool) {
 	case *atsapbxv1.RevokeApiKeyRequest:
 		return r.GetTenantId(), r.GetTenantId() != ""
 	case *atsapbxv1.ListAuditRequest:
+		return r.GetTenantId(), r.GetTenantId() != ""
+	case *atsapbxv1.ListPrincipalsRequest:
+		return r.GetTenantId(), r.GetTenantId() != ""
+	case *atsapbxv1.RevokeRoleRequest:
 		return r.GetTenantId(), r.GetTenantId() != ""
 	default:
 		return "", false

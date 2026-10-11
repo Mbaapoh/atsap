@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `licensing` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | Draft — nothing built. `api/internal/licensing/` does not exist; `telephony-core` still runs against `stub_license.go` |
+| **Status** | **Implemented & archived** — `licensing-capacity-grace`, `license-provisioning-enforcement`; licence RPCs in `console-apis-phase-a` (living specs under `openspec/specs/licensing/`). Pending: hardware fingerprinting, 3-of-5 matching, the licensing CLI |
 | **Traces to** | BRD FBR-R1-08/FBR-R1-12/§10; PRD EPIC-06 (US-06.1–06.7, AC-06.1–06.10), PRD §11.2 (licence states), INV-01/INV-03; HLD [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §4, [03-domain-model.md](../hld/03-domain-model.md) §5, [11-decisions.md](../hld/11-decisions.md) (T-1–T-3); DECISIONS D-11–D-14, D-24 |
 | **Why a separate LLD** | Split out of LLD-02 on 2026-09-08 — see Document history |
 
