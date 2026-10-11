@@ -58,10 +58,20 @@ _GO_ONLY = [
     './migrations/',
 ]
 
+# The dev licence public key (make dev-licence, pbx-call-placement D8) is
+# a BUILD arg, so it is read from .env here; compose's env_file only
+# reaches the container at runtime. Empty when dev-licence has not run.
+def _dotenv(key):
+    for line in str(read_file('.env', '')).splitlines():
+        if line.startswith(key + '='):
+            return line[len(key) + 1:].strip()
+    return ''
+
 docker_build(
     'atsap-api:dev',
     context='./api',
     dockerfile='./api/Dockerfile.dev',
+    build_args={'DEV_LICENCE_PUBKEY': _dotenv('ATSAPBX_DEV_LICENCE_PUBKEY')},
     only=_GO_ONLY,
     live_update=[
         sync('./api/cmd', '/src/cmd'),
@@ -70,7 +80,9 @@ docker_build(
         sync('./api/go.mod', '/src/go.mod'),
         sync('./api/go.sum', '/src/go.sum'),
         run(
-            'cd /src && CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/atsap-api',
+            # Same ldflags the image was built with, or a save would silently
+            # drop the dev licence key and the rig would fall back to Setup.
+            'cd /src && CGO_ENABLED=0 go build -trimpath -ldflags="$DEV_LICENCE_LDFLAGS" -o /out/app ./cmd/atsap-api',
             trigger=['./api/cmd', './api/internal', './api/go.mod', './api/go.sum'],
         ),
         restart_container(),

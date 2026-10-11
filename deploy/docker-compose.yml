@@ -99,6 +99,9 @@ services:
   app:
     build:
       context: ../api
+      # Empty unless `make dev-licence` has run (pbx-call-placement D8).
+      args:
+        DEV_LICENCE_PUBKEY: ${ATSAPBX_DEV_LICENCE_PUBKEY:-}
     image: atsap-api:dev
     env_file:
       - ../.env

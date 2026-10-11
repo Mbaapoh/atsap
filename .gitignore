@@ -11,3 +11,7 @@ coverage/
 
 # mise/go local state
 .mise/
+
+# Development licence keypair (make dev-licence). A throwaway key that only
+# a -ldflags dev build trusts; never committed (D-39, D-54).
+.dev-licence/

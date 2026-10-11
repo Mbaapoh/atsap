@@ -151,6 +151,20 @@ neither registration nor the database. Between the tiers:
 docker restart deploy-sipua-1 && sleep 12
 ```
 
+**License the dev app once with `make dev-licence`, or no call can pass
+through it.** A real build trusts only the vendor key, so the dev app used
+to boot in Setup with no call path (D-52). Every call test sidestepped this
+by building its own licensed services in-process, which meant no call had
+ever been placed through the running app (`pbx-call-placement` design D8).
+The target creates a throwaway Ed25519 keypair under the gitignored
+`.dev-licence/`, writes its public key and a token it signed into `.env`,
+and rebuilds the app to trust that key through the existing `-ldflags`
+hook. The app then logs `state=Valid channels=16`. Nothing is committed,
+and `make images-push` builds with the key explicitly empty, so a
+published image never trusts it. The integration tier's schema reset
+deletes the applied licence, too: `mise run rig:restore` restarts the app,
+which re-applies the token from `.env`.
+
 **A gate that cannot check something must not claim to.** Where a rule is
 enforced by review rather than by a machine, the change says so plainly
 (D-28).

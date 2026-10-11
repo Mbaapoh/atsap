@@ -17,7 +17,10 @@ SHELL := /bin/bash
 
 REGISTRY ?= registry.example.com/atsap
 IMAGE_TAG ?= latest
-COMPOSE := docker compose -f deploy/docker-compose.yml
+# --env-file: compose interpolates ${...} from the PROJECT directory
+# (deploy/), not the repo root, so the root .env is passed explicitly — it
+# carries ATSAPBX_DEV_LICENCE_PUBKEY into the app's build args.
+COMPOSE := docker compose $(if $(wildcard .env),--env-file .env) -f deploy/docker-compose.yml
 COMPOSE_PROD := docker compose -f deploy/docker-compose.prod.yml
 
 .DEFAULT_GOAL := help
@@ -30,12 +33,26 @@ help: ## Display this help
 
 ##@ Local stack (compose)
 
-.PHONY: env dev dev-down dev-app dev-logs rig-restore
+.PHONY: env dev dev-licence dev-down dev-app dev-logs rig-restore
 env: ## Create .env from .env.example if missing
 	test -f .env || cp .env.example .env
 
 dev: env ## Start dev stack (Asterisk + Postgres + NATS + app)
 	$(COMPOSE) up --build
+
+# The dev app boots in Setup — no call path — because a real build trusts
+# only the vendor key (D-52, D-54). This creates a throwaway keypair under
+# the gitignored .dev-licence/, writes its public key and a token it
+# signed into .env, and rebuilds the app to trust that key. Nothing is
+# committed, and images-push builds with the key explicitly empty
+# (pbx-call-placement design D8).
+dev-licence: env ## Licence the local dev app with a throwaway dev key
+	mkdir -p .dev-licence
+	cd api && go run ./cmd/dev-licence -dir ../.dev-licence > ../.dev-licence/env.lines.tmp
+	grep -v '^ATSAPBX_DEV_LICENCE_PUBKEY=\|^ATSAPBX_LICENSE_TOKEN=' .env > .dev-licence/env.tmp || true
+	cat .dev-licence/env.lines.tmp >> .dev-licence/env.tmp
+	mv .dev-licence/env.tmp .env && rm -f .dev-licence/env.lines.tmp
+	docker compose --env-file .env -f deploy/docker-compose.yml up -d --build app
 
 dev-down: ## Stop and remove the dev stack
 	$(COMPOSE) down
@@ -155,7 +172,7 @@ docker-build: ## Build production images for the app and Asterisk
 
 images-push: ## Build, tag and push images to REGISTRY (IMAGE_TAG; defaults above)
 	set -eu; \
-	docker build -t "$(REGISTRY)/atsap-api:$(IMAGE_TAG)" api; \
+	docker build --build-arg DEV_LICENCE_PUBKEY= -t "$(REGISTRY)/atsap-api:$(IMAGE_TAG)" api; \
 	docker build -t "$(REGISTRY)/atsap-core:$(IMAGE_TAG)" core; \
 	docker push "$(REGISTRY)/atsap-api:$(IMAGE_TAG)"; \
 	docker push "$(REGISTRY)/atsap-core:$(IMAGE_TAG)"

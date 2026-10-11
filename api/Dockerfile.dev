@@ -22,7 +22,10 @@ COPY internal ./internal
 COPY migrations ./migrations
 
 ARG CMD_PATH=./cmd/atsap-api
-RUN CGO_ENABLED=0 go build -trimpath -o /out/app ${CMD_PATH}
+# Empty unless `make dev-licence` supplied one (see api/Dockerfile).
+ARG DEV_LICENCE_PUBKEY=""
+ENV DEV_LICENCE_LDFLAGS="-X atsap-api/internal/licensing/domain.developmentPublicKeyHex=${DEV_LICENCE_PUBKEY}"
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="${DEV_LICENCE_LDFLAGS}" -o /out/app ${CMD_PATH}
 
 EXPOSE 8080
 # WORKDIR stays /src so the relative "migrations" path resolves exactly
