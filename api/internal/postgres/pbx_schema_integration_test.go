@@ -96,7 +96,7 @@ func TestPbxSchema_ProjectionTablesHaveNoTenancy(t *testing.T) {
 
 	ctx := context.Background()
 
-	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors", "ps_contacts"} {
+	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors", "ps_contacts", "ps_endpoint_id_ips"} {
 		t.Run(table, func(t *testing.T) {
 			var exists bool
 			require.NoError(t, pool.Unwrap().QueryRow(ctx,
@@ -136,7 +136,7 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 	require.NoError(t, err, "the asterisk_engine role must exist and be able to connect (deploy/postgres/init/02-atsapbx.sql)")
 	defer func() { _ = conn.Close(ctx) }()
 
-	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors", "ps_contacts"} {
+	for _, table := range []string{"ps_endpoints", "ps_auths", "ps_aors", "ps_contacts", "ps_endpoint_id_ips"} {
 		var n int
 		err := conn.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n)
 		assert.NoError(t, err, "the engine must be able to read %s — it is what the engine is for", table)
@@ -166,7 +166,8 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 			"the engine must NOT be able to write %s — we own those rows", table)
 	}
 
-	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs", "carrier_trunks", "carrier_routes", "placed_call_legs"} {
+	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs", "carrier_trunks", "carrier_routes", "placed_call_legs",
+		"inbound_numbers", "emergency_numbers", "emergency_settings"} {
 		var n int
 		err := conn.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n)
 		require.Error(t, err, "the engine must NOT be able to read %s: it has no grant on any domain table", table)
@@ -237,7 +238,8 @@ func TestPbxSchema_CarrierTablesAreTenantScopedAndForced(t *testing.T) {
 	defer pool.Close()
 	ctx := context.Background()
 
-	for _, table := range []string{"carrier_trunks", "carrier_routes", "placed_call_legs"} {
+	for _, table := range []string{"carrier_trunks", "carrier_routes", "placed_call_legs",
+		"inbound_numbers", "emergency_numbers", "emergency_settings"} {
 		t.Run(table, func(t *testing.T) {
 			var hasTenantID bool
 			require.NoError(t, pool.Unwrap().QueryRow(ctx,
@@ -304,4 +306,37 @@ func mustTenant(t *testing.T, s string) shareddomain.TenantID {
 	id, err := shareddomain.ParseTenantID(s)
 	require.NoError(t, err)
 	return id
+}
+
+// TestPbxSchema_InboundNumberCannotReferenceAnotherTenantsExtension: the
+// composite foreign key 0009 adds, for the same reason carrier_routes has
+// one — FK checks bypass RLS.
+func TestPbxSchema_InboundNumberCannotReferenceAnotherTenantsExtension(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+	pool, err := postgres.Open(context.Background(), databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+	ctx := context.Background()
+
+	tenantA, tenantB := uuid.NewString(), uuid.NewString()
+	for _, id := range []string{tenantA, tenantB} {
+		_, err := pool.Unwrap().Exec(ctx,
+			`INSERT INTO tenants (id, name, status, residency_zone) VALUES ($1, $2, 'ACTIVE', 'EU')`, id, "t-"+id)
+		require.NoError(t, err)
+	}
+	extB := uuid.NewString()
+	require.NoError(t, pool.WithTenant(ctx, mustTenant(t, tenantB), func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO extensions (id, tenant_id, extension_number, display_name, auth_username, secret_digest)
+			VALUES ($1, $2, '1000', 'b', 'u', 'd')`, extB, tenantB)
+		return err
+	}))
+	err = pool.WithTenant(ctx, mustTenant(t, tenantA), func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO inbound_numbers (id, tenant_id, number, extension_id) VALUES ($1, $2, '442071234567', $3)`,
+			uuid.NewString(), tenantA, extB)
+		return err
+	})
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "a DID must not point at another tenant's extension")
+	assert.Equal(t, "23503", pgErr.Code)
 }

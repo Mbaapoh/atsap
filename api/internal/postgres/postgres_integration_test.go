@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -295,7 +296,26 @@ func TestRLSIsolation_CarrierTables(t *testing.T) {
 		return err
 	}))
 
-	for _, table := range []string{"carrier_trunks", "carrier_routes"} {
+	extA := domain.NewExtensionID()
+	require.NoError(t, pool.WithTenant(ctx, tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		for _, stmt := range []string{
+			`INSERT INTO extensions (id, tenant_id, extension_number, display_name, auth_username, secret_digest) VALUES ($2, $1, '1000', 'a', 'u', 'd')`,
+			`INSERT INTO inbound_numbers (id, tenant_id, number, extension_id) VALUES (gen_random_uuid(), $1, '442071234567', $2)`,
+			`INSERT INTO emergency_numbers (tenant_id, number) VALUES ($1, '117') ON CONFLICT DO NOTHING`,
+			`INSERT INTO emergency_settings (tenant_id, country_code) VALUES ($1, 'CM') ON CONFLICT DO NOTHING`,
+		} {
+			args := []any{tenantA.String()}
+			if strings.Contains(stmt, "$2") {
+				args = append(args, extA.String())
+			}
+			if _, err := tx.Exec(ctx, stmt, args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	for _, table := range []string{"carrier_trunks", "carrier_routes", "inbound_numbers", "emergency_numbers", "emergency_settings"} {
 		t.Run(table, func(t *testing.T) {
 			query := `SELECT count(*) FROM ` + table // #nosec G202 -- fixed test table names, not input
 
