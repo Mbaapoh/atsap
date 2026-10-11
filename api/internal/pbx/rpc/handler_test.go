@@ -90,6 +90,14 @@ func (f *fakeService) DeleteRoute(context.Context, shareddomain.TenantID, shared
 	return f.err
 }
 
+func (f *fakeService) PlaceCall(context.Context, ports.PlaceCallCommand) (ports.PlacedCall, error) {
+	return ports.PlacedCall{}, f.err
+}
+
+func (f *fakeService) HangupCall(context.Context, shareddomain.TenantID, shareddomain.CallID) error {
+	return f.err
+}
+
 func (f *fakeService) ListRoutes(context.Context, shareddomain.TenantID, ports.Page) ([]ports.RouteView, error) {
 	return nil, f.err
 }

@@ -1903,6 +1903,201 @@ func (*DeleteRouteResponse) Descriptor() ([]byte, []int) {
 	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{28}
 }
 
+type PlaceCallRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// The extension placing the call; it must have a registered device.
+	ExtensionId string `protobuf:"bytes,2,opt,name=extension_id,json=extensionId,proto3" json:"extension_id,omitempty"`
+	// The digits as dialled: an optional leading + then digits only.
+	Destination   string `protobuf:"bytes,3,opt,name=destination,proto3" json:"destination,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlaceCallRequest) Reset() {
+	*x = PlaceCallRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlaceCallRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlaceCallRequest) ProtoMessage() {}
+
+func (x *PlaceCallRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlaceCallRequest.ProtoReflect.Descriptor instead.
+func (*PlaceCallRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *PlaceCallRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *PlaceCallRequest) GetExtensionId() string {
+	if x != nil {
+		return x.ExtensionId
+	}
+	return ""
+}
+
+func (x *PlaceCallRequest) GetDestination() string {
+	if x != nil {
+		return x.Destination
+	}
+	return ""
+}
+
+type PlaceCallResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Read the call's progress with TelephonyService.GetCall.
+	CallId        string `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlaceCallResponse) Reset() {
+	*x = PlaceCallResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlaceCallResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlaceCallResponse) ProtoMessage() {}
+
+func (x *PlaceCallResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlaceCallResponse.ProtoReflect.Descriptor instead.
+func (*PlaceCallResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *PlaceCallResponse) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+type HangupCallRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	CallId        string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HangupCallRequest) Reset() {
+	*x = HangupCallRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HangupCallRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HangupCallRequest) ProtoMessage() {}
+
+func (x *HangupCallRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HangupCallRequest.ProtoReflect.Descriptor instead.
+func (*HangupCallRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *HangupCallRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *HangupCallRequest) GetCallId() string {
+	if x != nil {
+		return x.CallId
+	}
+	return ""
+}
+
+type HangupCallResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HangupCallResponse) Reset() {
+	*x = HangupCallResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HangupCallResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HangupCallResponse) ProtoMessage() {}
+
+func (x *HangupCallResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HangupCallResponse.ProtoReflect.Descriptor instead.
+func (*HangupCallResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{32}
+}
+
 var File_atsapbx_v1_pbx_proto protoreflect.FileDescriptor
 
 const file_atsapbx_v1_pbx_proto_rawDesc = "" +
@@ -2024,7 +2219,17 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x12DeleteRouteRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
 	"\broute_id\x18\x02 \x01(\tR\arouteId\"\x15\n" +
-	"\x13DeleteRouteResponse*V\n" +
+	"\x13DeleteRouteResponse\"t\n" +
+	"\x10PlaceCallRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12!\n" +
+	"\fextension_id\x18\x02 \x01(\tR\vextensionId\x12 \n" +
+	"\vdestination\x18\x03 \x01(\tR\vdestination\",\n" +
+	"\x11PlaceCallResponse\x12\x17\n" +
+	"\acall_id\x18\x01 \x01(\tR\x06callId\"I\n" +
+	"\x11HangupCallRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x17\n" +
+	"\acall_id\x18\x02 \x01(\tR\x06callId\"\x14\n" +
+	"\x12HangupCallResponse*V\n" +
 	"\n" +
 	"DeviceType\x12\x1b\n" +
 	"\x17DEVICE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
@@ -2038,7 +2243,7 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x18TRUNK_HEALTH_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14TRUNK_HEALTH_HEALTHY\x10\x01\x12\x19\n" +
 	"\x15TRUNK_HEALTH_DEGRADED\x10\x02\x12\x1a\n" +
-	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x032\xd5\b\n" +
+	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x032\xec\t\n" +
 	"\n" +
 	"PbxService\x12Z\n" +
 	"\x0fCreateExtension\x12\".atsapbx.v1.CreateExtensionRequest\x1a#.atsapbx.v1.CreateExtensionResponse\x12Q\n" +
@@ -2055,7 +2260,10 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\vCreateRoute\x12\x1e.atsapbx.v1.CreateRouteRequest\x1a\x1f.atsapbx.v1.CreateRouteResponse\x12K\n" +
 	"\n" +
 	"ListRoutes\x12\x1d.atsapbx.v1.ListRoutesRequest\x1a\x1e.atsapbx.v1.ListRoutesResponse\x12N\n" +
-	"\vDeleteRoute\x12\x1e.atsapbx.v1.DeleteRouteRequest\x1a\x1f.atsapbx.v1.DeleteRouteResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
+	"\vDeleteRoute\x12\x1e.atsapbx.v1.DeleteRouteRequest\x1a\x1f.atsapbx.v1.DeleteRouteResponse\x12H\n" +
+	"\tPlaceCall\x12\x1c.atsapbx.v1.PlaceCallRequest\x1a\x1d.atsapbx.v1.PlaceCallResponse\x12K\n" +
+	"\n" +
+	"HangupCall\x12\x1d.atsapbx.v1.HangupCallRequest\x1a\x1e.atsapbx.v1.HangupCallResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
 
 var (
 	file_atsapbx_v1_pbx_proto_rawDescOnce sync.Once
@@ -2070,7 +2278,7 @@ func file_atsapbx_v1_pbx_proto_rawDescGZIP() []byte {
 }
 
 var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(DeviceType)(0),                  // 0: atsapbx.v1.DeviceType
 	(RegistrationStatus)(0),          // 1: atsapbx.v1.RegistrationStatus
@@ -2104,6 +2312,10 @@ var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(*ListRoutesResponse)(nil),       // 29: atsapbx.v1.ListRoutesResponse
 	(*DeleteRouteRequest)(nil),       // 30: atsapbx.v1.DeleteRouteRequest
 	(*DeleteRouteResponse)(nil),      // 31: atsapbx.v1.DeleteRouteResponse
+	(*PlaceCallRequest)(nil),         // 32: atsapbx.v1.PlaceCallRequest
+	(*PlaceCallResponse)(nil),        // 33: atsapbx.v1.PlaceCallResponse
+	(*HangupCallRequest)(nil),        // 34: atsapbx.v1.HangupCallRequest
+	(*HangupCallResponse)(nil),       // 35: atsapbx.v1.HangupCallResponse
 }
 var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.Extension.device_type:type_name -> atsapbx.v1.DeviceType
@@ -2134,21 +2346,25 @@ var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	26, // 25: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
 	28, // 26: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
 	30, // 27: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
-	5,  // 28: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
-	7,  // 29: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
-	9,  // 30: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
-	11, // 31: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
-	13, // 32: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
-	15, // 33: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
-	18, // 34: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
-	20, // 35: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
-	22, // 36: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
-	24, // 37: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
-	27, // 38: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
-	29, // 39: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
-	31, // 40: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
-	28, // [28:41] is the sub-list for method output_type
-	15, // [15:28] is the sub-list for method input_type
+	32, // 28: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
+	34, // 29: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
+	5,  // 30: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
+	7,  // 31: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
+	9,  // 32: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
+	11, // 33: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
+	13, // 34: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
+	15, // 35: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
+	18, // 36: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
+	20, // 37: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
+	22, // 38: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
+	24, // 39: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
+	27, // 40: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
+	29, // 41: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
+	31, // 42: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
+	33, // 43: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
+	35, // 44: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
+	30, // [30:45] is the sub-list for method output_type
+	15, // [15:30] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
 	15, // [15:15] is the sub-list for extension extendee
 	0,  // [0:15] is the sub-list for field type_name
@@ -2165,7 +2381,7 @@ func file_atsapbx_v1_pbx_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_pbx_proto_rawDesc), len(file_atsapbx_v1_pbx_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   29,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

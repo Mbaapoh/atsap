@@ -81,6 +81,19 @@ service PbxService {
 
   // DeleteRoute removes an outbound route.
   rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse);
+
+  // PlaceCall places a call from one of the tenant's extensions to a
+  // destination as dialled. The platform's dial plan decides how it is
+  // reached: an emergency number first, then another extension, then the
+  // tenant's outbound routes. The caller's phone and the far end are rung
+  // at the same time and connected when both answer. The request has no
+  // field that names an engine endpoint or could exempt a call from
+  // checks — only the dial plan recognises an emergency number.
+  rpc PlaceCall(PlaceCallRequest) returns (PlaceCallResponse);
+
+  // HangupCall ends a call placed with PlaceCall. Ending a call that has
+  // already ended succeeds and changes nothing.
+  rpc HangupCall(HangupCallRequest) returns (HangupCallResponse);
 }
 
 // DeviceType is how a device attaches to an extension.
@@ -309,3 +322,23 @@ message DeleteRouteRequest {
 }
 
 message DeleteRouteResponse {}
+
+message PlaceCallRequest {
+  string tenant_id = 1;
+  // The extension placing the call; it must have a registered device.
+  string extension_id = 2;
+  // The digits as dialled: an optional leading + then digits only.
+  string destination = 3;
+}
+
+message PlaceCallResponse {
+  // Read the call's progress with TelephonyService.GetCall.
+  string call_id = 1;
+}
+
+message HangupCallRequest {
+  string tenant_id = 1;
+  string call_id = 2;
+}
+
+message HangupCallResponse {}

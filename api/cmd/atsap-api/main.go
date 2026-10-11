@@ -232,7 +232,15 @@ func main() {
 		identitySvc,
 		identityStore,
 		cfg.SIPRealm,
-	)
+	).WithPlacement(pbxapp.Placement{
+		// PlaceCall originates through telephony-core's own CallService —
+		// the same one the event loop drives — so a placed call is an
+		// ordinary call from that point on (LLD-03 §4.1).
+		Calls:     callService,
+		Status:    callStatusAdapter{calls: callStore},
+		Addresser: pbxasterisk.Addresser{},
+		Legs:      pbxpostgres.NewCallLegStore(),
+	})
 	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
 		connectrpc.WithInterceptors(authInterceptor))
 	handlers[pbxPath] = pbxRPC

@@ -197,6 +197,24 @@ func (s *Store) Get(ctx context.Context, tx pgx.Tx, tenantID shareddomain.Tenant
 	return ext, nil
 }
 
+// FindByNumber resolves a number within the transaction's tenant (RLS):
+// another tenant's identical number is invisible, so it is never found.
+func (s *Store) FindByNumber(ctx context.Context, tx pgx.Tx, number string) (domain.Extension, error) {
+	var rawID string
+	err := tx.QueryRow(ctx, `SELECT id FROM extensions WHERE extension_number = $1`, number).Scan(&rawID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Extension{}, fmt.Errorf("extension number %q: %w", number, ports.ErrNotFound)
+	}
+	if err != nil {
+		return domain.Extension{}, fmt.Errorf("find extension by number: %w", err)
+	}
+	id, err := shareddomain.ParseExtensionID(rawID)
+	if err != nil {
+		return domain.Extension{}, fmt.Errorf("decode extension id: %w", err)
+	}
+	return s.Get(ctx, tx, shareddomain.TenantID{}, id)
+}
+
 // List returns one page of the current tenant's extensions inside tx,
 // ordered by number so the console shows a directory, not an insertion
 // history. Like Get, it relies on the caller's RLS context for tenancy,

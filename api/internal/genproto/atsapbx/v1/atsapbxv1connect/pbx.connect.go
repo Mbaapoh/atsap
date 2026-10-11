@@ -64,6 +64,10 @@ const (
 	PbxServiceListRoutesProcedure = "/atsapbx.v1.PbxService/ListRoutes"
 	// PbxServiceDeleteRouteProcedure is the fully-qualified name of the PbxService's DeleteRoute RPC.
 	PbxServiceDeleteRouteProcedure = "/atsapbx.v1.PbxService/DeleteRoute"
+	// PbxServicePlaceCallProcedure is the fully-qualified name of the PbxService's PlaceCall RPC.
+	PbxServicePlaceCallProcedure = "/atsapbx.v1.PbxService/PlaceCall"
+	// PbxServiceHangupCallProcedure is the fully-qualified name of the PbxService's HangupCall RPC.
+	PbxServiceHangupCallProcedure = "/atsapbx.v1.PbxService/HangupCall"
 )
 
 // PbxServiceClient is a client for the atsapbx.v1.PbxService service.
@@ -112,6 +116,17 @@ type PbxServiceClient interface {
 	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
 	// DeleteRoute removes an outbound route.
 	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
+	// PlaceCall places a call from one of the tenant's extensions to a
+	// destination as dialled. The platform's dial plan decides how it is
+	// reached: an emergency number first, then another extension, then the
+	// tenant's outbound routes. The caller's phone and the far end are rung
+	// at the same time and connected when both answer. The request has no
+	// field that names an engine endpoint or could exempt a call from
+	// checks — only the dial plan recognises an emergency number.
+	PlaceCall(context.Context, *connect.Request[v1.PlaceCallRequest]) (*connect.Response[v1.PlaceCallResponse], error)
+	// HangupCall ends a call placed with PlaceCall. Ending a call that has
+	// already ended succeeds and changes nothing.
+	HangupCall(context.Context, *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error)
 }
 
 // NewPbxServiceClient constructs a client for the atsapbx.v1.PbxService service. By default, it
@@ -203,6 +218,18 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(pbxServiceMethods.ByName("DeleteRoute")),
 			connect.WithClientOptions(opts...),
 		),
+		placeCall: connect.NewClient[v1.PlaceCallRequest, v1.PlaceCallResponse](
+			httpClient,
+			baseURL+PbxServicePlaceCallProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("PlaceCall")),
+			connect.WithClientOptions(opts...),
+		),
+		hangupCall: connect.NewClient[v1.HangupCallRequest, v1.HangupCallResponse](
+			httpClient,
+			baseURL+PbxServiceHangupCallProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("HangupCall")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -221,6 +248,8 @@ type pbxServiceClient struct {
 	createRoute      *connect.Client[v1.CreateRouteRequest, v1.CreateRouteResponse]
 	listRoutes       *connect.Client[v1.ListRoutesRequest, v1.ListRoutesResponse]
 	deleteRoute      *connect.Client[v1.DeleteRouteRequest, v1.DeleteRouteResponse]
+	placeCall        *connect.Client[v1.PlaceCallRequest, v1.PlaceCallResponse]
+	hangupCall       *connect.Client[v1.HangupCallRequest, v1.HangupCallResponse]
 }
 
 // CreateExtension calls atsapbx.v1.PbxService.CreateExtension.
@@ -288,6 +317,16 @@ func (c *pbxServiceClient) DeleteRoute(ctx context.Context, req *connect.Request
 	return c.deleteRoute.CallUnary(ctx, req)
 }
 
+// PlaceCall calls atsapbx.v1.PbxService.PlaceCall.
+func (c *pbxServiceClient) PlaceCall(ctx context.Context, req *connect.Request[v1.PlaceCallRequest]) (*connect.Response[v1.PlaceCallResponse], error) {
+	return c.placeCall.CallUnary(ctx, req)
+}
+
+// HangupCall calls atsapbx.v1.PbxService.HangupCall.
+func (c *pbxServiceClient) HangupCall(ctx context.Context, req *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error) {
+	return c.hangupCall.CallUnary(ctx, req)
+}
+
 // PbxServiceHandler is an implementation of the atsapbx.v1.PbxService service.
 type PbxServiceHandler interface {
 	// CreateExtension provisions an extension and makes it registrable by
@@ -334,6 +373,17 @@ type PbxServiceHandler interface {
 	ListRoutes(context.Context, *connect.Request[v1.ListRoutesRequest]) (*connect.Response[v1.ListRoutesResponse], error)
 	// DeleteRoute removes an outbound route.
 	DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error)
+	// PlaceCall places a call from one of the tenant's extensions to a
+	// destination as dialled. The platform's dial plan decides how it is
+	// reached: an emergency number first, then another extension, then the
+	// tenant's outbound routes. The caller's phone and the far end are rung
+	// at the same time and connected when both answer. The request has no
+	// field that names an engine endpoint or could exempt a call from
+	// checks — only the dial plan recognises an emergency number.
+	PlaceCall(context.Context, *connect.Request[v1.PlaceCallRequest]) (*connect.Response[v1.PlaceCallResponse], error)
+	// HangupCall ends a call placed with PlaceCall. Ending a call that has
+	// already ended succeeds and changes nothing.
+	HangupCall(context.Context, *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error)
 }
 
 // NewPbxServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -421,6 +471,18 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(pbxServiceMethods.ByName("DeleteRoute")),
 		connect.WithHandlerOptions(opts...),
 	)
+	pbxServicePlaceCallHandler := connect.NewUnaryHandler(
+		PbxServicePlaceCallProcedure,
+		svc.PlaceCall,
+		connect.WithSchema(pbxServiceMethods.ByName("PlaceCall")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceHangupCallHandler := connect.NewUnaryHandler(
+		PbxServiceHangupCallProcedure,
+		svc.HangupCall,
+		connect.WithSchema(pbxServiceMethods.ByName("HangupCall")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.PbxService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PbxServiceCreateExtensionProcedure:
@@ -449,6 +511,10 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServiceListRoutesHandler.ServeHTTP(w, r)
 		case PbxServiceDeleteRouteProcedure:
 			pbxServiceDeleteRouteHandler.ServeHTTP(w, r)
+		case PbxServicePlaceCallProcedure:
+			pbxServicePlaceCallHandler.ServeHTTP(w, r)
+		case PbxServiceHangupCallProcedure:
+			pbxServiceHangupCallHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -508,4 +574,12 @@ func (UnimplementedPbxServiceHandler) ListRoutes(context.Context, *connect.Reque
 
 func (UnimplementedPbxServiceHandler) DeleteRoute(context.Context, *connect.Request[v1.DeleteRouteRequest]) (*connect.Response[v1.DeleteRouteResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteRoute is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) PlaceCall(context.Context, *connect.Request[v1.PlaceCallRequest]) (*connect.Response[v1.PlaceCallResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.PlaceCall is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) HangupCall(context.Context, *connect.Request[v1.HangupCallRequest]) (*connect.Response[v1.HangupCallResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.HangupCall is not implemented"))
 }

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"atsap-api/internal/pbx/domain"
@@ -35,6 +36,19 @@ var (
 	// permission. Never folded into a permission error, for the reason
 	// identity gives for its own (LLD-02 §4a.1, AC-06.14).
 	ErrEntitlementExceeded = errors.New("licence entitlement exceeded")
+
+	// ErrTrunkCapacity is every trunk selected for a destination being at
+	// its channel limit (pbx-core/trunk-routing). A precondition, not a
+	// fault: the call may succeed once a channel frees.
+	ErrTrunkCapacity = errors.New("no selected trunk has a free channel")
+
+	// ErrCallerNotRegistered is a place-call from an extension with no
+	// registered device: there is nothing to ring, so nothing is set up.
+	ErrCallerNotRegistered = errors.New("extension has no registered device")
+
+	// ErrCallRefused is a call telephony-core's Screening refused —
+	// licensed capacity or compliance. Wrapped with the refusal reason.
+	ErrCallRefused = errors.New("call refused")
 )
 
 // ExtensionCap supplies the installation's extension cap — the mirror of
@@ -177,6 +191,21 @@ type RouteView struct {
 	Priority      int
 }
 
+// PlaceCallCommand places a call from one of the tenant's extensions to a
+// destination as dialled. It carries nothing engine-shaped and nothing
+// that could request a Screening bypass: whether a call is an emergency
+// is decided by the dial plan alone (INV-01, LLD-03 §10.1).
+type PlaceCallCommand struct {
+	TenantID    shareddomain.TenantID
+	ExtensionID shareddomain.ExtensionID
+	Destination string
+}
+
+// PlacedCall is PlaceCall's result.
+type PlacedCall struct {
+	CallID shareddomain.CallID
+}
+
 // ConfigService is pbx-core's inbound port: the configuration API the
 // console drives and a partner may call directly. Every method
 // authorizes before acting and operates only within the caller's tenant.
@@ -196,6 +225,51 @@ type ConfigService interface {
 	CreateRoute(ctx context.Context, cmd CreateRouteCommand) (RouteView, error)
 	DeleteRoute(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.RouteID) error
 	ListRoutes(ctx context.Context, tenantID shareddomain.TenantID, page Page) ([]RouteView, error)
+
+	// PlaceCall and HangupCall are the dial plan's wire surface (LLD-03 §6).
+	PlaceCall(ctx context.Context, cmd PlaceCallCommand) (PlacedCall, error)
+	HangupCall(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID) error
+}
+
+// CallOutcome is what pbx-core needs to know about a call it placed.
+type CallOutcome struct {
+	StartedAt  time.Time
+	AnsweredAt *time.Time
+	Ended      bool
+	// Reason is why the call ended, as telephony-core records it — for a
+	// call screened out, the refusal (e.g. capacity). Never engine text.
+	Reason string
+}
+
+// CallStatus reads a call's outcome. Satisfied at the root over
+// telephony-core's call store. ErrNotFound for an unknown call.
+type CallStatus interface {
+	Status(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID) (CallOutcome, error)
+}
+
+// EndpointAddresser turns domain identities into the engine addresses an
+// origination needs. Implemented by pbx/acl/asterisk, the only package
+// permitted engine vocabulary (D-41, D-47).
+type EndpointAddresser interface {
+	ExtensionAddress(id shareddomain.ExtensionID) string
+	TrunkAddress(id shareddomain.TrunkID, dialled string) string
+}
+
+// CallLegStore persists placed calls (design D4). Every method takes the
+// caller's transaction; tenancy is the transaction's RLS context.
+type CallLegStore interface {
+	// LockTrunk serializes every placement through trunkID until tx ends,
+	// so a count of its live legs stays exact for the transaction.
+	LockTrunk(ctx context.Context, tx pgx.Tx, trunkID shareddomain.TrunkID) error
+	Insert(ctx context.Context, tx pgx.Tx, leg domain.PlacedCallLeg) error
+	// AttachCall records the call id origination returned for a leg.
+	AttachCall(ctx context.Context, tx pgx.Tx, legID uuid.UUID, callID shareddomain.CallID) error
+	// LiveOnTrunk returns the unreleased legs on trunkID.
+	LiveOnTrunk(ctx context.Context, tx pgx.Tx, trunkID shareddomain.TrunkID) ([]domain.PlacedCallLeg, error)
+	// Release marks a leg's call as ended; releasing twice is a no-op.
+	Release(ctx context.Context, tx pgx.Tx, legID uuid.UUID, at time.Time) error
+	// Get reports ErrNotFound for another tenant's call or one never placed.
+	Get(ctx context.Context, tx pgx.Tx, callID shareddomain.CallID) (domain.PlacedCallLeg, error)
 }
 
 // RoutePlanner is exactly HLD 04 §2: no methods added, no signatures
@@ -270,6 +344,10 @@ type ExtensionStore interface {
 	// both see room for one more and both commit.
 	CountForCreate(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) (int, error)
 	List(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, page Page) ([]domain.Extension, error)
+
+	// FindByNumber resolves a tenant-local extension number, the dial
+	// plan's internal lookup. ErrNotFound when no extension has it.
+	FindByNumber(ctx context.Context, tx pgx.Tx, number string) (domain.Extension, error)
 }
 
 // ProjectionInventory is what the engine currently holds, expressed in

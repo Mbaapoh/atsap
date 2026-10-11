@@ -62,6 +62,7 @@ type Service struct {
 	authz     Authorizer
 	audit     AuditAppender
 	realm     string
+	placement *Placement
 	rand      io.Reader
 	now       func() time.Time
 }

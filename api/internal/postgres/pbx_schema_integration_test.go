@@ -166,7 +166,7 @@ func TestPbxSchema_EngineRoleReadsOnlyTheProjection(t *testing.T) {
 			"the engine must NOT be able to write %s — we own those rows", table)
 	}
 
-	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs", "carrier_trunks", "carrier_routes"} {
+	for _, table := range []string{"extensions", "principals", "calls", "tenants", "audit_logs", "carrier_trunks", "carrier_routes", "placed_call_legs"} {
 		var n int
 		err := conn.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n)
 		require.Error(t, err, "the engine must NOT be able to read %s: it has no grant on any domain table", table)
@@ -237,7 +237,7 @@ func TestPbxSchema_CarrierTablesAreTenantScopedAndForced(t *testing.T) {
 	defer pool.Close()
 	ctx := context.Background()
 
-	for _, table := range []string{"carrier_trunks", "carrier_routes"} {
+	for _, table := range []string{"carrier_trunks", "carrier_routes", "placed_call_legs"} {
 		t.Run(table, func(t *testing.T) {
 			var hasTenantID bool
 			require.NoError(t, pool.Unwrap().QueryRow(ctx,

@@ -46,6 +46,8 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `CreateRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing (flow A4) |
 | `ListRoutes` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing table |
 | `DeleteRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing |
+| `PlaceCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | The UAT harness (BRD §16); the Phase B agent UI. Rings the caller's phone and the far end at once, connecting when both answer |
+| `HangupCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | Ends a call placed with `PlaceCall`; idempotent |
 
 ### Authentication
 
@@ -143,7 +145,6 @@ of it lands on a new **`PbxService`**, not on `TelephonyService`:
 
 | RPC | Phase | Consumer |
 |---|---|---|
-| `PlaceCall`, `HangupCall` | A | The UAT harness, which BRD §16 requires to demonstrate Phase A through the public API; the Phase B agent UI second |
 | `IvrFlow*` (including publish, version, rollback) | B | Visual IVR builder |
 
 **This resolves the `InitiateCall`/`HangupCall` question §2 left open**:
