@@ -58,6 +58,12 @@ they could not before.
 
 ### 2.1.1 RESOLVED: an upstream websocket session leak (Asterisk < 22.11.0)
 
+**Correction 2026-10-07:** the leak fix below holds, but "the wedge is
+fixed" did not. The same test-side symptom came back on 22.11.0 from a
+second, independent mechanism — an ARI teardown deadlock, upstream
+#2170 — and is fixed on our side; see §2.1.2. The old note further down
+that suspected "two mechanisms" was right.
+
 **Status 2026-09-09: root cause identified and fixed by upgrading the
 engine to 22.11.0.** The fix is the version pin in `core/Dockerfile`;
 there is no code change on our side. Do not downgrade below 22.11.0.
@@ -93,7 +99,7 @@ hold an engine's thread count flat.
 **Why it took so long to find.** The first run always passed, on every
 version. Any loop shorter than two runs reports success, which is why
 the six-run loop — not a single green run — is the acceptance test.
-The script is `scratchpad/wedge-loop.sh`; keep using it after any
+The script is `scripts/wedge-loop.sh`; keep using it after any
 engine or ARI-client change.
 
 **Everything below is the investigation that preceded the fix.** It is
@@ -173,6 +179,65 @@ rig:restore` was the only remedy — it restarts Asterisk, after which one
 e2e run passes and subsequent ones may not. `rig:restore` is still the
 right tool between test tiers for its *other* reason (the integration
 tier drops the schema), but it is no longer needed to un-wedge ARI.
+
+### 2.1.2 RESOLVED: ARI teardown deadlock with `subscribeAll` (upstream #2170, open)
+
+**Status 2026-10-07: root cause identified from thread stacks; fixed on
+our side by not requesting `subscribeAll`.** No engine change.
+
+**Symptom.** Identical to §2.1.1 at the test: `timed out waiting for
+Stasis app … to register` (or `… to release`), `ari: dial event stream:
+… i/o timeout`. On the engine: every authenticated `/ari/*` call hangs,
+REST included, while `/httpstatus` answers instantly; engine threads
+climb ~4–6 per run; a dead app's `stasis/m:ari:application/<name>`
+taskprocessor lingers with items queued. Postgres was clean (no blocked
+queries, engine session idle), and the engine image was bit-identical to
+the one that passed the §2.1.1 A/B (same `res_http_websocket.so`,
+`res_ari.so` and config checksums), so neither was the cause.
+
+**The lock cycle** (gdb on the wedged 22.11.0 engine, symbols resolved
+with `set sysroot /proc/1/root` from a sidecar sharing its PID
+namespace):
+
+1. A websocket closes. `session_cleanup` → `session_reset` takes the
+   **ARI session lock**, then `stasis_app_unregister` →
+   `unsubscribe_device_state` → `stasis_unsubscribe_and_join` waits for
+   the app's device-state subscription to drain.
+2. That subscription's in-flight `device_state_cb` → `app_send` →
+   `ari_websocket_send_event` blocks on the **same session lock**.
+   Neither can proceed.
+3. The next run's app registration (`__stasis_app_register` →
+   `subscribe_device_state`) holds the global **apps container** and
+   blocks on the device-state container the teardown holds — so every
+   `/ari/*` request (`find_app_by_name`) queues behind it, one HTTP
+   thread each. That is the thread climb.
+
+The trigger is closing a websocket whose app has an **all-device-state**
+subscription while a device-state event is in flight. `subscribeAll=true`
+creates exactly that subscription, and every e2e test hangs up calls (a
+burst of device-state changes) and then disconnects. It is a race, which
+is why run 1 after a restart usually passed; residue that adds endpoints
+(pbx e2e leaves `e_*` rows) plausibly widens the window — not proven.
+
+**The fix.** The client no longer requests `subscribeAll`
+(`internal/telephony/acl/ari/events.go`; `TestClient_EventsURL` now
+forbids it). The event loop consumes only `StasisStart`,
+`ChannelDestroyed` and `ChannelHangupRequest` for channels the app
+originates, which ARI subscribes it to regardless, so nothing used was
+lost. If a future feature needs device or endpoint state, subscribe to
+those specific sources (`POST /applications/{app}/subscription`) — never
+re-enable `subscribeAll` while #2170 is open.
+
+**Evidence, same rig and procedure, one variable:**
+
+| Loop (no restart between runs) | `subscribeAll=true` (HEAD and working tree) | without |
+|---|---|---|
+| `scripts/wedge-loop.sh 6` (telephony) | 0/6, threads 85 → 120 | 6/6, threads 84–85 flat |
+| then telephony + pbx suites ×6, same engine | — | 6/6, threads 85 flat |
+
+Upstream: [asterisk/asterisk#2170](https://github.com/asterisk/asterisk/issues/2170).
+When it is fixed and the pin moves past it, `subscribeAll` becomes safe
+again but remains unnecessary.
 
 ### 2.2 The WebSocket client needs bounds the libraries do not give it
 

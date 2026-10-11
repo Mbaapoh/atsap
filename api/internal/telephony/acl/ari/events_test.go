@@ -26,8 +26,8 @@ func TestClient_EventsURL(t *testing.T) {
 	if !strings.Contains(got, "app=voip-app") {
 		t.Errorf("eventsURL() = %q, want app=voip-app", got)
 	}
-	if !strings.Contains(got, "subscribeAll=true") {
-		t.Errorf("eventsURL() = %q, want subscribeAll=true", got)
+	if strings.Contains(got, "subscribeAll") {
+		t.Errorf("eventsURL() = %q, must not request subscribeAll: its device-state subscription deadlocks ARI teardown (ASTERISK-INTEGRATION §2.1.2)", got)
 	}
 	if !strings.Contains(got, "api_key=voipapp%3Adevpassword123") {
 		t.Errorf("eventsURL() = %q, want api_key=voipapp:devpassword123 (encoded)", got)

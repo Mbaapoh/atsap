@@ -204,6 +204,14 @@ func (c *Client) eventsURL() string {
 	q := url.Values{}
 	q.Set("app", c.appName)
 	q.Set("api_key", c.username+":"+c.password)
-	q.Set("subscribeAll", "true")
+	// No subscribeAll. The event loop consumes only StasisStart,
+	// ChannelDestroyed and ChannelHangupRequest for channels this app
+	// originates, which ARI subscribes it to anyway. subscribeAll also
+	// subscribes the app to every device state in the system, and tearing
+	// that subscription down deadlocks Asterisk 22.11.0: session_reset
+	// holds the session lock while stasis_unsubscribe_and_join waits for
+	// an in-flight device_state_cb that is itself blocked on the session
+	// lock; the next app registration then holds the apps container and
+	// every /ari/* request hangs (docs/ASTERISK-INTEGRATION.md §2.1.2).
 	return base + "/events?" + q.Encode()
 }
