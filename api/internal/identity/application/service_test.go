@@ -38,6 +38,9 @@ type fakeStores struct {
 
 	failAudit    error
 	failBindings error
+
+	tenantCap    int
+	tenantCapErr error
 	failRevoke   error
 
 	// revoked records what RevokeApiKey was actually asked to do, so a
@@ -60,7 +63,14 @@ func newFakeStores() *fakeStores {
 	}
 }
 
-func (f *fakeStores) CreateTenant(_ context.Context, t domain.Tenant) error {
+// MaxTenants makes fakeStores its own cap source; tenantCap is what the
+// composition root would read from the licence.
+func (f *fakeStores) MaxTenants(context.Context) (int, error) { return f.tenantCap, f.tenantCapErr }
+
+func (f *fakeStores) CreateTenant(_ context.Context, t domain.Tenant, maxTenants int) error {
+	if maxTenants > 0 && len(f.tenants) >= maxTenants {
+		return ports.ErrEntitlementExceeded
+	}
 	f.tenants[t.ID.String()] = t
 	return nil
 }
@@ -208,7 +218,7 @@ func newHarness(t *testing.T) *harness {
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	svc := application.NewService(stores, stores, stores, stores, stores,
+	svc := application.NewService(stores, stores, stores, stores, stores, stores,
 		application.NewPasswordHasher(), issuer, logger).
 		WithClock(func() time.Time { return svcNow })
 

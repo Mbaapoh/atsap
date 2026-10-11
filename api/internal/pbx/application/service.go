@@ -55,6 +55,7 @@ type AuditAppender interface {
 type Service struct {
 	pool      *corepostgres.Pool
 	store     ports.ExtensionStore
+	extCap    ports.ExtensionCap
 	projector ports.EndpointProjector
 	authz     Authorizer
 	audit     AuditAppender
@@ -73,6 +74,7 @@ var _ ports.ConfigService = (*Service)(nil)
 func NewService(
 	pool *corepostgres.Pool,
 	store ports.ExtensionStore,
+	extCap ports.ExtensionCap,
 	projector ports.EndpointProjector,
 	authz Authorizer,
 	audit AuditAppender,
@@ -81,6 +83,7 @@ func NewService(
 	return &Service{
 		pool:      pool,
 		store:     store,
+		extCap:    extCap,
 		projector: projector,
 		authz:     authz,
 		audit:     audit,
@@ -102,6 +105,12 @@ type Actor struct {
 // happened: the console cannot show an extension no phone could register
 // to, and the engine cannot hold an endpoint the platform has no record
 // of.
+//
+// Creation refuses with ports.ErrEntitlementExceeded once the tenant
+// holds as many extensions as the licence allows. Only creation is
+// capped: reads, updates, deletions, secret rotation and registration
+// are never gated, and nothing existing is removed or deprovisioned when
+// the cap falls below the count (AC-06.13).
 func (s *Service) CreateExtension(ctx context.Context, cmd ports.CreateExtensionCommand) (ports.CreatedExtension, error) {
 	actor, err := actorFrom(ctx)
 	if err != nil {
@@ -135,7 +144,23 @@ func (s *Service) CreateExtension(ctx context.Context, cmd ports.CreateExtension
 	}
 	ext.SecretDigest = digest
 
+	maxExtensions, err := s.extCap.MaxExtensions(ctx)
+	if err != nil {
+		return ports.CreatedExtension{}, fmt.Errorf("read extension cap: %w", err)
+	}
+
 	err = s.pool.WithTenant(ctx, cmd.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		// Inside the creation transaction, so the count and the insert
+		// cannot be split by a concurrent creation (design Risks).
+		if maxExtensions > 0 {
+			count, err := s.store.CountForCreate(ctx, tx, cmd.TenantID)
+			if err != nil {
+				return err
+			}
+			if count >= maxExtensions {
+				return fmt.Errorf("extension cap %d reached: %w", maxExtensions, ports.ErrEntitlementExceeded)
+			}
+		}
 		if err := s.store.Insert(ctx, tx, ext); err != nil {
 			return err
 		}

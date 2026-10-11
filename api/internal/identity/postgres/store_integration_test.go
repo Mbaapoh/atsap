@@ -56,7 +56,7 @@ func newStore(t *testing.T) (*identitypostgres.Store, shareddomain.TenantID, sha
 	for _, id := range []shareddomain.TenantID{tenantA, tenantB} {
 		require.NoError(t, store.CreateTenant(context.Background(), domain.Tenant{
 			ID: id, Name: "tenant-" + id.String(), Status: domain.TenantActive, ResidencyZone: "EU",
-		}))
+		}, 0))
 	}
 	return store, tenantA, tenantB
 }

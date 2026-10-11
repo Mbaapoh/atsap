@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -85,6 +86,7 @@ type harness struct {
 	svc       *application.Service
 	authz     *fakeAuthorizer
 	projector *failingProjector
+	extCap    *atomic.Int64 // the licence's extension cap; 0 = unlimited
 	tenant    shareddomain.TenantID
 	ctx       context.Context
 }
@@ -107,7 +109,7 @@ func newHarness(t *testing.T) *harness {
 		Status:        identitydomain.TenantActive,
 		ResidencyZone: "EU",
 	}
-	require.NoError(t, identityStore.CreateTenant(context.Background(), tenant))
+	require.NoError(t, identityStore.CreateTenant(context.Background(), tenant, 0))
 
 	authz := &fakeAuthorizer{}
 	projector := &failingProjector{EndpointProjector: asterisk.NewProjector(asterisk.Config{
@@ -116,14 +118,16 @@ func newHarness(t *testing.T) *harness {
 		WebRTCTransport: "transport-wss",
 	}, pool)}
 
-	svc := application.NewService(pool, pbxpg.NewStore(), projector, authz, identityStore, testRealm)
+	extCap := &atomic.Int64{}
+	capSource := ports.ExtensionCapFunc(func(context.Context) (int, error) { return int(extCap.Load()), nil })
+	svc := application.NewService(pool, pbxpg.NewStore(), capSource, projector, authz, identityStore, testRealm)
 
 	ctx := identityapp.WithTenantContext(context.Background(), &identityports.TenantContext{
 		TenantID:    tenant.ID,
 		PrincipalID: shareddomain.NewPrincipalID(),
 	})
 
-	return &harness{pool: pool, svc: svc, authz: authz, projector: projector, tenant: tenant.ID, ctx: ctx}
+	return &harness{pool: pool, svc: svc, authz: authz, projector: projector, extCap: extCap, tenant: tenant.ID, ctx: ctx}
 }
 
 func (h *harness) create(t *testing.T, number string) ports.CreatedExtension {

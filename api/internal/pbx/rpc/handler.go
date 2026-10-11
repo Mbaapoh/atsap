@@ -241,6 +241,10 @@ func mapErr(err error) error {
 		return connect.NewError(connect.CodeNotFound, errors.New("not found"))
 	case errors.Is(err, ports.ErrNumberTaken):
 		return connect.NewError(connect.CodeAlreadyExists, errors.New("extension number already exists in this tenant"))
+	case errors.Is(err, ports.ErrEntitlementExceeded):
+		// FAILED_PRECONDITION, never PERMISSION_DENIED: the caller holds
+		// the permission, the installation lacks the licence (AC-06.14).
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("licence entitlement exceeded: extension limit reached"))
 	case errors.Is(err, ports.ErrInvalidInput):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid extension"))
 	default:

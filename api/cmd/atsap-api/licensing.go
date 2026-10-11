@@ -52,6 +52,29 @@ func (a *licenseAdapter) ReleaseCapacity(ctx context.Context, callID string) err
 	return a.inner.ReleaseCapacity(ctx, callID)
 }
 
+// MaxTenants satisfies identity's TenantCap port and MaxExtensions
+// pbx-core's ExtensionCap port, both over the published entitlement.
+//
+// Each consumer gets a number and nothing else — never the edition —
+// which is what keeps the commercial catalogue out of both contexts
+// (license-provisioning-enforcement design D2). A read failure is
+// returned, not defaulted, so provisioning fails closed.
+func (a *licenseAdapter) MaxTenants(ctx context.Context) (int, error) {
+	e, err := a.inner.Entitlement(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return e.MaxTenants, nil
+}
+
+func (a *licenseAdapter) MaxExtensions(ctx context.Context) (int, error) {
+	e, err := a.inner.Entitlement(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return e.MaxExtensions, nil
+}
+
 // newLicenseManager builds the licensing service and applies a licence
 // supplied by configuration, if there is one.
 //

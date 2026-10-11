@@ -24,6 +24,10 @@ import (
 	corepostgres "atsap-api/internal/postgres"
 )
 
+// uncapped is a tenant cap of zero: these tests are about identity, not
+// the licence, and the cap's own behaviour has dedicated tests.
+var uncapped = ports.TenantCapFunc(func(context.Context) (int, error) { return 0, nil })
+
 // These tests run the orchestrator against the real Postgres store —
 // the fakes in service_test.go prove the logic, this proves the same
 // behaviour survives RLS, real constraints, and real serialization.
@@ -64,7 +68,7 @@ func newLiveHarness(t *testing.T) (*application.Service, *identitypostgres.Store
 	logs := &bytes.Buffer{}
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	svc := application.NewService(store, store, store, store, store,
+	svc := application.NewService(store, uncapped, store, store, store, store,
 		application.NewPasswordHasher(), issuer, logger)
 
 	return svc, store, logs

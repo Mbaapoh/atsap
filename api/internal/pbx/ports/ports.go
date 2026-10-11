@@ -28,7 +28,33 @@ var (
 	ErrNotFound     = errors.New("not found")
 	ErrNumberTaken  = errors.New("extension number already exists in this tenant")
 	ErrInvalidInput = errors.New("invalid input")
+
+	// ErrEntitlementExceeded is the installation lacking the licence to
+	// create another extension, as distinct from the caller lacking the
+	// permission. Never folded into a permission error, for the reason
+	// identity gives for its own (LLD-02 §4a.1, AC-06.14).
+	ErrEntitlementExceeded = errors.New("licence entitlement exceeded")
 )
+
+// ExtensionCap supplies the installation's extension cap — the mirror of
+// identity's TenantCap (D-51, license-provisioning-enforcement design
+// D1).
+//
+// pbx-core owns this port and the composition root satisfies it, so the
+// cap is handed in and pbx-core never imports licensing. It carries a
+// number and nothing else: no edition, no capability flags, which keeps
+// the commercial catalogue out of a telephony context (design D3).
+//
+// Zero means unlimited. An error fails creation closed.
+type ExtensionCap interface {
+	MaxExtensions(ctx context.Context) (int, error)
+}
+
+// ExtensionCapFunc adapts a function to ExtensionCap.
+type ExtensionCapFunc func(ctx context.Context) (int, error)
+
+// MaxExtensions calls f.
+func (f ExtensionCapFunc) MaxExtensions(ctx context.Context) (int, error) { return f(ctx) }
 
 // CreateExtensionCommand is what a caller supplies to create an
 // extension. It carries no credential fields: the platform generates
@@ -115,6 +141,12 @@ type ExtensionStore interface {
 	Delete(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) error
 
 	Get(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) (domain.Extension, error)
+
+	// CountForCreate counts the tenant's extensions after serializing
+	// against every other creation in the same tenant until tx ends. A
+	// plain count at READ COMMITTED would let two concurrent creations
+	// both see room for one more and both commit.
+	CountForCreate(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) (int, error)
 	List(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, page Page) ([]domain.Extension, error)
 }
 

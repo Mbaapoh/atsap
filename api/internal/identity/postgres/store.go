@@ -61,14 +61,48 @@ func (s *Store) HasTenants(ctx context.Context) (bool, error) {
 	return exists, nil
 }
 
-// CreateTenant inserts a tenant.
-func (s *Store) CreateTenant(ctx context.Context, tenant domain.Tenant) error {
-	_, err := s.pool.Unwrap().Exec(ctx, `
+// tenantCapLock is the advisory-lock key serializing capped tenant
+// provisioning. Any fixed value works; it only has to be the one every
+// provisioning transaction takes.
+const tenantCapLock = 0x7465_6e61_6e74 // "tenant"
+
+// CreateTenant inserts a tenant, refusing at maxTenants (0 = no cap).
+//
+// The count and the insert share a transaction holding an advisory
+// lock. Without the lock, two provisionings at READ COMMITTED would each
+// count one below the cap and both insert. The lock is taken only when a
+// cap applies, so an uncapped installation pays nothing for it.
+//
+// The count is installation-wide and exact: tenants carry no RLS, so
+// there is no privileged counting path to add (design D4).
+func (s *Store) CreateTenant(ctx context.Context, tenant domain.Tenant, maxTenants int) error {
+	tx, err := s.pool.Unwrap().Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tenant insert: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if maxTenants > 0 {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(tenantCapLock)); err != nil {
+			return fmt.Errorf("lock tenant provisioning: %w", err)
+		}
+		var count int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM tenants`).Scan(&count); err != nil {
+			return fmt.Errorf("count tenants: %w", err)
+		}
+		if count >= maxTenants {
+			return fmt.Errorf("tenant cap %d reached: %w", maxTenants, ports.ErrEntitlementExceeded)
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO tenants (id, name, status, residency_zone, created_at)
 		VALUES ($1, $2, $3, $4, $5)
-	`, tenant.ID.String(), tenant.Name, string(tenant.Status), tenant.ResidencyZone, tenant.CreatedAt)
-	if err != nil {
+	`, tenant.ID.String(), tenant.Name, string(tenant.Status), tenant.ResidencyZone, tenant.CreatedAt); err != nil {
 		return fmt.Errorf("insert tenant: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tenant insert: %w", err)
 	}
 	return nil
 }

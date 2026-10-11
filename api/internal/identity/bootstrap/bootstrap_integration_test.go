@@ -17,6 +17,7 @@ import (
 
 	"atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/bootstrap"
+	"atsap-api/internal/identity/ports"
 	identitypostgres "atsap-api/internal/identity/postgres"
 	"atsap-api/internal/logging"
 	corepostgres "atsap-api/internal/postgres"
@@ -71,7 +72,10 @@ func TestBootstrap_EmptyAndAlreadyBootstrapped(t *testing.T) {
 	require.NoError(t, err)
 	issuer, err := application.NewTokenIssuer(priv, application.DefaultTokenLifetime)
 	require.NoError(t, err)
-	svc := application.NewService(store, store, store, store, store,
+	// The tightest real cap (Free: one tenant) still admits the first
+	// tenant, which is why bootstrap needs no licence to run.
+	freeCap := ports.TenantCapFunc(func(context.Context) (int, error) { return 1, nil })
+	svc := application.NewService(store, freeCap, store, store, store, store,
 		application.NewPasswordHasher(), issuer, logger)
 
 	// 1. Empty installation: bootstrap succeeds.

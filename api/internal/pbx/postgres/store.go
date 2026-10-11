@@ -75,6 +75,26 @@ func (s *Store) Insert(ctx context.Context, tx pgx.Tx, ext domain.Extension) err
 	return nil
 }
 
+// CountForCreate takes a transaction-scoped advisory lock keyed by
+// tenant, then counts the tenant's extensions. Every capped creation
+// takes the same lock, so the count is exact for the life of tx.
+//
+// The count is tenant-scoped through RLS, not installation-wide, and
+// adds no privileged counting path. That is exact today by construction:
+// every capped edition is single-tenant (design D4). A capped
+// multi-tenant edition would reopen this.
+func (s *Store) CountForCreate(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) (int, error) {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('pbx.extension.create:' || $1, 0))`,
+		tenantID.String()); err != nil {
+		return 0, fmt.Errorf("lock extension creation: %w", err)
+	}
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM extensions`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count extensions: %w", err)
+	}
+	return count, nil
+}
+
 // Update rewrites an extension's mutable columns inside tx, keyed by id
 // alone. Tenancy is not part of the WHERE clause: the caller's
 // transaction already carries the app.tenant_id context, and RLS is what

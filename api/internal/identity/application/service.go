@@ -46,6 +46,7 @@ var DefaultPermissions = map[string][]string{
 // Service implements ports.IdentityService.
 type Service struct {
 	tenants     ports.TenantStore
+	tenantCap   ports.TenantCap
 	principals  ports.PrincipalStore
 	bindings    ports.RoleBindingStore
 	apiKeys     ports.ApiKeyStore
@@ -62,6 +63,7 @@ var _ ports.IdentityService = (*Service)(nil)
 // NewService wires the identity orchestrator.
 func NewService(
 	tenants ports.TenantStore,
+	tenantCap ports.TenantCap,
 	principals ports.PrincipalStore,
 	bindings ports.RoleBindingStore,
 	apiKeys ports.ApiKeyStore,
@@ -71,7 +73,7 @@ func NewService(
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
-		tenants: tenants, principals: principals, bindings: bindings,
+		tenants: tenants, tenantCap: tenantCap, principals: principals, bindings: bindings,
 		apiKeys: apiKeys, audit: audit, hasher: hasher, tokens: tokens,
 		permissions: DefaultPermissions, logger: logger, now: time.Now,
 	}
@@ -88,9 +90,19 @@ func (s *Service) WithClock(now func() time.Time) *Service {
 // --- provisioning --------------------------------------------------
 
 // ProvisionTenant creates a tenant and records the mutation.
+//
+// It refuses with ports.ErrEntitlementExceeded once the installation
+// holds as many tenants as its licence allows (LLD-02 §4a.1). The cap
+// constrains provisioning only: reads are never gated, nothing existing
+// is removed or hidden when the cap falls below the count, and RLS is
+// unaffected in every mode (D-51).
 func (s *Service) ProvisionTenant(ctx context.Context, actor Actor, name, residencyZone string) (domain.Tenant, error) {
 	if residencyZone == "" {
 		return domain.Tenant{}, errors.New("residency zone is required and cannot be blank")
+	}
+	maxTenants, err := s.tenantCap.MaxTenants(ctx)
+	if err != nil {
+		return domain.Tenant{}, fmt.Errorf("read tenant cap: %w", err)
 	}
 
 	// CreatedAt is set here and inserted explicitly rather than left to
@@ -103,7 +115,7 @@ func (s *Service) ProvisionTenant(ctx context.Context, actor Actor, name, reside
 		Status: domain.TenantActive, ResidencyZone: residencyZone,
 		CreatedAt: s.now().UTC(),
 	}
-	if err := s.tenants.CreateTenant(ctx, tenant); err != nil {
+	if err := s.tenants.CreateTenant(ctx, tenant, maxTenants); err != nil {
 		return domain.Tenant{}, fmt.Errorf("provision tenant: %w", err)
 	}
 

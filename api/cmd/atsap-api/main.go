@@ -190,8 +190,8 @@ func main() {
 		logger.Error("failed to build token issuer", "error", err)
 		os.Exit(1)
 	}
-	identitySvc := identityapp.NewService(identityStore, identityStore, identityStore, identityStore,
-		identityStore, identityapp.NewPasswordHasher(), identityIssuer, logger)
+	identitySvc := identityapp.NewService(identityStore, licenseManager, identityStore, identityStore,
+		identityStore, identityStore, identityapp.NewPasswordHasher(), identityIssuer, logger)
 	identityHandler := identityrpc.NewIdentityHandler(identitySvc)
 	authInterceptor := identityapp.NewAuthInterceptor(identitySvc, identityrpc.TenantID).
 		ExemptProcedure(identityapp.AuthenticateUserProcedure)
@@ -221,6 +221,7 @@ func main() {
 	pbxSvc := pbxapp.NewService(
 		appPool,
 		pbxpostgres.NewStore(),
+		licenseManager,
 		pbxasterisk.NewProjector(pbxasterisk.Config{
 			Realm:           cfg.SIPRealm,
 			SIPTransport:    cfg.SIPTransport,

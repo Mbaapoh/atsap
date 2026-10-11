@@ -3,6 +3,7 @@ package rpc_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -196,6 +197,7 @@ func TestErrorMapping(t *testing.T) {
 		{"not found", ports.ErrNotFound, connect.CodeNotFound},
 		{"duplicate number", ports.ErrNumberTaken, connect.CodeAlreadyExists},
 		{"invalid input", ports.ErrInvalidInput, connect.CodeInvalidArgument},
+		{"entitlement exceeded", fmt.Errorf("extension cap 10 reached: %w", ports.ErrEntitlementExceeded), connect.CodeFailedPrecondition},
 		{"unexpected", errors.New("connection reset by peer"), connect.CodeInternal},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

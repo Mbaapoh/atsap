@@ -30,6 +30,7 @@ import (
 type env struct {
 	svc *application.Service
 	h   *rpc.IdentityHandler
+	st  *memStores
 }
 
 func newEnv(t *testing.T) *env {
@@ -40,8 +41,8 @@ func newEnv(t *testing.T) *env {
 	issuer, err := application.NewTokenIssuer(priv, time.Hour)
 	require.NoError(t, err)
 	logger := slog.New(slog.NewTextHandler(discardWriter{}, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := application.NewService(st, st, st, st, st, application.NewPasswordHasher(), issuer, logger)
-	return &env{svc: svc, h: rpc.NewIdentityHandler(svc)}
+	svc := application.NewService(st, st, st, st, st, st, application.NewPasswordHasher(), issuer, logger)
+	return &env{svc: svc, h: rpc.NewIdentityHandler(svc), st: st}
 }
 
 type discardWriter struct{}
@@ -149,6 +150,38 @@ func TestProvisionTenant_RequiresSystemScope(t *testing.T) {
 		Email: "admin-b@test", Password: "correct-pw-b-battery", Role: "TENANT_ADMIN",
 	}))
 	require.NoError(t, err, "a platform operator may provision a tenant's first administrator")
+}
+
+// --- tenant cap on the wire (LLD-02 §4a.1, AC-06.14) -----------------
+
+// At the cap, the refusal is FAILED_PRECONDITION naming the licence —
+// never PERMISSION_DENIED, which would send the administrator to check
+// roles they already hold. An unauthorized caller still gets
+// PERMISSION_DENIED: authorization is decided first, so a licence state
+// never tells an unprivileged caller anything.
+func TestProvisionTenant_AtCapIsFailedPreconditionNotPermissionDenied(t *testing.T) {
+	e := newEnv(t)
+	tenantA := e.seedTenant(t, "Acme")
+	adminA := e.seedUser(t, tenantA, "admin-a", "correct-pw-a-battery", "TENANT_ADMIN", domain.ScopeTenant)
+	op := e.seedUser(t, tenantA, "op", "correct-pw-op-battery", "PLATFORM_ADMIN", domain.ScopeSystem)
+	e.st.mu.Lock()
+	e.st.tenantCap = 1
+	e.st.mu.Unlock()
+
+	_, err := e.h.ProvisionTenant(op.ctx, connect.NewRequest(&atsapbxv1.ProvisionTenantRequest{Name: "B", ResidencyZone: "EU"}))
+	requireCode(t, err, connect.CodeFailedPrecondition)
+	var cerr *connect.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Contains(t, cerr.Message(), "licence entitlement", "the reason identifies the licence, not the caller's roles")
+
+	_, err = e.h.ProvisionTenant(adminA.ctx, connect.NewRequest(&atsapbxv1.ProvisionTenantRequest{Name: "B", ResidencyZone: "EU"}))
+	requireCode(t, err, connect.CodePermissionDenied)
+
+	// The tenant at the cap is not gated: it is still administered.
+	_, err = e.h.SetTenantStatus(op.ctx, connect.NewRequest(&atsapbxv1.SetTenantStatusRequest{
+		TenantId: tenantA.ID.String(), Status: atsapbxv1.TenantStatus_TENANT_STATUS_ACTIVE,
+	}))
+	require.NoError(t, err)
 }
 
 // --- 2a.1/2a.3 authorization matrix ----------------------------------
@@ -355,6 +388,7 @@ type memStores struct {
 	apiKeys    map[string]domain.ApiKey
 	audit      []domain.AuditEntry
 	seq        int64
+	tenantCap  int
 }
 
 func newMemStores() *memStores {
@@ -365,9 +399,19 @@ func newMemStores() *memStores {
 	}
 }
 
-func (m *memStores) CreateTenant(_ context.Context, t domain.Tenant) error {
+// MaxTenants makes memStores its own cap source.
+func (m *memStores) MaxTenants(context.Context) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.tenantCap, nil
+}
+
+func (m *memStores) CreateTenant(_ context.Context, t domain.Tenant, maxTenants int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if maxTenants > 0 && len(m.tenants) >= maxTenants {
+		return ports.ErrEntitlementExceeded
+	}
 	if _, ok := m.tenants[t.ID.String()]; ok {
 		return ports.ErrUsernameTaken
 	}

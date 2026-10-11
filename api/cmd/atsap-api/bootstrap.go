@@ -16,6 +16,7 @@ import (
 	"atsap-api/internal/config"
 	identityapp "atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/bootstrap"
+	identityports "atsap-api/internal/identity/ports"
 	identitypostgres "atsap-api/internal/identity/postgres"
 	"atsap-api/internal/logging"
 	corepostgres "atsap-api/internal/postgres"
@@ -59,7 +60,13 @@ func runBootstrap(cfg config.Config) int {
 	}
 
 	store := identitypostgres.NewStore(pool)
-	svc := identityapp.NewService(store, store, store, store, store,
+	// Bootstrap provisions the first tenant only, and bootstrap.Run
+	// refuses outright if any tenant exists. No cap can refuse the first
+	// tenant (zero is unlimited, and every non-zero cap is at least one),
+	// so bootstrap does not consult the licence: a fresh installation is
+	// in Setup and must still be able to create its administrator.
+	noCap := identityports.TenantCapFunc(func(context.Context) (int, error) { return 0, nil })
+	svc := identityapp.NewService(store, noCap, store, store, store, store,
 		identityapp.NewPasswordHasher(), issuer, logger)
 
 	tenantID, err := bootstrap.Run(ctx, store, svc, bootstrap.Params{

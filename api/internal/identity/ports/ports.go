@@ -36,6 +36,15 @@ var (
 	ErrPermissionDenied   = errors.New("permission denied")
 	ErrUsernameTaken      = errors.New("username already exists in this tenant")
 	ErrResidencyImmutable = errors.New("residency zone cannot be changed once set")
+
+	// ErrEntitlementExceeded is the installation lacking the licence for
+	// an operation, as distinct from the caller lacking the permission.
+	// It is never folded into ErrPermissionDenied: a licence refusal in
+	// the RBAC audit trail would send an access-control investigation
+	// after events that have nothing to do with access control, and tell
+	// an administrator to check their roles when they need to check their
+	// licence (LLD-02 §4a.1, AC-06.14).
+	ErrEntitlementExceeded = errors.New("licence entitlement exceeded")
 )
 
 // AuthToken is what a successful authentication yields.
@@ -102,11 +111,36 @@ type IdentityService interface {
 	RecordAudit(ctx context.Context, entry domain.AuditEntry) error
 }
 
+// TenantCap supplies the installation's tenant cap (LLD-02 §4a.1, D-51).
+//
+// The cap is published by licensing, which identity may not call: both
+// are Tier-0 and depend on nothing (HLD 04 §10.1). So identity owns this
+// port and the composition root satisfies it — the cap is handed in,
+// never fetched. It is a number and nothing more; identity has no reason
+// to know what an edition is.
+//
+// Zero means unlimited. An error fails provisioning closed: an
+// installation that cannot read its licence does not get to guess.
+type TenantCap interface {
+	MaxTenants(ctx context.Context) (int, error)
+}
+
+// TenantCapFunc adapts a function to TenantCap.
+type TenantCapFunc func(ctx context.Context) (int, error)
+
+// MaxTenants calls f.
+func (f TenantCapFunc) MaxTenants(ctx context.Context) (int, error) { return f(ctx) }
+
 // TenantStore persists tenants. Tenants are the root of tenancy and have
 // no tenant_id of their own, so this port is not tenant-scoped — the
 // only identity store that isn't.
 type TenantStore interface {
-	CreateTenant(ctx context.Context, tenant domain.Tenant) error
+	// CreateTenant inserts tenant unless maxTenants (when non-zero)
+	// tenants already exist, in which case it returns
+	// ErrEntitlementExceeded and inserts nothing. The count and the
+	// insert are one atomic step, so two concurrent provisionings cannot
+	// both take the last slot.
+	CreateTenant(ctx context.Context, tenant domain.Tenant, maxTenants int) error
 	GetTenant(ctx context.Context, id shareddomain.TenantID) (domain.Tenant, error)
 	SetTenantStatus(ctx context.Context, id shareddomain.TenantID, status domain.TenantStatus) error
 }

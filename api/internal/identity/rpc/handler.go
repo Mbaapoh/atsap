@@ -332,6 +332,10 @@ func mapErr(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("not permitted"))
 	case errors.Is(err, ports.ErrNotFound):
 		return connect.NewError(connect.CodeNotFound, errors.New("not found"))
+	case errors.Is(err, ports.ErrEntitlementExceeded):
+		// FAILED_PRECONDITION, never PERMISSION_DENIED: the caller holds
+		// the permission, the installation lacks the licence (AC-06.14).
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("licence entitlement exceeded: tenant limit reached"))
 	case errors.Is(err, ports.ErrUsernameTaken):
 		return connect.NewError(connect.CodeAlreadyExists, errors.New("username already exists in this tenant"))
 	default:
