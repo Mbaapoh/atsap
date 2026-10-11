@@ -119,6 +119,10 @@ DELETE FROM tenants WHERE id = '$TENANT';
 SQL
 }
 trap cleanup EXIT
+# A killed run (Ctrl-C, timeout) must still tear down: exiting fires the
+# EXIT trap once. A run killed before teardown once left a live trunk on
+# the shared carrier address, which captured the next run's calls.
+trap 'exit 1' INT TERM
 
 # --- 0. preconditions ---------------------------------------------------
 command -v baresip >/dev/null || fail "baresip not installed"

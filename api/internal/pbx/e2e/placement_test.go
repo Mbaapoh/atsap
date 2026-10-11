@@ -63,6 +63,11 @@ func hostAddr(t *testing.T) string {
 // agent is a SIP endpoint on a host port: a phone or a carrier. It
 // answers INVITEs with 200 + SDP, or — when ringOnly — holds them at 180,
 // as a phone nobody picks up does.
+//
+// For the inbound tier it also dials: dial places an outbound INVITE
+// (optionally digest-authenticated) and returns the final status, and
+// hangupAnswered ends a call this agent answered. Dialog state for both
+// directions is tracked so either end can hang up.
 type agent struct {
 	host     string
 	port     int
@@ -72,19 +77,36 @@ type agent struct {
 	mu      sync.Mutex
 	invites []string // Request-URI user of each INVITE received
 	byes    atomic.Int32
+	// inbound dialogs this agent answered, by Call-ID: enough to BYE them.
+	answered map[string]*uasDialog
+}
+
+type uasDialog struct {
+	callID        string
+	remoteFrom    string // From header value of the INVITE, with tag
+	localTo       string // To header value of the ACK, with our tag
+	remoteContact string // Contact URI of the INVITE
+	cseq          uint32
 }
 
 func startAgent(t *testing.T, host string, port int, user string) *agent {
 	t.Helper()
-	a := &agent{host: host, port: port, user: user}
+	a := &agent{host: host, port: port, user: user, answered: map[string]*uasDialog{}}
 	ua, err := sipgo.NewUA(sipgo.WithUserAgent(user))
 	require.NoError(t, err)
 	srv, err := sipgo.NewServer(ua)
 	require.NoError(t, err)
 
 	srv.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
+		callID := req.CallID().Value()
 		a.mu.Lock()
 		a.invites = append(a.invites, req.Recipient.User)
+		a.answered[callID] = &uasDialog{
+			callID:        callID,
+			remoteFrom:    req.GetHeader("From").Value(),
+			remoteContact: req.GetHeader("Contact").Value(),
+			cseq:          req.CSeq().SeqNo,
+		}
 		a.mu.Unlock()
 		_ = tx.Respond(sip.NewResponseFromRequest(req, 180, "Ringing", nil))
 		if a.ringOnly.Load() {
@@ -95,7 +117,15 @@ func startAgent(t *testing.T, host string, port int, user string) *agent {
 		res.AppendHeader(sip.NewHeader("Contact", fmt.Sprintf("<sip:%s@%s:%d>", a.user, a.host, a.port)))
 		_ = tx.Respond(res)
 	})
-	srv.OnAck(func(*sip.Request, sip.ServerTransaction) {})
+	srv.OnAck(func(req *sip.Request, _ sip.ServerTransaction) {
+		// The ACK carries our To tag: the dialog is now confirmed and
+		// either end may BYE it.
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if d, ok := a.answered[req.CallID().Value()]; ok {
+			d.localTo = req.GetHeader("To").Value()
+		}
+	})
 	srv.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
 		a.byes.Add(1)
 		_ = tx.Respond(sip.NewResponseFromRequest(req, 200, "OK", nil))
@@ -203,6 +233,11 @@ func newPlacementRig(t *testing.T, withCarrier bool, channelLimit int) *placemen
 	t.Helper()
 	r := newRig(t)
 	t.Cleanup(func() {
+		// Trunks through the API first, so their engine projection —
+		// identify row included — goes with them. A SQL delete here left
+		// orphaned identify rows matching this host's address, which
+		// captured later tests' SIP traffic.
+		r.releaseConfiguration()
 		_ = r.pool.WithTenant(context.Background(), r.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			for _, stmt := range []string{
 				`DELETE FROM placed_call_legs WHERE tenant_id = $1`,

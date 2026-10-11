@@ -28,3 +28,19 @@ The system SHALL accept a channel that arrives at the engine without having been
 
 - **WHEN** the platform runs telephony with no routing implementation present
 - **THEN** every arriving call is refused as "not found" and every originated call behaves exactly as before
+
+## MODIFIED Requirements
+
+### Requirement: Call ends when the last connected participant leaves
+
+An Active Call SHALL move to Terminating as soon as fewer than two of its participants remain Connected, because no one is left to be connected to anyone. It SHALL release every remaining participant's leg on the engine, and SHALL move to Terminated once teardown completes. A Terminated call's record SHALL become immutable: its final state, timestamps, and billable durations SHALL NOT change afterward.
+
+#### Scenario: Either party hangs up
+
+- **WHEN** one of the two connected participants disconnects while the other has already left or disconnects at the same time
+- **THEN** the Call moves to Terminating and then Terminated, and its record is thereafter immutable
+
+#### Scenario: One party hanging up releases the other
+
+- **WHEN** one of the two connected participants of an Active call disconnects and the other is still connected
+- **THEN** the Call ends, the other participant's leg is released on the engine, their usage stops at that moment, and neither party is left connected to no one

@@ -143,7 +143,53 @@ func newRig(t *testing.T) *rig {
 
 	r := &rig{pool: pool, tenant: tenantID}
 	r.token = r.authenticate(t, username)
+	// Registered after the SQL sweep above, so it runs BEFORE it (LIFO):
+	// trunks and extensions go through the API, which is what removes
+	// their engine projection. Deleting the rows with SQL left the engine
+	// rows behind — and an orphaned trunk identify row matching this
+	// host's address captured later tests' REGISTERs (404 for 401).
+	t.Cleanup(func() { r.releaseConfiguration() })
 	return r
+}
+
+// releaseConfiguration deletes every trunk and extension the tenant has
+// through the public API. Best effort: cleanup never fails a test.
+func (r *rig) releaseConfiguration() {
+	post := func(procedure string, body map[string]any) []byte {
+		payload, _ := json.Marshal(body)
+		req, err := http.NewRequest(http.MethodPost, apiBase+"/atsapbx.v1."+procedure, bytes.NewReader(payload))
+		if err != nil {
+			return nil
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+r.token)
+		resp, err := e2eHTTP.Do(req)
+		if err != nil {
+			return nil
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(resp.Body)
+		return buf.Bytes()
+	}
+	var trunks struct {
+		Trunks []struct {
+			TrunkID string `json:"trunkId"`
+		} `json:"trunks"`
+	}
+	_ = json.Unmarshal(post("PbxService/ListTrunks", map[string]any{"tenantId": r.tenant.String(), "limit": 500}), &trunks)
+	for _, tr := range trunks.Trunks {
+		post("PbxService/DeleteTrunk", map[string]any{"tenantId": r.tenant.String(), "trunkId": tr.TrunkID})
+	}
+	var exts struct {
+		Extensions []struct {
+			ExtensionID string `json:"extensionId"`
+		} `json:"extensions"`
+	}
+	_ = json.Unmarshal(post("PbxService/ListExtensions", map[string]any{"tenantId": r.tenant.String(), "limit": 500}), &exts)
+	for _, e := range exts.Extensions {
+		post("PbxService/DeleteExtension", map[string]any{"tenantId": r.tenant.String(), "extensionId": e.ExtensionID})
+	}
 }
 
 func (r *rig) authenticate(t *testing.T, username string) string {

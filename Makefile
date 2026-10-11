@@ -166,7 +166,7 @@ ci: docs lint vuln test ## Full local gate in pipeline order
 
 ##@ Images, UAT and deploy
 
-.PHONY: docker-build images-push uat-auto uat-placement deploy
+.PHONY: docker-build images-push uat-auto uat-placement uat-inbound deploy
 docker-build: ## Build production images for the app and Asterisk
 	docker build -t atsap-api:local api && docker build -t atsap-core:local core
 
@@ -182,6 +182,9 @@ uat-auto: ## Automated UAT on real baresip phones (rig restored after)
 
 uat-placement: ## UAT: PlaceCall over a carrier trunk between real baresip phones (needs make dev-licence)
 	./scripts/uat-placement.sh
+
+uat-inbound: ## UAT: carrier→DID→phone and desk phone→trunk between real baresip phones (needs make dev-licence)
+	./scripts/uat-inbound.sh
 
 deploy: ## Deploy prod stack on this host from pre-built images (VPS; see README)
 	$(COMPOSE_PROD) pull && $(COMPOSE_PROD) up -d

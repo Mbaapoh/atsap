@@ -108,6 +108,9 @@ Task 1.x tests on the rig whether a header can be set on the 503 for an unanswer
   - the scripted phone dials out (the carrier answers), dials another extension, dials an unroutable number (404), and dials 112 with capacity exhausted (connects).
 - *UAT* (`make uat-inbound`): real baresip carrier → DID → real baresip phone, RTP both ways. Then the real phone dials out over the trunk to the carrier, RTP both ways. Both are released by hang-up. `uat-auto` and `uat-placement` run back to back with it.
 
+**D10 — A two-party call ends when either party leaves.** *(Added at apply time, user-approved.)*
+The e2e found that an Active call ended only when its LAST connected participant left. When one party of a two-party call hung up, the other stayed connected to a dead bridge, in silence, with per-second usage still accruing, on every call path, inbound and outbound. `DisconnectParticipant` now moves an Active call to Terminating when fewer than two remain connected. `ParticipantLeft` records the remaining participants' usage, disconnects them, finalizes, and then releases their legs, using a `legRef` helper that resolves an arrived caller's real channel *before* finalizing. The same helper fixes `HangupCall`, which had resolved it after `removeCall` deleted the record and so missed an arrived caller entirely. Conferences, where a call can outlive a departure, are Phase B and revisit the rule.
+
 ## Risks / Trade-offs
 
 - [This is the riskiest slice] → the arriving path is a new branch only reached for uncorrelated StasisStarts. The originated path is unchanged and its suites run unmodified, and DoD 15 runs telephony with `NoInboundRouter`.
