@@ -124,13 +124,30 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 		return shareddomain.CallID{}, fmt.Errorf("transition to screening: %w", err)
 	}
 
-	capVerdict, err := s.license.ValidateCapacity(ctx, cmd.TenantID, call.ID.String(), 1)
-	if err != nil {
-		return shareddomain.CallID{}, fmt.Errorf("validate capacity: %w", err)
-	}
-	compVerdict, err := s.compliance.Evaluate(ctx, cmd.TenantID, cmd.DestNumber)
-	if err != nil {
-		return shareddomain.CallID{}, fmt.Errorf("evaluate compliance: %w", err)
+	// INV-01: a bypass-marked call skips Screening entirely. Both consults
+	// are skipped — capacity (licensing must never be positioned to block
+	// one: spec capacity-enforcement, task 6.3) and compliance
+	// (calling-hours and do-not-call rules must not interpose on emergency
+	// either). Identification stays pbx-core's job (LLD-03 §4.3, §10.1);
+	// cmd.BypassScreening is the exemption point its application layer
+	// drives from domain.IsEmergency. No reservation is taken, so
+	// teardown's unconditional ReleaseCapacity lands on its documented
+	// no-op for unreserved IDs.
+	capVerdict := ports.CapacityVerdict{Permitted: true}
+	compVerdict := ports.ComplianceVerdict{Permitted: true}
+	if cmd.BypassScreening {
+		s.logger.Info("screening bypassed for emergency call",
+			"call_id", call.ID, "tenant_id", cmd.TenantID)
+	} else {
+		var err error
+		capVerdict, err = s.license.ValidateCapacity(ctx, cmd.TenantID, call.ID.String(), 1)
+		if err != nil {
+			return shareddomain.CallID{}, fmt.Errorf("validate capacity: %w", err)
+		}
+		compVerdict, err = s.compliance.Evaluate(ctx, cmd.TenantID, cmd.DestNumber)
+		if err != nil {
+			return shareddomain.CallID{}, fmt.Errorf("evaluate compliance: %w", err)
+		}
 	}
 
 	screenEvents, err := call.ApplyScreeningVerdict(capVerdict.Permitted, compVerdict.Permitted, time.Now().UTC())

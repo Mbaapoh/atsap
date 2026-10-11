@@ -23,9 +23,9 @@ covered by anyone reading the ticks in `tasks.md`.
 | Reaching capacity leaves active calls untouched | `e2e.TestNoActiveCallIsDroppedByAnyLicenceTransition/over_capacity` |
 | Lowering the entitlement below current usage drops nothing | same, `degraded` and `tampered` stages |
 | More capacity becomes usable promptly | same, `a capacity increase applies without a restart` (AC-06.8) |
-| Emergency calls connect at full capacity | **GAP G2** |
-| Emergency calls connect while degraded | **GAP G2** |
-| Emergency calls connect with no licence at all | **GAP G2** |
+| Emergency calls connect at full capacity | `TestEmergencyCallsConnectInEveryLicenceState/exhausted` + `pbx/domain.TestIsEmergency` — bypass half only; **GAP G2 (narrowed)** |
+| Emergency calls connect while degraded | `TestEmergencyCallsConnectInEveryLicenceState/degraded` + `/expired` — bypass half only; **GAP G2 (narrowed)** |
+| Emergency calls connect with no licence at all | `TestEmergencyCallsConnectInEveryLicenceState/no_licence_at_all` — bypass half only; **GAP G2 (narrowed)** |
 | A fresh installation refuses calls until activated | `application.TestSetupRefusesCallsWithTheNotActivatedReason` |
 | Absence is never unlimited | `domain.TestZeroEntitlementPermitsNothing`, `application.TestNoLicenceIsSetupNotAFloor` |
 | Administration survives the absence of an entitlement | Observed live: the app boots reporting `state=Setup channels=0` and serves HTTP |
@@ -127,12 +127,64 @@ what was open was running the suite *repeatedly*, which failed the
 untouched `TestWalkingSkeleton` identically and predated this change.
 That is what the engine upgrade fixed.
 
-### G2 — INV-01 cannot be proven here at all
+### G2 — INV-01 (narrowed 2026-10-07; recorded as closed the same day, reopened on review)
+
+**Correction (2026-10-07, review):** the "closed" status below
+overclaimed, for three reasons, so G2 is **narrowed, not closed**:
+
+1. `archtest.TestScanBypassProvenance_*` is a syntactic precursor, not
+   LLD-03 DoD item 9. DoD 9 is behavioural — "a test decodes a
+   `PlaceCall` request with every field set and asserts the flag is
+   false unless `domain.IsEmergency` matched" — and there is no
+   `PlaceCall` to decode yet. The scanner also cannot see a reflective
+   decode (`encoding/json` matches field names case-insensitively, so
+   unmarshalling into `InitiateCallCommand` would set the flag with no
+   identifier in the source). Nothing decodes into it today.
+2. The pointer named an owner that is not tracked: there is no
+   `pbx-inbound-and-emergency` OpenSpec change, only a row in LLD-03 §12.
+   The remaining obligations below have no task list until it is
+   proposed.
+3. The original owner line set the bar — "INV-01 is proven there, with
+   licensing in a refusing state, or it is not proven at all" — and the
+   composition (dialled digits → `IsEmergency` → flag → Screening) is
+   not exercised anywhere, because the middle arrow does not exist.
+   LLD-03 DoD 4 also requires a suspended tenant, and suspension does
+   not exist yet.
+
+**What this change does prove:** both halves in isolation —
+identification (`pbx/domain.TestIsEmergency`) and the bypass in all four
+licence states (`TestEmergencyCallsConnectInEveryLicenceState`).
+
+**Obligations carried to `pbx-inbound-and-emergency`, to be recorded in
+its tasks when proposed:** the live-ingress derivation and its e2e;
+DoD 9 as written; DoD 4 including suspension; and the seeded
+`emergency_numbers` rows per residency zone (LLD-03 §5.1) landing before
+the wiring, because an empty set grants no exemptions — a fresh install
+with no seed would fail "connects with no licence at all".
+
+**Superseded closure note (kept as history):**
+
 
 **Scenarios:** emergency calls connect at full capacity, while degraded,
 and with no licence.
 
-**Status:** not written, deliberately.
+**Status:** closed. Both provable halves are proven: identification
+(`pbx/domain.TestIsEmergency`, 13 cases including the 112/1120 prefix
+trap) and bypass (`TestEmergencyCallsConnectInEveryLicenceState`, all
+four licence states against live Asterisk, each stage preceded by an
+ordinary-refusal proof).
+
+**What remains, and why it is elsewhere:** deriving the flag at the live
+ingress. No inbound path exists yet — nothing calls
+`domain.IsEmergency` in production — so that wiring belongs to
+`pbx-inbound-and-emergency` (LLD-03), which e2es it then. The provenance
+gate (`archtest.TestScanBypassProvenance_RealRepoIsClean`, LLD-03 §10.1
+DoD item 9) already forbids the wire from reaching the flag and restricts
+production assignment to `pbx/application`, so the future wiring has
+exactly one lawful shape.
+
+**Original objection (kept as history):** the note below was written
+when no bypass existed to test; it is superseded, not deleted.
 
 **Why:** there is no emergency bypass to test. Identifying an emergency
 destination and routing around Screening is `pbx-core`'s work

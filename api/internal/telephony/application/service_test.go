@@ -402,6 +402,101 @@ func TestInitiateCall_ComplianceServiceFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "compliance service unreachable")
 }
 
+// denyCompliance refuses every evaluation and counts calls, so a test can
+// prove the emergency path never consulted it.
+type denyCompliance struct{ calls int }
+
+func (d *denyCompliance) Evaluate(context.Context, shareddomain.TenantID, string) (ports.ComplianceVerdict, error) {
+	d.calls++
+	return ports.ComplianceVerdict{Permitted: false, Reason: "do-not-call"}, nil
+}
+
+// TestInitiateCall_EmergencyBypassesScreeningConsults is task 6.3 at unit
+// level (INV-01, spec capacity-enforcement): with capacity refusing and
+// compliance refusing, an emergency call still proceeds to Presenting,
+// reserves nothing, and tears down cleanly — while the ordinary control
+// is screened out. DestNumber "112" is a label only: identification is
+// pbx-core's job (LLD-03); the flag stands in for it here.
+func TestInitiateCall_EmergencyBypassesScreeningConsults(t *testing.T) {
+	h := newHarness()
+	h.license.permitted = false
+	deny := &denyCompliance{}
+	h.svc = application.NewService(
+		h.mediaGW, h.callStore, h.license, deny,
+		h.registry, 20, discardLogger(),
+	)
+
+	// Control first: without the flag, both refusals screen the call out.
+	refused, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
+		SourceNumber: "1000", DestNumber: "1001",
+		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
+	})
+	require.NoError(t, err, "screened-out is a verdict, not an error")
+	assert.Equal(t, domain.CallTerminated, h.callStore.get(refused).State)
+	require.Equal(t, 1, deny.calls, "control must consult compliance or the test is vacuous")
+
+	callID, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
+		SourceNumber: "1000", DestNumber: "112", BypassScreening: true,
+		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.CallPresenting, h.callStore.get(callID).State,
+		"emergency proceeds past Screening with both consults refusing")
+	assert.Len(t, h.mediaGW.originateCalls, 2, "both legs originated")
+	reserved, _ := h.license.counts(callID.String())
+	assert.Zero(t, reserved, "emergency takes no reservation")
+	assert.Equal(t, 1, deny.calls, "compliance consulted once (control only), never for emergency")
+
+	// Teardown lands on the documented no-op: nothing reserved, nothing freed.
+	require.NoError(t, h.svc.HangupCall(context.Background(), callID, "test complete"))
+	reserved, released := h.license.counts(callID.String())
+	assert.Zero(t, reserved)
+	assert.Equal(t, 1, released, "unconditional release fired and was a no-op")
+}
+
+// errLicense fails every check: the never-licensed installation, where
+// there is no entitlement to consult at all and ValidateCapacity fails
+// closed with an error rather than a refusing verdict.
+type errLicense struct{}
+
+func (errLicense) ValidateCapacity(context.Context, shareddomain.TenantID, string, int) (ports.CapacityVerdict, error) {
+	return ports.CapacityVerdict{}, errors.New("no entitlement")
+}
+
+func (errLicense) ReleaseCapacity(context.Context, string) error { return nil }
+
+// TestInitiateCall_EmergencyProceedsWhenLicensingErrors covers the
+// fresh-installation path of task 6.3: with licensing erroring (not
+// merely refusing), the ordinary setup fails with that error while the
+// emergency call proceeds — the bypass sits before either consult and
+// never distinguishes error from refusal.
+func TestInitiateCall_EmergencyProceedsWhenLicensingErrors(t *testing.T) {
+	h := newHarness()
+	deny := &denyCompliance{}
+	h.svc = application.NewService(
+		h.mediaGW, h.callStore, errLicense{}, deny,
+		h.registry, 20, discardLogger(),
+	)
+
+	_, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
+		SourceNumber: "1000", DestNumber: "1001",
+		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
+	})
+	require.Error(t, err, "no licence means no call path")
+
+	callID, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID: shareddomain.NewTenantID(), Direction: domain.Outbound,
+		SourceNumber: "1000", DestNumber: "112", BypassScreening: true,
+		SourceEndpointURI: "PJSIP/1000", DestEndpointURI: "PJSIP/1001",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.CallPresenting, h.callStore.get(callID).State)
+	assert.Zero(t, deny.calls, "neither consult runs for emergency, error path included")
+}
+
 // TestParticipantAnswered_SaveFailure and
 // TestHangupCall_DestroyBridgeFailure_StillTerminates cover
 // persistAndPublish and finalizeTermination's own failure paths beyond

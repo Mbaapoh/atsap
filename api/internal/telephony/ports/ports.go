@@ -25,6 +25,15 @@ type InitiateCallCommand struct {
 	// numbers to endpoints in later work (LLD-01 §1).
 	SourceEndpointURI string
 	DestEndpointURI   string
+	// BypassScreening skips capacity, compliance and suspension checks
+	// (INV-01, LLD-03 §4.3). It is set ONLY by pbx-core's application
+	// layer from its own emergency matcher (pbx/domain.IsEmergency): it
+	// is not a request field, is never decoded from a wire message, and
+	// any RPC handler that sets it is a defect (LLD-03 §10.1). Tests set
+	// it directly to exercise telephony's enforcement contract without
+	// importing pbx-core, which HLD 04 §10.1 forbids. Default false
+	// preserves existing behavior.
+	BypassScreening bool
 }
 
 // TransferCommand is not implemented in this change (LLD-01 §1
