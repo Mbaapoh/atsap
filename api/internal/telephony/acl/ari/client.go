@@ -111,6 +111,13 @@ func (c *Client) AnswerChannel(ctx context.Context, channelID string) error {
 	return err
 }
 
+// RingChannel sends ringing (SIP 180) on a channel in the Stasis app,
+// used for an arriving caller while the destination leg is set up.
+func (c *Client) RingChannel(ctx context.Context, channelID string) error {
+	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("/channels/%s/ring", channelID), nil)
+	return err
+}
+
 // HangupChannel terminates a channel, optionally with a reason
 // (e.g. "normal", "busy", "congestion").
 func (c *Client) HangupChannel(ctx context.Context, channelID, reason string) error {

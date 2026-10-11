@@ -53,6 +53,11 @@ type Service struct {
 	license      ports.LicenseManager
 	compliance   ports.ComplianceEngine
 	registrar    ports.CorrelationRegistrar
+	// inboundRouter resolves arriving calls (pbx-inbound-and-emergency
+	// design D2). It defaults to NoInboundRouter, so telephony runs with
+	// no pbx-core in the binary (LLD-03 DoD 15); the composition root
+	// overrides it via SetInboundRouter where pbx-core is present.
+	inboundRouter ports.InboundRouter
 	// timeoutSeconds is the alerting timeout passed to MediaGateway.Originate
 	// (PRD §11.1 Presenting; docs/hld/03-domain-model.md §2.1 default 20s).
 	timeoutSeconds int
@@ -61,6 +66,20 @@ type Service struct {
 	mu      sync.Mutex
 	calls   map[string]*domain.Call
 	bridges map[string]ports.BridgeID
+	// arrived tracks calls that began with an arriving channel rather
+	// than origination, keyed by call ID string. The entry maps the
+	// caller participant to its engine channel (which, unlike
+	// originated legs, has no deterministic address) and records
+	// whether the caller has been answered yet.
+	arrived map[string]*arrivedCall
+}
+
+// arrivedCall is the per-call state for a call that began with an
+// arriving channel.
+type arrivedCall struct {
+	callerParticipant shareddomain.ParticipantID
+	callerRef         ports.ChannelRef
+	answered          bool
 }
 
 // NewService wires a Service from its ports. timeoutSeconds is the
@@ -81,11 +100,35 @@ func NewService(
 		license:        license,
 		compliance:     compliance,
 		registrar:      registrar,
+		inboundRouter:  ports.NoInboundRouter{},
 		timeoutSeconds: timeoutSeconds,
 		logger:         logger,
 		calls:          make(map[string]*domain.Call),
 		bridges:        make(map[string]ports.BridgeID),
+		arrived:        make(map[string]*arrivedCall),
 	}
+}
+
+// SetInboundRouter overrides the default NoInboundRouter with pbx-core's
+// implementation. Called by the composition root where pbx-core is part
+// of the binary; telephony's own suites never call it (LLD-03 DoD 15).
+func (s *Service) SetInboundRouter(router ports.InboundRouter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inboundRouter = router
+}
+
+func (s *Service) router() ports.InboundRouter {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inboundRouter
+}
+
+func (s *Service) arrivedOf(callID shareddomain.CallID) (*arrivedCall, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.arrived[callID.String()]
+	return a, ok
 }
 
 // InitiateCall creates a two-party Call (caller, callee — never fixed
@@ -192,6 +235,195 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	return callID, nil
 }
 
+// CallArrived handles a channel that arrived at the engine without
+// having been originated by the platform (pbx-inbound-and-emergency
+// design D3). It implements the shape acl.EventSink declares for
+// uncorrelated StasisStarts (structurally — this package never imports
+// acl), alongside ParticipantAnswered/ParticipantLeft.
+//
+// The arriving channel becomes the call's caller participant, correlated
+// under its own channel id. The router decides what the call is; a
+// refusal is signalled at the SIP edge (never silence) and the call
+// terminates with the reason. Otherwise the call is screened unless
+// bypassed, the caller hears ringing while the destination leg is
+// originated exactly as today, and the caller is answered and bridged
+// when the destination answers (in ParticipantAnswered).
+//
+// A channel with no tenant variable is rejected NotFound without the
+// router ever being consulted (design D1): without a tenant there is
+// nothing to resolve and no scope to persist a call in.
+func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, dialled, callerNumber, channelID string) error {
+	tenantID, err := shareddomain.ParseTenantID(tenantIDStr)
+	if err != nil {
+		s.logger.Warn("arriving call without a tenant variable; refusing",
+			"channel_id", channelID, "source_endpoint", sourceEndpoint)
+		if rerr := s.mediaGateway.RejectChannel(ctx, ports.ChannelRef(channelID), ports.RefusalNotFound); rerr != nil {
+			return fmt.Errorf("reject tenantless arriving channel: %w", rerr)
+		}
+		return nil
+	}
+
+	now := time.Now().UTC()
+	callID := shareddomain.NewCallID()
+	callerRef := ports.ChannelRef(channelID)
+
+	call := domain.NewCall(callID, tenantID, domain.Inbound, callerNumber, dialled, now)
+	caller := &domain.CallParticipant{
+		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: tenantID,
+		Role: domain.RoleCaller, EndpointURI: "PJSIP/" + sourceEndpoint, JoinedAt: now,
+	}
+	if err := call.AddParticipant(caller); err != nil {
+		return fmt.Errorf("add arriving caller participant: %w", err)
+	}
+
+	s.storeCall(call)
+	if err := s.saveCall(ctx, call, call.InitiatedEvent()); err != nil {
+		return err
+	}
+
+	decision, err := s.router().ResolveInbound(ctx, ports.InboundRequest{
+		TenantID: tenantID, CallID: callID,
+		SourceEndpoint: sourceEndpoint, Dialled: dialled, CallerNumber: callerNumber,
+	})
+	if err != nil {
+		s.logger.Error("inbound router failed; refusing rather than hanging",
+			"error", err, "call_id", callID, "tenant_id", tenantID)
+		return s.refuseArrived(ctx, callID, callerRef,
+			ports.RefusalUnavailable, "inbound routing failed")
+	}
+	// The router owns the call's direction (inbound from a trunk,
+	// internal between extensions); it is recorded once decided.
+	call.Direction = decision.Direction
+
+	if decision.Refuse != ports.RefusalNone {
+		return s.refuseArrived(ctx, callID, callerRef,
+			decision.Refuse, inboundRefusalReason(decision.Refuse))
+	}
+
+	if err := call.TransitionToScreening(); err != nil {
+		return fmt.Errorf("transition arrived call to screening: %w", err)
+	}
+	if err := s.saveCall(ctx, call); err != nil {
+		return err
+	}
+
+	if !decision.BypassScreening {
+		capVerdict, err := s.license.ValidateCapacity(ctx, tenantID, call.ID.String(), 1)
+		if err != nil {
+			s.logger.Error("validate capacity for arrived call failed; refusing",
+				"error", err, "call_id", callID)
+			return s.refuseArrived(ctx, callID, callerRef,
+				ports.RefusalUnavailable, "capacity check failed")
+		}
+		if !capVerdict.Permitted {
+			return s.refuseArrived(ctx, callID, callerRef,
+				ports.RefusalUnavailable, "capacity verdict rejected the call")
+		}
+		compVerdict, err := s.compliance.Evaluate(ctx, tenantID, dialled)
+		if err != nil {
+			s.logger.Error("evaluate compliance for arrived call failed; refusing",
+				"error", err, "call_id", callID)
+			return s.refuseArrived(ctx, callID, callerRef,
+				ports.RefusalForbidden, "compliance check failed")
+		}
+		if !compVerdict.Permitted {
+			return s.refuseArrived(ctx, callID, callerRef,
+				ports.RefusalForbidden, "compliance verdict rejected the call")
+		}
+	} else {
+		s.logger.Info("screening bypassed for arriving emergency call",
+			"call_id", call.ID, "tenant_id", tenantID)
+	}
+
+	if _, err := call.ApplyScreeningVerdict(true, true, time.Now().UTC()); err != nil {
+		return fmt.Errorf("apply screening verdict to arrived call: %w", err)
+	}
+	if err := s.saveCall(ctx, call); err != nil {
+		return err
+	}
+
+	if err := call.TransitionToPresenting(); err != nil {
+		return fmt.Errorf("transition arrived call to presenting: %w", err)
+	}
+	if err := s.saveCall(ctx, call); err != nil {
+		return err
+	}
+
+	// The bridge exists before either leg needs it, exactly as in
+	// InitiateCall: the destination leg's StasisStart must find a bridge
+	// to join with a single ARI call.
+	if _, err := s.ensureBridge(ctx, callID); err != nil {
+		return fmt.Errorf("create bridge for arrived call: %w", err)
+	}
+
+	// The caller is correlated under its own channel id (D-19): the id
+	// Asterisk assigned, not one we chose.
+	s.registrar.RegisterCorrelation(channelID, tenantID.String(), callID.String(), caller.ID.String())
+	s.mu.Lock()
+	s.arrived[callID.String()] = &arrivedCall{callerParticipant: caller.ID, callerRef: callerRef}
+	s.mu.Unlock()
+
+	if err := s.callStore.AddChannelHistory(ctx, tenantID, caller.ID, callerRef, "", "arrived"); err != nil {
+		return fmt.Errorf("add channel history for arriving caller: %w", err)
+	}
+
+	if err := s.mediaGateway.RingChannel(ctx, callerRef); err != nil {
+		return fmt.Errorf("ring arriving caller: %w", err)
+	}
+
+	destination := &domain.CallParticipant{
+		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: tenantID,
+		Role: domain.RoleAgent, EndpointURI: decision.DestinationURI, JoinedAt: now,
+	}
+	if err := call.AddParticipant(destination); err != nil {
+		return fmt.Errorf("add arrived destination participant: %w", err)
+	}
+	if err := s.originateParticipant(ctx, tenantID, callID, destination); err != nil {
+		return fmt.Errorf("originate arrived destination %s: %w", destination.ID, err)
+	}
+
+	return nil
+}
+
+// refuseArrived rejects an arriving channel at the SIP edge and records
+// the call as terminated with the reason. The call must already be
+// stored; it is removed from the in-flight set like a screened-out
+// originated call.
+func (s *Service) refuseArrived(ctx context.Context, callID shareddomain.CallID, callerRef ports.ChannelRef, cause ports.RefusalCause, reason string) error {
+	call, ok := s.loadCall(callID)
+	if !ok {
+		return fmt.Errorf("refuse arrived call %s: %w", callID, ErrCallNotFound)
+	}
+	if err := s.mediaGateway.RejectChannel(ctx, callerRef, cause); err != nil {
+		return fmt.Errorf("reject arrived channel: %w", err)
+	}
+	terminateEvents, err := call.Terminate(reason, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("terminate refused arrived call: %w", err)
+	}
+	if err := s.saveCall(ctx, call, terminateEvents...); err != nil {
+		return err
+	}
+	s.removeCall(callID)
+	return nil
+}
+
+// inboundRefusalReason names why a router-refused arriving call ended,
+// for the persisted record. Screening refusals reuse the originated
+// path's reason strings.
+func inboundRefusalReason(cause ports.RefusalCause) string {
+	switch cause {
+	case ports.RefusalNotFound:
+		return "inbound call refused: destination not found"
+	case ports.RefusalUnavailable:
+		return "inbound call refused: no capacity"
+	case ports.RefusalForbidden:
+		return "inbound call refused: compliance rejected the call"
+	default:
+		return "inbound call refused"
+	}
+}
+
 // AnswerParticipant, HoldParticipant, and TransferParticipant are not
 // implemented in this change (LLD-01 §1's out-of-scope table): both legs
 // connect via ParticipantAnswered reacting to real ARI events, not an
@@ -257,8 +489,16 @@ func (s *Service) HangupCall(ctx context.Context, callID shareddomain.CallID, re
 	// the ChannelDestroyed events this triggers find the call already gone
 	// rather than racing a second termination. A leg the far end has just
 	// hung up is already destroyed; that failure is expected and logged.
+	//
+	// An arriving caller has no deterministic channel address (Asterisk
+	// assigned its id), so its tracked ref is used instead.
+	arrived, _ := s.arrivedOf(callID)
 	for _, id := range live {
-		if err := s.mediaGateway.DestroyChannel(ctx, participantChannel(id)); err != nil {
+		ref := participantChannel(id)
+		if arrived != nil && arrived.callerParticipant == id {
+			ref = arrived.callerRef
+		}
+		if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
 			s.logger.Debug("destroy channel on hangup", "error", err, "call_id", callID, "participant_id", id)
 		}
 	}
@@ -276,6 +516,11 @@ func participantChannel(id shareddomain.ParticipantID) ports.ChannelRef {
 // (structurally — this package never imports acl). Connects the
 // participant, bridges its channel into the call's bridge (creating the
 // bridge on the first connect), and persists.
+//
+// For a call that began with an arriving channel, the answering leg is
+// the originated destination: answering it also answers the waiting
+// caller and bridges both, which is what moves the call to Active by
+// the existing two-connected rule (design D3).
 func (s *Service) ParticipantAnswered(ctx context.Context, _, callIDStr, participantIDStr, channelID string) error {
 	callID, err := shareddomain.ParseCallID(callIDStr)
 	if err != nil {
@@ -304,6 +549,23 @@ func (s *Service) ParticipantAnswered(ctx context.Context, _, callIDStr, partici
 		return fmt.Errorf("add channel to bridge: %w", err)
 	}
 
+	if a, ok := s.arrivedOf(callID); ok && !a.answered && a.callerParticipant != participantID {
+		if err := s.mediaGateway.AnswerChannel(ctx, a.callerRef); err != nil {
+			return fmt.Errorf("answer arriving caller: %w", err)
+		}
+		callerEvents, err := call.ConnectParticipant(a.callerParticipant, time.Now().UTC())
+		if err != nil {
+			return fmt.Errorf("connect arriving caller: %w", err)
+		}
+		if err := s.mediaGateway.AddChannelToBridge(ctx, bridgeID, a.callerRef); err != nil {
+			return fmt.Errorf("add arriving caller to bridge: %w", err)
+		}
+		connectEvents = append(connectEvents, callerEvents...)
+		s.mu.Lock()
+		a.answered = true
+		s.mu.Unlock()
+	}
+
 	return s.saveCall(ctx, call, connectEvents...)
 }
 
@@ -328,6 +590,28 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 	}
 
 	if call.State != domain.CallActive && call.State != domain.CallDegraded {
+		// A leg that never reached Active leaves nothing to bill and
+		// no bridge worth keeping. For an arrived call, the other leg
+		// is still ringing on the engine — the caller hanging up while
+		// ringing must release the destination leg (and vice versa),
+		// or a phone rings forever for a call that no longer exists.
+		// Originated calls keep their existing behavior: both legs
+		// are torn down by HangupCall, never here.
+		if a, ok := s.arrivedOf(callID); ok {
+			for _, p := range call.Participants {
+				if p.ID == participantID || p.State == domain.ParticipantDisconnected {
+					continue
+				}
+				ref := participantChannel(p.ID)
+				if a.callerParticipant == p.ID {
+					ref = a.callerRef
+				}
+				if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
+					s.logger.Debug("destroy other leg on arrived setup teardown",
+						"error", err, "call_id", callID, "participant_id", p.ID)
+				}
+			}
+		}
 		return s.finalizeTermination(ctx, call, "call setup did not complete")
 	}
 
@@ -509,4 +793,5 @@ func (s *Service) removeCall(id shareddomain.CallID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.calls, id.String())
+	delete(s.arrived, id.String())
 }

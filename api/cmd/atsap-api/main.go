@@ -149,6 +149,7 @@ func main() {
 	)
 
 	eventLoop := acl.NewEventLoop(registry, callService, logger)
+	eventLoop.SetChannelVariableReader(ariClient)
 
 	go func() {
 		for {

@@ -61,6 +61,74 @@ type CallService interface {
 // rule 3; spec: "No infrastructure channel identifier is ever exposed").
 type ChannelRef string
 
+// RefusalCause is why an arriving call is refused at the SIP edge
+// (pbx-inbound-and-emergency design D2/D3). The zero value connects —
+// a decision refusing nothing — so a default-built decision can never
+// refuse a call by accident.
+type RefusalCause string
+
+const (
+	// RefusalNone connects the call. It is the zero value, not a
+	// sentinel a caller must remember to clear.
+	RefusalNone RefusalCause = ""
+	// RefusalNotFound is an unallocated DID or an unroutable dialled
+	// number: the engine answers SIP 404 (ARI hangup reason
+	// "unallocated").
+	RefusalNotFound RefusalCause = "not_found"
+	// RefusalUnavailable is exhausted capacity or a full trunk: the
+	// engine answers SIP 503 (ARI hangup reason "congestion").
+	RefusalUnavailable RefusalCause = "unavailable"
+	// RefusalForbidden is a compliance refusal: the engine answers SIP
+	// 403 (ARI hangup reason "rejected").
+	RefusalForbidden RefusalCause = "forbidden"
+)
+
+// InboundRequest describes a channel that arrived at the engine without
+// having been originated by the platform: a carrier INVITE, or a
+// registered phone dialling into the Stasis context.
+type InboundRequest struct {
+	TenantID shareddomain.TenantID
+	// CallID is assigned by the arriving-call path before the router
+	// runs, so pbx-core can reserve a trunk channel keyed by it.
+	CallID         shareddomain.CallID
+	SourceEndpoint string
+	Dialled        string
+	CallerNumber   string
+}
+
+// InboundDecision is the router's answer for one arriving call.
+type InboundDecision struct {
+	// Refuse is RefusalNone to connect, or the cause to refuse with.
+	Refuse RefusalCause
+	// DestinationURI is opaque to telephony-core: the engine address of
+	// the leg to originate when connecting.
+	DestinationURI string
+	Direction      domain.Direction
+	// BypassScreening skips capacity and compliance checks. Assigned only
+	// in pbx-core's application layer from its own emergency matcher,
+	// under the same provenance rule as InitiateCallCommand's field.
+	BypassScreening bool
+}
+
+// InboundRouter is telephony-core's outbound port for resolving arriving
+// calls, owned by telephony and implemented by pbx-core (LLD-03 §4.2).
+// The composition root wires the implementation; telephony ships and
+// runs with NoInboundRouter.
+type InboundRouter interface {
+	ResolveInbound(ctx context.Context, req InboundRequest) (InboundDecision, error)
+}
+
+// NoInboundRouter is telephony-core's default router: every arriving
+// call is refused as not found. It is what lets telephony run with no
+// pbx-core in the binary (LLD-03 DoD 15) — the walking skeleton and the
+// licence-transition suites run against exactly this.
+type NoInboundRouter struct{}
+
+// ResolveInbound refuses every arriving call as not found.
+func (NoInboundRouter) ResolveInbound(_ context.Context, _ InboundRequest) (InboundDecision, error) {
+	return InboundDecision{Refuse: RefusalNotFound}, nil
+}
+
 // BridgeID identifies an Asterisk bridge, ACL-internal only.
 type BridgeID string
 
@@ -121,6 +189,15 @@ type MediaGateway interface {
 	StartPlayback(ctx context.Context, channelRef ChannelRef, mediaURI string) error
 	StartSnoop(ctx context.Context, channelRef ChannelRef, snoopReq SnoopRequest) (SnoopRef, error)
 	DestroyChannel(ctx context.Context, channelRef ChannelRef) error
+	// RingChannel sends ringing (SIP 180) on an arriving channel the
+	// platform did not originate, while the destination leg is set up.
+	RingChannel(ctx context.Context, channelRef ChannelRef) error
+	// AnswerChannel answers an arriving channel, connecting its audio.
+	AnswerChannel(ctx context.Context, channelRef ChannelRef) error
+	// RejectChannel refuses an arriving channel at the SIP edge with
+	// the standard response for cause (PRD §12.4): NotFound → 404,
+	// Unavailable → 503, Forbidden → 403. Never silence.
+	RejectChannel(ctx context.Context, channelRef ChannelRef, cause RefusalCause) error
 }
 
 // CallStore is telephony-core's outbound persistence port.

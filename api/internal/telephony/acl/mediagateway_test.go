@@ -152,3 +152,48 @@ func TestMediaGatewayAdapter_DestroyChannel_Error(t *testing.T) {
 	err := gw.DestroyChannel(context.Background(), "chan1")
 	assert.Error(t, err)
 }
+
+// TestMediaGatewayAdapter_RejectChannel_MapsCause covers the arriving-call
+// refusal contract (PRD §12.4, design D3): every refusal is a standard SIP
+// response, never silence.
+func TestMediaGatewayAdapter_RejectChannel_MapsCause(t *testing.T) {
+	for _, tc := range []struct {
+		cause  ports.RefusalCause
+		reason string
+	}{
+		{ports.RefusalNotFound, "unallocated"},
+		{ports.RefusalUnavailable, "congestion"},
+		{ports.RefusalForbidden, "rejected"},
+	} {
+		t.Run(string(tc.cause), func(t *testing.T) {
+			var gotMethod, gotReason string
+			gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotReason = r.URL.Query().Get("reason")
+				w.WriteHeader(http.StatusNoContent)
+			})
+			err := gw.RejectChannel(context.Background(), "chan1", tc.cause)
+			require.NoError(t, err)
+			assert.Equal(t, http.MethodDelete, gotMethod)
+			assert.Equal(t, tc.reason, gotReason)
+		})
+	}
+}
+
+func TestMediaGatewayAdapter_RejectChannel_RefusalNoneIsAnError(t *testing.T) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("a refusal that refuses nothing must not reach the engine")
+	})
+	assert.Error(t, gw.RejectChannel(context.Background(), "chan1", ports.RefusalNone))
+}
+
+func TestMediaGatewayAdapter_RingAndAnswerChannel(t *testing.T) {
+	var gotPaths []string
+	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	require.NoError(t, gw.RingChannel(context.Background(), "chan1"))
+	require.NoError(t, gw.AnswerChannel(context.Background(), "chan1"))
+	assert.Equal(t, []string{"POST /channels/chan1/ring", "POST /channels/chan1/answer"}, gotPaths)
+}

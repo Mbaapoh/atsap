@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 
 	"atsap-api/internal/telephony/acl/ari"
 )
@@ -25,6 +26,21 @@ type EventSink interface {
 	// ParticipantLeft is called when a channel backing a participant is
 	// destroyed or hung up.
 	ParticipantLeft(ctx context.Context, tenantID, callID, participantID string) error
+	// CallArrived is called when a channel enters Stasis with no
+	// correlation — a call the platform did not originate (a carrier
+	// INVITE, or a registered phone dialling). tenantID is the
+	// endpoint-configured ATSA_TENANT_ID, empty when the channel
+	// carries none; the orchestrator refuses a tenantless channel
+	// without consulting its router.
+	CallArrived(ctx context.Context, tenantID, sourceEndpoint, dialled, callerNumber, channelID string) error
+}
+
+// ChannelVariableReader reads a variable off a live engine channel. It
+// is the narrow slice of the ARI client the event loop needs to learn
+// an uncorrelated channel's tenant (design D1); *ari.Client satisfies
+// it, and tests substitute a map.
+type ChannelVariableReader interface {
+	GetChannelVariable(ctx context.Context, channelID, name string) (string, error)
 }
 
 // EventLoop dispatches raw ARI events through a CorrelationRegistry
@@ -53,12 +69,20 @@ type EventSink interface {
 type EventLoop struct {
 	registry *CorrelationRegistry
 	sink     EventSink
+	vars     ChannelVariableReader
 	logger   *slog.Logger
 }
 
 // NewEventLoop returns an EventLoop dispatching through registry to sink.
 func NewEventLoop(registry *CorrelationRegistry, sink EventSink, logger *slog.Logger) *EventLoop {
 	return &EventLoop{registry: registry, sink: sink, logger: logger}
+}
+
+// SetChannelVariableReader wires the reader uncorrelated StasisStarts
+// need for their tenant. The composition root sets the ARI client;
+// without one, arriving channels carry no tenant and are refused.
+func (l *EventLoop) SetChannelVariableReader(r ChannelVariableReader) {
+	l.vars = r
 }
 
 // Handle processes one raw ARI event. Its signature matches
@@ -77,7 +101,14 @@ func (l *EventLoop) Handle(ctx context.Context, ev ari.Event) {
 type channelPayload struct {
 	Channel struct {
 		ID    string `json:"id"`
+		Name  string `json:"name"`
 		State string `json:"state"`
+		Dialplan struct {
+			Exten string `json:"exten"`
+		} `json:"dialplan"`
+		Caller struct {
+			Number string `json:"number"`
+		} `json:"caller"`
 	} `json:"channel"`
 }
 
@@ -90,7 +121,8 @@ func (l *EventLoop) handleStasisStart(ctx context.Context, ev ari.Event) {
 
 	corr, ok := l.registry.Lookup(payload.Channel.ID)
 	if !ok {
-		l.logger.Warn("acl: StasisStart for unregistered channel", "channel_id", payload.Channel.ID)
+		l.handleArrivingChannel(ctx, payload.Channel.ID, payload.Channel.Name,
+			payload.Channel.Dialplan.Exten, payload.Channel.Caller.Number)
 		return
 	}
 
@@ -98,6 +130,44 @@ func (l *EventLoop) handleStasisStart(ctx context.Context, ev ari.Event) {
 		l.logger.Error("acl: participant-answered handler failed", "error", err,
 			"call_id", corr.CallID, "participant_id", corr.ParticipantID)
 	}
+}
+
+// handleArrivingChannel routes a StasisStart no originated leg owns to
+// the arriving-call path (design D3): the channel stays unanswered while
+// the orchestrator decides what it is. The tenant comes from the
+// endpoint's configuration (ATSA_TENANT_ID, design D1) — never from a
+// caller-controlled header — read off the live channel; the endpoint
+// from the channel name; the dialled number from the dialplan extension;
+// the caller number from the caller ID.
+func (l *EventLoop) handleArrivingChannel(ctx context.Context, channelID, channelName, dialled, callerNumber string) {
+	tenantID := ""
+	if l.vars != nil {
+		v, err := l.vars.GetChannelVariable(ctx, channelID, "ATSA_TENANT_ID")
+		if err != nil {
+			l.logger.Warn("acl: cannot read tenant of arriving channel; refusing without routing",
+				"error", err, "channel_id", channelID)
+		} else {
+			tenantID = v
+		}
+	}
+	source := sourceEndpointFromChannelName(channelName)
+	if err := l.sink.CallArrived(ctx, tenantID, source, dialled, callerNumber, channelID); err != nil {
+		l.logger.Error("acl: arrived-call handler failed", "error", err, "channel_id", channelID)
+	}
+}
+
+// sourceEndpointFromChannelName recovers the endpoint an arriving
+// channel was created on from its Asterisk name ("PJSIP/<endpoint>-<id>")
+// by dropping the technology prefix and the unique suffix Asterisk
+// appends after the last dash. Anything unparseable passes through:
+// the router refuses unknown sources, so a guess here would only move
+// the refusal somewhere harder to see.
+func sourceEndpointFromChannelName(name string) string {
+	s := strings.TrimPrefix(name, "PJSIP/")
+	if i := strings.LastIndex(s, "-"); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }
 
 func (l *EventLoop) handleChannelGone(ctx context.Context, ev ari.Event) {

@@ -35,11 +35,19 @@ type fakeMediaGateway struct {
 	addedToBridge    []addedChannel
 	destroyedBridges []ports.BridgeID
 	destroyedChans   []ports.ChannelRef
+	rungChans        []ports.ChannelRef
+	answeredChans    []ports.ChannelRef
+	rejectedChans    []rejectedChannel
 
 	failOriginate     error
 	failCreateBridge  error
 	failAddToBridge   error
 	failDestroyBridge error
+}
+
+type rejectedChannel struct {
+	channelRef ports.ChannelRef
+	cause      ports.RefusalCause
 }
 
 type addedChannel struct {
@@ -97,6 +105,27 @@ func (f *fakeMediaGateway) DestroyChannel(_ context.Context, ref ports.ChannelRe
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.destroyedChans = append(f.destroyedChans, ref)
+	return nil
+}
+
+func (f *fakeMediaGateway) RingChannel(_ context.Context, ref ports.ChannelRef) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rungChans = append(f.rungChans, ref)
+	return nil
+}
+
+func (f *fakeMediaGateway) AnswerChannel(_ context.Context, ref ports.ChannelRef) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answeredChans = append(f.answeredChans, ref)
+	return nil
+}
+
+func (f *fakeMediaGateway) RejectChannel(_ context.Context, ref ports.ChannelRef, cause ports.RefusalCause) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rejectedChans = append(f.rejectedChans, rejectedChannel{ref, cause})
 	return nil
 }
 
@@ -902,4 +931,239 @@ func TestScreenedOutCallReleasesNothing(t *testing.T) {
 
 	reserved, _ := h.license.counts(callID.String())
 	assert.Zero(t, reserved, "a refused call consumes no channel")
+}
+
+// --- arriving calls (pbx-inbound-and-emergency task 2.2) --------------------
+
+// fakeInboundRouter stands in for pbx-core's router: telephony owns the
+// port, so the fake lives on this side of the seam (the same arrangement
+// as BypassScreening in InitiateCallCommand).
+type fakeInboundRouter struct {
+	mu       sync.Mutex
+	decision ports.InboundDecision
+	err      error
+	calls    []ports.InboundRequest
+}
+
+func (f *fakeInboundRouter) ResolveInbound(_ context.Context, req ports.InboundRequest) (ports.InboundDecision, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, req)
+	return f.decision, f.err
+}
+
+func connectDecision() ports.InboundDecision {
+	return ports.InboundDecision{DestinationURI: "PJSIP/1001", Direction: domain.Inbound}
+}
+
+// arrivedHarness wires a harness whose Service consults router for
+// arriving calls.
+func arrivedHarness(router ports.InboundRouter) *harness {
+	h := newHarness()
+	h.svc.SetInboundRouter(router)
+	return h
+}
+
+// lastSavedCall returns the single call the fake store holds. Arriving
+// calls allocate their own ID inside CallArrived, so tests cannot name
+// it up front — but each test creates exactly one.
+func lastSavedCall(t *testing.T, h *harness) *domain.Call {
+	t.Helper()
+	h.callStore.mu.Lock()
+	defer h.callStore.mu.Unlock()
+	require.Len(t, h.callStore.calls, 1, "exactly one call should be persisted")
+	for _, c := range h.callStore.calls {
+		return c
+	}
+	return nil
+}
+
+func arriveTestCall(t *testing.T, h *harness, tenant string) {
+	t.Helper()
+	err := h.svc.CallArrived(context.Background(), tenant, "e_caller", "2000", "+1555000111", "chan-arriving")
+	require.NoError(t, err)
+}
+
+// TestCallArrived_ConnectsToActive covers the arriving-call happy path:
+// router connects, caller hears ringing, destination originates, and the
+// destination answering answers the caller and bridges both to Active.
+func TestCallArrived_ConnectsToActive(t *testing.T) {
+	router := &fakeInboundRouter{decision: connectDecision()}
+	h := arrivedHarness(router)
+	tenant := shareddomain.NewTenantID()
+	arriveTestCall(t, h, tenant.String())
+
+	require.Len(t, router.calls, 1, "the router decides every arriving call")
+	assert.Equal(t, tenant, router.calls[0].TenantID)
+	assert.Equal(t, "e_caller", router.calls[0].SourceEndpoint)
+	assert.Equal(t, "2000", router.calls[0].Dialled)
+	assert.Equal(t, "+1555000111", router.calls[0].CallerNumber)
+	assert.NotEmpty(t, router.calls[0].CallID)
+
+	saved := lastSavedCall(t, h)
+	assert.Equal(t, domain.CallPresenting, saved.State)
+	require.Len(t, saved.Participants, 2, "caller plus originated destination")
+	assert.Equal(t, []ports.ChannelRef{"chan-arriving"}, h.mediaGW.rungChans, "caller hears ringing while the destination sets up")
+	require.Len(t, h.mediaGW.originateCalls, 1, "only the destination leg is originated")
+	assert.Equal(t, "PJSIP/1001", h.mediaGW.originateCalls[0].EndpointURI)
+	assert.Empty(t, h.mediaGW.answeredChans, "caller is answered only when the far end answers, so it hears ringing, not early media")
+
+	corr, ok := h.registry.Lookup(h.mediaGW.originateCalls[0].ChannelID)
+	require.True(t, ok, "destination leg is correlated under its originated id")
+	require.NoError(t, h.svc.ParticipantAnswered(context.Background(), corr.TenantID, corr.CallID, corr.ParticipantID, h.mediaGW.originateCalls[0].ChannelID))
+
+	saved = lastSavedCall(t, h)
+	assert.Equal(t, domain.CallActive, saved.State, "caller answered + both bridged: Active by the two-connected rule")
+	assert.Equal(t, []ports.ChannelRef{"chan-arriving"}, h.mediaGW.answeredChans)
+	require.Len(t, h.mediaGW.addedToBridge, 2, "destination and caller share one bridge")
+	assert.Equal(t, h.mediaGW.addedToBridge[0].bridgeID, h.mediaGW.addedToBridge[1].bridgeID)
+}
+
+// TestCallArrived_Refusals covers every router refusal cause: the
+// channel is rejected with the mapped cause, the call terminates with
+// the reason, and no other leg is ever originated.
+func TestCallArrived_Refusals(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cause  ports.RefusalCause
+		reason string
+	}{
+		{"not found", ports.RefusalNotFound, "inbound call refused: destination not found"},
+		{"unavailable", ports.RefusalUnavailable, "inbound call refused: no capacity"},
+		{"forbidden", ports.RefusalForbidden, "inbound call refused: compliance rejected the call"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			router := &fakeInboundRouter{decision: ports.InboundDecision{Refuse: tc.cause}}
+			h := arrivedHarness(router)
+			arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+			require.Len(t, h.mediaGW.rejectedChans, 1)
+			assert.Equal(t, ports.ChannelRef("chan-arriving"), h.mediaGW.rejectedChans[0].channelRef)
+			assert.Equal(t, tc.cause, h.mediaGW.rejectedChans[0].cause)
+			saved := lastSavedCall(t, h)
+			assert.Equal(t, domain.CallTerminated, saved.State)
+			assert.Equal(t, tc.reason, saved.TerminationReason)
+			assert.Empty(t, h.mediaGW.originateCalls, "a refused call originates no other leg")
+			assert.Empty(t, h.mediaGW.rungChans, "a refused call never rings")
+		})
+	}
+}
+
+// TestCallArrived_ScreeningRefusals covers Screening on the arrived
+// path: a capacity refusal is a 503 (Unavailable) and a compliance
+// refusal a 403 (Forbidden).
+func TestCallArrived_ScreeningRefusals(t *testing.T) {
+	t.Run("capacity refused", func(t *testing.T) {
+		h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+		h.license.permitted = false
+		arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+		require.Len(t, h.mediaGW.rejectedChans, 1)
+		assert.Equal(t, ports.RefusalUnavailable, h.mediaGW.rejectedChans[0].cause)
+		assert.Equal(t, domain.CallTerminated, lastSavedCall(t, h).State)
+		assert.Empty(t, h.mediaGW.originateCalls)
+	})
+
+	t.Run("compliance refused", func(t *testing.T) {
+		h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+		deny := &denyCompliance{}
+		h.svc = application.NewService(
+			h.mediaGW, h.callStore, h.license, deny,
+			h.registry, 20, discardLogger(),
+		)
+		h.svc.SetInboundRouter(&fakeInboundRouter{decision: connectDecision()})
+		arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+		require.Len(t, h.mediaGW.rejectedChans, 1)
+		assert.Equal(t, ports.RefusalForbidden, h.mediaGW.rejectedChans[0].cause)
+		assert.Equal(t, domain.CallTerminated, lastSavedCall(t, h).State)
+	})
+}
+
+// TestCallArrived_BypassSkipsScreeningUnderExhaustion covers the
+// emergency path: a bypassed call connects with licensed capacity
+// exhausted, consulting neither capacity nor compliance.
+func TestCallArrived_BypassSkipsScreeningUnderExhaustion(t *testing.T) {
+	router := &fakeInboundRouter{decision: ports.InboundDecision{
+		DestinationURI: "PJSIP/1001", Direction: domain.Inbound, BypassScreening: true,
+	}}
+	h := arrivedHarness(router)
+	h.license.permitted = false
+	deny := &denyCompliance{}
+	h.svc = application.NewService(
+		h.mediaGW, h.callStore, h.license, deny,
+		h.registry, 20, discardLogger(),
+	)
+	h.svc.SetInboundRouter(router)
+
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+	assert.Equal(t, domain.CallPresenting, lastSavedCall(t, h).State)
+	assert.Len(t, h.mediaGW.originateCalls, 1)
+	assert.Zero(t, deny.calls, "a bypassed call never consults compliance")
+}
+
+// TestCallArrived_CallerHangupWhileRingingReleasesDestination covers the
+// race the design calls out: the caller leaves before the destination
+// answers, so the still-ringing destination leg must be released rather
+// than ringing forever for a call that no longer exists.
+func TestCallArrived_CallerHangupWhileRingingReleasesDestination(t *testing.T) {
+	h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+	require.Len(t, h.mediaGW.originateCalls, 1)
+	destChannelID := h.mediaGW.originateCalls[0].ChannelID
+
+	corr, ok := h.registry.Lookup("chan-arriving")
+	require.True(t, ok, "arriving caller is correlated under its own channel id")
+	require.NoError(t, h.svc.ParticipantLeft(context.Background(), corr.TenantID, corr.CallID, corr.ParticipantID))
+
+	assert.Equal(t, domain.CallTerminated, lastSavedCall(t, h).State)
+	assert.Contains(t, h.mediaGW.destroyedChans, ports.ChannelRef(destChannelID),
+		"the ringing destination leg is released on caller hangup")
+}
+
+// TestCallArrived_RouterErrorRefuses covers the router failing: the call
+// is refused (Unavailable — retryable, never a wrong 404) rather than
+// left hanging in silence.
+func TestCallArrived_RouterErrorRefuses(t *testing.T) {
+	router := &fakeInboundRouter{err: errors.New("router store unreachable")}
+	h := arrivedHarness(router)
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+	require.Len(t, h.mediaGW.rejectedChans, 1)
+	assert.Equal(t, ports.RefusalUnavailable, h.mediaGW.rejectedChans[0].cause)
+	assert.Equal(t, domain.CallTerminated, lastSavedCall(t, h).State)
+	assert.Empty(t, h.mediaGW.originateCalls)
+}
+
+// TestCallArrived_NoTenantVariableRefusesWithoutRouter covers design D1:
+// a channel carrying no tenant never reaches the router and is refused
+// NotFound (404).
+func TestCallArrived_NoTenantVariableRefusesWithoutRouter(t *testing.T) {
+	router := &fakeInboundRouter{decision: connectDecision()}
+	h := arrivedHarness(router)
+
+	require.NoError(t, h.svc.CallArrived(context.Background(), "", "e_caller", "2000", "+1555000111", "chan-unknown"))
+	require.NoError(t, h.svc.CallArrived(context.Background(), "not-a-uuid", "e_caller", "2000", "+1555000111", "chan-garbage"))
+
+	assert.Empty(t, router.calls, "no tenant means no routing decision to make")
+	require.Len(t, h.mediaGW.rejectedChans, 2)
+	for _, r := range h.mediaGW.rejectedChans {
+		assert.Equal(t, ports.RefusalNotFound, r.cause)
+	}
+	assert.Empty(t, h.mediaGW.originateCalls)
+}
+
+// TestCallArrived_DefaultRouterRefusesNotFound covers LLD-03 DoD 15 at
+// unit level: a Service wired with no pbx-core refuses every arriving
+// call as not found (the e2e half — the walking-skeleton suites passing
+// unmodified — is task 2.4's gate).
+func TestCallArrived_DefaultRouterRefusesNotFound(t *testing.T) {
+	h := newHarness()
+	require.NoError(t, h.svc.CallArrived(context.Background(),
+		shareddomain.NewTenantID().String(), "e_caller", "2000", "+1555000111", "chan-arriving"))
+
+	require.Len(t, h.mediaGW.rejectedChans, 1)
+	assert.Equal(t, ports.RefusalNotFound, h.mediaGW.rejectedChans[0].cause)
+	assert.Empty(t, h.mediaGW.originateCalls)
 }

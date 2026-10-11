@@ -80,3 +80,38 @@ func (a *MediaGatewayAdapter) DestroyChannel(ctx context.Context, channelRef por
 	}
 	return nil
 }
+
+func (a *MediaGatewayAdapter) RingChannel(ctx context.Context, channelRef ports.ChannelRef) error {
+	if err := a.ari.RingChannel(ctx, string(channelRef)); err != nil {
+		return fmt.Errorf("acl: ring channel: %w", err)
+	}
+	return nil
+}
+
+func (a *MediaGatewayAdapter) AnswerChannel(ctx context.Context, channelRef ports.ChannelRef) error {
+	if err := a.ari.AnswerChannel(ctx, string(channelRef)); err != nil {
+		return fmt.Errorf("acl: answer channel: %w", err)
+	}
+	return nil
+}
+
+// RejectChannel refuses an arriving channel at the SIP edge. The cause
+// maps to the ARI hangup reason that produces the standard response
+// (PRD §12.4): unallocated → 404, congestion → 503, rejected → 403. A
+// plain 503 ships for congestion: Asterisk 22.11.0 cannot emit
+// Retry-After on an unanswered inbound channel (recorded gap, design
+// D8). Refusing with RefusalNone is a programming error, not silence.
+func (a *MediaGatewayAdapter) RejectChannel(ctx context.Context, channelRef ports.ChannelRef, cause ports.RefusalCause) error {
+	reason, ok := map[ports.RefusalCause]string{
+		ports.RefusalNotFound:    "unallocated",
+		ports.RefusalUnavailable: "congestion",
+		ports.RefusalForbidden:   "rejected",
+	}[cause]
+	if !ok {
+		return fmt.Errorf("acl: reject channel: refusing with cause %q refuses nothing", cause)
+	}
+	if err := a.ari.HangupChannel(ctx, string(channelRef), reason); err != nil {
+		return fmt.Errorf("acl: reject channel: %w", err)
+	}
+	return nil
+}
