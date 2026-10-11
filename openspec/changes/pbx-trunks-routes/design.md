@@ -1,6 +1,6 @@
 ## Context
 
-`pbx-extensions-projection` landed: the `pbx/acl/asterisk` projector, the same-transaction projection pattern (HLD-18 §4.1), `PbxService` RPC conventions, and migration `0004` (extensions + `ps_*`, no carrier tables). LLD-03 specifies everything this slice builds (§3 domain, §4.4 ports, §6 RPCs, §7.4 trunk secrets) and sequences it second (§12). `licensing-capacity-grace` is applying concurrently on `develop`; this change is proposed on `feature/pbx-trunks-routes`. See proposal.md for motivation.
+`pbx-extensions-projection` landed: the `pbx/acl/asterisk` projector, the same-transaction projection pattern (HLD-18 §4.1), `PbxService` RPC conventions, and migration `0004` (extensions + `ps_*`, no carrier tables). LLD-03 specifies everything this slice builds (§3 domain, §4.4 ports, §6 RPCs, §7.4 trunk secrets) and sequences it second (§12). `licensing-capacity-grace` and `license-provisioning-enforcement` have since landed and been archived; this change is applied on `develop`. See proposal.md for motivation.
 
 ## Goals / Non-Goals
 
@@ -17,11 +17,11 @@
 
 ## Decisions
 
-**D1 — Migration takes the next free number at apply time (`0006` if licensing lands first).**
+**D1 — Migration takes the next free number at apply time (`0007`: `0005_licensing` and `0006_ps_aors_complete` landed first).**
 `0004` holds extensions + `ps_*` only; carrier tables were specified but never migrated. Alternatives (renumber licensing's `0005`, share one migration) both couple two parallel tracks for no benefit. The tasks assert the number against the tree at apply time rather than hard-coding it now.
 
-**D2 — Build ungated; edition gating joins the D-49 provisioning-enforcement follow-up.**
-The Unregistered single-trunk cap and LCR-by-edition need an entitlement port that does not exist until licensing lands. Sequencing this change after licensing buys nothing (Claude's parallel-safety analysis holds: disjoint files, tables and ports), and a second stub would be deleted within weeks. The follow-up already owns the extension and tenant caps; trunk gating is the same shape in the same place.
+**D2 — Build ungated; edition gating belongs to `entitlement-module-gating`.**
+The Unregistered single-trunk cap and LCR-by-edition need an entitlement port that does not exist until licensing lands. Sequencing this change after licensing buys nothing (Claude's parallel-safety analysis holds: disjoint files, tables and ports), and a second stub would be deleted within weeks. *(Revised at apply time:)* `license-provisioning-enforcement` took the extension and tenant caps but deliberately not this one — BRD §12.2 grades trunks across three edition levels (single / multi-trunk with failover / plus LCR), a capability ladder rather than a number, which LLD-11 §9 assigns to `entitlement-module-gating` after Phase A. Building ungated here is unchanged by that.
 
 **D3 — Health state machine ships before its first reporter.**
 `ReportRouteHealth` stays port-only per LLD-03 §6; selection honors the states from day one; everything defaults `Healthy`. A prober inside this change would report to no consumer — failover timing is call-placement's acceptance (AC-02.2), not this slice's. What ships is testable in isolation: transitions on reports, selection honoring them.

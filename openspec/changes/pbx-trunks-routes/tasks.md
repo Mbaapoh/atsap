@@ -1,6 +1,6 @@
 ## 1. Migration and domain
 
-- [ ] 1.1 Resolve the migration number against the tree at apply start (`0006` if `0005_licensing` exists, else `0005`); verify `ls api/migrations/` shows no collision before writing anything (design D1)
+- [ ] 1.1 Resolve the migration number against the tree at apply start (`0007` at the time of writing: `0005_licensing` and `0006_ps_aors_complete` both landed after this was proposed); verify `ls api/migrations/` shows no collision before writing anything (design D1)
 - [ ] 1.2 Write the migration creating `carrier_trunks` + `carrier_routes` per HLD-03 §5 with `ENABLE` and `FORCE ROW LEVEL SECURITY` and `tenant_isolation_*` policies; verify by running `MigrateUp` on a scratch database and confirming both tables, both RLS flags and both policies exist (spec `trunk-routing`, LLD-03 DoD 12)
 - [ ] 1.3 Add `TrunkID` and `RouteID` to `api/internal/shared/domain` following the existing `ExtensionID` pattern; verify they compile and round-trip through string form in a unit test (LLD-03 §2)
 - [ ] 1.4 Implement `pbx/domain` `Trunk`, `CarrierRoute`, `Destination` types per LLD-03 §3 with allowlist validation for host/prefix (digits + fixed wildcard set, never a regex); verify unit tests reject a bad host, bad port, non-positive channel limit and a regex-style pattern (spec `trunk-routing`, LLD-03 §10.5)
