@@ -1,5 +1,6 @@
-import type { Interceptor, Transport } from "@connectrpc/connect";
+import { Code, ConnectError, type Interceptor, type Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { isPublicProcedure } from "./publicApi";
 
 export type AccessTokenSource = () => string | undefined;
 
@@ -25,6 +26,19 @@ function bearer(source: AccessTokenSource): Interceptor {
   };
 }
 
+// publicOnly refuses, before anything is sent, a request that is not a
+// public procedure on the console's own origin (BRD §16: the console uses
+// only the public API). Generated clients cannot produce one; this keeps
+// it that way if a hand-built call ever slips in.
+function publicOnly(origin: string): Interceptor {
+  return (next) => async (req) => {
+    if (!isPublicProcedure(req.url, origin)) {
+      throw new ConnectError("request outside the public API refused", Code.PermissionDenied);
+    }
+    return next(req);
+  };
+}
+
 export function createApiTransport(options: ApiTransportOptions = {}): Transport {
   const baseUrl = options.baseUrl ?? window.location.origin;
   return createConnectTransport({
@@ -32,6 +46,6 @@ export function createApiTransport(options: ApiTransportOptions = {}): Transport
     // Same-origin requests send the HttpOnly refresh cookie that the server
     // scopes to AuthService. Nothing in the page can read it.
     fetch: (input, init) => globalThis.fetch(input, { ...init, credentials: "same-origin" }),
-    interceptors: options.accessToken ? [bearer(options.accessToken)] : [],
+    interceptors: [publicOnly(baseUrl), ...(options.accessToken ? [bearer(options.accessToken)] : [])],
   });
 }

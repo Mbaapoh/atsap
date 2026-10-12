@@ -36,7 +36,7 @@ their own console slice alongside the Phase B/C capabilities that own them.
 
 ```text
 +---------------------------- Browser -----------------------------+
-| React routes -> feature views -> generated ConnectRPC clients    |
+| routes -> feature views -> feature adapters -> generated clients |
 |          |                 |                                    |
 |          +-- app shell ---+-- in-memory access-token state       |
 +---------------------------|--------------------------------------+
@@ -50,7 +50,19 @@ their own console slice alongside the Phase B/C capabilities that own them.
 
 Generated protobuf clients are the only network boundary used by UI features.
 Feature views do not construct URLs, parse wire JSON, or hand-write response
-types. Browser state is presentation state; all validation, authorization,
+types. Between them sits one feature adapter per feature
+(`features/<name>/adapter.ts`): the only code that holds a generated client.
+It maps wire messages to view models, owns the feature's query keys, and
+turns every failure into an `ApiError` carrying fixed console copy by kind
+(unauthenticated, forbidden, not found, conflict, invalid, throttled,
+unavailable, unknown) — never the server's message, so no internal name or
+raw error reaches the page. The transport refuses, before sending, any
+request that is not a procedure of a public service on the console's own
+origin; the procedure list is derived from the generated descriptors.
+These rules are enforced, not conventional: a source scan fails the build
+when a component imports the transport or clients, opens a request, or
+hand-writes a procedure path, and a browser test fails when any page
+requests something off-origin or outside the public API. Browser state is presentation state; all validation, authorization,
 Tenant isolation, mutation auditing, screening, and configuration projection
 remain server responsibilities.
 
