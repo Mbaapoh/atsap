@@ -63,6 +63,7 @@ The High-Level Design is partitioned into nineteen modular chapters:
 17. [Call Lifecycle State Machine](16-call-lifecycle-state-machine.md) — Visual companion to the canonical states in [03](03-domain-model.md) §2: call and participant diagrams, transition matrix, published events, and recovery rules.
 18. [Data Model — Entity Relationships](17-data-model-erd.md) — Visual companion to the DDL in [03](03-domain-model.md) §5: entity-relationship diagrams for identity, configuration, calls and usage, the D-47 ACL projection tables, and which tables land in which phase.
 19. [Phase A User Flows](18-phase-a-user-flows.md) — What an administrator actually does from a fresh install to a working call (D-46 Phase A): first-run bootstrap, users and roles, extensions, trunks and routes, the first call, and the console slice they imply.
+20. [Console UI Architecture](19-console-ui-architecture.md) — How the Phase A administration console consumes the public API (D-36, D-43, D-46): session and Tenant boundary, truthful state presentation, accessibility, and the browser E2E evidence. Visual brief: [../CONSOLE-DESIGN.md](../CONSOLE-DESIGN.md).
 
 ---
 

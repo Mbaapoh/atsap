@@ -124,6 +124,23 @@ The following libraries represent the **complete, approved, and frozen dependenc
 
 ---
 
+## 3a. Console Dependencies (`console/package.json`)
+
+The Phase A console's complete, exact baseline is **[D-68](DECISIONS.md)**:
+React 19.2, React Router 8 (Data Mode), TanStack Query 5, Connect 2 with
+`@bufbuild/protobuf` and `protoc-gen-es` 2, TypeScript 7, Vite 8, Vitest 4
+with jsdom, Testing Library, MSW 3, and Playwright. All MIT or Apache-2.0.
+Pinned with `npm install --save-exact`, locked by the committed
+`package-lock.json`, installed in CI with `npm ci`, and audited with
+`npm audit --omit=dev --audit-level=high`. Node 24 and npm 11 are pinned by
+`console/mise.toml`. Anything outside D-68 needs a new decision.
+
+**Forbidden in the console:** Webpack, Create React App, Next.js, TanStack
+Router, Redux, Zustand, Jest, Cypress, Axios, GraphQL clients, CSS-in-JS
+runtimes, and component kits.
+
+---
+
 ### Engine interfaces: ARI, AMI, Stasis, sorcery
 
 Their documented behaviour, their undocumented limits, and how each one

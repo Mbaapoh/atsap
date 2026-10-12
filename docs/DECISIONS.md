@@ -2215,6 +2215,119 @@ A per-tenant "allow Google sign-in" switch is a later addition.
 
 ---
 
+**D-68 · The console's dependency baseline is fixed and exact; anything
+else needs a recorded decision (2026-10-12).**
+
+**Decision:** The Phase A console (`console/`, change `console-foundation`)
+uses exactly these packages, pinned with `npm install --save-exact` and
+locked by a committed `package-lock.json`. Versions were verified against
+the npm registry on 2026-10-12. Every one is MIT or Apache-2.0
+(`@bufbuild/protobuf` also includes BSD-3-Clause code).
+
+| Package | Version | Purpose |
+|---|---|---|
+| react, react-dom | 19.2.8 | UI runtime (latest 19.2 patch; 19.3.0 exists and is not adopted) |
+| react-router | 8.4.0 | Data Mode SPA routing |
+| @tanstack/react-query | 5.104.2 | Server-state caching and invalidation |
+| @connectrpc/connect, @connectrpc/connect-web | 2.2.0 | Typed Connect client runtime and browser transport |
+| @bufbuild/protobuf | 2.16.0 | Protobuf runtime required by Connect 2 and the generated code |
+| @bufbuild/protoc-gen-es | 2.16.0 | TypeScript generation, including service descriptors |
+| typescript | 7.0.2 | Type checking (`tsc --noEmit`); bundling never depends on it |
+| vite | 8.3.4 | Build and dev server |
+| @vitejs/plugin-react | 6.1.2 | React transform (requires Vite 8) |
+| vitest | 4.1.11 | Unit and component tests (4.x as specified; 5.x exists and is not adopted) |
+| jsdom | 29.1.1 | DOM environment for Vitest in Node (30.x exists and is not adopted) |
+| @testing-library/react | 16.3.3 | Component rendering |
+| @testing-library/dom | 10.4.2 | Required peer of Testing Library React 16 and jest-dom |
+| @testing-library/user-event | 14.6.7 | User interaction |
+| @testing-library/jest-dom | 7.0.1 | DOM matchers |
+| @types/react, @types/react-dom | 19.2.18, 19.2.7 | React declarations |
+| msw | 3.0.3 | HTTP mocking in component tests (Node interception) |
+| @playwright/test | 1.64.0 | Browser E2E |
+
+The owner approved the table on 2026-10-12. The three rows the original
+table omitted (`@bufbuild/protobuf`, `@testing-library/dom`, `jsdom`) were
+approved separately the same day, because the stack cannot run without
+them.
+
+**Rules:**
+- Runtime: `console/mise.toml` pins Node 24 and npm 11. mise installs
+  runtimes only, never project libraries.
+- CI installs with `npm ci` and runs `npm audit --omit=dev
+  --audit-level=high`. Nobody runs `npm audit fix` automatically.
+- Explicitly rejected: Webpack, Create React App, Next.js, TanStack
+  Router, Redux, Zustand, Jest, Cypress, Axios, GraphQL clients, CSS-in-JS
+  runtimes, and component kits. The console uses plain CSS with semantic
+  tokens and hand-built accessible primitives.
+- React Compiler is not configured. Memoize only after a measurement shows
+  a need.
+- Adding, substituting or upgrading a package past its pinned major or
+  minor is a new decision that supersedes this row. A patch update within
+  a pinned minor is a reviewed lockfile change.
+
+**Related Decisions:** D-35 (permissive FOSS, supply-chain scanning), D-36
+(React + TypeScript), D-43 (public APIs only), D-60 (mise owns pins)
+**Traceability:** `console/package.json`, `console/package-lock.json`,
+`console/mise.toml`; `docs/TOOLSET.md` §3a; HLD-19;
+`openspec/changes/console-foundation`
+
+---
+
+**D-69 · Production serves the console and the API from one HTTPS origin,
+through a reverse proxy (2026-10-12).**
+
+**Decision:** On a partner's server, a reverse proxy (Caddy or nginx)
+terminates HTTPS on one origin, for example `https://pbx.example.com`:
+- it serves the built console (`console/dist`), falling back to
+  `index.html` for any route that is not a file (SPA history fallback);
+- it forwards `/atsapbx.v1.*` to the API (`app:8080`);
+- it sets the security headers (HSTS, Content-Security-Policy,
+  X-Content-Type-Options, Referrer-Policy, frame-ancestors).
+
+The console calls the API with relative URLs, so no API base URL is baked
+into the build. In development, the Vite dev server proxies
+`/atsapbx.v1.*` to `http://localhost:8080` the same way.
+
+**Context:** The refresh secret is an `HttpOnly; SameSite=Strict` cookie
+scoped to `/atsapbx.v1.AuthService/` (D-62). It is sent only when the
+console and the API are on the same site. One origin also removes CORS
+from the design entirely.
+
+**Alternatives:**
+- *The Go server serves the console's files.* Rejected for now: it adds a
+  backend handler that `console-foundation` lists as a non-goal, and ties
+  console releases to API releases (HLD-12 §5 deploys them independently).
+- *Separate origins with CORS and `SameSite=None`.* Rejected: it weakens the
+  cookie's protection for no gain on a self-hosted install.
+
+**Related Decisions:** D-62 (sessions), D-36, HLD-12 §5
+**Traceability:** `console/DEPLOYMENT.md`, `console/vite.config.ts`
+
+---
+
+**D-70 · The server reports every licence and capacity state; the console
+never derives one (2026-10-12).**
+
+**Decision:** The console renders the PRD §11.2 states exactly as the API
+reports them. Today `GetLicenseStatus` reports four: Setup, Valid,
+Entitlement Unverified and Degraded. Before the licence screen is built, a
+small licensing change extends it so the server itself reports **Free
+Community**, **Capacity Warning** (80% of entitlement) and **Capacity
+Reached** (100%), with the thresholds applied server-side. **Suspended**
+is a tenant's status, not a licence state; the console shows it from the
+tenant. The browser never computes a state from channel counts.
+
+**Context:** The console brief requires all eight PRD states and forbids
+guessing them in the browser. Thresholds computed in two places drift, and
+a console that says "Valid" while the server refuses calls is the failure
+PRD AC-10.9 exists to prevent.
+
+**Related Decisions:** D-11, D-14, D-52 (licensing), D-43
+**Traceability:** PRD §11.2; LLD-08; HLD-19 §6; a licensing change to be
+proposed before `console-foundation` task 2.3
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
