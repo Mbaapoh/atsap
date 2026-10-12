@@ -1,0 +1,5 @@
+# Runtimes only (D-68). mise never installs project libraries: those come
+# from package-lock.json through `npm ci`.
+[tools]
+node = "24"
+npm = "11"

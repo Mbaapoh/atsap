@@ -1,0 +1,56 @@
+/* Semantic tokens (CONSOLE-DESIGN "Design-system minimum"). Components use
+   these names only; no component sets a literal colour. Light theme only in
+   Phase A. Every text/background pair below meets WCAG 2.2 AA (4.5:1). */
+:root {
+  /* colour */
+  --color-canvas: #f7f6f2;          /* warm off-white page */
+  --color-surface: #ffffff;         /* panels, tables, forms */
+  --color-surface-muted: #eef1f4;   /* table headers, quiet fills */
+  --color-text: #17212b;            /* ink */
+  --color-text-muted: #4f5b67;      /* secondary text, 6.9:1 on surface */
+  --color-border: #ccd3da;          /* cool-grey borders */
+  --color-nav: #14213a;             /* ink/navy navigation rail */
+  --color-nav-text: #e8edf3;
+  --color-action-primary: #1f6f3a;  /* deep leaf green, 6.2:1 with white */
+  --color-action-primary-hover: #185c30;
+  --color-on-primary: #ffffff;
+  --color-success: #1f6f3a;
+  --color-success-surface: #e5f2e8;
+  --color-warning: #8a5300;         /* amber text, 5.7:1 on its surface */
+  --color-warning-surface: #fdf1dc;
+  --color-danger: #b3261e;
+  --color-danger-surface: #fbe9e7;
+  --color-info: #2a5b8a;
+  --color-info-surface: #e6eef7;
+  --color-focus: #0b57d0;           /* focus ring on light surfaces, 5.9:1 */
+  --color-focus-on-dark: #8ab4f8;   /* focus ring on the navy rail */
+
+  /* space: 4 px steps */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* shape */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-sm: 0 1px 2px rgb(23 33 43 / 0.08);
+
+  /* type: a legible system stack (no external fonts, D-69 CSP); numbers
+     in tables, counts and durations use tabular figures */
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono-numeric: ui-monospace, "SFMono-Regular", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* layers */
+  --z-nav: 10;
+  --z-modal: 100;
+  --z-toast: 200;
+
+  /* layout */
+  --nav-width: 240px;
+  --topbar-height: 60px;
+}

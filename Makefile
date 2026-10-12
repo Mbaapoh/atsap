@@ -150,6 +150,27 @@ proto: ## Lint protos + breaking-change check against the integration branch
 tidy: ## Tidy go modules
 	cd api && go mod tidy
 
+##@ Console (console/, D-68; Node and npm pinned by console/mise.toml)
+
+.PHONY: console-install console-gen console-test console-build console-e2e console-audit
+console-install: ## Install the console's locked dependencies (npm ci)
+	cd console && npm ci
+
+console-gen: ## Regenerate the console's TypeScript API clients from api/proto
+	cd console && npm run gen
+
+console-test: ## Typecheck and run the console's component tests
+	cd console && npm run typecheck && npm test
+
+console-build: ## Build the console for production into console/dist
+	cd console && npm run build
+
+console-e2e: ## Console browser E2E (needs Chromium; the dev rig API on :8080 for API tests)
+	cd console && npm run e2e
+
+console-audit: ## Audit the console's production dependencies (high and above)
+	cd console && npm run audit:prod
+
 ##@ Gates and docs
 
 .PHONY: docs diagrams ci

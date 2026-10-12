@@ -1,0 +1,45 @@
+/* Global and accessibility styles. */
+*, *::before, *::after { box-sizing: border-box; }
+html { color-scheme: light; }
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 var(--space-4); text-wrap: balance; }
+h1:focus { outline: none; }
+a { color: var(--color-info); }
+.numeric { font-variant-numeric: tabular-nums; }
+
+/* Visible keyboard focus everywhere (WCAG 2.2 AA). */
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skip-link { position: absolute; left: var(--space-2); top: -40px; z-index: var(--z-toast); background: var(--color-surface); padding: var(--space-2) var(--space-3); }
+.skip-link:focus { top: var(--space-2); }
+
+/* Shell: a 240 px rail and a content canvas. The modal drawer for small
+   screens arrives with task 1.2. */
+.shell { display: grid; grid-template-columns: var(--nav-width) minmax(0, 1fr); min-height: 100vh; }
+.side-nav { background: var(--color-nav); color: var(--color-nav-text); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-6); }
+.side-nav .product { font-weight: 700; font-size: 1.125rem; }
+.side-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.side-nav a { display: block; color: var(--color-nav-text); text-decoration: none; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
+.side-nav a[aria-current="page"] { background: var(--color-action-primary); color: var(--color-on-primary); }
+.side-nav .utility { margin-top: auto; }
+.side-nav :focus-visible { outline-color: var(--color-focus-on-dark); }
+.content { padding: var(--space-7); min-width: 0; }
+
+@media (max-width: 767px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .content { padding: var(--space-4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

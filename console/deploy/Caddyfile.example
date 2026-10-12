@@ -1,0 +1,38 @@
+# Production front door for the console and API on ONE origin (D-69).
+# Copy, set the hostname, and run Caddy beside the compose stack. Caddy
+# obtains and renews the HTTPS certificate itself.
+pbx.example.com {
+	encode zstd gzip
+
+	# The public ConnectRPC API. The refresh cookie is scoped to
+	# /atsapbx.v1.AuthService/ and is SameSite=Strict, so it only works
+	# because this is the same origin as the console.
+	@api path /atsapbx.v1.*
+	handle @api {
+		reverse_proxy app:8080
+	}
+
+	# The built console (console/dist). Unknown paths fall back to
+	# index.html so a direct visit to /calls or /users works.
+	handle {
+		root * /srv/console
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Cross-Origin-Opener-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+
+	# Hashed build assets never change; the page shell always revalidates.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@shell path / /index.html
+	header @shell Cache-Control "no-cache"
+}

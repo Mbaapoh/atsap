@@ -1,0 +1,14 @@
+# TypeScript generation for the console (D-68), from the same protos the
+# server is built from (api/proto). One local plugin: protoc-gen-es v2
+# emits messages AND service descriptors (GenService), which
+# @connectrpc/connect v2 consumes directly — no protoc-gen-connect-es.
+# Run `npm run gen` (it passes ../api as the input module). The output is
+# committed, as the Go stubs are, so the build never depends on buf.
+version: v2
+clean: true
+plugins:
+  - local: ["node", "node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es"]
+    out: src/api/gen
+    opt:
+      - target=ts
+      - import_extension=none
