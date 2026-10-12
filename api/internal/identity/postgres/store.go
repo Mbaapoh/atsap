@@ -34,7 +34,7 @@ var (
 	_ ports.TenantStore           = (*Store)(nil)
 	_ ports.PrincipalStore        = (*Store)(nil)
 	_ ports.RoleBindingStore      = (*Store)(nil)
-	_ ports.ApiKeyStore           = (*Store)(nil)
+	_ ports.APIKeyStore           = (*Store)(nil)
 	_ ports.AuditStore            = (*Store)(nil)
 	_ ports.UserStore             = (*Store)(nil)
 	_ ports.SessionStore          = (*Store)(nil)
@@ -303,9 +303,9 @@ func (s *Store) DeleteRoleBinding(ctx context.Context, b domain.RoleBinding) err
 
 // --- api keys ------------------------------------------------------
 
-// CreateApiKey stores a key's digest and metadata. The raw key is not a
+// CreateAPIKey stores a key's digest and metadata. The raw key is not a
 // parameter here — it never reaches this layer at all.
-func (s *Store) CreateApiKey(ctx context.Context, k domain.ApiKey) error {
+func (s *Store) CreateAPIKey(ctx context.Context, k domain.APIKey) error {
 	return s.pool.WithTenant(ctx, k.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO api_keys (id, tenant_id, principal_id, key_hash, expires_at, revoked_at)
@@ -318,7 +318,7 @@ func (s *Store) CreateApiKey(ctx context.Context, k domain.ApiKey) error {
 	})
 }
 
-// GetApiKeyByHash resolves a presented key's digest to its record,
+// GetAPIKeyByHash resolves a presented key's digest to its record,
 // within the tenant the presented key names.
 //
 // The tenant is a parameter rather than something this lookup discovers,
@@ -331,9 +331,9 @@ func (s *Store) CreateApiKey(ctx context.Context, k domain.ApiKey) error {
 // Naming a tenant proves nothing on its own — the digest comparison is
 // what proves possession, and a forged key naming a real tenant still
 // fails it.
-func (s *Store) GetApiKeyByHash(ctx context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.ApiKey, error) {
+func (s *Store) GetAPIKeyByHash(ctx context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.APIKey, error) {
 	var (
-		k                          domain.ApiKey
+		k                          domain.APIKey
 		rawID, rawTenant, rawPrinc string
 	)
 	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
@@ -343,26 +343,26 @@ func (s *Store) GetApiKeyByHash(ctx context.Context, tenantID shareddomain.Tenan
 		`, keyHash).Scan(&rawID, &rawTenant, &rawPrinc, &k.KeyHash, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ApiKey{}, ports.ErrNotFound
+		return domain.APIKey{}, ports.ErrNotFound
 	}
 	if err != nil {
-		return domain.ApiKey{}, fmt.Errorf("query api key: %w", err)
+		return domain.APIKey{}, fmt.Errorf("query api key: %w", err)
 	}
 
-	if k.ID, err = shareddomain.ParseApiKeyID(rawID); err != nil {
-		return domain.ApiKey{}, fmt.Errorf("decode api key id: %w", err)
+	if k.ID, err = shareddomain.ParseAPIKeyID(rawID); err != nil {
+		return domain.APIKey{}, fmt.Errorf("decode api key id: %w", err)
 	}
 	if k.TenantID, err = shareddomain.ParseTenantID(rawTenant); err != nil {
-		return domain.ApiKey{}, fmt.Errorf("decode tenant id: %w", err)
+		return domain.APIKey{}, fmt.Errorf("decode tenant id: %w", err)
 	}
 	if k.PrincipalID, err = shareddomain.ParsePrincipalID(rawPrinc); err != nil {
-		return domain.ApiKey{}, fmt.Errorf("decode principal id: %w", err)
+		return domain.APIKey{}, fmt.Errorf("decode principal id: %w", err)
 	}
 	return k, nil
 }
 
-// RevokeApiKey marks a key unusable from revokedAt onwards.
-func (s *Store) RevokeApiKey(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.ApiKeyID, revokedAt time.Time) error {
+// RevokeAPIKey marks a key unusable from revokedAt onwards.
+func (s *Store) RevokeAPIKey(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.APIKeyID, revokedAt time.Time) error {
 	return s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `UPDATE api_keys SET revoked_at = $2 WHERE id = $1`, id.String(), revokedAt)
 		if err != nil {

@@ -148,15 +148,15 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 	id := domain.TrunkEndpointIdentifier(t.ID)
 
 	var (
-		transport, aors, context_, allow, fromDomain string
-		setVar                                       *string
-		auth, outboundAuth, fromUser, contact        *string
+		transport, aors, dialplanContext, allow, fromDomain string
+		setVar                                              *string
+		auth, outboundAuth, fromUser, contact               *string
 	)
 	err := p.pool.Unwrap().QueryRow(ctx, `
 		SELECT e.transport, e.aors, e.auth, e.outbound_auth, e.context, e.allow, e.from_user, e.from_domain, e.set_var, r.contact
 		FROM ps_endpoints e JOIN ps_aors r ON r.id = e.id
 		WHERE e.id = $1
-	`, id).Scan(&transport, &aors, &auth, &outboundAuth, &context_, &allow, &fromUser, &fromDomain, &setVar, &contact)
+	`, id).Scan(&transport, &aors, &auth, &outboundAuth, &dialplanContext, &allow, &fromUser, &fromDomain, &setVar, &contact)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return []string{"missing"}, nil
 	}
@@ -179,7 +179,7 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 	expect("transport", p.cfg.SIPTransport, transport)
 	expect("aors", id, aors)
 	expect("auth", "", str(auth))
-	expect("context", stasisContext, context_)
+	expect("context", stasisContext, dialplanContext)
 	expect("allow", allowedCodecs, allow)
 	expect("from_domain", t.Host, fromDomain)
 	expect("contact", contactFor(t), str(contact))
@@ -187,11 +187,12 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 
 	var identifyMatch *string
 	err = p.pool.Unwrap().QueryRow(ctx, `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&identifyMatch)
-	if errors.Is(err, pgx.ErrNoRows) {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
 		drift = append(drift, "identify")
-	} else if err != nil {
+	case err != nil:
 		return nil, fmt.Errorf("read projected trunk identify: %w", err)
-	} else {
+	default:
 		expect("identify", t.Host, str(identifyMatch))
 	}
 

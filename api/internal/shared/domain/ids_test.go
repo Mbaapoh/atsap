@@ -69,18 +69,18 @@ func TestPrincipalID(t *testing.T) {
 	assert.True(t, zero.IsZero())
 }
 
-func TestApiKeyID(t *testing.T) {
-	id := domain.NewApiKeyID()
-	assert.False(t, id.IsZero(), "NewApiKeyID() should not be zero")
+func TestAPIKeyID(t *testing.T) {
+	id := domain.NewAPIKeyID()
+	assert.False(t, id.IsZero(), "NewAPIKeyID() should not be zero")
 
-	parsed, err := domain.ParseApiKeyID(id.String())
+	parsed, err := domain.ParseAPIKeyID(id.String())
 	require.NoError(t, err)
 	assert.Equal(t, id, parsed)
 
-	_, err = domain.ParseApiKeyID("not-a-uuid")
+	_, err = domain.ParseAPIKeyID("not-a-uuid")
 	assert.Error(t, err)
 
-	var zero domain.ApiKeyID
+	var zero domain.APIKeyID
 	assert.True(t, zero.IsZero())
 }
 
@@ -90,7 +90,7 @@ func TestApiKeyID(t *testing.T) {
 // than a cross-tenant bug found at runtime.
 func TestIDTypesAreDistinct(t *testing.T) {
 	principal := domain.NewPrincipalID()
-	apiKey := domain.NewApiKeyID()
+	apiKey := domain.NewAPIKeyID()
 
 	assert.NotEqual(t, principal.String(), apiKey.String())
 	assert.NotEqual(t, domain.PrincipalID{}, principal)

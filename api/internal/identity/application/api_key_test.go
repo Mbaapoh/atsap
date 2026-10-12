@@ -77,7 +77,7 @@ func TestTenantFromAPIKey_Malformed(t *testing.T) {
 // tenant is routing, not proof. A forged key naming a real tenant must
 // still fail the digest comparison that actually proves possession.
 func TestTenantFromAPIKey_NamingATenantIsNotAuthentication(t *testing.T) {
-	real, digest, err := application.GenerateAPIKey(tenantID)
+	rawKey, digest, err := application.GenerateAPIKey(tenantID)
 	require.NoError(t, err)
 
 	forged := "atsa_" + tenantID.String() + "_" + strings.Repeat("A", 43)
@@ -87,7 +87,7 @@ func TestTenantFromAPIKey_NamingATenantIsNotAuthentication(t *testing.T) {
 
 	assert.False(t, application.VerifyAPIKey(forged, digest),
 		"but it must not verify against a real key's digest")
-	assert.True(t, application.VerifyAPIKey(real, digest))
+	assert.True(t, application.VerifyAPIKey(rawKey, digest))
 }
 
 // TestGenerateAPIKey_IsUnpredictable guards the entropy claim that makes

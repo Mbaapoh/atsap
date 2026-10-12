@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+// CatalogueEntry is one emergency number in the built-in catalogue,
+// with what verified it.
+type CatalogueEntry struct {
+	// Number is digits only, as dialled (a leading "+" is stripped by
+	// the matcher on both sides).
+	Number string
+	// Source names what verified this number. Never empty.
+	Source string
+}
+
 // CountryEmergencyCatalogue maps an ISO 3166-1 alpha-2 country code to
 // the main national emergency numbers a tenant operating there must
 // always be able to dial (pbx-inbound-and-emergency design D6).
@@ -18,17 +28,8 @@ import (
 // an INV-01 failure), and the tenant enters its own numbers instead.
 //
 // 112 is in NO entry: it is the separate international floor, always in
-// the effective set regardless of country.
-type CatalogueEntry struct {
-	// Number is digits only, as dialled (a leading "+" is stripped by
-	// the matcher on both sides).
-	Number string
-	// Source names what verified this number. Never empty.
-	Source string
-}
-
-// CountryEmergencyCatalogue is the built-in catalogue. Codes are upper
-// case ISO 3166-1 alpha-2.
+// the effective set regardless of country. Codes are upper case
+// ISO 3166-1 alpha-2.
 var CountryEmergencyCatalogue = map[string][]CatalogueEntry{
 	// Cameroon (home market): police 117, fire 118, ambulance (SAMU)
 	// 119, national gendarmerie 113. Verified against the carrier

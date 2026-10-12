@@ -98,7 +98,7 @@ func main() {
 
 	default:
 		usage()
-		os.Exit(1)
+		os.Exit(1) //nolint:gocritic // dev tool: the deferred stop() only unregisters the signal handler, which exiting makes moot
 	}
 }
 

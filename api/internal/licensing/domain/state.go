@@ -41,6 +41,7 @@ const (
 // apply a key, renew a licence, or investigate a tampered row.
 type Reason string
 
+// Reasons.
 const (
 	ReasonPermitted    Reason = "permitted"
 	ReasonOverCapacity Reason = "over_capacity"

@@ -630,7 +630,7 @@ func TestDiscovery_AndEnforcedSSO(t *testing.T) {
 
 // TestFederatedAuthenticatorShape pins the SSO seam (design D11): OIDC
 // will implement exactly this, and changing it is a decision.
-func TestFederatedAuthenticatorShape(t *testing.T) {
+func TestFederatedAuthenticatorShape(_ *testing.T) {
 	var _ ports.FederatedAuthenticator = fakeFederation{}
 }
 

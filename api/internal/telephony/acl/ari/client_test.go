@@ -56,7 +56,7 @@ func TestClient_AnswerChannel(t *testing.T) {
 }
 
 func TestClient_AnswerChannel_Error(t *testing.T) {
-	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("channel not found"))
 	})
@@ -133,7 +133,7 @@ func TestClient_Play(t *testing.T) {
 }
 
 func TestClient_Play_DecodeError(t *testing.T) {
-	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not json"))
 	})
@@ -260,7 +260,7 @@ func TestClient_Originate_EncodeVariablesError(t *testing.T) {
 	// A channel that cannot be JSON-marshalled would only happen with a
 	// pathological map; instead cover the decode-error path for the
 	// response, which shares the same error-wrapping style.
-	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not json"))
 	})
@@ -356,7 +356,7 @@ func TestClient_GetChannelVariable(t *testing.T) {
 }
 
 func TestClient_GetChannelVariable_DecodeError(t *testing.T) {
-	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not json"))
 	})

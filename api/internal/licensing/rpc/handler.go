@@ -11,6 +11,8 @@ import (
 	"context"
 	"errors"
 
+	"atsap-api/internal/shared/wire"
+
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -119,10 +121,10 @@ func toProto(st ports.LicenseStatus) *atsapbxv1.LicenseStatus {
 	out := &atsapbxv1.LicenseStatus{
 		State:         stateToProto(e.State),
 		Edition:       e.Edition,
-		Channels:      int32(e.Channels),
-		ChannelsInUse: int32(st.ChannelsInUse),
-		MaxTenants:    int32(e.MaxTenants),
-		MaxExtensions: int32(e.MaxExtensions),
+		Channels:      wire.Int32(e.Channels),
+		ChannelsInUse: wire.Int32(st.ChannelsInUse),
+		MaxTenants:    wire.Int32(e.MaxTenants),
+		MaxExtensions: wire.Int32(e.MaxExtensions),
 		Condition:     conditionToProto(st.Conditions.Condition),
 		Tier:          tierToProto(st.Conditions.Tier),
 		Capacity:      capacityToProto(st.Conditions.Capacity),

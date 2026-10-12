@@ -311,10 +311,10 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 	id := domain.EndpointIdentifier(ext.ID)
 
 	var (
-		transport, aors, auth, context_, allow string
-		authType, username, digest, realm      string
-		setVar                                 *string
-		maxContactsGot                         int
+		transport, aors, auth, dialplanContext, allow string
+		authType, username, digest, realm             string
+		setVar                                        *string
+		maxContactsGot                                int
 	)
 
 	err := p.pool.Unwrap().QueryRow(ctx, `
@@ -325,7 +325,7 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 		JOIN ps_auths a ON a.id = e.id
 		JOIN ps_aors  r ON r.id = e.id
 		WHERE e.id = $1
-	`, id).Scan(&transport, &aors, &auth, &context_, &allow, &setVar,
+	`, id).Scan(&transport, &aors, &auth, &dialplanContext, &allow, &setVar,
 		&authType, &username, &digest, &realm, &maxContactsGot)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return []string{"missing"}, nil
@@ -343,7 +343,7 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 	expect("transport", p.transportFor(ext.DeviceType), transport)
 	expect("aors", id, aors)
 	expect("auth", id, auth)
-	expect("context", stasisContext, context_)
+	expect("context", stasisContext, dialplanContext)
 	expect("allow", allowedCodecs, allow)
 	expect("auth_type", "md5", authType)
 	expect("username", id, username)

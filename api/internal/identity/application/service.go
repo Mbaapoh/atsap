@@ -16,11 +16,6 @@ import (
 	shareddomain "atsap-api/internal/shared/domain"
 )
 
-// DefaultPermissions is the role-to-action table this change ships with.
-// The vocabulary is deliberately provisional (design.md Open Questions):
-// pbx-core is what will give roles most of their actions. What is fixed
-// here is the *rule* — a role grants only what is listed, and anything
-// unlisted is denied.
 // IdentityActions are the actions the identity API authorizes, named so
 // they appear in DefaultPermissions verbatim (not only via wildcard) and
 // so a table-driven permission test can iterate the whole set. Each is
@@ -40,6 +35,11 @@ var IdentityActions = []string{
 	"audit.read",
 }
 
+// DefaultPermissions is the role-to-action table this change ships with.
+// The vocabulary is deliberately provisional (design.md Open Questions):
+// pbx-core is what will give roles most of their actions. What is fixed
+// here is the *rule* — a role grants only what is listed, and anything
+// unlisted is denied.
 var DefaultPermissions = map[string][]string{
 	"AGENT":          {"call.read"},
 	"SUPERVISOR":     {"call.read", "call.terminate", "principal.read"},
@@ -52,7 +52,7 @@ type Stores struct {
 	Tenants    ports.TenantStore
 	Principals ports.PrincipalStore
 	Bindings   ports.RoleBindingStore
-	ApiKeys    ports.ApiKeyStore
+	APIKeys    ports.APIKeyStore
 	Audit      ports.AuditStore
 	Users      ports.UserStore
 	Sessions   ports.SessionStore
@@ -69,7 +69,7 @@ type AllStores interface {
 	ports.TenantStore
 	ports.PrincipalStore
 	ports.RoleBindingStore
-	ports.ApiKeyStore
+	ports.APIKeyStore
 	ports.AuditStore
 	ports.UserStore
 	ports.SessionStore
@@ -82,7 +82,7 @@ type AllStores interface {
 
 // StoresOf fills every port from one adapter.
 func StoresOf(a AllStores) Stores {
-	return Stores{Tenants: a, Principals: a, Bindings: a, ApiKeys: a, Audit: a, Users: a, Sessions: a,
+	return Stores{Tenants: a, Principals: a, Bindings: a, APIKeys: a, Audit: a, Users: a, Sessions: a,
 		Tickets: a, Providers: a, Events: a, Throttle: a, Liveness: a}
 }
 
@@ -93,7 +93,7 @@ type Service struct {
 	tenantCap   ports.TenantCap
 	principals  ports.PrincipalStore
 	bindings    ports.RoleBindingStore
-	apiKeys     ports.ApiKeyStore
+	apiKeys     ports.APIKeyStore
 	audit       ports.AuditStore
 	users       ports.UserStore
 	sessions    ports.SessionStore
@@ -129,7 +129,7 @@ func NewService(stores Stores, tenantCap ports.TenantCap, hasher *PasswordHasher
 	}
 	return &Service{
 		tenants: stores.Tenants, tenantCap: tenantCap, principals: stores.Principals, bindings: stores.Bindings,
-		apiKeys: stores.ApiKeys, audit: stores.Audit, users: stores.Users, sessions: stores.Sessions,
+		apiKeys: stores.APIKeys, audit: stores.Audit, users: stores.Users, sessions: stores.Sessions,
 		tickets: stores.Tickets, providers: stores.Providers, events: stores.Events, throttle: stores.Throttle,
 		liveness: stores.Liveness, hasher: hasher, tokens: tokens,
 		permissions: DefaultPermissions, logger: logger, now: time.Now,
@@ -385,9 +385,9 @@ func (s *Service) SetPrincipalStatus(ctx context.Context, actor Actor, tenantID 
 // RevokeAPIKey makes a key unusable immediately and records the
 // revocation. The key's digest stays in place (history), but the record
 // is no longer usable for authentication.
-func (s *Service) RevokeAPIKey(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, keyID shareddomain.ApiKeyID) error {
+func (s *Service) RevokeAPIKey(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, keyID shareddomain.APIKeyID) error {
 	now := s.now().UTC()
-	if err := s.apiKeys.RevokeApiKey(ctx, tenantID, keyID, now); err != nil {
+	if err := s.apiKeys.RevokeAPIKey(ctx, tenantID, keyID, now); err != nil {
 		return err
 	}
 	s.record(ctx, actor, tenantID, "apikey.revoke", "api_key", keyID.String(), nil,
@@ -422,18 +422,18 @@ func (s *Service) GrantRole(ctx context.Context, actor Actor, tenantID shareddom
 // IssueAPIKey creates a machine credential. The raw key is returned
 // once, here, and never again — it is not stored and cannot be
 // recovered.
-func (s *Service) IssueAPIKey(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID, expiresAt *time.Time) (rawKey string, key domain.ApiKey, err error) {
+func (s *Service) IssueAPIKey(ctx context.Context, actor Actor, tenantID shareddomain.TenantID, principalID shareddomain.PrincipalID, expiresAt *time.Time) (rawKey string, key domain.APIKey, err error) {
 	raw, digest, err := GenerateAPIKey(tenantID)
 	if err != nil {
-		return "", domain.ApiKey{}, err
+		return "", domain.APIKey{}, err
 	}
 
-	key = domain.ApiKey{
-		ID: shareddomain.NewApiKeyID(), TenantID: tenantID, PrincipalID: principalID,
+	key = domain.APIKey{
+		ID: shareddomain.NewAPIKeyID(), TenantID: tenantID, PrincipalID: principalID,
 		KeyHash: digest, ExpiresAt: expiresAt,
 	}
-	if err := s.apiKeys.CreateApiKey(ctx, key); err != nil {
-		return "", domain.ApiKey{}, err
+	if err := s.apiKeys.CreateAPIKey(ctx, key); err != nil {
+		return "", domain.APIKey{}, err
 	}
 
 	// Neither the raw key nor its digest goes into the audit record: the
@@ -503,7 +503,7 @@ func (s *Service) AuthenticateAPIKey(ctx context.Context, rawKey string) (*ports
 		return nil, ports.ErrInvalidCredentials
 	}
 
-	key, err := s.apiKeys.GetApiKeyByHash(ctx, tenantID, HashAPIKey(rawKey))
+	key, err := s.apiKeys.GetAPIKeyByHash(ctx, tenantID, HashAPIKey(rawKey))
 	if err != nil {
 		s.warnAuthFailure(ctx, "unknown api key", tenantID, "", err)
 		return nil, ports.ErrInvalidCredentials

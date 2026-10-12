@@ -95,9 +95,10 @@ docker_build(
         sync('./api/go.mod', '/src/go.mod'),
         sync('./api/go.sum', '/src/go.sum'),
         run(
-            # Same ldflags the image was built with, or a save would silently
-            # drop the dev licence key and the rig would fall back to Setup.
-            'cd /src && CGO_ENABLED=0 go build -trimpath -ldflags="$DEV_LICENCE_LDFLAGS" -o /out/app ./cmd/atsap-api',
+            # Same ldflags and coverage flags the image was built with, or a
+            # save would silently drop the dev licence key (the rig would
+            # fall back to Setup) or the e2e coverage instrumentation.
+            'cd /src && CGO_ENABLED=0 go build -trimpath $DEV_COVER_FLAGS -ldflags="$DEV_LICENCE_LDFLAGS" -o /out/app ./cmd/atsap-api',
             trigger=['./api/cmd', './api/internal', './api/go.mod', './api/go.sum'],
         ),
         restart_container(),

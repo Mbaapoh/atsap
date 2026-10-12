@@ -1,0 +1,82 @@
+# OSV-Scanner configuration (quality-and-supply-chain-gates, D-71).
+#
+# The licence allowlist itself is passed on the command line by
+# `make sca` (D-35, as clarified by D-71). This file holds only named,
+# reasoned exceptions. Every entry says why, and a vulnerability
+# exception must also carry an expiry date (ignoreUntil).
+
+# lightningcss is Vite 8's CSS transformer: a build-time tool, never part
+# of the console bundle (`npm run build` output contains none of its code).
+# MPL-2.0 is file-level copyleft that applies to distributing its own
+# files, which we never do. D-35 governs what ships.
+[[PackageOverrides]]
+name = "lightningcss"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-android-arm64"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-darwin-arm64"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-darwin-x64"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-freebsd-x64"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-linux-arm-gnueabihf"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-linux-arm64-gnu"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-linux-arm64-musl"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-linux-x64-gnu"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-linux-x64-musl"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-win32-arm64-msvc"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+[[PackageOverrides]]
+name = "lightningcss-win32-x64-msvc"
+ecosystem = "npm"
+license.ignore = true
+reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"

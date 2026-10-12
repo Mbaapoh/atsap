@@ -211,26 +211,26 @@ func TestStore_ApiKeys(t *testing.T) {
 	require.NoError(t, store.CreatePrincipal(ctx, p))
 
 	expires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
-	key := domain.ApiKey{
-		ID: shareddomain.NewApiKeyID(), TenantID: tenantA, PrincipalID: p.ID,
+	key := domain.APIKey{
+		ID: shareddomain.NewAPIKeyID(), TenantID: tenantA, PrincipalID: p.ID,
 		KeyHash: strings.Repeat("b", 64), ExpiresAt: &expires,
 	}
-	require.NoError(t, store.CreateApiKey(ctx, key))
+	require.NoError(t, store.CreateAPIKey(ctx, key))
 
-	got, err := store.GetApiKeyByHash(ctx, tenantA, key.KeyHash)
+	got, err := store.GetAPIKeyByHash(ctx, tenantA, key.KeyHash)
 	require.NoError(t, err)
 	assert.Equal(t, key.ID, got.ID)
 	assert.Equal(t, tenantA, got.TenantID, "the digest resolves to its owning tenant")
 	assert.True(t, got.Usable(time.Now()))
 
 	revokedAt := time.Now().UTC()
-	require.NoError(t, store.RevokeApiKey(ctx, tenantA, key.ID, revokedAt))
+	require.NoError(t, store.RevokeAPIKey(ctx, tenantA, key.ID, revokedAt))
 
-	got, err = store.GetApiKeyByHash(ctx, tenantA, key.KeyHash)
+	got, err = store.GetAPIKeyByHash(ctx, tenantA, key.KeyHash)
 	require.NoError(t, err)
 	assert.False(t, got.Usable(time.Now().Add(time.Second)), "a revoked key stops being usable")
 
-	_, err = store.GetApiKeyByHash(ctx, tenantA, strings.Repeat("c", 64))
+	_, err = store.GetAPIKeyByHash(ctx, tenantA, strings.Repeat("c", 64))
 	assert.ErrorIs(t, err, ports.ErrNotFound)
 }
 

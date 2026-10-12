@@ -7,7 +7,71 @@ linters:
     - staticcheck
     - unused
     - depguard
+    # quality-and-supply-chain-gates (D-71). All ship inside golangci-lint,
+    # so they add no tool to install.
+    - gosec         # security: injection, weak crypto, unsafe permissions
+    - errorlint     # %w wrapping and errors.Is/As (D-40 rule 2)
+    - bodyclose     # HTTP response bodies are closed
+    - noctx         # every outbound request carries a context (D-40 rule 3)
+    - contextcheck  # contexts are passed down, not replaced
+    - nilerr        # never return nil after checking a non-nil error
+    - rowserrcheck  # rows.Err() is checked after iteration
+    - sqlclosecheck # rows and statements are closed
+    - gocritic      # common bug and style patterns
+    - revive        # house style
+    - misspell
+    - gocognit      # cognitive complexity
+    - nolintlint    # every suppression is specific and explained
   settings:
+    gocognit:
+      min-complexity: 30
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    misspell:
+      # No locale: the code uses Oxford spelling ("normalize", "authorize",
+      # HTTP's "unauthorized") alongside British "licence" and "behaviour",
+      # so only genuine misspellings are flagged, never -ize vs -ise.
+      locale: ""
+    errorlint:
+      # The house convention is fmt.Errorf("%w: %v", Sentinel, cause): one
+      # sentinel is wrapped so the RPC layer maps the error by it alone, and
+      # the cause is detail, deliberately not matchable — wrapping it too
+      # would let an inner domain error match an earlier mapErr case. The
+      # comparison and type-assertion checks (the real bugs) stay on.
+      errorf: false
+      asserts: true
+      comparison: true
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            # Methods mostly implement ports and generated service
+            # interfaces, documented where the interface is declared.
+            # Exported types, functions, constants and variables still need
+            # a comment of the form "Name ...".
+            - disableChecksOnMethods
+        - name: var-naming
+        - name: unused-parameter
+        - name: context-as-argument
+          arguments:
+            # Go's convention for test helpers puts t first.
+            - allowTypesBefore: "*testing.T"
+        - name: redefines-builtin-id
+        - name: indent-error-flow
+        - name: empty-block
+        - name: blank-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: receiver-naming
+        - name: increment-decrement
+        - name: errorf
+        - name: unreachable-code
+        - name: superfluous-else
+        - name: time-naming
+        - name: range
+        - name: package-comments
     depguard:
       rules:
         # Architectural invariant (HLD 01-architecture.md §1.2 rule 3,
@@ -157,6 +221,16 @@ linters:
       - path: '_e2e_test\.go'
         linters:
           - depguard
+      # Tests are never shipped. Their outbound requests need no context
+      # (noctx, contextcheck), and gosec's findings there are fixture
+      # credentials and test-file reads. bodyclose, errorlint and nilerr
+      # still apply to tests: a leaked body or a swallowed error is a test
+      # bug too.
+      - path: '_test\.go'
+        linters:
+          - noctx
+          - contextcheck
+          - gosec
 
 formatters:
   enable:

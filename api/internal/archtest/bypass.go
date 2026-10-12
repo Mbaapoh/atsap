@@ -1,12 +1,7 @@
 package archtest
 
 import (
-	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -41,69 +36,13 @@ type BypassUse struct {
 // no build-tag evaluation.
 func ScanBypassScreeningProvenance(apiRootDir string) ([]BypassUse, error) {
 	var uses []BypassUse
-
-	for _, sub := range []string{"internal", "cmd"} {
-		root := filepath.Join(apiRootDir, sub)
-		if _, err := os.Stat(root); os.IsNotExist(err) {
-			continue
-		}
-		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return fmt.Errorf("walk %s: %w", path, err)
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") {
-				return nil
-			}
-			rel, err := filepath.Rel(apiRootDir, path)
-			if err != nil {
-				return fmt.Errorf("relative path: %w", err)
-			}
-			rel = filepath.ToSlash(rel)
-
-			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, path, nil, 0)
-			if err != nil {
-				return fmt.Errorf("go/parser: %w", err)
-			}
-
-			isTest := strings.HasSuffix(path, "_test.go")
-			inRPC := isRPCPath(rel)
-			canAssign := isTest || isPbxApplicationPath(rel)
-
-			ast.Inspect(f, func(n ast.Node) bool {
-				switch n := n.(type) {
-				case *ast.Ident:
-					if n.Name == "BypassScreening" && inRPC {
-						uses = append(uses, BypassUse{File: rel,
-							Reason: "rpc must never reference BypassScreening (LLD-03 §10.1: the wire cannot reach it)"})
-						return false
-					}
-				case *ast.KeyValueExpr:
-					if key, ok := n.Key.(*ast.Ident); ok && key.Name == "BypassScreening" && !canAssign {
-						uses = append(uses, BypassUse{File: rel,
-							Reason: "only internal/pbx/application (and _test.go) may assign BypassScreening (LLD-03 §10.1)"})
-						return false
-					}
-				case *ast.AssignStmt:
-					if !canAssign {
-						for _, lhs := range n.Lhs {
-							if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "BypassScreening" {
-								uses = append(uses, BypassUse{File: rel,
-									Reason: "only internal/pbx/application (and _test.go) may assign BypassScreening (LLD-03 §10.1)"})
-								return false
-							}
-						}
-					}
-				}
-				return true
-			})
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
+	err := forEachGoFile(apiRootDir, nil, func(rel string, file *ast.File) error {
+		uses = append(uses, bypassUsesIn(rel, file)...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sort.Slice(uses, func(i, j int) bool {
 		if uses[i].File != uses[j].File {
 			return uses[i].File < uses[j].File
@@ -111,6 +50,57 @@ func ScanBypassScreeningProvenance(apiRootDir string) ([]BypassUse, error) {
 		return uses[i].Reason < uses[j].Reason
 	})
 	return uses, nil
+}
+
+// Violation messages. gosec's G101 reads "Bypass" as a credential name;
+// these are rule descriptions.
+//
+//nolint:gosec // not credentials: archtest violation messages
+const (
+	bypassInRPC    = "rpc must never reference BypassScreening (LLD-03 §10.1: the wire cannot reach it)"
+	bypassAssigned = "only internal/pbx/application (and _test.go) may assign BypassScreening (LLD-03 §10.1)"
+)
+
+// bypassUsesIn reports one file's forbidden references to
+// BypassScreening: any mention in an rpc package, and any assignment
+// outside pbx/application and tests.
+func bypassUsesIn(rel string, file *ast.File) []BypassUse {
+	inRPC := isRPCPath(rel)
+	canAssign := strings.HasSuffix(rel, "_test.go") || isPbxApplicationPath(rel)
+	var uses []BypassUse
+	report := func(reason string) bool {
+		uses = append(uses, BypassUse{File: rel, Reason: reason})
+		return false
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.Ident:
+			if n.Name == "BypassScreening" && inRPC {
+				return report(bypassInRPC)
+			}
+		case *ast.KeyValueExpr:
+			if key, ok := n.Key.(*ast.Ident); ok && key.Name == "BypassScreening" && !canAssign {
+				return report(bypassAssigned)
+			}
+		case *ast.AssignStmt:
+			if !canAssign && assignsBypass(n) {
+				return report(bypassAssigned)
+			}
+		}
+		return true
+	})
+	return uses
+}
+
+// assignsBypass reports whether an assignment's left side sets a
+// BypassScreening field.
+func assignsBypass(n *ast.AssignStmt) bool {
+	for _, lhs := range n.Lhs {
+		if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "BypassScreening" {
+			return true
+		}
+	}
+	return false
 }
 
 // isRPCPath reports whether rel lives under an rpc/ tree (any context's

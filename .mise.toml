@@ -1,9 +1,14 @@
 [tools]
-go = "1.25"
+go = "1.26"
 golangci-lint = "2.13.1"
 buf = "1.72.0"
 gotestsum = "1.13.0"
 tilt = "0.37.8"
+# Quality and supply-chain gates (D-71): SCA with the D-35 licence
+# allowlist, secret scanning, and image scanning with SBOMs.
+osv-scanner = "2.6.0"
+gitleaks = "8.30.1"
+trivy = "0.75.0"
 
 [env]
 GOFLAGS = "-mod=mod"

@@ -1,6 +1,6 @@
 // Package domain defines the identifier types shared across every
 // AtsaPBX bounded context: TenantID, CallID, ParticipantID, PrincipalID,
-// and ApiKeyID.
+// and APIKeyID.
 package domain
 
 import (
@@ -119,33 +119,33 @@ func (id PrincipalID) IsZero() bool {
 	return id == PrincipalID{}
 }
 
-// ApiKeyID identifies an API key record. It never identifies the key
+// APIKeyID identifies an API key record. It never identifies the key
 // material itself — the raw key is shown once at creation and stored
 // only as a digest.
-type ApiKeyID uuid.UUID
+type APIKeyID uuid.UUID
 
-// NewApiKeyID generates a new random ApiKeyID.
-func NewApiKeyID() ApiKeyID {
-	return ApiKeyID(uuid.New())
+// NewAPIKeyID generates a new random APIKeyID.
+func NewAPIKeyID() APIKeyID {
+	return APIKeyID(uuid.New())
 }
 
-// ParseApiKeyID parses s as an ApiKeyID.
-func ParseApiKeyID(s string) (ApiKeyID, error) {
+// ParseAPIKeyID parses s as an APIKeyID.
+func ParseAPIKeyID(s string) (APIKeyID, error) {
 	id, err := uuid.Parse(s)
 	if err != nil {
-		return ApiKeyID{}, fmt.Errorf("parse api key id: %w", err)
+		return APIKeyID{}, fmt.Errorf("parse api key id: %w", err)
 	}
-	return ApiKeyID(id), nil
+	return APIKeyID(id), nil
 }
 
 // String returns the canonical UUID string form.
-func (id ApiKeyID) String() string {
+func (id APIKeyID) String() string {
 	return uuid.UUID(id).String()
 }
 
 // IsZero reports whether id is the zero value.
-func (id ApiKeyID) IsZero() bool {
-	return id == ApiKeyID{}
+func (id APIKeyID) IsZero() bool {
+	return id == APIKeyID{}
 }
 
 // ExtensionID identifies an Extension (a dialable endpoint within a

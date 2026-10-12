@@ -98,7 +98,7 @@ func (h *PasswordHasher) Verify(password, encodedHash string) (bool, error) {
 	// Verify with the parameters the hash was created with, not today's
 	// constants — otherwise raising the cost parameters would lock out
 	// every existing account.
-	got := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(want)))
+	got := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(want))) //nolint:gosec // len(want) is a decoded digest's length, tens of bytes
 
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

@@ -625,31 +625,11 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 		// or a phone rings forever for a call that no longer exists.
 		// Originated calls keep their existing behavior: both legs
 		// are torn down by HangupCall, never here.
-		if a, ok := s.arrivedOf(callID); ok {
-			for _, p := range call.Participants {
-				if p.ID == participantID || p.State == domain.ParticipantDisconnected {
-					continue
-				}
-				ref := participantChannel(p.ID)
-				if a.callerParticipant == p.ID {
-					ref = a.callerRef
-				}
-				if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
-					s.logger.Debug("destroy other leg on arrived setup teardown",
-						"error", err, "call_id", callID, "participant_id", p.ID)
-				}
-			}
-		}
+		s.releaseArrivedSetupLegs(ctx, call, participantID)
 		return s.finalizeTermination(ctx, call, "call setup did not complete")
 	}
 
-	var target *domain.CallParticipant
-	for _, p := range call.Participants {
-		if p.ID == participantID {
-			target = p
-			break
-		}
-	}
+	target := findParticipant(call, participantID)
 	if target == nil {
 		return fmt.Errorf("participant %s not found on call %s", participantID, callID)
 	}
@@ -670,38 +650,77 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 	}
 
 	if call.State == domain.CallTerminating {
-		// The departure left fewer than two connected: the call is over
-		// for everyone still on it. Record their usage up to now, mark
-		// them left, finalize, then release their legs on the engine —
-		// otherwise the other party sits on a dead bridge in silence,
-		// accruing usage.
-		var remaining []ports.ChannelRef
-		var leftEvents []event.DomainEvent
-		for _, p := range call.Participants {
-			if p.State != domain.ParticipantConnected {
-				continue
-			}
-			if err := s.recordUsageForParticipant(ctx, call, p, now); err != nil {
-				s.logger.Error("record usage on call end", "error", err, "call_id", callID, "participant_id", p.ID)
-			}
-			remaining = append(remaining, s.legRef(callID, p.ID))
-			evs, err := call.DisconnectParticipant(p.ID, now)
-			if err != nil {
-				return fmt.Errorf("disconnect remaining participant: %w", err)
-			}
-			leftEvents = append(leftEvents, evs...)
+		return s.endForRemaining(ctx, call, now)
+	}
+	return nil
+}
+
+// releaseArrivedSetupLegs releases, for an arrived call that never
+// reached Active, every other leg still on the engine: the caller hanging
+// up while ringing must release the destination leg (and vice versa), or
+// a phone rings forever for a call that no longer exists. Originated
+// calls are not arrived calls; HangupCall tears down both their legs.
+func (s *Service) releaseArrivedSetupLegs(ctx context.Context, call *domain.Call, left shareddomain.ParticipantID) {
+	a, ok := s.arrivedOf(call.ID)
+	if !ok {
+		return
+	}
+	for _, p := range call.Participants {
+		if p.ID == left || p.State == domain.ParticipantDisconnected {
+			continue
 		}
-		if len(leftEvents) > 0 {
-			if err := s.saveCall(ctx, call, leftEvents...); err != nil {
-				return err
-			}
+		ref := participantChannel(p.ID)
+		if a.callerParticipant == p.ID {
+			ref = a.callerRef
 		}
-		if err := s.finalizeTermination(ctx, call, "normal clearing"); err != nil {
+		if err := s.mediaGateway.DestroyChannel(ctx, ref); err != nil {
+			s.logger.Debug("destroy other leg on arrived setup teardown",
+				"error", err, "call_id", call.ID, "participant_id", p.ID)
+		}
+	}
+}
+
+// findParticipant returns the call's participant with id, or nil.
+func findParticipant(call *domain.Call, id shareddomain.ParticipantID) *domain.CallParticipant {
+	for _, p := range call.Participants {
+		if p.ID == id {
+			return p
+		}
+	}
+	return nil
+}
+
+// endForRemaining ends a call whose last departure left fewer than two
+// connected: the call is over for everyone still on it. It records their
+// usage up to now, marks them left, finalizes, then releases their legs on
+// the engine — otherwise the other party sits on a dead bridge in silence,
+// accruing usage.
+func (s *Service) endForRemaining(ctx context.Context, call *domain.Call, now time.Time) error {
+	var remaining []ports.ChannelRef
+	var leftEvents []event.DomainEvent
+	for _, p := range call.Participants {
+		if p.State != domain.ParticipantConnected {
+			continue
+		}
+		if err := s.recordUsageForParticipant(ctx, call, p, now); err != nil {
+			s.logger.Error("record usage on call end", "error", err, "call_id", call.ID, "participant_id", p.ID)
+		}
+		remaining = append(remaining, s.legRef(call.ID, p.ID))
+		evs, err := call.DisconnectParticipant(p.ID, now)
+		if err != nil {
+			return fmt.Errorf("disconnect remaining participant: %w", err)
+		}
+		leftEvents = append(leftEvents, evs...)
+	}
+	if len(leftEvents) > 0 {
+		if err := s.saveCall(ctx, call, leftEvents...); err != nil {
 			return err
 		}
-		s.releaseLegs(ctx, callID, remaining)
-		return nil
 	}
+	if err := s.finalizeTermination(ctx, call, "normal clearing"); err != nil {
+		return err
+	}
+	s.releaseLegs(ctx, call.ID, remaining)
 	return nil
 }
 

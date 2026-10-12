@@ -148,7 +148,9 @@ func refreshCookie(t *testing.T, c *http.Client) string {
 }
 
 // call posts a Connect JSON request and decodes it, asserting the status.
-func call(t *testing.T, c *http.Client, procedure, token string, body, out any, want int) (*http.Response, []byte) {
+// It reads and closes the body itself and returns only the response
+// headers and body bytes, so no open response escapes it.
+func call(t *testing.T, c *http.Client, procedure, token string, body, out any, want int) (http.Header, []byte) {
 	t.Helper()
 	if c == nil {
 		c = &http.Client{Timeout: 10 * time.Second}
@@ -170,7 +172,7 @@ func call(t *testing.T, c *http.Client, procedure, token string, body, out any, 
 	if out != nil {
 		require.NoError(t, json.Unmarshal(b, out))
 	}
-	return resp, b
+	return resp.Header, b
 }
 
 type session struct {
@@ -429,9 +431,9 @@ func TestAccounts_EndToEnd(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			call(t, nil, "AuthService/SignIn", "", map[string]any{"email": w.email("erin"), "password": "erin-wrong-password"}, nil, http.StatusUnauthorized)
 		}
-		resp, body := call(t, nil, "AuthService/SignIn", "", map[string]any{"email": w.email("erin"), "password": "erin-own-password"}, nil, http.StatusTooManyRequests)
+		header, body := call(t, nil, "AuthService/SignIn", "", map[string]any{"email": w.email("erin"), "password": "erin-own-password"}, nil, http.StatusTooManyRequests)
 		assert.Contains(t, string(body), "resource_exhausted")
-		assert.NotEmpty(t, resp.Header.Get("Retry-After"), "the delay is stated")
+		assert.NotEmpty(t, header.Get("Retry-After"), "the delay is stated")
 	})
 
 	t.Run("no secret in any log line", func(t *testing.T) {

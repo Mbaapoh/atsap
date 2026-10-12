@@ -435,6 +435,8 @@ type IdentityProvider struct {
 
 // DomainClaim is a provider's claim on an email domain. An unverified
 // claim routes nothing.
+//
+//nolint:revive // "Domain" is the email domain claimed, not this package; "Claim" alone would read as a token claim.
 type DomainClaim struct {
 	Domain     string
 	ProviderID IdentityProviderID

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
+	// Registered for their side effects: migrate resolves the pgx5://
+	// database driver and the file:// source by URL scheme.
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"

@@ -17,11 +17,11 @@ import (
 // tenant_id, without importing the real protobuf types — the same
 // reason the interceptor takes a TenantMatcher rather than knowing about
 // a specific API surface.
-type bodyWithTenant struct{ TenantId string }
+type bodyWithTenant struct{ TenantID string }
 
 func tenantMatcher(request any) (string, bool) {
 	if b, ok := request.(*bodyWithTenant); ok {
-		return b.TenantId, true
+		return b.TenantID, true
 	}
 	return "", false
 }
@@ -100,7 +100,7 @@ func TestAuthInterceptor_PassesValidTokenThrough(t *testing.T) {
 	require.NoError(t, err)
 
 	reached, ctxSeen, err := callUnary(t, i, "Bearer "+tok.Token,
-		&bodyWithTenant{TenantId: tenant.ID.String()})
+		&bodyWithTenant{TenantID: tenant.ID.String()})
 	require.NoError(t, err)
 	assert.True(t, reached)
 
@@ -123,7 +123,7 @@ func TestAuthInterceptor_RejectsTenantMismatch(t *testing.T) {
 	require.NoError(t, err)
 
 	reached, _, err := callUnary(t, i, "Bearer "+tok.Token,
-		&bodyWithTenant{TenantId: otherTenant.ID.String()})
+		&bodyWithTenant{TenantID: otherTenant.ID.String()})
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	assert.False(t, reached, "the handler must not run for a cross-tenant request")
@@ -157,7 +157,7 @@ func TestAuthInterceptor_NilMatcherSkipsTenantCheck(t *testing.T) {
 	require.NoError(t, err)
 
 	reached, _, err := callUnary(t, i, "Bearer "+tok.Token,
-		&bodyWithTenant{TenantId: "some-other-tenant"})
+		&bodyWithTenant{TenantID: "some-other-tenant"})
 	require.NoError(t, err, "with no matcher there is no body-tenant rule to enforce")
 	assert.True(t, reached)
 }
@@ -202,9 +202,8 @@ func TestAuthInterceptor_ExemptionIsExactName(t *testing.T) {
 		"atsapbx.v1.IdentityService/AuthenticateUser",
 		"",
 	} {
-		if proc == application.AuthenticateUserProcedure {
-			// exact match is exempt
-		} else if i.Exempt() == proc {
+		// The exact procedure is the exemption; anything else must not match it.
+		if proc != application.AuthenticateUserProcedure && i.Exempt() == proc {
 			t.Errorf("procedure %q matched the exemption by accident", proc)
 		}
 	}
@@ -229,7 +228,7 @@ func TestAuthInterceptor_SystemScopePassesBodyTenant(t *testing.T) {
 
 	i := application.NewAuthInterceptor(h.svc, tenantMatcher)
 	reached, ctxSeen, err := callUnary(t, i, "Bearer "+tok.Token,
-		&bodyWithTenant{TenantId: otherTenant.ID.String()})
+		&bodyWithTenant{TenantID: otherTenant.ID.String()})
 	require.NoError(t, err, "a system-scoped caller may address another tenant")
 	assert.True(t, reached)
 

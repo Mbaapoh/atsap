@@ -47,33 +47,25 @@ import (
 const outboxPollInterval = 2 * time.Second
 
 func main() {
+	os.Exit(run())
+}
+
+// run is the service and its subcommands. It returns the process exit
+// code instead of calling os.Exit, so every deferred cleanup (signal
+// handling, the database pools, the event bus) runs before the process
+// ends.
+func run() int {
 	cfg, err := config.Load()
 	if err != nil {
 		// Logger isn't built yet (it needs cfg.LogLevel); a bare
 		// stderr message is the correct fallback for a config error
 		// that happens before anything else can start.
 		_, _ = os.Stderr.WriteString("failed to load config: " + err.Error() + "\n")
-		os.Exit(1)
+		return 1
 	}
 
-	// `atsap-api bootstrap` creates the first tenant and administrator of
-	// an empty installation. It is the one operator-only path that exists
-	// outside the API's token cycle (identity-api task 3.3).
-	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
-		os.Exit(runBootstrap(cfg))
-	}
-
-	// `atsap-api pbx reconcile` compares the media engine's configuration
-	// against the platform's records. Operator-invoked, never scheduled
-	// (LLD-03 design D6).
-	if len(os.Args) > 1 && os.Args[1] == "pbx" {
-		os.Exit(runPbx(cfg))
-	}
-
-	// `atsap-api admin reset-password` is off-network recovery for an
-	// installation nobody can sign in to (D-66).
-	if len(os.Args) > 1 && os.Args[1] == "admin" {
-		os.Exit(runAdmin(cfg))
+	if code, ran := runSubcommand(cfg); ran {
+		return code
 	}
 
 	logger := logging.New(cfg.LogLevel)
@@ -85,13 +77,13 @@ func main() {
 	appPool, err := corepostgres.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to open app database pool", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer appPool.Close()
 
 	if err := corepostgres.MigrateUp(cfg.DatabaseURL, "migrations"); err != nil {
 		logger.Error("failed to run migrations", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// --- Postgres: outbox worker pool (BYPASSRLS, atsap_outbox_worker).
@@ -102,7 +94,7 @@ func main() {
 	workerPGPool, err := pgxpool.New(ctx, cfg.DatabaseWorkerURL)
 	if err != nil {
 		logger.Error("failed to open outbox worker database pool", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer workerPGPool.Close()
 
@@ -110,14 +102,14 @@ func main() {
 	nc, err := natsgo.Connect(cfg.NATSURL)
 	if err != nil {
 		logger.Error("failed to connect to NATS", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer nc.Close()
 
 	natsPublisher, err := atsapnats.NewPublisher(ctx, nc)
 	if err != nil {
 		logger.Error("failed to create NATS publisher", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	outboxWorker := corepostgres.NewOutboxWorker(workerPGPool, natsPublisher, logger)
@@ -136,7 +128,7 @@ func main() {
 	licenseManager, err := newLicenseManager(ctx, appPool, cfg.LicenseToken, logger)
 	if err != nil {
 		logger.Error("licensing", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	callService := application.NewService(
@@ -189,12 +181,12 @@ func main() {
 	identitySvc, identityStore, err := newIdentity(cfg, appPool, licenseManager, logger)
 	if err != nil {
 		logger.Error("failed to start identity", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	trusted, err := identityrpc.ParseTrustedProxies(cfg.TrustedProxies)
 	if err != nil {
 		logger.Error("invalid ATSAPBX_TRUSTED_PROXIES", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	sources := identityrpc.NewSourceResolver(trusted)
 	if cfg.CookieInsecure {
@@ -319,4 +311,30 @@ func main() {
 	logger.Info("shutting down")
 	_ = server.Shutdown(context.Background(), httpSrv, 10*time.Second)
 	_ = amiClient.Close()
+	return 0
+}
+
+// runSubcommand runs an operator subcommand named by the first argument,
+// reporting whether there was one.
+func runSubcommand(cfg config.Config) (code int, ran bool) {
+	if len(os.Args) < 2 {
+		return 0, false
+	}
+	switch os.Args[1] {
+	case "bootstrap":
+		// `atsap-api bootstrap` creates the first tenant and administrator
+		// of an empty installation. It is the one operator-only path that
+		// exists outside the API's token cycle (identity-api task 3.3).
+		return runBootstrap(cfg), true
+	case "pbx":
+		// `atsap-api pbx reconcile` compares the media engine's
+		// configuration against the platform's records. Operator-invoked,
+		// never scheduled (LLD-03 design D6).
+		return runPbx(cfg), true
+	case "admin":
+		// `atsap-api admin reset-password` is off-network recovery for an
+		// installation nobody can sign in to (D-66).
+		return runAdmin(cfg), true
+	}
+	return 0, false
 }

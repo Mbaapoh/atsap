@@ -108,15 +108,15 @@ func TestProjectExtension_WritesAllThreeRows(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		transport, aors, auth, context_, allow string
+		transport, aors, auth, dialplanContext, allow string
 	)
 	require.NoError(t, h.pool.Unwrap().QueryRow(ctx,
 		`SELECT transport, aors, auth, context, allow FROM ps_endpoints WHERE id = $1`, id,
-	).Scan(&transport, &aors, &auth, &context_, &allow))
+	).Scan(&transport, &aors, &auth, &dialplanContext, &allow))
 	assert.Equal(t, "transport-udp", transport)
 	assert.Equal(t, id, aors, "the endpoint points at its own aor")
 	assert.Equal(t, id, auth, "the endpoint points at its own auth")
-	assert.Equal(t, "stasis-in", context_,
+	assert.Equal(t, "stasis-in", dialplanContext,
 		"every endpoint enters Stasis — pbx-core generates no dialplan (D-47)")
 	assert.Equal(t, "ulaw,alaw", allow)
 

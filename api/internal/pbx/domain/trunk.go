@@ -176,7 +176,8 @@ func isASCIIAlnum(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
 
-// Health-observation thresholds (design D8).
+// SlowAnswerThreshold is the health-observation threshold above which a
+// trunk's answer is slow (design D8).
 const SlowAnswerThreshold = 2 * time.Second
 
 // ObserveHealth maps one observed call outcome onto a trunk health, and

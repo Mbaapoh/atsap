@@ -5,9 +5,14 @@
 // reporting, main-only push+deploy) — not the contract itself. Any CI
 // provider implementing the same stages in the same order satisfies it.
 
-// Requires on the agent: Docker (with socket access) and curl. Go and
-// golangci-lint are NOT required on the agent — they're installed by mise
-// from .mise.toml, so CI uses the exact same tool versions as local dev.
+// Requires on the agent: Docker (with socket access) and curl. Go,
+// golangci-lint, Node, osv-scanner, gitleaks and trivy are NOT required on
+// the agent — they're installed by mise from .mise.toml and
+// console/mise.toml, so CI uses the exact same tool versions as local dev.
+//
+// Jenkins plugins used for reports: JUnit, Coverage (Cobertura), and
+// Warnings Next Generation (SARIF). Every gate also fails the build by its
+// exit code alone, so the plugins only render; they never decide.
 //
 // Expected Jenkins configuration:
 //   - Multibranch pipeline (so `branch 'main'` gating below works), or
@@ -50,6 +55,7 @@ pipeline {
                     fi
                     "$MISE_BIN" trust
                     "$MISE_BIN" install
+                    (cd console && "$MISE_BIN" trust && "$MISE_BIN" install)
                 '''
             }
         }
@@ -62,18 +68,40 @@ pipeline {
 
         stage('Test') {
             steps {
-                // JUnit XML + coverage profile are published below (stage
-                // post): per-build test history and trends live in CI,
-                // never as committed files (D-28).
+                // Unit tests with coverage, gated against the "unit" floors
+                // in quality/coverage-floors.json (D-71). JUnit and
+                // Cobertura are published below: per-build history and
+                // trends live in CI, never as committed files (D-28).
+                sh '"$MISE_BIN" x -- make coverage'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'coverage/go/unit-junit.xml'
+                    recordCoverage tools: [[parser: 'COBERTURA', pattern: 'coverage/go/cobertura.xml']], id: 'go', name: 'Go coverage'
+                    archiveArtifacts artifacts: 'coverage/go/merged.out', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Console') {
+            steps {
+                // The console's hermetic tiers (docs/TOOLSET.md §3a):
+                // typecheck, component tests with coverage floors, browser
+                // e2e with the API mocked, and the production dependency
+                // audit. Its integration and UAT tiers need the dev rig and
+                // run beside the Go e2e suites, not here.
                 sh '''
-                    mkdir -p test-results coverage
-                    cd api && "$MISE_BIN" x -- gotestsum --junitfile ../test-results/unit.xml -- -race -coverprofile=../coverage/unit.out ./...
+                    set -eu
+                    "$MISE_BIN" x -- make console-install
+                    "$MISE_BIN" x -- make console-test
+                    (cd console && "$MISE_BIN" x -- npx playwright install chromium)
+                    "$MISE_BIN" x -- make console-e2e
+                    "$MISE_BIN" x -- make console-audit
                 '''
             }
             post {
                 always {
-                    junit 'test-results/unit.xml'
-                    archiveArtifacts artifacts: 'coverage/unit.out', allowEmptyArchive: true
+                    recordCoverage tools: [[parser: 'COBERTURA', pattern: 'console/coverage/cobertura-coverage.xml']], id: 'console', name: 'Console coverage'
                 }
             }
         }
@@ -86,11 +114,23 @@ pipeline {
             }
         }
 
-        stage('Security: Go vulnerabilities') {
+        stage('Security: supply chain') {
             steps {
-                // govulncheck pinned (TOOLSET §1.3; D-35): known CVEs fail
-                // the build. Version pinned to GOVULNCHECK_VERSION, never @latest.
-                sh 'cd api && "$MISE_BIN" x -- go run golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} ./...'
+                // D-35, D-71: OSV-Scanner over both lockfiles (known
+                // vulnerabilities and the permissive-licence allowlist),
+                // govulncheck (call-reachability for Go), and gitleaks over
+                // the working tree. Any finding fails the build.
+                sh '''
+                    set -eu
+                    "$MISE_BIN" x -- make sca
+                    "$MISE_BIN" x -- make secrets
+                '''
+            }
+            post {
+                always {
+                    recordIssues tools: [sarif(pattern: 'quality-reports/*.sarif')], qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]]
+                    archiveArtifacts artifacts: 'quality-reports/*.sarif', allowEmptyArchive: true
+                }
             }
         }
 
@@ -105,16 +145,25 @@ pipeline {
 
         stage('Security: container scan') {
             steps {
-                // Trivy (TOOLSET §1.3; D-35): HIGH/CRITICAL vulnerabilities
-                // fail the build before any push/deploy.
+                // Trivy, pinned in .mise.toml (TOOLSET §1.3; D-35, D-71):
+                // HIGH/CRITICAL vulnerabilities fail the build before any
+                // push or deploy, and each image's CycloneDX SBOM is
+                // archived with the build.
                 sh '''
                     set -eu
-                    for img in "${REGISTRY}/atsap-api:${IMAGE_TAG}" "${REGISTRY}/atsap-core:${IMAGE_TAG}"; do
-                        docker run --rm \
-                            -v /var/run/docker.sock:/var/run/docker.sock \
-                            aquasec/trivy:0.52.2 image --quiet --exit-code 1 --severity HIGH,CRITICAL "$img"
+                    export TRIVY_DB_REPOSITORY="ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2"
+                    mkdir -p quality-reports
+                    for name in atsap-api atsap-core; do
+                        img="${REGISTRY}/${name}:${IMAGE_TAG}"
+                        "$MISE_BIN" x -- trivy image --quiet --timeout 20m --scanners vuln --exit-code 1 --severity HIGH,CRITICAL "$img"
+                        "$MISE_BIN" x -- trivy image --quiet --timeout 20m --format cyclonedx --output "quality-reports/sbom-${name}.cdx.json" "$img"
                     done
                 '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'quality-reports/sbom-*.cdx.json', allowEmptyArchive: true
+                }
             }
         }
 

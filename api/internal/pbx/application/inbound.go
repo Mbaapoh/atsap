@@ -99,13 +99,13 @@ func (s *Service) DeleteInboundNumber(ctx context.Context, tenantID shareddomain
 	return s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
 		// Read before delete so the audit names what left.
 		var before map[string]any
-		if numbers, err := s.numbers.List(ctx, tx); err != nil {
+		numbers, err := s.numbers.List(ctx, tx)
+		if err != nil {
 			return err
-		} else {
-			for _, n := range numbers {
-				if n.ID == id {
-					before = map[string]any{"number": n.Number, "extension_id": n.ExtensionID.String()}
-				}
+		}
+		for _, n := range numbers {
+			if n.ID == id {
+				before = map[string]any{"number": n.Number, "extension_id": n.ExtensionID.String()}
 			}
 		}
 		if err := s.numbers.Delete(ctx, tx, id); err != nil {

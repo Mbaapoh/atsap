@@ -148,7 +148,7 @@ func (s *Store) Update(ctx context.Context, tx pgx.Tx, ext domain.Extension) err
 // Returning an error stops the caller before the projection. INV-10 is
 // unaffected: this is the identical answer a genuinely nonexistent id
 // receives, so nothing is revealed about another tenant's data.
-func (s *Store) Delete(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) error {
+func (s *Store) Delete(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, id shareddomain.ExtensionID) error {
 	tag, err := tx.Exec(ctx, `DELETE FROM extensions WHERE id = $1`, id.String())
 	if err != nil {
 		return fmt.Errorf("delete extension: %w", err)
@@ -167,7 +167,7 @@ func (s *Store) Delete(ctx context.Context, tx pgx.Tx, tenantID shareddomain.Ten
 // distinguishing them would confirm the existence of another tenant's
 // resource (spec: "An extension belonging to another tenant is
 // indistinguishable from one that does not exist").
-func (s *Store) Get(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) (domain.Extension, error) {
+func (s *Store) Get(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, id shareddomain.ExtensionID) (domain.Extension, error) {
 	var (
 		ext        domain.Extension
 		rawID      string
@@ -219,7 +219,7 @@ func (s *Store) FindByNumber(ctx context.Context, tx pgx.Tx, number string) (dom
 // ordered by number so the console shows a directory, not an insertion
 // history. Like Get, it relies on the caller's RLS context for tenancy,
 // so a page never leaks a row from another tenant.
-func (s *Store) List(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, page ports.Page) ([]domain.Extension, error) {
+func (s *Store) List(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, page ports.Page) ([]domain.Extension, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT id, tenant_id, extension_number, display_name, auth_username,
 		       secret_digest, device_type, created_at, updated_at

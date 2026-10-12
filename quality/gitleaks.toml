@@ -1,0 +1,23 @@
+# gitleaks configuration (quality-and-supply-chain-gates, D-71).
+#
+# The default rules apply in full. The allowlist names exact synthetic
+# fixture values only (D-39: tests use fabricated credentials, never real
+# ones) — never whole files or directories, so a real secret added beside
+# a fixture is still caught.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic test fixtures: fake licence tokens and a dummy digest"
+regexTarget = "secret"
+regexes = [
+  # api/internal/licensing/rpc/handler_test.go: base64 of {"secret":"payload"} and "signature-bytes"
+  '''^eyJzZWNyZXQiOiJwYXlsb2FkIn0\.c2lnbmF0dXJlLWJ5dGVz$''',
+  # console/e2e/licence.spec.ts: base64 of "e2e-licence-key"
+  '''^eyJhbGciOiJFZERTQSJ9\.ZTJlLWxpY2VuY2Uta2V5\.c2ln$''',
+  # console/src/features/licence/licence.test.tsx: base64 of "secret-licence-payload" and "signature"
+  '''^eyJhbGciOiJFZERTQSJ9\.c2VjcmV0LWxpY2VuY2UtcGF5bG9hZA\.c2lnbmF0dXJl$''',
+  # api/internal/pbx/application/extension_cap_integration_test.go: a dummy secret digest
+  '''^0123456789abcdef0123456789abcdef$''',
+]

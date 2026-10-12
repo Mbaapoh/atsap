@@ -100,7 +100,7 @@ func newRig(t *testing.T) *rig {
 
 	tenantID := shareddomain.NewTenantID()
 	principalID := shareddomain.NewPrincipalID()
-	username := fmt.Sprintf("e2e-op-%d", rand.Intn(1_000_000)) //nolint:gosec // fixture naming, not security
+	username := fmt.Sprintf("e2e-op-%d", rand.Intn(1_000_000)) // fixture naming, not security
 
 	// tenants carries no RLS — it is the root of tenancy — so this insert
 	// needs no tenant context. The principal and binding do.
@@ -284,7 +284,7 @@ func (r *rig) contactCount(t *testing.T, authUsername string) int {
 // uniqueNumber avoids the 1000/1001 dev fixtures and collisions between
 // runs. ValidateNumber permits digits only, 2-20 characters.
 func uniqueNumber() string {
-	return fmt.Sprintf("87%04d", rand.Intn(10_000)) //nolint:gosec // fixture naming, not security
+	return fmt.Sprintf("87%04d", rand.Intn(10_000)) // fixture naming, not security
 }
 
 // --- SIP ------------------------------------------------------------

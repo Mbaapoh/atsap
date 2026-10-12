@@ -133,10 +133,10 @@ func TestRepair_RestoresAgreementAndIsOptIn(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, report.Clean())
 
-	var context_ string
+	var dialplanContext string
 	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT context FROM ps_endpoints WHERE id = $1`, id).Scan(&context_))
-	assert.Equal(t, "default", context_, "reporting must not repair; repair is opt-in")
+		`SELECT context FROM ps_endpoints WHERE id = $1`, id).Scan(&dialplanContext))
+	assert.Equal(t, "default", dialplanContext, "reporting must not repair; repair is opt-in")
 
 	repaired, err := rec.Repair(context.Background(), report)
 	require.NoError(t, err)
@@ -147,8 +147,8 @@ func TestRepair_RestoresAgreementAndIsOptIn(t *testing.T) {
 	assert.True(t, after.Clean(), "after repair the estate must reconcile clean: %+v", after)
 
 	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT context FROM ps_endpoints WHERE id = $1`, id).Scan(&context_))
-	assert.Equal(t, "stasis-in", context_, "repair restores what the platform says it should be")
+		`SELECT context FROM ps_endpoints WHERE id = $1`, id).Scan(&dialplanContext))
+	assert.Equal(t, "stasis-in", dialplanContext, "repair restores what the platform says it should be")
 }
 
 func TestRepair_RemovesOrphanedProjections(t *testing.T) {

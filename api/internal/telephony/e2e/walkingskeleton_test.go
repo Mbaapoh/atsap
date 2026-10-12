@@ -177,7 +177,7 @@ func TestWalkingSkeleton(t *testing.T) {
 	waitFor(t, ctx, "Active", func() (string, error) {
 		c, err := callStore.GetCall(ctx, tenantID, callID)
 		if err != nil {
-			return "", nil // not yet durably saved; keep polling
+			return "", nil //nolint:nilerr // not yet durably saved; keep polling
 		}
 		return string(c.State), nil
 	}, domain.CallActive)
@@ -196,7 +196,7 @@ func TestWalkingSkeleton(t *testing.T) {
 	waitFor(t, ctx, "Terminated", func() (string, error) {
 		c, err := callStore.GetCall(ctx, tenantID, callID)
 		if err != nil {
-			return "", nil
+			return "", nil //nolint:nilerr // not readable yet; keep polling until the deadline
 		}
 		return string(c.State), nil
 	}, domain.CallTerminated)

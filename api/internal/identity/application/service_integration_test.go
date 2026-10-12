@@ -264,7 +264,7 @@ func TestLive_APIKeyAuthentication(t *testing.T) {
 	assert.Equal(t, tenant.ID, tc.TenantID)
 	assert.Equal(t, principal.ID, tc.PrincipalID)
 
-	require.NoError(t, store.RevokeApiKey(ctx, tenant.ID, key.ID, time.Now().UTC()))
+	require.NoError(t, store.RevokeAPIKey(ctx, tenant.ID, key.ID, time.Now().UTC()))
 	_, err = svc.AuthenticateAPIKey(ctx, raw)
 	assert.ErrorIs(t, err, ports.ErrInvalidCredentials, "a revoked key stops working immediately")
 }

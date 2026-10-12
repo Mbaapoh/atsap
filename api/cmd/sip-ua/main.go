@@ -34,6 +34,12 @@ const (
 var extensions = []string{"1000", "1001"}
 
 func main() {
+	os.Exit(run())
+}
+
+// run returns the exit code rather than calling os.Exit, so the
+// deferred signal stop runs before the process ends.
+func run() int {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	sipServer := os.Getenv("SIP_SERVER")
@@ -50,27 +56,27 @@ func main() {
 	// SIP server (no packet sent, just route resolution) yields the
 	// local address the kernel would use to reach it, i.e. this
 	// container's own IP on that network.
-	localIP, err := discoverLocalIP(sipServer)
+	localIP, err := discoverLocalIP(ctx, sipServer)
 	if err != nil {
 		logger.Error("discover local IP", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	logger.Info("sip-ua starting", "sip_server", sipServer, "advertised_ip", localIP)
 
 	ua, err := sipgo.NewUA()
 	if err != nil {
 		logger.Error("sipgo NewUA", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	client, err := sipgo.NewClient(ua, sipgo.WithClientHostname(localIP))
 	if err != nil {
 		logger.Error("sipgo NewClient", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	srv, err := sipgo.NewServer(ua)
 	if err != nil {
 		logger.Error("sipgo NewServer", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	contact := sip.ContactHeader{Address: sip.Uri{Host: localIP, Port: 5070}}
 	dialogSrv := sipgo.NewDialogServerCache(client, contact)
@@ -114,7 +120,7 @@ func main() {
 	select {
 	case err := <-listenErr:
 		logger.Error("listen failed", "error", err)
-		os.Exit(1)
+		return 1
 	case <-time.After(500 * time.Millisecond):
 	}
 	logger.Info("listening", "addr", "0.0.0.0:"+listenPort)
@@ -122,7 +128,7 @@ func main() {
 	for _, ext := range extensions {
 		if err := registerWithRetry(ctx, client, sipServer, localIP, ext, logger); err != nil {
 			logger.Error("register failed", "extension", ext, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		logger.Info("registered", "extension", ext)
 	}
@@ -135,6 +141,7 @@ func main() {
 	_ = client.Close()
 	_ = srv.Close()
 	_ = ua.Close()
+	return 0
 }
 
 // sdpRTPPort is a static port within rtp.conf's configured range
@@ -162,8 +169,8 @@ func sdpAnswer(localIP string) []byte {
 // discoverLocalIP returns the local address the kernel would use to
 // reach sipServer, without sending any packet (UDP dial only resolves
 // routing).
-func discoverLocalIP(sipServer string) (string, error) {
-	conn, err := net.Dial("udp", sipServer)
+func discoverLocalIP(ctx context.Context, sipServer string) (string, error) {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "udp", sipServer) // dev and test sidecar: sipServer is its own configuration, and no packet is sent
 	if err != nil {
 		return "", fmt.Errorf("dial %s: %w", sipServer, err)
 	}

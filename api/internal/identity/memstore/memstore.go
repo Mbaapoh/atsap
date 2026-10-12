@@ -34,7 +34,7 @@ type Store struct {
 	tenants    map[shareddomain.TenantID]domain.Tenant
 	principals map[shareddomain.PrincipalID]domain.Principal
 	bindings   []domain.RoleBinding
-	apiKeys    map[shareddomain.ApiKeyID]domain.ApiKey
+	apiKeys    map[shareddomain.APIKeyID]domain.APIKey
 	users      map[domain.UserID]domain.User
 	sessions   map[domain.SessionID]domain.Session
 	tickets    []ticket
@@ -54,14 +54,14 @@ type Store struct {
 	TenantCap    int
 	TenantCapErr error
 
-	// Revoked records what RevokeApiKey was asked to do.
+	// Revoked records what RevokeAPIKey was asked to do.
 	Revoked []Revocation
 }
 
-// Revocation is one RevokeApiKey call.
+// Revocation is one RevokeAPIKey call.
 type Revocation struct {
 	TenantID shareddomain.TenantID
-	KeyID    shareddomain.ApiKeyID
+	KeyID    shareddomain.APIKeyID
 	At       time.Time
 }
 
@@ -81,7 +81,7 @@ func New() *Store {
 	return &Store{
 		tenants:    map[shareddomain.TenantID]domain.Tenant{},
 		principals: map[shareddomain.PrincipalID]domain.Principal{},
-		apiKeys:    map[shareddomain.ApiKeyID]domain.ApiKey{},
+		apiKeys:    map[shareddomain.APIKeyID]domain.APIKey{},
 		users:      map[domain.UserID]domain.User{},
 		sessions:   map[domain.SessionID]domain.Session{},
 		providers:  map[domain.IdentityProviderID]domain.IdentityProvider{},
@@ -297,14 +297,14 @@ func (s *Store) RevokeRoleBinding(_ context.Context, b domain.RoleBinding) error
 
 // --- api keys ----------------------------------------------------------------
 
-func (s *Store) CreateApiKey(_ context.Context, k domain.ApiKey) error {
+func (s *Store) CreateAPIKey(_ context.Context, k domain.APIKey) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.apiKeys[k.ID] = k
 	return nil
 }
 
-func (s *Store) GetApiKeyByHash(_ context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.ApiKey, error) {
+func (s *Store) GetAPIKeyByHash(_ context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.APIKey, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, k := range s.apiKeys {
@@ -312,10 +312,10 @@ func (s *Store) GetApiKeyByHash(_ context.Context, tenantID shareddomain.TenantI
 			return k, nil
 		}
 	}
-	return domain.ApiKey{}, ports.ErrNotFound
+	return domain.APIKey{}, ports.ErrNotFound
 }
 
-func (s *Store) RevokeApiKey(_ context.Context, tenantID shareddomain.TenantID, id shareddomain.ApiKeyID, at time.Time) error {
+func (s *Store) RevokeAPIKey(_ context.Context, tenantID shareddomain.TenantID, id shareddomain.APIKeyID, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.FailRevoke != nil {
@@ -789,7 +789,7 @@ var _ interface {
 	ports.TenantStore
 	ports.PrincipalStore
 	ports.RoleBindingStore
-	ports.ApiKeyStore
+	ports.APIKeyStore
 	ports.AuditStore
 	ports.UserStore
 	ports.SessionStore

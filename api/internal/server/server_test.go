@@ -47,8 +47,8 @@ func TestReadyz_NoCheckersIs503(t *testing.T) {
 
 func TestReadyz_AllOKIs200(t *testing.T) {
 	srv := NewWithChecks(":0", []Checker{
-		{Name: "postgres", Check: func(ctx context.Context) error { return nil }},
-		{Name: "nats", Check: func(ctx context.Context) error { return nil }},
+		{Name: "postgres", Check: func(_ context.Context) error { return nil }},
+		{Name: "nats", Check: func(_ context.Context) error { return nil }},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -67,8 +67,8 @@ func TestReadyz_AllOKIs200(t *testing.T) {
 
 func TestReadyz_OneFailingIs503AndNamesIt(t *testing.T) {
 	srv := NewWithChecks(":0", []Checker{
-		{Name: "postgres", Check: func(ctx context.Context) error { return nil }},
-		{Name: "ari", Check: func(ctx context.Context) error { return errProbeDown }},
+		{Name: "postgres", Check: func(_ context.Context) error { return nil }},
+		{Name: "ari", Check: func(_ context.Context) error { return errProbeDown }},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -129,7 +129,7 @@ func TestShutdown(t *testing.T) {
 
 	select {
 	case err := <-serveErr:
-		if err != http.ErrServerClosed {
+		if !errors.Is(err, http.ErrServerClosed) {
 			t.Errorf("Serve() returned %v, want %v", err, http.ErrServerClosed)
 		}
 	case <-time.After(time.Second):
@@ -138,7 +138,7 @@ func TestShutdown(t *testing.T) {
 }
 
 func TestNewWithHandlers_MountsExtraRoutes(t *testing.T) {
-	extra := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	extra := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("rpc"))
 	})

@@ -139,7 +139,7 @@ func (s *Service) uncachedEntitlement(ctx context.Context) (domain.Entitlement, 
 	if _, verr := domain.VerifyToken(stored.SignedPayload, stored.Signature, s.keys); verr != nil {
 		s.logger.Warn("licensing: stored licence failed verification, degrading",
 			"instance_id", stored.InstanceID)
-		return domain.DegradedEntitlement(domain.Entitlement{}, domain.ReasonTampered), nil
+		return domain.DegradedEntitlement(domain.Entitlement{}, domain.ReasonTampered), nil //nolint:nilerr // a stored licence that fails verification degrades; it is a state, not an error (BR-LIC-02)
 	}
 	return domain.SetupEntitlement(), nil
 }
@@ -163,7 +163,7 @@ func (s *Service) load(ctx context.Context) (*verifiedLicense, error) {
 		// keys rotated, or it was written by a build we do not trust.
 		// Not cached — the next read re-checks, so restoring a good
 		// licence takes effect without a restart.
-		return nil, nil
+		return nil, nil //nolint:nilerr // nothing cacheable is the answer, not a failure
 	}
 
 	return &verifiedLicense{token: tok, lastConfirmedAt: stored.LastConfirmedAt}, nil

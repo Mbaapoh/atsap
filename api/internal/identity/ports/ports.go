@@ -355,11 +355,11 @@ type RoleBindingStore interface {
 	RevokeRoleBinding(ctx context.Context, binding domain.RoleBinding) error
 }
 
-// ApiKeyStore persists API key records — digests only, never key
+// APIKeyStore persists API key records — digests only, never key
 // material.
-type ApiKeyStore interface {
-	CreateApiKey(ctx context.Context, key domain.ApiKey) error
-	// GetApiKeyByHash resolves a presented key's digest within a tenant.
+type APIKeyStore interface {
+	CreateAPIKey(ctx context.Context, key domain.APIKey) error
+	// GetAPIKeyByHash resolves a presented key's digest within a tenant.
 	//
 	// The tenant is a parameter because api_keys is RLS-protected: a
 	// lookup by digest alone returns nothing with no tenant context set.
@@ -368,8 +368,8 @@ type ApiKeyStore interface {
 	// like every other read rather than needing a privileged role that
 	// can see every tenant's credentials. Naming a tenant authenticates
 	// nothing — the digest comparison does that.
-	GetApiKeyByHash(ctx context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.ApiKey, error)
-	RevokeApiKey(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.ApiKeyID, revokedAt time.Time) error
+	GetAPIKeyByHash(ctx context.Context, tenantID shareddomain.TenantID, keyHash string) (domain.APIKey, error)
+	RevokeAPIKey(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.APIKeyID, revokedAt time.Time) error
 }
 
 // AuditStore appends audit records.

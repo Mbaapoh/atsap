@@ -1,5 +1,5 @@
 // Package domain implements the identity bounded context's aggregates:
-// Tenant, Principal, RoleBinding, ApiKey, and AuditEntry, plus the pure
+// Tenant, Principal, RoleBinding, APIKey, and AuditEntry, plus the pure
 // policy functions that govern them. Zero I/O, and — being Tier 0 (HLD
 // 04-bounded-contexts.md §10.1) — zero dependency on any other bounded
 // context.
@@ -20,6 +20,7 @@ import (
 // (INV-03) — that guarantee lives with the caller, not here.
 type TenantStatus string
 
+// Tenant statuses.
 const (
 	TenantActive    TenantStatus = "ACTIVE"
 	TenantSuspended TenantStatus = "SUSPENDED"
@@ -33,6 +34,7 @@ func (s TenantStatus) Valid() bool {
 // PrincipalStatus is whether an individual account may authenticate.
 type PrincipalStatus string
 
+// Principal statuses.
 const (
 	PrincipalActive   PrincipalStatus = "ACTIVE"
 	PrincipalDisabled PrincipalStatus = "DISABLED"
@@ -48,6 +50,7 @@ func (s PrincipalStatus) Valid() bool {
 // records SystemActorID with ActorSystem rather than inventing one.
 type ActorType string
 
+// Actor types.
 const (
 	ActorPrincipal ActorType = "principal"
 	ActorAPIKey    ActorType = "api_key"
@@ -111,11 +114,11 @@ type RoleBinding struct {
 	CreatedAt time.Time
 }
 
-// ApiKey is a machine credential. The raw key exists only in the
+// APIKey is a machine credential. The raw key exists only in the
 // response that creates it; this record holds a digest and nothing from
 // which the key can be recovered.
-type ApiKey struct {
-	ID          shareddomain.ApiKeyID
+type APIKey struct {
+	ID          shareddomain.APIKeyID
 	TenantID    shareddomain.TenantID
 	PrincipalID shareddomain.PrincipalID
 	KeyHash     string
@@ -126,7 +129,7 @@ type ApiKey struct {
 
 // Usable reports whether the key may authenticate at time now — neither
 // revoked nor past its expiry.
-func (k ApiKey) Usable(now time.Time) bool {
+func (k APIKey) Usable(now time.Time) bool {
 	if k.RevokedAt != nil && !now.Before(*k.RevokedAt) {
 		return false
 	}

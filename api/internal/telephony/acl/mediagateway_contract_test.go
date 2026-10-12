@@ -32,21 +32,21 @@ func (w *wireCapture) LastOriginate() (string, map[string]string, string) {
 	return w.channelID, w.variables, w.timeout
 }
 
-func successMux(t *testing.T, cap *wireCapture) http.HandlerFunc {
+func successMux(t *testing.T, capture *wireCapture) http.HandlerFunc {
 	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/channels":
-			cap.channelID = r.URL.Query().Get("channelId")
-			cap.timeout = r.URL.Query().Get("timeout")
+			capture.channelID = r.URL.Query().Get("channelId")
+			capture.timeout = r.URL.Query().Get("timeout")
 			var body struct {
 				Variables map[string]string `json:"variables"`
 			}
 			if data, err := io.ReadAll(r.Body); err == nil && len(data) > 0 {
 				_ = json.Unmarshal(data, &body)
 			}
-			cap.variables = body.Variables
+			capture.variables = body.Variables
 			_, _ = w.Write([]byte(`{"id":"chan-1"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/bridges":
 			_, _ = w.Write([]byte(`{"id":"bridge-1"}`))
@@ -76,8 +76,8 @@ func newContractGateway(t *testing.T, handler http.HandlerFunc) *acl.MediaGatewa
 }
 
 func TestMediaGatewayAdapter_Contract(t *testing.T) {
-	cap := &wireCapture{}
-	mediatest.Run(t, newContractGateway(t, successMux(t, cap)), cap)
+	capture := &wireCapture{}
+	mediatest.Run(t, newContractGateway(t, successMux(t, capture)), capture)
 }
 
 func TestMediaGatewayAdapter_ContractFailure(t *testing.T) {

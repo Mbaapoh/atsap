@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"time"
 
+	"atsap-api/internal/shared/wire"
+
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -103,7 +105,7 @@ func toCallSummary(c ports.CallSummary) *atsapbxv1.CallSummary {
 		out.EndedAt = timestamppb.New(*c.EndedAt)
 	}
 	if c.AnsweredAt != nil && c.EndedAt != nil && c.EndedAt.After(*c.AnsweredAt) {
-		out.DurationSeconds = int32(c.EndedAt.Sub(*c.AnsweredAt) / time.Second)
+		out.DurationSeconds = wire.Int32(int64(c.EndedAt.Sub(*c.AnsweredAt) / time.Second))
 	}
 	return out
 }
@@ -141,7 +143,7 @@ func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[ats
 			Role:            string(p.Role),
 			EndpointUri:     p.EndpointURI,
 			State:           string(p.State),
-			BillableSeconds: int32(p.BillableSeconds),
+			BillableSeconds: wire.Int32(p.BillableSeconds),
 		})
 	}
 	return connect.NewResponse(resp), nil

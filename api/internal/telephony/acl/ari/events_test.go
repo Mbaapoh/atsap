@@ -2,6 +2,7 @@ package ari
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -114,7 +115,7 @@ func TestClient_StreamEvents_StopsOnContextCancel(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	err := c.StreamEvents(ctx, func(Event) {}, logger)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("StreamEvents() error = %v, want context.Canceled", err)
 	}
 }

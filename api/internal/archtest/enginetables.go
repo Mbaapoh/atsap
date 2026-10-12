@@ -1,12 +1,8 @@
 package archtest
 
 import (
-	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -66,82 +62,26 @@ func ScanEngineTableNames(apiRootDir string) ([]EngineTableUse, error) {
 // rule: it reports each match of pattern in a non-test string literal
 // outside the packages exempt says may name the tables.
 func scanTableNames(apiRootDir string, pattern *regexp.Regexp, exempt func(string) bool) ([]EngineTableUse, error) {
+	// Test files are exempt. The invariant this protects is that SHIPPING
+	// code outside the ACL never speaks the engine's vocabulary; a test
+	// that verifies the ACL actually wrote the rows it claims to, or that
+	// the schema has the grants it should, cannot do so without naming
+	// them. Tests do not ship, so no engine coupling escapes this way.
+	//
+	// The alternative — exempting whole packages because they contain such
+	// a test — would have punched much larger holes: internal/postgres and
+	// internal/pbx/application would both have been waved through
+	// entirely, production code included.
+	skip := func(rel string) bool { return exempt(rel) || strings.HasSuffix(rel, "_test.go") }
+
 	var uses []EngineTableUse
-
-	for _, sub := range []string{"internal", "cmd"} {
-		root := filepath.Join(apiRootDir, sub)
-		if _, err := os.Stat(root); os.IsNotExist(err) {
-			continue
-		}
-		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return fmt.Errorf("walk %s: %w", path, err)
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") {
-				return nil
-			}
-
-			rel, err := filepath.Rel(apiRootDir, path)
-			if err != nil {
-				return fmt.Errorf("relativize %s: %w", path, err)
-			}
-			rel = filepath.ToSlash(rel)
-			if exempt(rel) {
-				return nil
-			}
-
-			// Test files are exempt. The invariant this protects is that
-			// SHIPPING code outside the ACL never speaks the engine's
-			// vocabulary; a test that verifies the ACL actually wrote the
-			// rows it claims to, or that the schema has the grants it
-			// should, cannot do so without naming them. Tests do not ship,
-			// so no engine coupling escapes this way.
-			//
-			// The alternative — exempting whole packages because they
-			// contain such a test — would have punched much larger holes:
-			// internal/postgres and internal/pbx/application would both
-			// have been waved through entirely, production code included.
-			if strings.HasSuffix(rel, "_test.go") {
-				return nil
-			}
-
-			// Only STRING LITERALS are inspected, never comments.
-			//
-			// A doc comment explaining why a projection exists, or why a
-			// column is deliberately empty, is exactly the documentation
-			// this codebase wants; flagging it would punish good practice
-			// and push the explanation out of the file that needs it. What
-			// must not appear outside the ACL is a *query* naming an engine
-			// table, and a query is a string.
-			fset := token.NewFileSet()
-			file, err := parser.ParseFile(fset, path, nil, 0)
-			if err != nil {
-				return fmt.Errorf("parse %s: %w", path, err)
-			}
-
-			seen := map[string]bool{}
-			ast.Inspect(file, func(n ast.Node) bool {
-				lit, ok := n.(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					return true
-				}
-				for _, sub := range pattern.FindAllStringSubmatch(lit.Value, -1) {
-					m := sub[len(sub)-1]
-					if seen[m] {
-						continue
-					}
-					seen[m] = true
-					uses = append(uses, EngineTableUse{File: rel, Table: m})
-				}
-				return true
-			})
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
+	err := forEachGoFile(apiRootDir, skip, func(rel string, file *ast.File) error {
+		uses = append(uses, tableNamesIn(rel, file, pattern)...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	sort.Slice(uses, func(i, j int) bool {
 		if uses[i].File != uses[j].File {
 			return uses[i].File < uses[j].File
@@ -149,6 +89,35 @@ func scanTableNames(apiRootDir string, pattern *regexp.Regexp, exempt func(strin
 		return uses[i].Table < uses[j].Table
 	})
 	return uses, nil
+}
+
+// tableNamesIn reports the engine table names one file's string literals
+// mention, each once.
+//
+// Only STRING LITERALS are inspected, never comments. A doc comment
+// explaining why a projection exists, or why a column is deliberately
+// empty, is exactly the documentation this codebase wants; flagging it
+// would punish good practice and push the explanation out of the file
+// that needs it. What must not appear outside the ACL is a *query* naming
+// an engine table, and a query is a string.
+func tableNamesIn(rel string, file *ast.File, pattern *regexp.Regexp) []EngineTableUse {
+	var uses []EngineTableUse
+	seen := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		for _, sub := range pattern.FindAllStringSubmatch(lit.Value, -1) {
+			m := sub[len(sub)-1]
+			if !seen[m] {
+				seen[m] = true
+				uses = append(uses, EngineTableUse{File: rel, Table: m})
+			}
+		}
+		return true
+	})
+	return uses
 }
 
 // isEngineTableExempt reports whether relPath sits under a package

@@ -465,7 +465,7 @@ func TestRevokeAPIKey(t *testing.T) {
 	t.Run("revocation reaches the store and is audited", func(t *testing.T) {
 		h := newHarness(t)
 		tenant, principal := h.seedTenantAndPrincipal(t, "admin", "correct-horse-battery-staple")
-		keyID := shareddomain.NewApiKeyID()
+		keyID := shareddomain.NewAPIKeyID()
 
 		err := h.svc.RevokeAPIKey(context.Background(),
 			application.PrincipalActor(principal.ID, nil), tenant.ID, keyID)
@@ -494,7 +494,7 @@ func TestRevokeAPIKey(t *testing.T) {
 		before := len(h.stores.Audit)
 
 		err := h.svc.RevokeAPIKey(context.Background(),
-			application.PrincipalActor(principal.ID, nil), tenant.ID, shareddomain.NewApiKeyID())
+			application.PrincipalActor(principal.ID, nil), tenant.ID, shareddomain.NewAPIKeyID())
 
 		require.Error(t, err)
 		assert.Len(t, h.stores.Audit, before,
@@ -507,7 +507,7 @@ func TestRevokeAPIKey(t *testing.T) {
 		tenant, principal := h.seedTenantAndPrincipal(t, "admin", "correct-horse-battery-staple")
 
 		require.NoError(t, h.svc.RevokeAPIKey(context.Background(),
-			application.PrincipalActor(principal.ID, nil), tenant.ID, shareddomain.NewApiKeyID()))
+			application.PrincipalActor(principal.ID, nil), tenant.ID, shareddomain.NewAPIKeyID()))
 
 		for _, e := range h.stores.Audit {
 			raw, err := json.Marshal(e)

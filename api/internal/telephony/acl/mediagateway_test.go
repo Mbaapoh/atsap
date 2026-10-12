@@ -41,7 +41,7 @@ func TestMediaGatewayAdapter_Originate(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_Originate_Error(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	_, err := gw.Originate(context.Background(), ports.OriginateRequest{EndpointURI: "PJSIP/1000"})
@@ -49,7 +49,7 @@ func TestMediaGatewayAdapter_Originate_Error(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_CreateBridge(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":"bridge1"}`))
 	})
@@ -59,7 +59,7 @@ func TestMediaGatewayAdapter_CreateBridge(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_CreateBridge_Error(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	_, err := gw.CreateBridge(context.Background(), "mixing")
@@ -78,7 +78,7 @@ func TestMediaGatewayAdapter_AddChannelToBridge(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_AddChannelToBridge_Error(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	err := gw.AddChannelToBridge(context.Background(), "bridge1", "chan1")
@@ -97,7 +97,7 @@ func TestMediaGatewayAdapter_DestroyBridge(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_DestroyBridge_Error(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	err := gw.DestroyBridge(context.Background(), "bridge1")
@@ -117,7 +117,7 @@ func TestMediaGatewayAdapter_StartPlayback(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_StartPlayback_Error(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	err := gw.StartPlayback(context.Background(), "chan1", "sound:hello")
@@ -125,7 +125,7 @@ func TestMediaGatewayAdapter_StartPlayback_Error(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_StartSnoop_NotImplemented(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("StartSnoop must not make an ARI call in this change")
 	})
 	_, err := gw.StartSnoop(context.Background(), "chan1", ports.SnoopRequest{})
@@ -146,7 +146,7 @@ func TestMediaGatewayAdapter_DestroyChannel(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_DestroyChannel_Error(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	err := gw.DestroyChannel(context.Background(), "chan1")
@@ -181,7 +181,7 @@ func TestMediaGatewayAdapter_RejectChannel_MapsCause(t *testing.T) {
 }
 
 func TestMediaGatewayAdapter_RejectChannel_RefusalNoneIsAnError(t *testing.T) {
-	gw := newTestGateway(t, func(w http.ResponseWriter, r *http.Request) {
+	gw := newTestGateway(t, func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("a refusal that refuses nothing must not reach the engine")
 	})
 	assert.Error(t, gw.RejectChannel(context.Background(), "chan1", ports.RefusalNone))

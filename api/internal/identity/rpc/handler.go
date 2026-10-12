@@ -203,7 +203,8 @@ func (h *IdentityHandler) GrantRole(ctx context.Context, req *connect.Request[at
 
 // --- API keys --------------------------------------------------------
 
-func (h *IdentityHandler) IssueApiKey(ctx context.Context, req *connect.Request[atsapbxv1.IssueApiKeyRequest]) (*connect.Response[atsapbxv1.IssueApiKeyResponse], error) {
+func (h *IdentityHandler) IssueApiKey( //nolint:revive // name fixed by the generated IdentityServiceHandler (proto rpc IssueApiKey)
+	ctx context.Context, req *connect.Request[atsapbxv1.IssueApiKeyRequest]) (*connect.Response[atsapbxv1.IssueApiKeyResponse], error) {
 	actor, err := h.authorizeForTenant(ctx, "apikey.issue", req, req.Msg.GetTenantId())
 	if err != nil {
 		return nil, err
@@ -235,7 +236,8 @@ func (h *IdentityHandler) IssueApiKey(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(resp), nil
 }
 
-func (h *IdentityHandler) RevokeApiKey(ctx context.Context, req *connect.Request[atsapbxv1.RevokeApiKeyRequest]) (*connect.Response[atsapbxv1.RevokeApiKeyResponse], error) {
+func (h *IdentityHandler) RevokeApiKey( //nolint:revive // name fixed by the generated IdentityServiceHandler (proto rpc RevokeApiKey)
+	ctx context.Context, req *connect.Request[atsapbxv1.RevokeApiKeyRequest]) (*connect.Response[atsapbxv1.RevokeApiKeyResponse], error) {
 	actor, err := h.authorizeForTenant(ctx, "apikey.revoke", req, req.Msg.GetTenantId())
 	if err != nil {
 		return nil, err
@@ -244,7 +246,7 @@ func (h *IdentityHandler) RevokeApiKey(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid tenant_id"))
 	}
-	keyID, err := shareddomain.ParseApiKeyID(req.Msg.GetApiKeyId())
+	keyID, err := shareddomain.ParseAPIKeyID(req.Msg.GetApiKeyId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid api_key_id"))
 	}
@@ -515,7 +517,7 @@ func toProtoPrincipal(p domain.Principal) *atsapbxv1.Principal {
 		TenantId:    p.TenantID.String(),
 		// The deprecated username carries the email, for clients that
 		// still read it (design D9).
-		Username:    p.Email, //nolint:staticcheck // deprecated field kept filled deliberately
+		Username:    p.Email, // deprecated, kept filled deliberately
 		Email:       p.Email,
 		Role:        p.Role,
 		Status:      principalStatusToProto(p.Status),

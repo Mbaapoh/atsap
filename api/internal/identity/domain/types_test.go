@@ -70,17 +70,17 @@ func TestApiKey_Usable(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		key       domain.ApiKey
+		key       domain.APIKey
 		wantUsabe bool
 	}{
-		{"no expiry, not revoked", domain.ApiKey{}, true},
-		{"expires in the future", domain.ApiKey{ExpiresAt: &future}, true},
-		{"already expired", domain.ApiKey{ExpiresAt: &past}, false},
-		{"expires exactly now is not usable", domain.ApiKey{ExpiresAt: &now}, false},
-		{"revoked in the past", domain.ApiKey{RevokedAt: &past}, false},
-		{"revoked exactly now is not usable", domain.ApiKey{RevokedAt: &now}, false},
-		{"revocation scheduled in the future is still usable", domain.ApiKey{RevokedAt: &future}, true},
-		{"revoked wins over a valid expiry", domain.ApiKey{RevokedAt: &past, ExpiresAt: &future}, false},
+		{"no expiry, not revoked", domain.APIKey{}, true},
+		{"expires in the future", domain.APIKey{ExpiresAt: &future}, true},
+		{"already expired", domain.APIKey{ExpiresAt: &past}, false},
+		{"expires exactly now is not usable", domain.APIKey{ExpiresAt: &now}, false},
+		{"revoked in the past", domain.APIKey{RevokedAt: &past}, false},
+		{"revoked exactly now is not usable", domain.APIKey{RevokedAt: &now}, false},
+		{"revocation scheduled in the future is still usable", domain.APIKey{RevokedAt: &future}, true},
+		{"revoked wins over a valid expiry", domain.APIKey{RevokedAt: &past, ExpiresAt: &future}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

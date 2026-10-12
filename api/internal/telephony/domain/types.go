@@ -13,6 +13,7 @@ import (
 // Direction is which side originated a Call.
 type Direction string
 
+// Call directions.
 const (
 	Inbound  Direction = "INBOUND"
 	Outbound Direction = "OUTBOUND"
@@ -22,6 +23,7 @@ const (
 // CallState is a Call's position in its lifecycle (PRD §11.1).
 type CallState string
 
+// Call states, in lifecycle order.
 const (
 	CallInitiated  CallState = "Initiated"
 	CallScreening  CallState = "Screening"
@@ -41,6 +43,7 @@ const (
 // Independence Rule").
 type ParticipantState string
 
+// Participant states.
 const (
 	ParticipantInvited      ParticipantState = "Invited"
 	ParticipantRinging      ParticipantState = "Ringing"
@@ -55,6 +58,7 @@ const (
 // columns (D-18).
 type ParticipantRole string
 
+// Participant roles.
 const (
 	RoleCaller     ParticipantRole = "CALLER"
 	RoleAgent      ParticipantRole = "AGENT"

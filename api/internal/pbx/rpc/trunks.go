@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	"atsap-api/internal/shared/wire"
+
 	"connectrpc.com/connect"
 
 	atsapbxv1 "atsap-api/internal/genproto/atsapbx/v1"
@@ -171,16 +173,16 @@ func portOrDefault(p int32) int {
 
 func toProtoTrunk(v ports.TrunkView) *atsapbxv1.Trunk {
 	return &atsapbxv1.Trunk{
-		TrunkId: v.ID.String(), Name: v.Name, Host: v.Host, Port: int32(v.Port),
+		TrunkId: v.ID.String(), Name: v.Name, Host: v.Host, Port: wire.Int32(v.Port),
 		AuthUsername: v.AuthUsername, HasSecret: v.HasSecret,
-		ChannelLimit: int32(v.ChannelLimit), Priority: int32(v.Priority), Health: healthToProto(v.Health),
+		ChannelLimit: wire.Int32(v.ChannelLimit), Priority: wire.Int32(v.Priority), Health: healthToProto(v.Health),
 	}
 }
 
 func toProtoRoute(v ports.RouteView) *atsapbxv1.Route {
 	return &atsapbxv1.Route{
 		RouteId: v.ID.String(), PrefixPattern: v.PrefixPattern, TrunkId: v.TrunkID.String(),
-		CostPerMinuteMicros: v.CostPerMinute, Priority: int32(v.Priority),
+		CostPerMinuteMicros: v.CostPerMinute, Priority: wire.Int32(v.Priority),
 	}
 }
 

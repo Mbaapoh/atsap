@@ -136,7 +136,7 @@ type SignInMethod struct {
 func (s *Service) DiscoverSignIn(ctx context.Context, rawEmail string) (SignInMethod, error) {
 	email, err := domain.NormalizeEmail(rawEmail)
 	if err != nil {
-		return SignInMethod{}, nil // garbage gets the default answer, like any unknown email
+		return SignInMethod{}, nil //nolint:nilerr // garbage gets the default answer, like any unknown email (D-63: no account oracle)
 	}
 	claim, provider, err := s.providers.ProviderForDomain(ctx, domain.EmailDomain(email))
 	if errors.Is(err, ports.ErrNotFound) {
@@ -405,7 +405,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, rawEmail string) err
 	now := s.now().UTC()
 	email, err := domain.NormalizeEmail(rawEmail)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // an unusable address gets the same answer as every other (D-64)
 	}
 	if src := sourceFrom(ctx); src != "" {
 		key := []string{throttleKey("reset-source", src)}

@@ -174,8 +174,8 @@ console-install: ## Install the console's locked dependencies (npm ci)
 console-gen: ## Regenerate the console's TypeScript API clients from api/proto
 	cd console && mise exec -- npm run gen
 
-console-test: ## Typecheck and run the console's component tests
-	cd console && mise exec -- npm run typecheck && mise exec -- npm test
+console-test: ## Typecheck and run the console's component tests with coverage (floors: quality/coverage-floors.json)
+	cd console && mise exec -- npm run typecheck && mise exec -- npm run coverage
 
 console-build: ## Build the console for production into console/dist
 	cd console && mise exec -- npm run build
@@ -207,6 +207,62 @@ diagrams: ## Render every mermaid diagram in docs/ (needs Chromium; not in ci)
 	./scripts/check-diagrams.sh
 
 ci: docs lint vuln test ## Full local gate in pipeline order
+
+##@ Quality and supply chain (D-71)
+
+# Every tool here is pinned in .mise.toml and run through it, so the gate
+# is the same on a laptop and in Jenkins. Reports land in coverage/ and
+# quality-reports/ (both gitignored); Jenkins archives and publishes them.
+TOOL := mise exec --
+# D-35, as clarified by D-71: OSI/FSF permissive licences only. Named,
+# reasoned exceptions live in quality/osv-scanner.toml.
+LICENCE_ALLOWLIST := Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC,PostgreSQL,MIT-0,BlueOak-1.0.0,CC0-1.0
+# Trivy's database: GHCR first, Google's mirror as the fallback.
+export TRIVY_DB_REPOSITORY ?= ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2
+REPORTS := quality-reports
+
+.PHONY: coverage coverage-all coverage-ratchet sca secrets secrets-history sbom image-scan quality
+coverage: ## Go unit coverage, merged and gated against the "unit" floors
+	TIERS="unit" $(TOOL) ./scripts/coverage-go.sh
+
+coverage-all: ## Go coverage across unit, integration and e2e (Tilt rig), gated against the "all" floors
+	TIERS="unit integration e2e" $(TOOL) ./scripts/coverage-go.sh
+
+coverage-ratchet: ## Raise every coverage floor to what was just measured (never lowers); commit the result
+	cd api && $(TOOL) go run ./cmd/covergate -profile ../coverage/go/merged.out -floors ../quality/coverage-floors.json -section "$${SECTION:-unit}" -ratchet
+	cd console && $(TOOL) npm run coverage:ratchet
+
+sca: ## Dependency vulnerabilities and licences (OSV-Scanner, D-35 allowlist) plus govulncheck
+	mkdir -p $(REPORTS)
+	$(TOOL) osv-scanner scan source --config quality/osv-scanner.toml \
+		-L api/go.mod -L console/package-lock.json --licenses="$(LICENCE_ALLOWLIST)" \
+		--format sarif --output-file $(REPORTS)/osv.sarif || \
+		{ $(TOOL) osv-scanner scan source --config quality/osv-scanner.toml \
+			-L api/go.mod -L console/package-lock.json --licenses="$(LICENCE_ALLOWLIST)"; exit 1; }
+	cd api && $(TOOL) go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+secrets: ## Committed-secret scan of the working tree (gitleaks)
+	mkdir -p $(REPORTS)
+	$(TOOL) gitleaks dir --no-banner --redact -c quality/gitleaks.toml --max-target-megabytes 5 \
+		--report-format sarif --report-path $(REPORTS)/gitleaks.sarif .
+
+secrets-history: ## Secret scan of the full git history (gitleaks)
+	$(TOOL) gitleaks git --no-banner --redact -c quality/gitleaks.toml .
+
+image-scan: docker-build ## Trivy: HIGH/CRITICAL vulnerabilities in the production images fail
+	for img in atsap-api:local atsap-core:local; do \
+		$(TOOL) trivy image --quiet --timeout 20m --scanners vuln --severity HIGH,CRITICAL --exit-code 1 "$$img" || exit 1; \
+	done
+
+sbom: docker-build ## CycloneDX SBOM per production image
+	mkdir -p $(REPORTS)
+	$(TOOL) trivy image --quiet --timeout 20m --format cyclonedx --output $(REPORTS)/sbom-atsap-api.cdx.json atsap-api:local
+	$(TOOL) trivy image --quiet --timeout 20m --format cyclonedx --output $(REPORTS)/sbom-atsap-core.cdx.json atsap-core:local
+
+# console-lint joins this gate once the console linter is decided: the
+# approved ESLint set cannot parse TypeScript 7 (see quality-and-supply-
+# chain-gates task 3.1).
+quality: lint coverage console-test sca secrets console-audit ## The hermetic quality gate: lint, coverage, SCA, secrets, audit (both stacks)
 
 ##@ Images, UAT and deploy
 

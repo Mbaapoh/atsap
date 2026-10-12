@@ -177,7 +177,9 @@ func (h *AuthHandler) setCookie(header http.Header, secret string, expires time.
 	if maxAge < 1 {
 		maxAge = 1
 	}
-	c := &http.Cookie{
+	// Secure is dropped only by the dev rig's ATSAPBX_COOKIE_INSECURE (plain
+	// HTTP), which the app logs a warning for at startup.
+	c := &http.Cookie{ //nolint:gosec // HttpOnly and SameSite=Strict always; Secure unless the dev-only flag
 		Name: RefreshCookie, Value: secret, Path: refreshCookiePath,
 		MaxAge: maxAge, HttpOnly: true, Secure: !h.insecure, SameSite: http.SameSiteStrictMode,
 	}
@@ -185,7 +187,7 @@ func (h *AuthHandler) setCookie(header http.Header, secret string, expires time.
 }
 
 func (h *AuthHandler) clearCookie(header http.Header) {
-	c := &http.Cookie{
+	c := &http.Cookie{ //nolint:gosec // as setCookie: Secure unless the dev-only flag
 		Name: RefreshCookie, Value: "", Path: refreshCookiePath,
 		MaxAge: -1, HttpOnly: true, Secure: !h.insecure, SameSite: http.SameSiteStrictMode,
 	}

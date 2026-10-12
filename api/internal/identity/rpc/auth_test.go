@@ -244,7 +244,7 @@ func TestInterceptor_MustChangeTokenOnlyChangesItsPassword(t *testing.T) {
 		ExemptProcedure(application.AuthenticateUserProcedure).
 		AllowWhilePasswordChange(rpc.PasswordChangeProcedures...)
 	call := func(procedure string) error {
-		next := func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		next := func(_ context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 			return connect.NewResponse(&atsapbxv1.SignOutResponse{}), nil
 		}
 		req := &specRequest{Request: connect.NewRequest(&atsapbxv1.SignOutRequest{}), procedure: procedure}
@@ -303,13 +303,13 @@ func TestProvisionPrincipal_WireResponseRevealsNoExistingAccount(t *testing.T) {
 	existing, fresh := provision("ana@example.test"), provision("bob@example.test")
 	norm := func(p *atsapbxv1.Principal) string {
 		c := proto.Clone(p).(*atsapbxv1.Principal)
-		c.PrincipalId, c.UserId, c.Email, c.Username, c.CreatedAt = "", "", "", "", nil //nolint:staticcheck // deprecated field cleared for comparison
+		c.PrincipalId, c.UserId, c.Email, c.Username, c.CreatedAt = "", "", "", "", nil // the deprecated field is cleared for comparison
 		b, err := protojson.Marshal(c)
 		require.NoError(t, err)
 		return string(b)
 	}
 	assert.Equal(t, norm(fresh), norm(existing), "byte-identical apart from identifiers")
-	assert.Equal(t, "ana@example.test", existing.GetUsername(), "the deprecated username carries the email") //nolint:staticcheck
+	assert.Equal(t, "ana@example.test", existing.GetUsername(), "the deprecated username carries the email")
 }
 
 func TestResponses_AuthServiceCarryNoCredentialFields(t *testing.T) {

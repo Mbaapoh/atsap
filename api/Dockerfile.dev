@@ -9,7 +9,7 @@
 # (default: ./cmd/atsap-api). The Tiltfile passes the matching in-container
 # `go build` command per service — keep the two in sync.
 
-FROM golang:1.25-bookworm
+FROM golang:1.26-bookworm
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -25,7 +25,13 @@ ARG CMD_PATH=./cmd/atsap-api
 # Empty unless `make dev-licence` supplied one (see api/Dockerfile).
 ARG DEV_LICENCE_PUBKEY=""
 ENV DEV_LICENCE_LDFLAGS="-X atsap-api/internal/licensing/domain.developmentPublicKeyHex=${DEV_LICENCE_PUBKEY}"
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="${DEV_LICENCE_LDFLAGS}" -o /out/app ${CMD_PATH}
+# Coverage-instrumented (quality-and-supply-chain-gates, D-71): the dev
+# binary counts which statements the e2e and UAT tiers exercise and writes
+# the counters to GOCOVERDIR when it exits (`make coverage` restarts it to
+# collect them). Dev only: production is built by api/Dockerfile, without.
+ENV DEV_COVER_FLAGS="-cover -covermode=atomic -coverpkg=atsap-api/..."
+ENV GOCOVERDIR=/cover
+RUN mkdir -p /cover && CGO_ENABLED=0 go build -trimpath ${DEV_COVER_FLAGS} -ldflags="${DEV_LICENCE_LDFLAGS}" -o /out/app ${CMD_PATH}
 
 EXPOSE 8080
 # WORKDIR stays /src so the relative "migrations" path resolves exactly

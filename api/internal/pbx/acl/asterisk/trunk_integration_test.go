@@ -33,10 +33,10 @@ func (h *harness) projectTrunk(t *testing.T, tr domain.Trunk, secret []byte) {
 }
 
 type trunkRows struct {
-	endpoint, aor, auth                   bool
-	transport, context_, fromDomain       string
-	inboundAuth, outboundAuth, fromUser   *string
-	contact, authType, username, password *string
+	endpoint, aor, auth                    bool
+	transport, dialplanContext, fromDomain string
+	inboundAuth, outboundAuth, fromUser    *string
+	contact, authType, username, password  *string
 }
 
 func (h *harness) readTrunk(t *testing.T, id shareddomain.TrunkID) trunkRows {
@@ -46,7 +46,7 @@ func (h *harness) readTrunk(t *testing.T, id shareddomain.TrunkID) trunkRows {
 	var r trunkRows
 	err := h.pool.Unwrap().QueryRow(ctx, `SELECT transport, context, from_domain, auth, outbound_auth, from_user
 		FROM ps_endpoints WHERE id = $1`, identifier).
-		Scan(&r.transport, &r.context_, &r.fromDomain, &r.inboundAuth, &r.outboundAuth, &r.fromUser)
+		Scan(&r.transport, &r.dialplanContext, &r.fromDomain, &r.inboundAuth, &r.outboundAuth, &r.fromUser)
 	r.endpoint = err == nil
 	r.aor = h.pool.Unwrap().QueryRow(ctx, `SELECT contact FROM ps_aors WHERE id = $1`, identifier).Scan(&r.contact) == nil
 	r.auth = h.pool.Unwrap().QueryRow(ctx, `SELECT auth_type, username, password FROM ps_auths WHERE id = $1`, identifier).
