@@ -33,7 +33,7 @@ help: ## Display this help
 
 ##@ Local stack (compose)
 
-.PHONY: env dev dev-licence dev-down dev-app dev-logs rig-restore
+.PHONY: env dev dev-licence dev-down dev-app dev-logs dev-user rig-restore
 env: ## Create .env from .env.example if missing
 	test -f .env || cp .env.example .env
 
@@ -66,6 +66,9 @@ dev-licence: env ## Licence the local dev app with a throwaway dev key
 
 dev-down: ## Stop and remove the dev stack
 	$(COMPOSE) down
+
+dev-user: ## Create or reset a console login (dev@example.test, two Tenants) on the dev rig
+	./scripts/dev-user.sh
 
 dev-app: not-under-tilt ## Rebuild + restart only the app service (when Tilt is NOT running)
 	$(COMPOSE) up -d --build app

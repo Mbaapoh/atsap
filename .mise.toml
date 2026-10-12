@@ -124,3 +124,7 @@ run = "make console-e2e"
 [tasks."console:audit"]
 description = "Audit the console's production dependencies (high and above)"
 run = "make console-audit"
+
+[tasks."dev:user"]
+description = "Create or reset a console login (dev@example.test, two Tenants) on the dev rig"
+run = "make dev-user"
