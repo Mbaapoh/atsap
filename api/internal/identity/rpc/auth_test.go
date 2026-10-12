@@ -33,6 +33,10 @@ type authEnv struct {
 	*env
 	auth *rpc.AuthHandler
 	mail *memstore.Outbox
+	// now is the service's clock; tests move it (for example past a
+	// refresh grace window). It starts at the real time so cookie
+	// lifetimes computed by the handler stay positive.
+	now time.Time
 }
 
 func newAuthEnv(t *testing.T) *authEnv {
@@ -44,13 +48,13 @@ func newAuthEnv(t *testing.T) *authEnv {
 	require.NoError(t, err)
 	logger := slog.New(slog.NewTextHandler(discardWriter{}, &slog.HandlerOptions{Level: slog.LevelError}))
 	mail := &memstore.Outbox{}
+	e := &authEnv{mail: mail, now: time.Now().UTC()}
 	svc := application.NewService(application.StoresOf(st), st, application.NewPasswordHasher(), issuer, logger).
-		WithMailer(mail, "https://console.example.test")
-	return &authEnv{
-		env:  &env{svc: svc, h: rpc.NewIdentityHandler(svc), st: st},
-		auth: rpc.NewAuthHandler(svc, rpc.SourceResolver{}, false),
-		mail: mail,
-	}
+		WithMailer(mail, "https://console.example.test").
+		WithClock(func() time.Time { return e.now })
+	e.env = &env{svc: svc, h: rpc.NewIdentityHandler(svc), st: st}
+	e.auth = rpc.NewAuthHandler(svc, rpc.SourceResolver{}, false)
+	return e
 }
 
 func cookieFrom(t *testing.T, h http.Header) *http.Cookie {
@@ -98,6 +102,35 @@ func TestSignIn_CookieCarriesTheSecretAndNothingElseDoes(t *testing.T) {
 	assert.False(t, cookieFrom(t, resp.Header()).Secure, "only the dev flag drops Secure")
 }
 
+// identity-refresh-grace over the wire: the browser kept the previous
+// cookie because the refresh response was lost; inside the window its
+// next refresh succeeds and sets a new cookie.
+func TestRefresh_LostResponseRetriedOverTheWire(t *testing.T) {
+	e := newAuthEnv(t)
+	tenant := e.seedTenant(t, "Acme")
+	e.seedUser(t, tenant, "ana", "correct horse battery", "AGENT", "")
+	ctx := context.Background()
+
+	signed, err := e.auth.SignIn(ctx, connect.NewRequest(&atsapbxv1.SignInRequest{Email: "ana@example.test", Password: "correct horse battery"}))
+	require.NoError(t, err)
+	kept := cookieFrom(t, signed.Header())
+	lost, err := e.auth.RefreshSession(ctx, withCookie(&atsapbxv1.RefreshSessionRequest{}, kept))
+	require.NoError(t, err)
+	lostCookie := cookieFrom(t, lost.Header())
+
+	e.now = e.now.Add(5 * time.Second)
+	retried, err := e.auth.RefreshSession(ctx, withCookie(&atsapbxv1.RefreshSessionRequest{}, kept))
+	require.NoError(t, err, "inside the window the previous cookie is a retry")
+	fresh := cookieFrom(t, retried.Header())
+	assert.NotEqual(t, lostCookie.Value, fresh.Value)
+	assert.NotEmpty(t, retried.Msg.GetAccess().GetToken())
+
+	_, err = e.auth.RefreshSession(ctx, withCookie(&atsapbxv1.RefreshSessionRequest{}, lostCookie))
+	requireCode(t, err, connect.CodeUnauthenticated)
+	_, err = e.auth.RefreshSession(ctx, withCookie(&atsapbxv1.RefreshSessionRequest{}, fresh))
+	require.NoError(t, err, "the session goes on")
+}
+
 func TestRefreshAndSignOut_OverTheWire(t *testing.T) {
 	e := newAuthEnv(t)
 	tenant := e.seedTenant(t, "Acme")
@@ -116,6 +149,7 @@ func TestRefreshAndSignOut_OverTheWire(t *testing.T) {
 	_, err = e.auth.RefreshSession(ctx, withCookie(&atsapbxv1.RefreshSessionRequest{}, nil))
 	requireCode(t, err, connect.CodeUnauthenticated)
 
+	e.now = e.now.Add(domain.RefreshGraceWindow)
 	_, err = e.auth.RefreshSession(ctx, withCookie(&atsapbxv1.RefreshSessionRequest{}, first))
 	requireCode(t, err, connect.CodeUnauthenticated)
 	var cerr *connect.Error

@@ -133,7 +133,62 @@ func TestAccounts_ConcurrentRefreshesSerializeOnTheRow(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, domain.RefreshRotated, outcomes[0])
-	assert.Equal(t, domain.RefreshReused, outcomes[1], "after the first commits, the same secret is a replay")
+	assert.Equal(t, domain.RefreshRetried, outcomes[1],
+		"after the first commits, the same secret inside its grace window is a retry (identity-refresh-grace)")
+
+	// The same secret once the window has closed is a replay.
+	_, _ = store.UpdateSessionByDigest(ctx, digest, func(cur domain.Session) (domain.Session, error) {
+		next, out := cur.Refresh(digest, strings.Repeat("3", 64), now.Add(time.Second+domain.RefreshGraceWindow))
+		outcomes[0] = out
+		return next, nil
+	})
+	assert.Equal(t, domain.RefreshReused, outcomes[0])
+}
+
+func TestAccounts_GraceWindowPersists(t *testing.T) {
+	store, tenantA, _ := newStore(t)
+	ctx := context.Background()
+	p := member(t, store, tenantA, "ana")
+	// Microseconds: Postgres keeps no more, so the stored time is exactly
+	// the one the domain computed.
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	d1, d2, d3 := strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64)
+	sess := domain.NewSession(p.UserID, d1, now)
+	require.NoError(t, store.CreateSession(ctx, sess))
+
+	stored, err := store.GetSession(ctx, sess.ID)
+	require.NoError(t, err)
+	assert.Nil(t, stored.PreviousRotatedAt, "a new session has no previous secret, so no window")
+
+	rotate := func(presented, next string, at time.Time) domain.RefreshOutcome {
+		var out domain.RefreshOutcome
+		_, err := store.UpdateSessionByDigest(ctx, presented, func(cur domain.Session) (domain.Session, error) {
+			n, o := cur.Refresh(presented, next, at)
+			out = o
+			return n, nil
+		})
+		require.NoError(t, err)
+		return out
+	}
+
+	rotatedAt := now.Add(time.Minute)
+	require.Equal(t, domain.RefreshRotated, rotate(d1, d2, rotatedAt))
+	stored, err = store.GetSession(ctx, sess.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.PreviousRotatedAt)
+	assert.True(t, rotatedAt.Equal(*stored.PreviousRotatedAt), "the rotation time is stored")
+
+	require.Equal(t, domain.RefreshRetried, rotate(d1, d3, rotatedAt.Add(20*time.Second)))
+	stored, err = store.GetSession(ctx, sess.ID)
+	require.NoError(t, err)
+	assert.True(t, rotatedAt.Equal(*stored.PreviousRotatedAt), "a retry leaves the window where it was")
+	assert.Equal(t, d3, stored.RefreshDigest)
+	assert.Equal(t, d1, stored.PreviousDigest)
+
+	require.Equal(t, domain.RefreshReused, rotate(d1, strings.Repeat("e", 64), rotatedAt.Add(domain.RefreshGraceWindow)))
+	stored, err = store.GetSession(ctx, sess.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, stored.RevokedAt, "the revocation after the window persists")
 }
 
 func TestAccounts_SessionsRevokeAndRedeemTicketAtomically(t *testing.T) {

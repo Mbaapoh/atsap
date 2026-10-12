@@ -130,6 +130,7 @@ that link.
 | Change | State | Tasks |
 |---|---|---|
 | `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2), licence (2.3) done | 6/11 |
+| `identity-refresh-grace` | Implemented and verified on every tier (D-62 amendment: 30-second grace for the previous refresh secret); ready to archive | 7/7 |
 
 ## Open gaps
 
@@ -140,7 +141,6 @@ design; *accepted* = no fix planned.
 
 | Gap | Where it came from | Severity |
 |---|---|---|
-| A refresh interrupted in flight (reload, closed tab, dropped connection) ends the session: the browser keeps the just-rotated secret and the server treats it as a replay (D-62), logging a false security warning | console-foundation 2.2 (`auth.rig.spec.ts`, marked expected-fail) | **High** — pilot: needs a short grace window for the previous secret; owner decision pending |
 | Two trunks on one carrier address are indistinguishable for inbound calls | inbound G3 | **High** — pilot: wrong-tenant attribution once two tenants share a carrier |
 | Before activation (Setup), tenant and extension caps read 0 = unlimited | license-provisioning-enforcement | Medium — hardening: provisioning is unbounded until a licence is applied |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |

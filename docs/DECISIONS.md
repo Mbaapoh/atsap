@@ -1928,6 +1928,39 @@ that cannot be withdrawn for its whole life.
 authorization is never cached), D-61
 **Traceability:** PRD AC-01.5; HLD 12 §4; LLD-02 §5.3, §10.2
 
+**Amendment (2026-10-12) — a 30-second grace window for the previous
+secret (change `identity-refresh-grace`).** "A refresh secret presented a
+second time revokes the whole session" signed people out by mistake. If a
+refresh's response is lost — a reload, a closed tab or a dropped
+connection while it is in flight — the server has already rotated the
+secret, but the browser still holds the previous one. The console's rig
+e2e reproduced this on every run.
+
+Now, the immediately previous secret presented within **30 seconds** of
+being rotated away is a **retry**: the session rotates again, the secret
+from the lost response stops working, and the retry is recorded as a
+`session.refresh_retried` auth event, logged at INFO. The window:
+- is measured from the rotation (`sessions.previous_rotated_at`);
+- is never extended by a retry;
+- does not exist for sessions rotated before the change.
+
+A secret presented after the window still revokes the session, as before.
+An older secret is refused without revoking.
+
+*Trade-off accepted:* a thief holding the previous secret who uses it
+inside the window takes over the session, and the person is signed out,
+without a replay being flagged. That requires an already-stolen HttpOnly,
+SameSite=Strict, path-scoped cookie. Each use is an auth event, and the
+person can end every session by changing their password.
+
+*Alternatives:*
+- *A per-issue reuse interval (secrets not rotated for N seconds).*
+  Rejected: it alters every refresh, not only the failure case.
+- *A client-side fix.* Impossible: the HttpOnly cookie arrives only in
+  the lost response.
+
+30 seconds matches Okta's default refresh grace period.
+
 ---
 
 **D-63 · Ready for SSO, not built: federation links an issuer and

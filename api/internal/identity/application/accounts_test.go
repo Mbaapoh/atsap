@@ -263,12 +263,51 @@ func TestRefresh_RotatesAndReuseRevokes(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, first.RefreshSecret, second.RefreshSecret)
 
+	a.now = a.now.Add(domain.RefreshGraceWindow)
 	_, err = a.svc.RefreshSession(ctx, first.RefreshSecret, nil)
-	assert.ErrorIs(t, err, ports.ErrSessionNotUsable, "a replayed secret is refused")
+	assert.ErrorIs(t, err, ports.ErrSessionNotUsable, "a replayed secret, past its grace window, is refused")
+	assert.Contains(t, a.logs.String(), "was replayed; session revoked")
 	_, err = a.svc.RefreshSession(ctx, second.RefreshSecret, nil)
 	assert.ErrorIs(t, err, ports.ErrSessionNotUsable, "and the whole session is revoked")
 	_, err = a.validate(second.Access.Token)
 	assert.ErrorIs(t, err, ports.ErrInvalidCredentials, "its access tokens too")
+}
+
+// identity-refresh-grace: a refresh whose response was lost is retried
+// with the previous secret inside its grace window.
+func TestRefresh_LostResponseIsRetriedInsideTheWindow(t *testing.T) {
+	a := newAcct(t)
+	ctx := context.Background()
+	p := a.member(t, a.tenant, "ana@example.com", "correct horse battery", "AGENT")
+	first := a.signIn(t, "ana@example.com", "correct horse battery")
+
+	lost, err := a.svc.RefreshSession(ctx, first.RefreshSecret, nil)
+	require.NoError(t, err, "the server rotated; this response never reached the browser")
+
+	a.now = a.now.Add(20 * time.Second)
+	retried, err := a.svc.RefreshSession(ctx, first.RefreshSecret, nil)
+	require.NoError(t, err, "the browser's previous secret, inside the window, is a retry")
+	require.NotNil(t, retried.Access)
+	assert.NotEqual(t, lost.RefreshSecret, retried.RefreshSecret)
+	_, err = a.validate(retried.Access.Token)
+	require.NoError(t, err)
+
+	_, err = a.svc.RefreshSession(ctx, lost.RefreshSecret, nil)
+	assert.ErrorIs(t, err, ports.ErrSessionNotUsable, "the secret from the lost response no longer works")
+	next, err := a.svc.RefreshSession(ctx, retried.RefreshSecret, nil)
+	require.NoError(t, err, "the session goes on with the retry's secret")
+	require.NotNil(t, next.Access)
+
+	events, err := a.st.ListAuthEvents(ctx, p.UserID, 10)
+	require.NoError(t, err)
+	kinds := make([]domain.AuthEventKind, 0, len(events))
+	for _, e := range events {
+		kinds = append(kinds, e.Kind)
+	}
+	assert.Contains(t, kinds, domain.EventSessionRefreshRetried)
+	assert.NotContains(t, kinds, domain.EventSessionRevoked)
+	assert.Contains(t, a.logs.String(), "refresh retried with the previous secret inside its grace window")
+	assert.NotContains(t, a.logs.String(), `"level":"WARN"`, "a retry is not a security warning")
 }
 
 func TestRefresh_IdleAndAbsoluteExpiry(t *testing.T) {

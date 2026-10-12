@@ -184,7 +184,8 @@ type Session struct {
     UserID          UserID
     PrincipalID     *PrincipalID // the membership the current access token names
     RefreshDigest   string       // SHA-256 of the current secret
-    PreviousDigest  string       // one generation back: presenting it = reuse
+    PreviousDigest  string       // one generation back: a retry within 30 s, else reuse
+    PreviousRotatedAt *time.Time // when PreviousDigest was rotated away: its grace window starts here
     IdleExpiresAt   time.Time    // last use + 30 min
     AbsoluteExpires time.Time    // creation + 12 h
     RevokedAt       *time.Time
@@ -391,7 +392,11 @@ and nothing is merged silently.
   SHA-256 digest, the same reasoning as API keys. It is sent only in an
   `HttpOnly; Secure; SameSite=Strict` cookie scoped to `AuthService`, and
   rotates on every refresh. Sessions last 30 minutes idle and 12 hours
-  absolute. The access token adds `sid` (the session id) and `uid` (the
+  absolute. **Grace (D-62 amendment):** the previous secret, presented
+  within 30 seconds of its rotation, is a retry of a refresh whose
+  response was lost. The session rotates again, an auth event is
+  recorded, and the window does not move. After the window it is reuse
+  and revokes. The access token adds `sid` (the session id) and `uid` (the
   user id) claims.
 - **Key rotation (D-66):** every token header carries a `kid`, the
   first 8 bytes in hex of SHA-256(public key). Tokens are issued with
@@ -507,6 +512,7 @@ was pulled ahead as a result.
 | `auth-cutover-connectrpc` | JWT enforced on every RPC including `TelephonyService`; tenant-match rule | **Archived** 2026-09-08 |
 | `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | **Archived** 2026-10-11 |
 | `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model; D-66 credential kinds, key rotation, off-network recovery | **Archived** 2026-10-11 |
+| `identity-refresh-grace` | D-62 amendment: a 30-second grace window for the previous refresh secret, so a lost refresh response does not end the session | **Implemented** 2026-10-12 |
 | *(future)* `identity-oidc-google` | "Sign in with Google" for Gmail and Workspace (D-67): one installation-wide provider, linked on invitation or from the account screen, never by email; public domains unclaimable | Not proposed; after console slice A |
 | *(future)* `identity-oidc` | Company-domain SSO (Workspace, Entra ID) with provider administration, on the same OIDC code | Not proposed |
 | *(future)* `identity-mfa` | TOTP and passkeys; required MFA for administrator roles. **Phase B, before GA** (D-66 as amended) | Not proposed |

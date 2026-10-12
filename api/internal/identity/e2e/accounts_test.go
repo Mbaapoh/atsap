@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"atsap-api/internal/identity/application"
+	"atsap-api/internal/identity/domain"
 	corepostgres "atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
 )
@@ -113,6 +114,17 @@ func (w *world) cleanup() {
 	}
 	_, _ = w.pool.Unwrap().Exec(ctx, `DELETE FROM users WHERE email LIKE $1`, "%-"+w.run+"@e2e.example.com")
 	_, _ = w.pool.Unwrap().Exec(ctx, `DELETE FROM login_throttle`)
+}
+
+// closeGraceWindow moves the rotation that retired secret back past the
+// grace window, so presenting it is a replay without waiting 30 seconds.
+func (w *world) closeGraceWindow(t *testing.T, secret string) {
+	t.Helper()
+	tag, err := w.pool.Unwrap().Exec(context.Background(), `
+		UPDATE sessions SET previous_rotated_at = previous_rotated_at - $2::interval
+		WHERE previous_digest = $1`, application.DigestSecret(secret), fmt.Sprintf("%d seconds", int(domain.RefreshGraceWindow.Seconds())+1))
+	require.NoError(t, err)
+	require.EqualValues(t, 1, tag.RowsAffected(), "the session that retired the secret")
 }
 
 // browser is a console session: a cookie jar that sends atsa_refresh only
@@ -269,6 +281,9 @@ func TestAccounts_EndToEnd(t *testing.T) {
 		current := refreshCookie(t, b)
 		require.NotEqual(t, old, current, "rotated")
 		w.secrets = append(w.secrets, old, current, s.Access.Token)
+		// Outside the grace window (identity-refresh-grace): the rotation
+		// is moved back past it rather than waiting 30 seconds.
+		w.closeGraceWindow(t, old)
 
 		thief := &http.Client{Timeout: 10 * time.Second}
 		req, _ := http.NewRequest(http.MethodPost, appURL+"/atsapbx.v1.AuthService/RefreshSession", strings.NewReader(`{}`))
@@ -281,6 +296,58 @@ func TestAccounts_EndToEnd(t *testing.T) {
 
 		call(t, b, "AuthService/RefreshSession", "", map[string]any{}, nil, http.StatusUnauthorized)
 		call(t, nil, "TelephonyService/ListCalls", s.Access.Token, map[string]any{"tenantId": w.tenantA.String()}, nil, http.StatusUnauthorized)
+	})
+
+	t.Run("a refresh whose response was lost is retried inside the grace window", func(t *testing.T) {
+		b := browser(t)
+		call(t, b, "AuthService/SignIn", "", map[string]any{"email": w.email("ana"), "password": anaPassword}, nil, http.StatusOK)
+		call(t, b, "AuthService/RefreshSession", "", map[string]any{"tenantId": w.tenantA.String()}, nil, http.StatusOK)
+		kept := refreshCookie(t, b)
+
+		// The server rotates, but the response is lost: the browser never
+		// stores the new cookie.
+		lost := &http.Client{Timeout: 10 * time.Second}
+		req, _ := http.NewRequest(http.MethodPost, appURL+"/atsapbx.v1.AuthService/RefreshSession", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: refreshCk, Value: kept})
+		resp, err := lost.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var lostCookie string
+		for _, ck := range resp.Cookies() {
+			if ck.Name == refreshCk {
+				lostCookie = ck.Value
+			}
+		}
+		require.NotEmpty(t, lostCookie)
+
+		// The browser retries with the cookie it kept, inside the window.
+		var s session
+		call(t, b, "AuthService/RefreshSession", "", map[string]any{}, &s, http.StatusOK)
+		require.NotNil(t, s.Access, "the retry signs the person in as before")
+		retried := refreshCookie(t, b)
+		require.NotEqual(t, kept, retried)
+		w.secrets = append(w.secrets, kept, lostCookie, retried, s.Access.Token)
+		call(t, nil, "TelephonyService/ListCalls", s.Access.Token, map[string]any{"tenantId": w.tenantA.String()}, nil, http.StatusOK)
+
+		// The cookie issued in the lost response no longer works; the
+		// retried session goes on.
+		thief := &http.Client{Timeout: 10 * time.Second}
+		req, _ = http.NewRequest(http.MethodPost, appURL+"/atsapbx.v1.AuthService/RefreshSession", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: refreshCk, Value: lostCookie})
+		resp, err = thief.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		call(t, b, "AuthService/RefreshSession", "", map[string]any{}, nil, http.StatusOK)
+
+		var retries int
+		require.NoError(t, w.pool.Unwrap().QueryRow(context.Background(), `
+			SELECT count(*) FROM auth_events e JOIN users u ON u.id = e.user_id
+			WHERE u.email = $1 AND e.kind = 'session.refresh_retried'`, w.email("ana")).Scan(&retries))
+		assert.GreaterOrEqual(t, retries, 1, "the retry is recorded")
 	})
 
 	t.Run("sign-out ends access at once", func(t *testing.T) {

@@ -226,10 +226,13 @@ func (s *Service) RefreshSession(ctx context.Context, rawSecret string, tenant *
 
 	var memberships []domain.Membership
 	var chosen *domain.Membership
+	retried := false
 	sess, err := s.sessions.UpdateSessionByDigest(ctx, DigestSecret(rawSecret), func(cur domain.Session) (domain.Session, error) {
 		next, outcome := cur.Refresh(DigestSecret(rawSecret), newDigest, now)
 		switch outcome {
 		case domain.RefreshRotated:
+		case domain.RefreshRetried:
+			retried = true
 		case domain.RefreshReused:
 			return next, errReuse
 		default:
@@ -262,6 +265,13 @@ func (s *Service) RefreshSession(ctx context.Context, rawSecret string, tenant *
 		return SessionResult{}, ports.ErrSessionNotUsable
 	case err != nil:
 		return SessionResult{}, err
+	}
+	if retried {
+		// A lost response, retried within its grace window: recorded so an
+		// operator can see retries, but not a security warning (D-62).
+		s.event(ctx, &sess.UserID, domain.EventSessionRefreshRetried)
+		s.logger.InfoContext(ctx, "identity: refresh retried with the previous secret inside its grace window",
+			"session_id", sess.ID.String(), "user_id", sess.UserID.String())
 	}
 
 	user, err := s.users.GetUser(ctx, sess.UserID)

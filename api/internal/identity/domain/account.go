@@ -172,6 +172,15 @@ const (
 	SessionAbsoluteTimeout = 12 * time.Hour
 )
 
+// RefreshGraceWindow is how long after a rotation the secret it replaced
+// is still accepted, once more, as a retry (D-62 amendment). A refresh
+// whose response never reached the browser — a reload, a closed tab, a
+// dropped connection — leaves the browser holding that secret; within the
+// window its next refresh is a retry, not a replay. Measured from the
+// rotation and never extended by a retry, so a copied secret cannot be
+// kept alive by retrying.
+const RefreshGraceWindow = 30 * time.Second
+
 // Session revocation reasons, recorded on the row and in auth events.
 const (
 	RevokeSignOut         = "sign-out"
@@ -188,9 +197,13 @@ type Session struct {
 	UserID UserID
 	// PrincipalID is the membership the current access token names; nil
 	// until the person has chosen a tenant.
-	PrincipalID       *shareddomain.PrincipalID
-	RefreshDigest     string
-	PreviousDigest    string
+	PrincipalID    *shareddomain.PrincipalID
+	RefreshDigest  string
+	PreviousDigest string
+	// PreviousRotatedAt is when PreviousDigest was rotated away: the start
+	// of its grace window. Nil for a session last rotated before the
+	// window existed, which therefore has none.
+	PreviousRotatedAt *time.Time
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
 	RevokedAt         *time.Time
@@ -216,8 +229,9 @@ const (
 	// RefreshRotated: the secret was current; the session now holds
 	// newDigest, and the presented one became the previous generation.
 	RefreshRotated RefreshOutcome = iota + 1
-	// RefreshReused: the presented secret was already rotated away. Only
-	// a copy can present it, so the whole session must be revoked.
+	// RefreshReused: the presented secret was rotated away longer ago
+	// than RefreshGraceWindow. Only a copy can present it, so the whole
+	// session must be revoked.
 	RefreshReused
 	// RefreshExpired: idle or absolute lifetime has passed.
 	RefreshExpired
@@ -225,6 +239,10 @@ const (
 	RefreshRevoked
 	// RefreshUnknown: the digest matches neither generation.
 	RefreshUnknown
+	// RefreshRetried: the previous secret, presented within its grace
+	// window. The session rotates again to newDigest — the secret issued
+	// in the lost response stops working — and the window is unchanged.
+	RefreshRetried
 )
 
 // Live reports whether the session may still back an access token at now.
@@ -233,30 +251,47 @@ func (s Session) Live(now time.Time) bool {
 }
 
 // Refresh decides what presenting presentedDigest means at now, and on
-// RefreshRotated returns the session advanced to newDigest with its idle
-// expiry extended (never past the absolute expiry). On RefreshReused it
-// returns the session revoked. Pure: the caller persists the result under
-// a row lock, so two concurrent refreshes cannot both rotate.
+// RefreshRotated and RefreshRetried return the session advanced to
+// newDigest with its idle expiry extended (never past the absolute
+// expiry). On RefreshReused it returns the session revoked. Pure: the
+// caller persists the result under a row lock, so two concurrent
+// refreshes cannot both rotate.
 func (s Session) Refresh(presentedDigest, newDigest string, now time.Time) (Session, RefreshOutcome) {
+	previous := presentedDigest == s.PreviousDigest && s.PreviousDigest != ""
 	switch {
 	case s.RevokedAt != nil:
 		return s, RefreshRevoked
-	case presentedDigest == "" || (presentedDigest != s.RefreshDigest && presentedDigest != s.PreviousDigest):
+	case presentedDigest == "" || (presentedDigest != s.RefreshDigest && !previous):
 		return s, RefreshUnknown
-	case presentedDigest == s.PreviousDigest && s.PreviousDigest != "":
+	case previous && !s.inGrace(now):
 		revoked := s.revoke(now, RevokeReuse)
 		return revoked, RefreshReused
 	case !now.Before(s.IdleExpiresAt) || !now.Before(s.AbsoluteExpiresAt):
 		return s, RefreshExpired
 	}
 	next := s
-	next.PreviousDigest = s.RefreshDigest
+	outcome := RefreshRetried
+	if !previous {
+		// A normal rotation: the presented secret becomes the previous
+		// generation, and its grace window starts now. A retry leaves
+		// both as they are.
+		rotatedAt := now
+		next.PreviousDigest = s.RefreshDigest
+		next.PreviousRotatedAt = &rotatedAt
+		outcome = RefreshRotated
+	}
 	next.RefreshDigest = newDigest
 	next.IdleExpiresAt = now.Add(SessionIdleTimeout)
 	if next.IdleExpiresAt.After(s.AbsoluteExpiresAt) {
 		next.IdleExpiresAt = s.AbsoluteExpiresAt
 	}
-	return next, RefreshRotated
+	return next, outcome
+}
+
+// inGrace reports whether the previous secret's grace window is open at
+// now.
+func (s Session) inGrace(now time.Time) bool {
+	return s.PreviousRotatedAt != nil && now.Before(s.PreviousRotatedAt.Add(RefreshGraceWindow))
 }
 
 // Revoke ends the session at now for reason. Revoking an ended session
@@ -431,15 +466,18 @@ type AuthEventKind string
 
 // Auth event kinds.
 const (
-	EventSignInSucceeded    AuthEventKind = "sign_in.succeeded"
-	EventSignInFailed       AuthEventKind = "sign_in.failed"
-	EventThrottled          AuthEventKind = "sign_in.throttled"
-	EventPasswordChanged    AuthEventKind = "password.changed"
-	EventResetRequested     AuthEventKind = "password.reset_requested"
-	EventResetCompleted     AuthEventKind = "password.reset_completed"
-	EventAdminReset         AuthEventKind = "password.admin_reset"
-	EventSessionRevoked     AuthEventKind = "session.revoked"
-	EventInvitationAccepted AuthEventKind = "invitation.accepted"
+	EventSignInSucceeded AuthEventKind = "sign_in.succeeded"
+	EventSignInFailed    AuthEventKind = "sign_in.failed"
+	EventThrottled       AuthEventKind = "sign_in.throttled"
+	EventPasswordChanged AuthEventKind = "password.changed"
+	EventResetRequested  AuthEventKind = "password.reset_requested"
+	EventResetCompleted  AuthEventKind = "password.reset_completed"
+	EventAdminReset      AuthEventKind = "password.admin_reset"
+	EventSessionRevoked  AuthEventKind = "session.revoked"
+	// EventSessionRefreshRetried: a refresh presented the previous secret
+	// within its grace window (a lost response, retried).
+	EventSessionRefreshRetried AuthEventKind = "session.refresh_retried"
+	EventInvitationAccepted    AuthEventKind = "invitation.accepted"
 )
 
 // AuthEvent is one entry in a person's authentication history. UserID is

@@ -55,6 +55,76 @@ func TestSessionRefresh(t *testing.T) {
 		assert.Equal(t, RefreshRevoked, out, "after reuse even the current secret is dead")
 	})
 
+	t.Run("a rotation starts the previous secret's grace window", func(t *testing.T) {
+		at := t0.Add(time.Minute)
+		rotated, _ := s.Refresh("d1", "d2", at)
+		require.NotNil(t, rotated.PreviousRotatedAt)
+		assert.Equal(t, at, *rotated.PreviousRotatedAt)
+	})
+
+	t.Run("the previous secret within the window is a retry", func(t *testing.T) {
+		at := t0.Add(time.Minute)
+		rotated, _ := s.Refresh("d1", "d2", at)
+		retried, out := rotated.Refresh("d1", "d3", at.Add(RefreshGraceWindow-time.Second))
+		require.Equal(t, RefreshRetried, out)
+		assert.Nil(t, retried.RevokedAt)
+		assert.Equal(t, "d3", retried.RefreshDigest)
+		assert.Equal(t, "d1", retried.PreviousDigest, "the retried secret stays the previous generation")
+		assert.Equal(t, at, *retried.PreviousRotatedAt, "a retry does not move the window")
+		assert.Equal(t, at.Add(RefreshGraceWindow-time.Second).Add(SessionIdleTimeout), retried.IdleExpiresAt)
+
+		_, out = retried.Refresh("d2", "d4", at.Add(RefreshGraceWindow-time.Second))
+		assert.Equal(t, RefreshUnknown, out, "the secret from the lost response no longer works")
+		_, out = retried.Refresh("d3", "d4", at.Add(2*time.Minute))
+		assert.Equal(t, RefreshRotated, out, "the retry's secret is the current one")
+	})
+
+	t.Run("the window closes exactly at its end", func(t *testing.T) {
+		at := t0.Add(time.Minute)
+		rotated, _ := s.Refresh("d1", "d2", at)
+		revoked, out := rotated.Refresh("d1", "d3", at.Add(RefreshGraceWindow))
+		require.Equal(t, RefreshReused, out)
+		assert.Equal(t, RevokeReuse, revoked.RevokeReason)
+	})
+
+	t.Run("retries do not extend the window", func(t *testing.T) {
+		at := t0.Add(time.Minute)
+		rotated, _ := s.Refresh("d1", "d2", at)
+		retried, out := rotated.Refresh("d1", "d3", at.Add(10*time.Second))
+		require.Equal(t, RefreshRetried, out)
+		retried, out = retried.Refresh("d1", "d4", at.Add(29*time.Second))
+		require.Equal(t, RefreshRetried, out)
+		revoked, out := retried.Refresh("d1", "d5", at.Add(31*time.Second))
+		require.Equal(t, RefreshReused, out, "31 s after the rotation, whatever the retries")
+		require.NotNil(t, revoked.RevokedAt)
+	})
+
+	t.Run("a session rotated before the window existed has none", func(t *testing.T) {
+		legacy := s
+		legacy.RefreshDigest, legacy.PreviousDigest, legacy.PreviousRotatedAt = "d2", "d1", nil
+		_, out := legacy.Refresh("d1", "d3", t0.Add(time.Second))
+		assert.Equal(t, RefreshReused, out)
+	})
+
+	t.Run("a retry still respects expiry", func(t *testing.T) {
+		at := t0.Add(SessionAbsoluteTimeout - 10*time.Second)
+		near := s
+		near.IdleExpiresAt = s.AbsoluteExpiresAt
+		rotated, out := near.Refresh("d1", "d2", at)
+		require.Equal(t, RefreshRotated, out)
+		_, out = rotated.Refresh("d1", "d3", t0.Add(SessionAbsoluteTimeout))
+		assert.Equal(t, RefreshExpired, out)
+	})
+
+	t.Run("an older secret is unknown, not reuse", func(t *testing.T) {
+		at := t0.Add(time.Minute)
+		r1, _ := s.Refresh("d1", "d2", at)
+		r2, _ := r1.Refresh("d2", "d3", at.Add(time.Minute))
+		next, out := r2.Refresh("d1", "d4", at.Add(time.Minute+time.Second))
+		assert.Equal(t, RefreshUnknown, out)
+		assert.Nil(t, next.RevokedAt)
+	})
+
 	t.Run("idle expiry boundary", func(t *testing.T) {
 		_, out := s.Refresh("d1", "d2", t0.Add(SessionIdleTimeout-time.Second))
 		assert.Equal(t, RefreshRotated, out)

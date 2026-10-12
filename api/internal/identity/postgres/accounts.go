@@ -262,7 +262,8 @@ func (s *Store) LiveState(ctx context.Context, tenantID shareddomain.TenantID, p
 // --- sessions -------------------------------------------------------------
 
 const sessionColumns = `id, user_id, principal_id, refresh_digest, COALESCE(previous_digest, ''),
-	idle_expires_at, absolute_expires_at, revoked_at, COALESCE(revoke_reason, ''), created_at FROM sessions`
+	previous_rotated_at, idle_expires_at, absolute_expires_at, revoked_at, COALESCE(revoke_reason, ''),
+	created_at FROM sessions`
 
 func scanSession(row pgx.Row) (domain.Session, error) {
 	var (
@@ -271,7 +272,8 @@ func scanSession(row pgx.Row) (domain.Session, error) {
 		rawPrincipal   *string
 	)
 	if err := row.Scan(&rawID, &rawUser, &rawPrincipal, &s.RefreshDigest, &s.PreviousDigest,
-		&s.IdleExpiresAt, &s.AbsoluteExpiresAt, &s.RevokedAt, &s.RevokeReason, &s.CreatedAt); err != nil {
+		&s.PreviousRotatedAt, &s.IdleExpiresAt, &s.AbsoluteExpiresAt, &s.RevokedAt, &s.RevokeReason,
+		&s.CreatedAt); err != nil {
 		return domain.Session{}, err
 	}
 	var err error
@@ -310,11 +312,11 @@ func nullable(s string) *string {
 func (s *Store) CreateSession(ctx context.Context, sess domain.Session) error {
 	_, err := s.pool.Unwrap().Exec(ctx, `
 		INSERT INTO sessions (id, user_id, principal_id, refresh_digest, previous_digest,
-			idle_expires_at, absolute_expires_at, revoked_at, revoke_reason, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			previous_rotated_at, idle_expires_at, absolute_expires_at, revoked_at, revoke_reason, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`, sess.ID.String(), sess.UserID.String(), principalArg(sess.PrincipalID), sess.RefreshDigest,
-		nullable(sess.PreviousDigest), sess.IdleExpiresAt, sess.AbsoluteExpiresAt, sess.RevokedAt,
-		nullable(sess.RevokeReason), sess.CreatedAt)
+		nullable(sess.PreviousDigest), sess.PreviousRotatedAt, sess.IdleExpiresAt, sess.AbsoluteExpiresAt,
+		sess.RevokedAt, nullable(sess.RevokeReason), sess.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
@@ -355,10 +357,10 @@ func (s *Store) UpdateSessionByDigest(ctx context.Context, digest string, fn fun
 	next, fnErr := fn(cur)
 	if _, err := tx.Exec(ctx, `
 		UPDATE sessions SET principal_id = $2, refresh_digest = $3, previous_digest = $4,
-			idle_expires_at = $5, revoked_at = $6, revoke_reason = $7
+			previous_rotated_at = $5, idle_expires_at = $6, revoked_at = $7, revoke_reason = $8
 		WHERE id = $1
 	`, next.ID.String(), principalArg(next.PrincipalID), next.RefreshDigest, nullable(next.PreviousDigest),
-		next.IdleExpiresAt, next.RevokedAt, nullable(next.RevokeReason)); err != nil {
+		next.PreviousRotatedAt, next.IdleExpiresAt, next.RevokedAt, nullable(next.RevokeReason)); err != nil {
 		return domain.Session{}, fmt.Errorf("store session: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
