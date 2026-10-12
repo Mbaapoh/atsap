@@ -123,6 +123,9 @@ func toProto(st ports.LicenseStatus) *atsapbxv1.LicenseStatus {
 		ChannelsInUse: int32(st.ChannelsInUse),
 		MaxTenants:    int32(e.MaxTenants),
 		MaxExtensions: int32(e.MaxExtensions),
+		Condition:     conditionToProto(st.Conditions.Condition),
+		Tier:          tierToProto(st.Conditions.Tier),
+		Capacity:      capacityToProto(st.Conditions.Capacity),
 	}
 	if e.State != domain.StateValid {
 		out.Reason = string(e.Reason)
@@ -148,5 +151,50 @@ func stateToProto(s domain.State) atsapbxv1.LicenseState {
 		return atsapbxv1.LicenseState_LICENSE_STATE_DEGRADED
 	default:
 		return atsapbxv1.LicenseState_LICENSE_STATE_UNSPECIFIED
+	}
+}
+
+func conditionToProto(c domain.Condition) atsapbxv1.LicenseCondition {
+	switch c {
+	case domain.ConditionSetup:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_SETUP
+	case domain.ConditionDegraded:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_DEGRADED
+	case domain.ConditionCapacityReached:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_CAPACITY_REACHED
+	case domain.ConditionUnverified:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED
+	case domain.ConditionCapacityWarning:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_CAPACITY_WARNING
+	case domain.ConditionFreeCommunity:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_FREE_COMMUNITY
+	case domain.ConditionValid:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_VALID
+	default:
+		return atsapbxv1.LicenseCondition_LICENSE_CONDITION_UNSPECIFIED
+	}
+}
+
+func tierToProto(t domain.Tier) atsapbxv1.LicenseTier {
+	switch t {
+	case domain.TierFreeCommunity:
+		return atsapbxv1.LicenseTier_LICENSE_TIER_FREE_COMMUNITY
+	case domain.TierCommercial:
+		return atsapbxv1.LicenseTier_LICENSE_TIER_COMMERCIAL
+	default:
+		return atsapbxv1.LicenseTier_LICENSE_TIER_UNSPECIFIED
+	}
+}
+
+func capacityToProto(c domain.CapacityLevel) atsapbxv1.CapacityLevel {
+	switch c {
+	case domain.CapacityNormal:
+		return atsapbxv1.CapacityLevel_CAPACITY_LEVEL_NORMAL
+	case domain.CapacityWarning:
+		return atsapbxv1.CapacityLevel_CAPACITY_LEVEL_WARNING
+	case domain.CapacityReached:
+		return atsapbxv1.CapacityLevel_CAPACITY_LEVEL_REACHED
+	default:
+		return atsapbxv1.CapacityLevel_CAPACITY_LEVEL_UNSPECIFIED
 	}
 }

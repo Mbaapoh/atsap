@@ -291,7 +291,8 @@ func (s *Service) Status(ctx context.Context) (ports.LicenseStatus, error) {
 	if err != nil {
 		return ports.LicenseStatus{}, err
 	}
-	st := ports.LicenseStatus{Entitlement: e, ChannelsInUse: s.ChannelsInUse()}
+	inUse := s.ChannelsInUse()
+	st := ports.LicenseStatus{Entitlement: e, ChannelsInUse: inUse, Conditions: domain.Conditions(e, inUse)}
 
 	// Entitlement caches the verified licence when one is in force; the
 	// dates come from it, never from the unverified display columns.

@@ -118,7 +118,7 @@ func SetupEntitlement() Entitlement {
 func FreeEntitlement() Entitlement {
 	return Entitlement{
 		State:         StateValid,
-		Edition:       "free",
+		Edition:       FreeEdition,
 		Channels:      FreeChannels,
 		MaxExtensions: FreeMaxExtensions,
 		MaxTenants:    FreeMaxTenants,

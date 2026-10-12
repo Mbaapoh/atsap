@@ -40,6 +40,49 @@ enum LicenseState {
   LICENSE_STATE_DEGRADED = 4;
 }
 
+// LicenseCondition is the one PRD §11.2 state the installation is in: the
+// most urgent of its facts, chosen by the server (LLD-08 §6.1, D-70). A
+// client shows it as-is and never derives it. Precedence, most urgent
+// first: SETUP, DEGRADED, CAPACITY_REACHED, ENTITLEMENT_UNVERIFIED,
+// CAPACITY_WARNING, FREE_COMMUNITY, VALID.
+enum LicenseCondition {
+  LICENSE_CONDITION_UNSPECIFIED = 0;
+  // Never activated: no call path at all.
+  LICENSE_CONDITION_SETUP = 1;
+  // Capacity has fallen to the floor; `reason` says why.
+  LICENSE_CONDITION_DEGRADED = 2;
+  // Usage has reached the channels in force; new calls are being declined
+  // once any burst allowance is spent. Calls in progress continue.
+  LICENSE_CONDITION_CAPACITY_REACHED = 3;
+  // The daily confirmation has not succeeded; nothing is restricted yet.
+  LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED = 4;
+  // Usage has reached 80% of the channels in force. Informational.
+  LICENSE_CONDITION_CAPACITY_WARNING = 5;
+  // The free tier, within its limits.
+  LICENSE_CONDITION_FREE_COMMUNITY = 6;
+  LICENSE_CONDITION_VALID = 7;
+}
+
+// LicenseTier is which kind of entitlement is in force.
+enum LicenseTier {
+  // Setup: no entitlement, so no tier.
+  LICENSE_TIER_UNSPECIFIED = 0;
+  LICENSE_TIER_FREE_COMMUNITY = 1;
+  LICENSE_TIER_COMMERCIAL = 2;
+}
+
+// CapacityLevel is live usage against the channels in force.
+enum CapacityLevel {
+  // Setup: there is no capacity to measure.
+  CAPACITY_LEVEL_UNSPECIFIED = 0;
+  CAPACITY_LEVEL_NORMAL = 1;
+  // At least 80% of the channels in force are in use.
+  CAPACITY_LEVEL_WARNING = 2;
+  // All channels in force are in use, including calls in the burst
+  // allowance.
+  CAPACITY_LEVEL_REACHED = 3;
+}
+
 message LicenseStatus {
   LicenseState state = 1;
   string edition = 2;
@@ -56,6 +99,11 @@ message LicenseStatus {
   // Why the state is not VALID, e.g. "not_activated", "expired",
   // "tampered". Empty when VALID.
   string reason = 9;
+  // The headline condition, the tier and the capacity level, computed by
+  // the server (LLD-08 §6.1, D-70).
+  LicenseCondition condition = 10;
+  LicenseTier tier = 11;
+  CapacityLevel capacity = 12;
 }
 
 message GetLicenseStatusRequest {}

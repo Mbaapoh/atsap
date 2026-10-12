@@ -40,6 +40,16 @@ func repoRoot(t *testing.T) string {
 // `make dev-licence` created and the dev app was built to trust.
 func devSigner(t *testing.T) func(channels int) string {
 	t.Helper()
+	sign := devTokenSigner(t)
+	return func(channels int) string {
+		return sign(licensingdomain.LicenseToken{Edition: "development", Capacity: channels})
+	}
+}
+
+// devTokenSigner signs any licence token with the rig's development key,
+// for tests that need a particular edition or caps.
+func devTokenSigner(t *testing.T) func(licensingdomain.LicenseToken) string {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".dev-licence", "ed25519.seed"))
 	if err != nil {
 		t.Skip("no .dev-licence key on this machine — run `make dev-licence` first")
@@ -47,11 +57,9 @@ func devSigner(t *testing.T) func(channels int) string {
 	seed, err := hex.DecodeString(strings.TrimSpace(string(raw)))
 	require.NoError(t, err)
 	priv := ed25519.NewKeyFromSeed(seed)
-	return func(channels int) string {
-		payload, err := json.Marshal(licensingdomain.LicenseToken{
-			Edition: "development", Capacity: channels,
-			InstanceID: "00000000-0000-0000-0000-0000000000de",
-		})
+	return func(tok licensingdomain.LicenseToken) string {
+		tok.InstanceID = "00000000-0000-0000-0000-0000000000de"
+		payload, err := json.Marshal(tok)
 		require.NoError(t, err)
 		return licensingdomain.EncodeToken(payload, ed25519.Sign(priv, payload))
 	}
@@ -97,9 +105,13 @@ func platformOperator(t *testing.T, r *rig) string {
 }
 
 type licenceStatus struct {
-	State    string `json:"state"`
-	Edition  string `json:"edition"`
-	Channels int    `json:"channels"`
+	State         string `json:"state"`
+	Edition       string `json:"edition"`
+	Channels      int    `json:"channels"`
+	ChannelsInUse int    `json:"channelsInUse"`
+	Condition     string `json:"condition"`
+	Tier          string `json:"tier"`
+	Capacity      string `json:"capacity"`
 }
 
 func (r *rig) licence(t *testing.T, token string) licenceStatus {
@@ -229,4 +241,67 @@ func TestConsoleAPIs_CallHistory(t *testing.T) {
 	body := p.call(t, "TelephonyService/ListCalls", p.token, map[string]any{"tenantId": shareddomain.NewTenantID().String()},
 		nil, http.StatusBadRequest)
 	assert.Contains(t, string(body), "does not match the authenticated tenant")
+}
+
+// TestConsoleAPIs_LicenceConditions is licensing-status-conditions task
+// 4.1: the server reports the PRD condition, tier and capacity level of
+// the licence in force, against the running app. A Free Community
+// licence says so; on a 5-channel licence, holding 3, 4 and 5 ringing
+// calls reads Normal, Warning and Reached. The original licence is put
+// back in cleanup, even on failure.
+func TestConsoleAPIs_LicenceConditions(t *testing.T) {
+	sign := devTokenSigner(t)
+	original := envToken(t)
+	p := newPlacementRig(t, true, 64)
+	op := platformOperator(t, p.rig)
+	apply := func(token string) {
+		t.Helper()
+		p.call(t, "LicensingService/ApplyLicenseKey", op, map[string]any{"token": token}, nil, http.StatusOK)
+	}
+	t.Cleanup(func() { apply(original) })
+
+	t.Run("a Free Community licence says so", func(t *testing.T) {
+		apply(sign(licensingdomain.LicenseToken{Edition: licensingdomain.FreeEdition, Capacity: licensingdomain.FreeChannels,
+			MaxExtensions: licensingdomain.FreeMaxExtensions, MaxTenants: licensingdomain.FreeMaxTenants}))
+		st := p.licence(t, p.token)
+		assert.Equal(t, "LICENSE_STATE_VALID", st.State, "the entitlement state is unchanged")
+		assert.Equal(t, "LICENSE_CONDITION_FREE_COMMUNITY", st.Condition)
+		assert.Equal(t, "LICENSE_TIER_FREE_COMMUNITY", st.Tier)
+		assert.Equal(t, "CAPACITY_LEVEL_NORMAL", st.Capacity)
+	})
+
+	t.Run("usage crosses 80% then 100% on a 5-channel licence", func(t *testing.T) {
+		apply(sign(licensingdomain.LicenseToken{Edition: "development", Capacity: 5}))
+		require.Zero(t, p.licence(t, p.token).ChannelsInUse, "the rig starts with no call held")
+
+		p.phone.ringOnly.Store(true)
+		p.carrier.ringOnly.Store(true)
+		var held []string
+		t.Cleanup(func() {
+			for _, id := range held {
+				p.call(t, "PbxService/HangupCall", p.token, map[string]any{"tenantId": p.tenant.String(), "callId": id}, nil, http.StatusOK)
+			}
+			p.phone.ringOnly.Store(false)
+			p.carrier.ringOnly.Store(false)
+		})
+		want := map[int][2]string{
+			3: {"LICENSE_CONDITION_VALID", "CAPACITY_LEVEL_NORMAL"},
+			4: {"LICENSE_CONDITION_CAPACITY_WARNING", "CAPACITY_LEVEL_WARNING"},
+			5: {"LICENSE_CONDITION_CAPACITY_REACHED", "CAPACITY_LEVEL_REACHED"},
+		}
+		for n := 1; n <= 5; n++ {
+			id, _ := p.place(t, p.ext, fmt.Sprintf("+4420700001%02d", n), http.StatusOK)
+			held = append(held, id)
+			var st licenceStatus
+			require.Eventually(t, func() bool {
+				st = p.licence(t, p.token)
+				return st.ChannelsInUse == n
+			}, 10*time.Second, 200*time.Millisecond, "call %d holds a channel", n)
+			if w, ok := want[n]; ok {
+				assert.Equal(t, w[0], st.Condition, "%d of 5 channels held", n)
+				assert.Equal(t, w[1], st.Capacity, "%d of 5 channels held", n)
+				assert.Equal(t, "LICENSE_TIER_COMMERCIAL", st.Tier)
+			}
+		}
+	})
 }

@@ -83,8 +83,12 @@ func TestNoConfigurationCanSkipVerification(t *testing.T) {
 		// the guard able to catch the thing it is for.
 		// The wire enum for the same state (LicensingService, LLD-08 §6) is
 		// exempt on the same terms: an exact name, so AllowUnverified and
-		// its kin are still caught.
-		exempt := map[string]bool{"StateUnverified": true, "LicenseState_LICENSE_STATE_UNVERIFIED": true}
+		// its kin are still caught. So is the PRD condition naming the same
+		// state, and its wire enum (licensing-status-conditions, LLD-08 §6.1).
+		exempt := map[string]bool{
+			"StateUnverified": true, "LicenseState_LICENSE_STATE_UNVERIFIED": true,
+			"ConditionUnverified": true, "LicenseCondition_LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED": true,
+		}
 
 		var found []string
 		fset := token.NewFileSet()

@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file atsapbx/v1/licensing.proto.
  */
 export const file_atsapbx_v1_licensing: GenFile = /*@__PURE__*/
-  fileDesc("ChphdHNhcGJ4L3YxL2xpY2Vuc2luZy5wcm90bxIKYXRzYXBieC52MSKYAgoNTGljZW5zZVN0YXR1cxInCgVzdGF0ZRgBIAEoDjIYLmF0c2FwYngudjEuTGljZW5zZVN0YXRlEg8KB2VkaXRpb24YAiABKAkSEAoIY2hhbm5lbHMYAyABKAUSFwoPY2hhbm5lbHNfaW5fdXNlGAQgASgFEhMKC21heF90ZW5hbnRzGAUgASgFEhYKDm1heF9leHRlbnNpb25zGAYgASgFEi4KCmV4cGlyZXNfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjUKEWxhc3RfY29uZmlybWVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZyZWFzb24YCSABKAkiGQoXR2V0TGljZW5zZVN0YXR1c1JlcXVlc3QiRQoYR2V0TGljZW5zZVN0YXR1c1Jlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmF0c2FwYngudjEuTGljZW5zZVN0YXR1cyInChZBcHBseUxpY2Vuc2VLZXlSZXF1ZXN0Eg0KBXRva2VuGAEgASgJIkQKF0FwcGx5TGljZW5zZUtleVJlc3BvbnNlEikKBnN0YXR1cxgBIAEoCzIZLmF0c2FwYngudjEuTGljZW5zZVN0YXR1cyqhAQoMTGljZW5zZVN0YXRlEh0KGUxJQ0VOU0VfU1RBVEVfVU5TUEVDSUZJRUQQABIfChtMSUNFTlNFX1NUQVRFX05PVF9BQ1RJVkFURUQQARIXChNMSUNFTlNFX1NUQVRFX1ZBTElEEAISHAoYTElDRU5TRV9TVEFURV9VTlZFUklGSUVEEAMSGgoWTElDRU5TRV9TVEFURV9ERUdSQURFRBAEMs0BChBMaWNlbnNpbmdTZXJ2aWNlEl0KEEdldExpY2Vuc2VTdGF0dXMSIy5hdHNhcGJ4LnYxLkdldExpY2Vuc2VTdGF0dXNSZXF1ZXN0GiQuYXRzYXBieC52MS5HZXRMaWNlbnNlU3RhdHVzUmVzcG9uc2USWgoPQXBwbHlMaWNlbnNlS2V5EiIuYXRzYXBieC52MS5BcHBseUxpY2Vuc2VLZXlSZXF1ZXN0GiMuYXRzYXBieC52MS5BcHBseUxpY2Vuc2VLZXlSZXNwb25zZUIyWjBhdHNhcC1hcGkvaW50ZXJuYWwvZ2VucHJvdG8vYXRzYXBieC92MTthdHNhcGJ4djFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("ChphdHNhcGJ4L3YxL2xpY2Vuc2luZy5wcm90bxIKYXRzYXBieC52MSKdAwoNTGljZW5zZVN0YXR1cxInCgVzdGF0ZRgBIAEoDjIYLmF0c2FwYngudjEuTGljZW5zZVN0YXRlEg8KB2VkaXRpb24YAiABKAkSEAoIY2hhbm5lbHMYAyABKAUSFwoPY2hhbm5lbHNfaW5fdXNlGAQgASgFEhMKC21heF90ZW5hbnRzGAUgASgFEhYKDm1heF9leHRlbnNpb25zGAYgASgFEi4KCmV4cGlyZXNfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjUKEWxhc3RfY29uZmlybWVkX2F0GAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZyZWFzb24YCSABKAkSLwoJY29uZGl0aW9uGAogASgOMhwuYXRzYXBieC52MS5MaWNlbnNlQ29uZGl0aW9uEiUKBHRpZXIYCyABKA4yFy5hdHNhcGJ4LnYxLkxpY2Vuc2VUaWVyEisKCGNhcGFjaXR5GAwgASgOMhkuYXRzYXBieC52MS5DYXBhY2l0eUxldmVsIhkKF0dldExpY2Vuc2VTdGF0dXNSZXF1ZXN0IkUKGEdldExpY2Vuc2VTdGF0dXNSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5hdHNhcGJ4LnYxLkxpY2Vuc2VTdGF0dXMiJwoWQXBwbHlMaWNlbnNlS2V5UmVxdWVzdBINCgV0b2tlbhgBIAEoCSJEChdBcHBseUxpY2Vuc2VLZXlSZXNwb25zZRIpCgZzdGF0dXMYASABKAsyGS5hdHNhcGJ4LnYxLkxpY2Vuc2VTdGF0dXMqoQEKDExpY2Vuc2VTdGF0ZRIdChlMSUNFTlNFX1NUQVRFX1VOU1BFQ0lGSUVEEAASHwobTElDRU5TRV9TVEFURV9OT1RfQUNUSVZBVEVEEAESFwoTTElDRU5TRV9TVEFURV9WQUxJRBACEhwKGExJQ0VOU0VfU1RBVEVfVU5WRVJJRklFRBADEhoKFkxJQ0VOU0VfU1RBVEVfREVHUkFERUQQBCqzAgoQTGljZW5zZUNvbmRpdGlvbhIhCh1MSUNFTlNFX0NPTkRJVElPTl9VTlNQRUNJRklFRBAAEhsKF0xJQ0VOU0VfQ09ORElUSU9OX1NFVFVQEAESHgoaTElDRU5TRV9DT05ESVRJT05fREVHUkFERUQQAhImCiJMSUNFTlNFX0NPTkRJVElPTl9DQVBBQ0lUWV9SRUFDSEVEEAMSLAooTElDRU5TRV9DT05ESVRJT05fRU5USVRMRU1FTlRfVU5WRVJJRklFRBAEEiYKIkxJQ0VOU0VfQ09ORElUSU9OX0NBUEFDSVRZX1dBUk5JTkcQBRIkCiBMSUNFTlNFX0NPTkRJVElPTl9GUkVFX0NPTU1VTklUWRAGEhsKF0xJQ0VOU0VfQ09ORElUSU9OX1ZBTElEEAcqaQoLTGljZW5zZVRpZXISHAoYTElDRU5TRV9USUVSX1VOU1BFQ0lGSUVEEAASHwobTElDRU5TRV9USUVSX0ZSRUVfQ09NTVVOSVRZEAESGwoXTElDRU5TRV9USUVSX0NPTU1FUkNJQUwQAiqCAQoNQ2FwYWNpdHlMZXZlbBIeChpDQVBBQ0lUWV9MRVZFTF9VTlNQRUNJRklFRBAAEhkKFUNBUEFDSVRZX0xFVkVMX05PUk1BTBABEhoKFkNBUEFDSVRZX0xFVkVMX1dBUk5JTkcQAhIaChZDQVBBQ0lUWV9MRVZFTF9SRUFDSEVEEAMyzQEKEExpY2Vuc2luZ1NlcnZpY2USXQoQR2V0TGljZW5zZVN0YXR1cxIjLmF0c2FwYngudjEuR2V0TGljZW5zZVN0YXR1c1JlcXVlc3QaJC5hdHNhcGJ4LnYxLkdldExpY2Vuc2VTdGF0dXNSZXNwb25zZRJaCg9BcHBseUxpY2Vuc2VLZXkSIi5hdHNhcGJ4LnYxLkFwcGx5TGljZW5zZUtleVJlcXVlc3QaIy5hdHNhcGJ4LnYxLkFwcGx5TGljZW5zZUtleVJlc3BvbnNlQjJaMGF0c2FwLWFwaS9pbnRlcm5hbC9nZW5wcm90by9hdHNhcGJ4L3YxO2F0c2FwYnh2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message atsapbx.v1.LicenseStatus
@@ -73,6 +73,24 @@ export type LicenseStatus = Message<"atsapbx.v1.LicenseStatus"> & {
    * @generated from field: string reason = 9;
    */
   reason: string;
+
+  /**
+   * The headline condition, the tier and the capacity level, computed by
+   * the server (LLD-08 §6.1, D-70).
+   *
+   * @generated from field: atsapbx.v1.LicenseCondition condition = 10;
+   */
+  condition: LicenseCondition;
+
+  /**
+   * @generated from field: atsapbx.v1.LicenseTier tier = 11;
+   */
+  tier: LicenseTier;
+
+  /**
+   * @generated from field: atsapbx.v1.CapacityLevel capacity = 12;
+   */
+  capacity: CapacityLevel;
 };
 
 /**
@@ -195,6 +213,146 @@ export enum LicenseState {
  */
 export const LicenseStateSchema: GenEnum<LicenseState> = /*@__PURE__*/
   enumDesc(file_atsapbx_v1_licensing, 0);
+
+/**
+ * LicenseCondition is the one PRD §11.2 state the installation is in: the
+ * most urgent of its facts, chosen by the server (LLD-08 §6.1, D-70). A
+ * client shows it as-is and never derives it. Precedence, most urgent
+ * first: SETUP, DEGRADED, CAPACITY_REACHED, ENTITLEMENT_UNVERIFIED,
+ * CAPACITY_WARNING, FREE_COMMUNITY, VALID.
+ *
+ * @generated from enum atsapbx.v1.LicenseCondition
+ */
+export enum LicenseCondition {
+  /**
+   * @generated from enum value: LICENSE_CONDITION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Never activated: no call path at all.
+   *
+   * @generated from enum value: LICENSE_CONDITION_SETUP = 1;
+   */
+  SETUP = 1,
+
+  /**
+   * Capacity has fallen to the floor; `reason` says why.
+   *
+   * @generated from enum value: LICENSE_CONDITION_DEGRADED = 2;
+   */
+  DEGRADED = 2,
+
+  /**
+   * Usage has reached the channels in force; new calls are being declined
+   * once any burst allowance is spent. Calls in progress continue.
+   *
+   * @generated from enum value: LICENSE_CONDITION_CAPACITY_REACHED = 3;
+   */
+  CAPACITY_REACHED = 3,
+
+  /**
+   * The daily confirmation has not succeeded; nothing is restricted yet.
+   *
+   * @generated from enum value: LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED = 4;
+   */
+  ENTITLEMENT_UNVERIFIED = 4,
+
+  /**
+   * Usage has reached 80% of the channels in force. Informational.
+   *
+   * @generated from enum value: LICENSE_CONDITION_CAPACITY_WARNING = 5;
+   */
+  CAPACITY_WARNING = 5,
+
+  /**
+   * The free tier, within its limits.
+   *
+   * @generated from enum value: LICENSE_CONDITION_FREE_COMMUNITY = 6;
+   */
+  FREE_COMMUNITY = 6,
+
+  /**
+   * @generated from enum value: LICENSE_CONDITION_VALID = 7;
+   */
+  VALID = 7,
+}
+
+/**
+ * Describes the enum atsapbx.v1.LicenseCondition.
+ */
+export const LicenseConditionSchema: GenEnum<LicenseCondition> = /*@__PURE__*/
+  enumDesc(file_atsapbx_v1_licensing, 1);
+
+/**
+ * LicenseTier is which kind of entitlement is in force.
+ *
+ * @generated from enum atsapbx.v1.LicenseTier
+ */
+export enum LicenseTier {
+  /**
+   * Setup: no entitlement, so no tier.
+   *
+   * @generated from enum value: LICENSE_TIER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: LICENSE_TIER_FREE_COMMUNITY = 1;
+   */
+  FREE_COMMUNITY = 1,
+
+  /**
+   * @generated from enum value: LICENSE_TIER_COMMERCIAL = 2;
+   */
+  COMMERCIAL = 2,
+}
+
+/**
+ * Describes the enum atsapbx.v1.LicenseTier.
+ */
+export const LicenseTierSchema: GenEnum<LicenseTier> = /*@__PURE__*/
+  enumDesc(file_atsapbx_v1_licensing, 2);
+
+/**
+ * CapacityLevel is live usage against the channels in force.
+ *
+ * @generated from enum atsapbx.v1.CapacityLevel
+ */
+export enum CapacityLevel {
+  /**
+   * Setup: there is no capacity to measure.
+   *
+   * @generated from enum value: CAPACITY_LEVEL_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: CAPACITY_LEVEL_NORMAL = 1;
+   */
+  NORMAL = 1,
+
+  /**
+   * At least 80% of the channels in force are in use.
+   *
+   * @generated from enum value: CAPACITY_LEVEL_WARNING = 2;
+   */
+  WARNING = 2,
+
+  /**
+   * All channels in force are in use, including calls in the burst
+   * allowance.
+   *
+   * @generated from enum value: CAPACITY_LEVEL_REACHED = 3;
+   */
+  REACHED = 3,
+}
+
+/**
+ * Describes the enum atsapbx.v1.CapacityLevel.
+ */
+export const CapacityLevelSchema: GenEnum<CapacityLevel> = /*@__PURE__*/
+  enumDesc(file_atsapbx_v1_licensing, 3);
 
 /**
  * LicensingService is the installation's licence on the wire (LLD-08 §6):

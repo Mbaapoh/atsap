@@ -106,7 +106,7 @@ the authoritative resource after success.
 
 | Domain state | UI rule |
 | --- | --- |
-| Licence/capacity | Preserve all PRD §11.2 states. Setup gates call configuration; Unverified and Degraded explain their distinct impact; Capacity Warning and Reached are not conflated. |
+| Licence/capacity | Show the server's `condition` as the status pill, exactly as reported (D-70): Setup, Free Community, Valid, Capacity Warning, Capacity Reached, Entitlement Unverified or Degraded. The detail view also shows the `tier`, the `capacity` level and the entitlement `state`, so a headline that wins by precedence never hides another fact. Setup gates call configuration; Unverified and Degraded explain their distinct impact; Capacity Warning and Reached are not conflated. Suspended is a tenant status, not a licence state. |
 | Extension registration | `Registered` or `Not registered` is observed device state, never an editable toggle. |
 | Trunk health | `Healthy`, `Degraded`, and `Unhealthy` are observed state, never an input. A reason is a status detail, not a timestamp. |
 | Call lifecycle | Render API Call states and termination reason. Derived labels are supplementary and never replace lifecycle state. |

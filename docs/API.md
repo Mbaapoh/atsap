@@ -36,7 +36,7 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `ListPrincipals` | `atsapbx.v1.IdentityService` | `console-apis-phase-a` | Console users screen (flow A2): users with status and role bindings, never a credential |
 | `RevokeRole` | `atsapbx.v1.IdentityService` | `console-apis-phase-a` | Console roles screen (A2); same authority as `GrantRole`; the last tenant administrator cannot be revoked |
 | `ListCalls` | `atsapbx.v1.TelephonyService` | `console-apis-phase-a` | Console call history (A5): newest first, filtered, paged; no engine identifiers |
-| `GetLicenseStatus` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Console header and licence screen (A1); any authenticated caller |
+| `GetLicenseStatus` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6); conditions since `licensing-status-conditions` | Console header and licence screen (A1); any authenticated caller. Reports the PRD §11.2 `condition` (one headline, server precedence), `tier` and `capacity` level as well as `state`; clients show them, never derive them (D-70) |
 | `ApplyLicenseKey` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Licence activation (A1, EPIC-06); system scope; no restart; the token is never echoed |
 | `ResetPrincipalPassword` | `atsapbx.v1.IdentityService` | `identity-accounts-and-sessions` (LLD-02 rev 2) | Console users screen: administrator reset; the member must change it at next sign-in; a shared person needs system scope (D-64) |
 | `SetUserStatus` | `atsapbx.v1.IdentityService` | `identity-accounts-and-sessions` | Operator console: disable a person in every tenant at once; system scope only (D-61) |

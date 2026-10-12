@@ -138,3 +138,42 @@ func TestApplyLicenseKey_Outcomes(t *testing.T) {
 		assert.NotContains(t, err.Error(), "licensing_state")
 	})
 }
+
+// licensing-status-conditions task 2.2: the server's condition, tier and
+// capacity level reach the wire as-is, for every value, and the status
+// still renders no licence material.
+func TestGetLicenseStatus_ConditionsReachTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		in   domain.StatusConditions
+		cond atsapbxv1.LicenseCondition
+		tier atsapbxv1.LicenseTier
+		cap  atsapbxv1.CapacityLevel
+	}{
+		{domain.StatusConditions{Condition: domain.ConditionSetup},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_SETUP, atsapbxv1.LicenseTier_LICENSE_TIER_UNSPECIFIED, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_UNSPECIFIED},
+		{domain.StatusConditions{Condition: domain.ConditionDegraded, Tier: domain.TierCommercial, Capacity: domain.CapacityReached},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_DEGRADED, atsapbxv1.LicenseTier_LICENSE_TIER_COMMERCIAL, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_REACHED},
+		{domain.StatusConditions{Condition: domain.ConditionCapacityReached, Tier: domain.TierFreeCommunity, Capacity: domain.CapacityReached},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_CAPACITY_REACHED, atsapbxv1.LicenseTier_LICENSE_TIER_FREE_COMMUNITY, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_REACHED},
+		{domain.StatusConditions{Condition: domain.ConditionUnverified, Tier: domain.TierCommercial, Capacity: domain.CapacityWarning},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED, atsapbxv1.LicenseTier_LICENSE_TIER_COMMERCIAL, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_WARNING},
+		{domain.StatusConditions{Condition: domain.ConditionCapacityWarning, Tier: domain.TierCommercial, Capacity: domain.CapacityWarning},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_CAPACITY_WARNING, atsapbxv1.LicenseTier_LICENSE_TIER_COMMERCIAL, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_WARNING},
+		{domain.StatusConditions{Condition: domain.ConditionFreeCommunity, Tier: domain.TierFreeCommunity, Capacity: domain.CapacityNormal},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_FREE_COMMUNITY, atsapbxv1.LicenseTier_LICENSE_TIER_FREE_COMMUNITY, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_NORMAL},
+		{domain.StatusConditions{Condition: domain.ConditionValid, Tier: domain.TierCommercial, Capacity: domain.CapacityNormal},
+			atsapbxv1.LicenseCondition_LICENSE_CONDITION_VALID, atsapbxv1.LicenseTier_LICENSE_TIER_COMMERCIAL, atsapbxv1.CapacityLevel_CAPACITY_LEVEL_NORMAL},
+	} {
+		st := valid()
+		st.Conditions = tc.in
+		h := rpc.NewHandler(&fakeLicence{status: st}, fakeAuthority{}, &fakeAuditor{})
+		res, err := h.GetLicenseStatus(context.Background(), connect.NewRequest(&atsapbxv1.GetLicenseStatusRequest{}))
+		require.NoError(t, err)
+		got := res.Msg.GetStatus()
+		assert.Equal(t, tc.cond, got.GetCondition(), "condition for %s", tc.in.Condition)
+		assert.Equal(t, tc.tier, got.GetTier())
+		assert.Equal(t, tc.cap, got.GetCapacity())
+		rendered := protojson.Format(got)
+		assert.NotContains(t, rendered, secretToken)
+	}
+}

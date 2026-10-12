@@ -83,6 +83,190 @@ func (LicenseState) EnumDescriptor() ([]byte, []int) {
 	return file_atsapbx_v1_licensing_proto_rawDescGZIP(), []int{0}
 }
 
+// LicenseCondition is the one PRD §11.2 state the installation is in: the
+// most urgent of its facts, chosen by the server (LLD-08 §6.1, D-70). A
+// client shows it as-is and never derives it. Precedence, most urgent
+// first: SETUP, DEGRADED, CAPACITY_REACHED, ENTITLEMENT_UNVERIFIED,
+// CAPACITY_WARNING, FREE_COMMUNITY, VALID.
+type LicenseCondition int32
+
+const (
+	LicenseCondition_LICENSE_CONDITION_UNSPECIFIED LicenseCondition = 0
+	// Never activated: no call path at all.
+	LicenseCondition_LICENSE_CONDITION_SETUP LicenseCondition = 1
+	// Capacity has fallen to the floor; `reason` says why.
+	LicenseCondition_LICENSE_CONDITION_DEGRADED LicenseCondition = 2
+	// Usage has reached the channels in force; new calls are being declined
+	// once any burst allowance is spent. Calls in progress continue.
+	LicenseCondition_LICENSE_CONDITION_CAPACITY_REACHED LicenseCondition = 3
+	// The daily confirmation has not succeeded; nothing is restricted yet.
+	LicenseCondition_LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED LicenseCondition = 4
+	// Usage has reached 80% of the channels in force. Informational.
+	LicenseCondition_LICENSE_CONDITION_CAPACITY_WARNING LicenseCondition = 5
+	// The free tier, within its limits.
+	LicenseCondition_LICENSE_CONDITION_FREE_COMMUNITY LicenseCondition = 6
+	LicenseCondition_LICENSE_CONDITION_VALID          LicenseCondition = 7
+)
+
+// Enum value maps for LicenseCondition.
+var (
+	LicenseCondition_name = map[int32]string{
+		0: "LICENSE_CONDITION_UNSPECIFIED",
+		1: "LICENSE_CONDITION_SETUP",
+		2: "LICENSE_CONDITION_DEGRADED",
+		3: "LICENSE_CONDITION_CAPACITY_REACHED",
+		4: "LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED",
+		5: "LICENSE_CONDITION_CAPACITY_WARNING",
+		6: "LICENSE_CONDITION_FREE_COMMUNITY",
+		7: "LICENSE_CONDITION_VALID",
+	}
+	LicenseCondition_value = map[string]int32{
+		"LICENSE_CONDITION_UNSPECIFIED":            0,
+		"LICENSE_CONDITION_SETUP":                  1,
+		"LICENSE_CONDITION_DEGRADED":               2,
+		"LICENSE_CONDITION_CAPACITY_REACHED":       3,
+		"LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED": 4,
+		"LICENSE_CONDITION_CAPACITY_WARNING":       5,
+		"LICENSE_CONDITION_FREE_COMMUNITY":         6,
+		"LICENSE_CONDITION_VALID":                  7,
+	}
+)
+
+func (x LicenseCondition) Enum() *LicenseCondition {
+	p := new(LicenseCondition)
+	*p = x
+	return p
+}
+
+func (x LicenseCondition) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LicenseCondition) Descriptor() protoreflect.EnumDescriptor {
+	return file_atsapbx_v1_licensing_proto_enumTypes[1].Descriptor()
+}
+
+func (LicenseCondition) Type() protoreflect.EnumType {
+	return &file_atsapbx_v1_licensing_proto_enumTypes[1]
+}
+
+func (x LicenseCondition) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LicenseCondition.Descriptor instead.
+func (LicenseCondition) EnumDescriptor() ([]byte, []int) {
+	return file_atsapbx_v1_licensing_proto_rawDescGZIP(), []int{1}
+}
+
+// LicenseTier is which kind of entitlement is in force.
+type LicenseTier int32
+
+const (
+	// Setup: no entitlement, so no tier.
+	LicenseTier_LICENSE_TIER_UNSPECIFIED    LicenseTier = 0
+	LicenseTier_LICENSE_TIER_FREE_COMMUNITY LicenseTier = 1
+	LicenseTier_LICENSE_TIER_COMMERCIAL     LicenseTier = 2
+)
+
+// Enum value maps for LicenseTier.
+var (
+	LicenseTier_name = map[int32]string{
+		0: "LICENSE_TIER_UNSPECIFIED",
+		1: "LICENSE_TIER_FREE_COMMUNITY",
+		2: "LICENSE_TIER_COMMERCIAL",
+	}
+	LicenseTier_value = map[string]int32{
+		"LICENSE_TIER_UNSPECIFIED":    0,
+		"LICENSE_TIER_FREE_COMMUNITY": 1,
+		"LICENSE_TIER_COMMERCIAL":     2,
+	}
+)
+
+func (x LicenseTier) Enum() *LicenseTier {
+	p := new(LicenseTier)
+	*p = x
+	return p
+}
+
+func (x LicenseTier) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LicenseTier) Descriptor() protoreflect.EnumDescriptor {
+	return file_atsapbx_v1_licensing_proto_enumTypes[2].Descriptor()
+}
+
+func (LicenseTier) Type() protoreflect.EnumType {
+	return &file_atsapbx_v1_licensing_proto_enumTypes[2]
+}
+
+func (x LicenseTier) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LicenseTier.Descriptor instead.
+func (LicenseTier) EnumDescriptor() ([]byte, []int) {
+	return file_atsapbx_v1_licensing_proto_rawDescGZIP(), []int{2}
+}
+
+// CapacityLevel is live usage against the channels in force.
+type CapacityLevel int32
+
+const (
+	// Setup: there is no capacity to measure.
+	CapacityLevel_CAPACITY_LEVEL_UNSPECIFIED CapacityLevel = 0
+	CapacityLevel_CAPACITY_LEVEL_NORMAL      CapacityLevel = 1
+	// At least 80% of the channels in force are in use.
+	CapacityLevel_CAPACITY_LEVEL_WARNING CapacityLevel = 2
+	// All channels in force are in use, including calls in the burst
+	// allowance.
+	CapacityLevel_CAPACITY_LEVEL_REACHED CapacityLevel = 3
+)
+
+// Enum value maps for CapacityLevel.
+var (
+	CapacityLevel_name = map[int32]string{
+		0: "CAPACITY_LEVEL_UNSPECIFIED",
+		1: "CAPACITY_LEVEL_NORMAL",
+		2: "CAPACITY_LEVEL_WARNING",
+		3: "CAPACITY_LEVEL_REACHED",
+	}
+	CapacityLevel_value = map[string]int32{
+		"CAPACITY_LEVEL_UNSPECIFIED": 0,
+		"CAPACITY_LEVEL_NORMAL":      1,
+		"CAPACITY_LEVEL_WARNING":     2,
+		"CAPACITY_LEVEL_REACHED":     3,
+	}
+)
+
+func (x CapacityLevel) Enum() *CapacityLevel {
+	p := new(CapacityLevel)
+	*p = x
+	return p
+}
+
+func (x CapacityLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CapacityLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_atsapbx_v1_licensing_proto_enumTypes[3].Descriptor()
+}
+
+func (CapacityLevel) Type() protoreflect.EnumType {
+	return &file_atsapbx_v1_licensing_proto_enumTypes[3]
+}
+
+func (x CapacityLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CapacityLevel.Descriptor instead.
+func (CapacityLevel) EnumDescriptor() ([]byte, []int) {
+	return file_atsapbx_v1_licensing_proto_rawDescGZIP(), []int{3}
+}
+
 type LicenseStatus struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	State   LicenseState           `protobuf:"varint,1,opt,name=state,proto3,enum=atsapbx.v1.LicenseState" json:"state,omitempty"`
@@ -99,7 +283,12 @@ type LicenseStatus struct {
 	LastConfirmedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_confirmed_at,json=lastConfirmedAt,proto3" json:"last_confirmed_at,omitempty"`
 	// Why the state is not VALID, e.g. "not_activated", "expired",
 	// "tampered". Empty when VALID.
-	Reason        string `protobuf:"bytes,9,opt,name=reason,proto3" json:"reason,omitempty"`
+	Reason string `protobuf:"bytes,9,opt,name=reason,proto3" json:"reason,omitempty"`
+	// The headline condition, the tier and the capacity level, computed by
+	// the server (LLD-08 §6.1, D-70).
+	Condition     LicenseCondition `protobuf:"varint,10,opt,name=condition,proto3,enum=atsapbx.v1.LicenseCondition" json:"condition,omitempty"`
+	Tier          LicenseTier      `protobuf:"varint,11,opt,name=tier,proto3,enum=atsapbx.v1.LicenseTier" json:"tier,omitempty"`
+	Capacity      CapacityLevel    `protobuf:"varint,12,opt,name=capacity,proto3,enum=atsapbx.v1.CapacityLevel" json:"capacity,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -195,6 +384,27 @@ func (x *LicenseStatus) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *LicenseStatus) GetCondition() LicenseCondition {
+	if x != nil {
+		return x.Condition
+	}
+	return LicenseCondition_LICENSE_CONDITION_UNSPECIFIED
+}
+
+func (x *LicenseStatus) GetTier() LicenseTier {
+	if x != nil {
+		return x.Tier
+	}
+	return LicenseTier_LICENSE_TIER_UNSPECIFIED
+}
+
+func (x *LicenseStatus) GetCapacity() CapacityLevel {
+	if x != nil {
+		return x.Capacity
+	}
+	return CapacityLevel_CAPACITY_LEVEL_UNSPECIFIED
 }
 
 type GetLicenseStatusRequest struct {
@@ -372,7 +582,7 @@ var File_atsapbx_v1_licensing_proto protoreflect.FileDescriptor
 const file_atsapbx_v1_licensing_proto_rawDesc = "" +
 	"\n" +
 	"\x1aatsapbx/v1/licensing.proto\x12\n" +
-	"atsapbx.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x80\x03\n" +
+	"atsapbx.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x04\n" +
 	"\rLicenseStatus\x12.\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x18.atsapbx.v1.LicenseStateR\x05state\x12\x18\n" +
 	"\aedition\x18\x02 \x01(\tR\aedition\x12\x1a\n" +
@@ -384,7 +594,11 @@ const file_atsapbx_v1_licensing_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12F\n" +
 	"\x11last_confirmed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x0flastConfirmedAt\x12\x16\n" +
-	"\x06reason\x18\t \x01(\tR\x06reason\"\x19\n" +
+	"\x06reason\x18\t \x01(\tR\x06reason\x12:\n" +
+	"\tcondition\x18\n" +
+	" \x01(\x0e2\x1c.atsapbx.v1.LicenseConditionR\tcondition\x12+\n" +
+	"\x04tier\x18\v \x01(\x0e2\x17.atsapbx.v1.LicenseTierR\x04tier\x125\n" +
+	"\bcapacity\x18\f \x01(\x0e2\x19.atsapbx.v1.CapacityLevelR\bcapacity\"\x19\n" +
 	"\x17GetLicenseStatusRequest\"M\n" +
 	"\x18GetLicenseStatusResponse\x121\n" +
 	"\x06status\x18\x01 \x01(\v2\x19.atsapbx.v1.LicenseStatusR\x06status\".\n" +
@@ -397,7 +611,25 @@ const file_atsapbx_v1_licensing_proto_rawDesc = "" +
 	"\x1bLICENSE_STATE_NOT_ACTIVATED\x10\x01\x12\x17\n" +
 	"\x13LICENSE_STATE_VALID\x10\x02\x12\x1c\n" +
 	"\x18LICENSE_STATE_UNVERIFIED\x10\x03\x12\x1a\n" +
-	"\x16LICENSE_STATE_DEGRADED\x10\x042\xcd\x01\n" +
+	"\x16LICENSE_STATE_DEGRADED\x10\x04*\xb3\x02\n" +
+	"\x10LicenseCondition\x12!\n" +
+	"\x1dLICENSE_CONDITION_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17LICENSE_CONDITION_SETUP\x10\x01\x12\x1e\n" +
+	"\x1aLICENSE_CONDITION_DEGRADED\x10\x02\x12&\n" +
+	"\"LICENSE_CONDITION_CAPACITY_REACHED\x10\x03\x12,\n" +
+	"(LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED\x10\x04\x12&\n" +
+	"\"LICENSE_CONDITION_CAPACITY_WARNING\x10\x05\x12$\n" +
+	" LICENSE_CONDITION_FREE_COMMUNITY\x10\x06\x12\x1b\n" +
+	"\x17LICENSE_CONDITION_VALID\x10\a*i\n" +
+	"\vLicenseTier\x12\x1c\n" +
+	"\x18LICENSE_TIER_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bLICENSE_TIER_FREE_COMMUNITY\x10\x01\x12\x1b\n" +
+	"\x17LICENSE_TIER_COMMERCIAL\x10\x02*\x82\x01\n" +
+	"\rCapacityLevel\x12\x1e\n" +
+	"\x1aCAPACITY_LEVEL_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15CAPACITY_LEVEL_NORMAL\x10\x01\x12\x1a\n" +
+	"\x16CAPACITY_LEVEL_WARNING\x10\x02\x12\x1a\n" +
+	"\x16CAPACITY_LEVEL_REACHED\x10\x032\xcd\x01\n" +
 	"\x10LicensingService\x12]\n" +
 	"\x10GetLicenseStatus\x12#.atsapbx.v1.GetLicenseStatusRequest\x1a$.atsapbx.v1.GetLicenseStatusResponse\x12Z\n" +
 	"\x0fApplyLicenseKey\x12\".atsapbx.v1.ApplyLicenseKeyRequest\x1a#.atsapbx.v1.ApplyLicenseKeyResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
@@ -414,32 +646,38 @@ func file_atsapbx_v1_licensing_proto_rawDescGZIP() []byte {
 	return file_atsapbx_v1_licensing_proto_rawDescData
 }
 
-var file_atsapbx_v1_licensing_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_atsapbx_v1_licensing_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_atsapbx_v1_licensing_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_atsapbx_v1_licensing_proto_goTypes = []any{
 	(LicenseState)(0),                // 0: atsapbx.v1.LicenseState
-	(*LicenseStatus)(nil),            // 1: atsapbx.v1.LicenseStatus
-	(*GetLicenseStatusRequest)(nil),  // 2: atsapbx.v1.GetLicenseStatusRequest
-	(*GetLicenseStatusResponse)(nil), // 3: atsapbx.v1.GetLicenseStatusResponse
-	(*ApplyLicenseKeyRequest)(nil),   // 4: atsapbx.v1.ApplyLicenseKeyRequest
-	(*ApplyLicenseKeyResponse)(nil),  // 5: atsapbx.v1.ApplyLicenseKeyResponse
-	(*timestamppb.Timestamp)(nil),    // 6: google.protobuf.Timestamp
+	(LicenseCondition)(0),            // 1: atsapbx.v1.LicenseCondition
+	(LicenseTier)(0),                 // 2: atsapbx.v1.LicenseTier
+	(CapacityLevel)(0),               // 3: atsapbx.v1.CapacityLevel
+	(*LicenseStatus)(nil),            // 4: atsapbx.v1.LicenseStatus
+	(*GetLicenseStatusRequest)(nil),  // 5: atsapbx.v1.GetLicenseStatusRequest
+	(*GetLicenseStatusResponse)(nil), // 6: atsapbx.v1.GetLicenseStatusResponse
+	(*ApplyLicenseKeyRequest)(nil),   // 7: atsapbx.v1.ApplyLicenseKeyRequest
+	(*ApplyLicenseKeyResponse)(nil),  // 8: atsapbx.v1.ApplyLicenseKeyResponse
+	(*timestamppb.Timestamp)(nil),    // 9: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_licensing_proto_depIdxs = []int32{
-	0, // 0: atsapbx.v1.LicenseStatus.state:type_name -> atsapbx.v1.LicenseState
-	6, // 1: atsapbx.v1.LicenseStatus.expires_at:type_name -> google.protobuf.Timestamp
-	6, // 2: atsapbx.v1.LicenseStatus.last_confirmed_at:type_name -> google.protobuf.Timestamp
-	1, // 3: atsapbx.v1.GetLicenseStatusResponse.status:type_name -> atsapbx.v1.LicenseStatus
-	1, // 4: atsapbx.v1.ApplyLicenseKeyResponse.status:type_name -> atsapbx.v1.LicenseStatus
-	2, // 5: atsapbx.v1.LicensingService.GetLicenseStatus:input_type -> atsapbx.v1.GetLicenseStatusRequest
-	4, // 6: atsapbx.v1.LicensingService.ApplyLicenseKey:input_type -> atsapbx.v1.ApplyLicenseKeyRequest
-	3, // 7: atsapbx.v1.LicensingService.GetLicenseStatus:output_type -> atsapbx.v1.GetLicenseStatusResponse
-	5, // 8: atsapbx.v1.LicensingService.ApplyLicenseKey:output_type -> atsapbx.v1.ApplyLicenseKeyResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	0,  // 0: atsapbx.v1.LicenseStatus.state:type_name -> atsapbx.v1.LicenseState
+	9,  // 1: atsapbx.v1.LicenseStatus.expires_at:type_name -> google.protobuf.Timestamp
+	9,  // 2: atsapbx.v1.LicenseStatus.last_confirmed_at:type_name -> google.protobuf.Timestamp
+	1,  // 3: atsapbx.v1.LicenseStatus.condition:type_name -> atsapbx.v1.LicenseCondition
+	2,  // 4: atsapbx.v1.LicenseStatus.tier:type_name -> atsapbx.v1.LicenseTier
+	3,  // 5: atsapbx.v1.LicenseStatus.capacity:type_name -> atsapbx.v1.CapacityLevel
+	4,  // 6: atsapbx.v1.GetLicenseStatusResponse.status:type_name -> atsapbx.v1.LicenseStatus
+	4,  // 7: atsapbx.v1.ApplyLicenseKeyResponse.status:type_name -> atsapbx.v1.LicenseStatus
+	5,  // 8: atsapbx.v1.LicensingService.GetLicenseStatus:input_type -> atsapbx.v1.GetLicenseStatusRequest
+	7,  // 9: atsapbx.v1.LicensingService.ApplyLicenseKey:input_type -> atsapbx.v1.ApplyLicenseKeyRequest
+	6,  // 10: atsapbx.v1.LicensingService.GetLicenseStatus:output_type -> atsapbx.v1.GetLicenseStatusResponse
+	8,  // 11: atsapbx.v1.LicensingService.ApplyLicenseKey:output_type -> atsapbx.v1.ApplyLicenseKeyResponse
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_licensing_proto_init() }
@@ -452,7 +690,7 @@ func file_atsapbx_v1_licensing_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_licensing_proto_rawDesc), len(file_atsapbx_v1_licensing_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      4,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,

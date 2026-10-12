@@ -160,12 +160,17 @@ consumer-ready public API; D-67 is a decision, not a delivered button.
 
 All authenticated users see the actual licence/capacity state, edition,
 licensed channels, channels in use, Tenant and extension caps, expiry, last
-confirmation, and a clear reason where applicable. The UI preserves the API
-and PRD distinctions between **Setup**, **Free Community**, **Valid**,
-**Capacity Warning**, **Capacity Reached**, **Entitlement Unverified**,
-**Degraded**, and **Suspended**. It never reduces those to an
-`activated: boolean` or labels a degraded installation “Valid”. A
-system-scope operator also sees **Apply licence**.
+confirmation, and a clear reason where applicable. The status pill shows
+the server's `condition` exactly as `GetLicenseStatus` reports it:
+**Setup**, **Free Community**, **Valid**, **Capacity Warning**, **Capacity
+Reached**, **Entitlement Unverified**, or **Degraded**. The server picks
+the most urgent when several apply (D-70, LLD-08 §6.1); the page also shows
+the `tier`, `capacity` level and entitlement `state` beside it, and the
+browser never computes any of them. **Suspended** is a tenant's status, not
+a licence state, and a suspended tenant's users cannot sign in. The UI
+never reduces these to an `activated: boolean` or labels a degraded
+installation “Valid”. A system-scope operator also sees **Apply
+licence**.
 
 Use `GetLicenseStatus` to render this page and `ApplyLicenseKey` only
 after clear confirmation. The key is secret: use a masked multiline input;

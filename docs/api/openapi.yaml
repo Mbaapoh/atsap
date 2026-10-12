@@ -2609,6 +2609,33 @@ components:
       title: Tenant
       additionalProperties: false
       description: Tenant is a partner organisation.
+    atsapbx.v1.CapacityLevel:
+      type: string
+      title: CapacityLevel
+      enum:
+        - CAPACITY_LEVEL_UNSPECIFIED
+        - CAPACITY_LEVEL_NORMAL
+        - CAPACITY_LEVEL_WARNING
+        - CAPACITY_LEVEL_REACHED
+      description: CapacityLevel is live usage against the channels in force.
+    atsapbx.v1.LicenseCondition:
+      type: string
+      title: LicenseCondition
+      enum:
+        - LICENSE_CONDITION_UNSPECIFIED
+        - LICENSE_CONDITION_SETUP
+        - LICENSE_CONDITION_DEGRADED
+        - LICENSE_CONDITION_CAPACITY_REACHED
+        - LICENSE_CONDITION_ENTITLEMENT_UNVERIFIED
+        - LICENSE_CONDITION_CAPACITY_WARNING
+        - LICENSE_CONDITION_FREE_COMMUNITY
+        - LICENSE_CONDITION_VALID
+      description: |-
+        LicenseCondition is the one PRD §11.2 state the installation is in: the
+         most urgent of its facts, chosen by the server (LLD-08 §6.1, D-70). A
+         client shows it as-is and never derives it. Precedence, most urgent
+         first: SETUP, DEGRADED, CAPACITY_REACHED, ENTITLEMENT_UNVERIFIED,
+         CAPACITY_WARNING, FREE_COMMUNITY, VALID.
     atsapbx.v1.LicenseState:
       type: string
       title: LicenseState
@@ -2619,6 +2646,14 @@ components:
         - LICENSE_STATE_UNVERIFIED
         - LICENSE_STATE_DEGRADED
       description: LicenseState is where the licence stands.
+    atsapbx.v1.LicenseTier:
+      type: string
+      title: LicenseTier
+      enum:
+        - LICENSE_TIER_UNSPECIFIED
+        - LICENSE_TIER_FREE_COMMUNITY
+        - LICENSE_TIER_COMMERCIAL
+      description: LicenseTier is which kind of entitlement is in force.
     atsapbx.v1.ApplyLicenseKeyRequest:
       type: object
       properties:
@@ -2690,6 +2725,18 @@ components:
           description: |-
             Why the state is not VALID, e.g. "not_activated", "expired",
              "tampered". Empty when VALID.
+        condition:
+          title: condition
+          description: |-
+            The headline condition, the tier and the capacity level, computed by
+             the server (LLD-08 §6.1, D-70).
+          $ref: '#/components/schemas/atsapbx.v1.LicenseCondition'
+        tier:
+          title: tier
+          $ref: '#/components/schemas/atsapbx.v1.LicenseTier'
+        capacity:
+          title: capacity
+          $ref: '#/components/schemas/atsapbx.v1.CapacityLevel'
       title: LicenseStatus
       additionalProperties: false
     atsapbx.v1.DeviceType:

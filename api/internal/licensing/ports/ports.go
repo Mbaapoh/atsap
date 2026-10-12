@@ -132,4 +132,8 @@ type LicenseStatus struct {
 	// LastConfirmedAt is when the entitlement was last confirmed; nil when
 	// no licence is in force.
 	LastConfirmedAt *time.Time
+	// Conditions is the PRD §11.2 condition, tier and capacity level,
+	// computed here from the entitlement and live usage, so no client
+	// derives them (LLD-08 §6.1, D-70).
+	Conditions domain.StatusConditions
 }
