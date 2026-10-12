@@ -78,10 +78,16 @@ same versions are used in CI, so "works on my machine" failures are rare.
 mise trust
 mise install        # installs the pinned toolchain (Go, tilt, linters, ...)
 cp .env.example .env
-mise run tilt:up     # full stack under Tilt: live reload for Go (UI :10350)
+mise run tilt:up     # full stack under Tilt: live reload for Go, console on :5173 (UI :10350)
 # …or plain compose, without live reload:
 mise run dev         # docker compose up --build: Asterisk + Postgres + the Go app
 ```
+
+Use Tilt for day-to-day work: save a Go file and the app recompiles and
+restarts in its container in seconds; save a console file and the browser
+hot-reloads; edit a `.proto` and both sides regenerate. No image rebuilds.
+`make dev` / `make dev-app` rebuild the production image and refuse while
+Tilt is running (D-60).
 
 `mise run <task>` delegates to the same-named `make` target (`:` → `-`),
 so `mise run dev:down` ≡ `make dev-down`; `mise exec -- make help` lists

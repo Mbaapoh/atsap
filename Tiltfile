@@ -7,9 +7,20 @@
 #     the toolchain for live_update). Never point compose at .dev directly.
 #
 # Usage:
-#   tilt up                 # full stack with live reload (mise run tilt:up)
-#   tilt up -- --no-sipua   # app-only iteration, no sip-ua sidecar
-#   tilt down               # stop everything (mise run tilt:down)
+#   tilt up                    # full stack with live reload (mise run tilt:up)
+#   tilt up -- --no-sipua      # app-only iteration, no sip-ua sidecar
+#   tilt up -- --no-console    # backend only, no console dev server
+#   tilt down                  # stop everything (mise run tilt:down)
+#
+# While Tilt runs, edits are picked up without image rebuilds:
+#   - Go (api/cmd, api/internal): synced, recompiled in the container,
+#     restarted — seconds.
+#   - Protos (api/proto): Go and console stubs regenerated, which in turn
+#     live-updates the app and hot-reloads the console.
+#   - Console (console/src): Vite hot-reloads the browser in place.
+# Do not run `make dev-app` or `make dev` while Tilt is up: they rebuild the
+# production image through compose and replace Tilt's container behind its
+# back (both refuse while Tilt is running).
 
 version_settings(constraint='>=0.37.0')
 analytics_settings(False)
@@ -19,6 +30,10 @@ config.define_bool(
     'no-sipua',
     args=True,
     usage='Skip the sip-ua sidecar (faster app-only iteration).',
+)
+config.define_bool(
+    'no-console',
+    usage='Skip the console dev server (backend-only iteration).',
 )
 cfg = config.parse()
 
@@ -161,3 +176,44 @@ dc_resource(
     auto_init=not cfg.get('no-sipua', False),
     labels=['voice'],
 )
+
+# ------------------------------------------------------- code generation ---
+
+# A .proto edit regenerates both sides from the same source (D-68): the Go
+# stubs (api/internal/genproto, which live_update then compiles into the
+# running app) and the console's TypeScript (console/src/api/gen, which
+# Vite then hot-reloads). Not run at startup: the generated code is
+# committed, and buf's remote Go plugins need the network.
+local_resource(
+    'proto-gen',
+    cmd='cd api && buf generate && cd ../console && mise exec -- npm run gen',
+    deps=['./api/proto', './api/buf.gen.yaml', './console/buf.gen.yaml'],
+    auto_init=False,
+    resource_deps=['console-deps'],
+    labels=['codegen'],
+)
+
+# ---------------------------------------------------------------- console ---
+
+# The console's locked dependencies, reinstalled only when the lockfile
+# changes (D-68: `npm ci`, never an implicit upgrade).
+local_resource(
+    'console-deps',
+    cmd='cd console && mise exec -- npm ci --no-audit --no-fund',
+    deps=['./console/package-lock.json', './console/mise.toml'],
+    labels=['console'],
+)
+
+# Vite's dev server: hot module reload in the browser on every save under
+# console/src, and /atsapbx.v1.* proxied to the app (D-69). Playwright
+# reuses this server when it is up. No container, no build.
+local_resource(
+    'console',
+    serve_cmd='cd console && exec mise exec -- npm run dev',
+    resource_deps=['console-deps', 'app'],
+    readiness_probe=probe(http_get=http_get_action(port=5173, path='/'), period_secs=2),
+    links=['http://localhost:5173'],
+    auto_init=not cfg.get('no-console', False),
+    labels=['console'],
+)
+

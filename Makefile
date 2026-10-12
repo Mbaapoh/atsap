@@ -37,7 +37,17 @@ help: ## Display this help
 env: ## Create .env from .env.example if missing
 	test -f .env || cp .env.example .env
 
-dev: env ## Start dev stack (Asterisk + Postgres + NATS + app)
+# not-under-tilt refuses a compose rebuild while Tilt runs: it would
+# replace Tilt's live-updating container with the production image behind
+# Tilt's back. With Tilt up, just save the file.
+not-under-tilt:
+	@if tilt get session >/dev/null 2>&1; then \
+		echo "Tilt is running: save the file and Tilt live-updates it (UI http://localhost:10350)."; \
+		echo "Run 'make tilt-down' first if you really want a compose rebuild."; \
+		exit 1; \
+	fi
+
+dev: env not-under-tilt ## Start dev stack (Asterisk + Postgres + NATS + app)
 	$(COMPOSE) up --build
 
 # The dev app boots in Setup — no call path — because a real build trusts
@@ -57,7 +67,7 @@ dev-licence: env ## Licence the local dev app with a throwaway dev key
 dev-down: ## Stop and remove the dev stack
 	$(COMPOSE) down
 
-dev-app: ## Rebuild + restart only the app service (fast; Asterisk untouched)
+dev-app: not-under-tilt ## Rebuild + restart only the app service (when Tilt is NOT running)
 	$(COMPOSE) up -d --build app
 
 dev-logs: ## Tail the dev stack's logs

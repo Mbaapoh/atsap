@@ -1811,6 +1811,26 @@ extends the pattern to the dev stack itself), D-59 (gates as code)
 **Traceability:** `Tiltfile`; `api/Dockerfile.dev`; `Makefile`;
 `.mise.toml`; `docs/TOOLSET.md` §5
 
+**Amendment (2026-10-12) — Tilt is the dev loop; the console and code
+generation join it.** In practice the stack kept being refreshed with
+`make dev-app`, which rebuilds the distroless production image (minutes)
+and replaces Tilt's container behind its back, so the live update this
+decision exists for went unused. Now:
+- Development runs under `tilt up`. A Go save syncs, recompiles in the
+  container and restarts the app in seconds; no image is built.
+- The console's Vite dev server is a Tilt resource (`console`, :5173,
+  hot module reload, `/atsapbx.v1.*` proxied to the app per D-69), with
+  `console-deps` running `npm ci` only when the lockfile changes (D-68).
+  `tilt up -- --no-console` leaves it out.
+- A `.proto` edit triggers `proto-gen`, which regenerates the Go stubs
+  and the console's TypeScript from the same source; live update and
+  HMR then pick both up. It does not run at startup (generated code is
+  committed; buf's remote Go plugins need the network).
+- `make dev` and `make dev-app` refuse while Tilt is running
+  (`not-under-tilt`); they remain for when Tilt is not in use. An image
+  rebuild under Tilt happens only when a Dockerfile or dependency set
+  changes, or for Asterisk by manual trigger.
+
 ---
 
 **D-61 · A user is one person across the installation; a principal is
