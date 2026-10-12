@@ -162,24 +162,26 @@ tidy: ## Tidy go modules
 
 ##@ Console (console/, D-68; Node and npm pinned by console/mise.toml)
 
+# Node and npm are pinned in console/mise.toml, which mise only reads from
+# inside console/, so every recipe runs npm through `mise exec` there.
 .PHONY: console-install console-gen console-test console-build console-e2e console-audit
 console-install: ## Install the console's locked dependencies (npm ci)
-	cd console && npm ci
+	cd console && mise exec -- npm ci
 
 console-gen: ## Regenerate the console's TypeScript API clients from api/proto
-	cd console && npm run gen
+	cd console && mise exec -- npm run gen
 
 console-test: ## Typecheck and run the console's component tests
-	cd console && npm run typecheck && npm test
+	cd console && mise exec -- npm run typecheck && mise exec -- npm test
 
 console-build: ## Build the console for production into console/dist
-	cd console && npm run build
+	cd console && mise exec -- npm run build
 
 console-e2e: ## Console browser E2E (needs Chromium; the dev rig API on :8080 for API tests)
-	cd console && npm run e2e
+	cd console && mise exec -- npm run e2e
 
 console-audit: ## Audit the console's production dependencies (high and above)
-	cd console && npm run audit:prod
+	cd console && mise exec -- npm run audit:prod
 
 ##@ Gates and docs
 

@@ -14,7 +14,7 @@ GOFLAGS = "-mod=mod"
 # in the Makefile, not here.
 
 [tasks.dev]
-description = "Start local dev stack (Asterisk + Go app) with live rebuild"
+description = "Start the dev stack under plain compose, rebuilding images (refuses while Tilt runs; prefer tilt:up)"
 run = "make dev"
 
 [tasks."dev:down"]
@@ -22,7 +22,7 @@ description = "Stop and remove the local dev stack"
 run = "make dev-down"
 
 [tasks."dev:app"]
-description = "Rebuild and restart only the app service (fast; Asterisk is untouched)"
+description = "Rebuild the app image and restart it under compose (refuses while Tilt runs; Tilt live-updates instead)"
 run = "make dev-app"
 
 [tasks."uat:auto"]
@@ -38,7 +38,7 @@ description = "Tail logs from the local dev stack"
 run = "make dev-logs"
 
 [tasks."tilt:up"]
-description = "Start local dev stack under Tilt (live reload for Go services; compose owns topology)"
+description = "Start the dev loop under Tilt: Go live update, console on :5173, proto regeneration (UI :10350)"
 run = "make tilt-up"
 
 [tasks."tilt:down"]
@@ -100,3 +100,27 @@ run = "make images-push"
 [tasks.deploy]
 description = "Deploy the prod stack on this host from pre-built images (run on the VPS; see README's Production deployment section). Set REGISTRY/IMAGE_TAG as needed."
 run = "make deploy"
+
+[tasks."console:install"]
+description = "Install the console's locked dependencies (npm ci)"
+run = "make console-install"
+
+[tasks."console:gen"]
+description = "Regenerate the console's TypeScript API clients from api/proto"
+run = "make console-gen"
+
+[tasks."console:test"]
+description = "Typecheck and run the console's component tests"
+run = "make console-test"
+
+[tasks."console:build"]
+description = "Build the console for production into console/dist"
+run = "make console-build"
+
+[tasks."console:e2e"]
+description = "Console browser E2E (Playwright, Chromium)"
+run = "make console-e2e"
+
+[tasks."console:audit"]
+description = "Audit the console's production dependencies (high and above)"
+run = "make console-audit"
