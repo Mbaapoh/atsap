@@ -55,10 +55,13 @@ configuration file, and without being told what Asterisk is.
 
 1. **Console design input** (owner): the console design document, from
    the shared design input form. The console changes start from it.
-2. **`console-foundation`**: React + TypeScript ([D-36](DECISIONS.md)),
+2. **`console-foundation`** (scaffold done, 0.1): React + TypeScript ([D-36](DECISIONS.md)),
    TypeScript clients generated from the same protos, session handling
    (in-memory token, silent refresh, tenant picker), layout, Sign in and
    Licence screens; browser e2e (Playwright) walking A1.
+   - **`licensing-status-conditions`** (proposed, D-70): `GetLicenseStatus`
+     reports the PRD condition, tier and capacity level. Lands before task
+     2.3, the licence screen.
 3. **`console-admin-screens`**: Users, Extensions, Trunks and routes, Call
    history; browser e2e walking A2–A5. **Phase A is done when this passes.**
 4. **`phase-a-hardening`** (small): `GetCall` stops exposing the engine
@@ -127,7 +130,8 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| *(none)* | Console slice A is to be proposed next | — |
+| `console-foundation` | Scaffold milestone done (0.1); screens next | 1/11 |
+| `licensing-status-conditions` | Proposed, not applied | 0/7 |
 
 ## Open gaps
 

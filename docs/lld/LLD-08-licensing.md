@@ -12,6 +12,7 @@
 | Date | Change |
 |---|---|
 | 2026-09-07 | Written as the licensing half of `LLD-02-identity-licensing.md`. |
+| 2026-10-12 | **§6.1 added: status conditions (D-70).** `GetLicenseStatus` gains the PRD §11.2 condition as one headline, plus the tier and capacity level it is built from, all computed server-side by a pure domain function. Proposed as `licensing-status-conditions`, ahead of the console's licence screen. |
 | 2026-09-09 | **The degradation floor gained a number, then the never-activated case was separated from it.** D-49 set the floor at 4 channels / 10 extensions / 1 tenant. D-52 then established that a never-activated installation is **Setup** with no call path — *not* that floor — and D-53/D-54 changed how the entitlement is stored and verified. See the scope note in §1, which is authoritative over this row. |
 | 2026-09-08 | **§3.1 added, correcting §2.** The inherited text said licensing's port *retires* `telephony/ports.LicenseManager`; that contradicted this LLD's own §1 tripwire and DoD 7, and the obvious way to honour it would have made `licensing` import `telephony/ports` — forbidden by HLD 04 §10.1. Both ports stay; the composition root adapts between them. |
 | 2026-09-08 | **Split into its own LLD.** `docs/lld/README.md` states that an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts, each depending on nothing. LLD-02 §2 had justified combining them as sharing "one cutover (auth + entitlement activate together)". Delivery disproved that: identity shipped in three archived changes (`identity-auth-rbac`, `identity-api`, `auth-cutover-connectrpc`) while licensing shipped nothing. They never activated together and never could have. Content is carried over unchanged except where marked. |
@@ -294,6 +295,45 @@ Per D-43, a capability gets an RPC when it has a named R1.0 consumer.
 `docs/API.md` §3 already lists the two RPCs as pending; the change that
 lands them updates §1 in the same commit.
 
+### 6.1 Status conditions: the PRD states, reported by the server (D-70)
+
+PRD §11.2 lists eight licence and capacity states. They are not one state
+machine: they mix three independent facts.
+
+| Fact | Values | Source |
+|---|---|---|
+| **Entitlement state** (exists today) | Setup, Valid, Entitlement Unverified, Degraded | The grace evaluation (§3) |
+| **Tier** (new) | Free Community, Commercial | The entitlement's edition: `free` is Free Community (`FreeEntitlement`) |
+| **Capacity level** (new) | Normal, Warning (≥ 80% of the channels in force), Reached (≥ 100%) | Channels in use against the entitlement's channels, Degraded's floor included. None in Setup, which has no capacity |
+
+A Free Community installation can be at Capacity Warning; an Unverified
+one can be at Capacity Reached. So `GetLicenseStatus` reports each fact as
+its own field, plus one **condition**: the single PRD state the console
+shows in its status pill, chosen by the server with a fixed precedence,
+most urgent first:
+
+1. **Setup**: no call path at all.
+2. **Degraded**: capacity has fallen to the floor, and why.
+3. **Capacity Reached**: new calls are being declined now.
+4. **Entitlement Unverified**: a deadline is running.
+5. **Capacity Warning**: informational.
+6. **Free Community**: normal, within the free tier's limits.
+7. **Valid**.
+
+The rule is a pure function in `licensing/domain`, so it is tested
+exhaustively and computed in one place. The browser never derives a
+condition (D-70).
+
+- **Thresholds:** Warning when `in_use × 100 ≥ 80 × channels`; Reached
+  when `in_use ≥ channels`. Calls admitted into the burst allowance (§3,
+  10% for 15 minutes) are still Reached: the allowance absorbs a busy
+  hour, it does not make the installation un-full.
+- **Suspended is not a licence state.** It is a tenant's status
+  (identity), and a suspended tenant's users cannot sign in at all. It
+  stays out of `GetLicenseStatus`; an operator sees it on the tenant.
+- **Additive on the wire:** the existing `state` field keeps its meaning;
+  `condition`, `tier` and `capacity` are new fields.
+
 ## 7. Known limitations
 
 - **Single-node capacity counting.** The atomic counter is per process.
@@ -378,7 +418,8 @@ file as the design source.
 | Change ID | Scope | Sequencing |
 |---|---|---|
 | `licensing-capacity-grace` | `VerifyToken` and the trusted key set, `ApplyLicenseKey` as a domain operation, `ATSAPBX_LICENSE_TOKEN` intake, signed-payload storage with load-time re-verification, atomic counter with burst, 7-day grace tracker, `licensing_state` migration, and the `stub_license.go` cutover | First |
-| `licensing-apply-key` | The `ApplyLicenseKey`/`GetLicenseStatus` **RPCs** and CLI, hardware fingerprint collection and 3-of-5 matching, console licence screen | After: gives the token a portal, an operator interface and machine binding |
+| `licensing-apply-key` | The `ApplyLicenseKey`/`GetLicenseStatus` **RPCs** and CLI, hardware fingerprint collection and 3-of-5 matching, console licence screen | After: gives the token a portal, an operator interface and machine binding. *(The RPCs landed in `console-apis-phase-a`.)* |
+| `licensing-status-conditions` | §6.1: condition, tier and capacity level on `GetLicenseStatus` | Before `console-foundation` task 2.3 (the licence screen) |
 
 **Re-sliced 2026-09-09.** Token intake moved into the first change
 because D-52 removed the unsigned path: with no token applied an
