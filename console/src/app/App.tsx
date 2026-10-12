@@ -3,8 +3,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { ApiProvider } from "../api/ApiProvider";
 import { ToastProvider } from "../components/Toast";
-import { createApiClients } from "../api/clients";
+import { createApiClients, type ApiClients } from "../api/clients";
 import { createApiTransport } from "../api/transport";
+import { SessionController } from "../features/auth/adapter";
+import { SessionProvider } from "../features/auth/SessionProvider";
+import { SessionStore } from "../features/auth/session";
 import { routes } from "./routes";
 
 // Server state lives in TanStack Query and is refetched after a mutation
@@ -21,18 +24,42 @@ function createQueryClient() {
   });
 }
 
+interface Wiring {
+  clients: ApiClients;
+  session: SessionController;
+}
+
+// wire is the composition root: one in-memory session store, one
+// transport reading its token and asking it to refresh, one set of
+// clients, and the session controller over the auth client. A change of
+// person or Tenant empties the query cache, so nothing fetched in one
+// scope is shown in another.
+function wire(queryClient: QueryClient): Wiring {
+  const store = new SessionStore();
+  let session: SessionController | undefined;
+  const clients = createApiClients(
+    createApiTransport({
+      accessToken: store.accessToken,
+      refresh: () => session?.refresh() ?? Promise.resolve(false),
+    }),
+  );
+  session = new SessionController(clients.auth, store, { onScopeChange: () => queryClient.clear() });
+  return { clients, session };
+}
+
 export function App() {
   const [queryClient] = useState(createQueryClient);
-  // The access token source is wired by the session feature (task 2.1).
-  const [clients] = useState(() => createApiClients(createApiTransport()));
+  const [{ clients, session }] = useState(() => wire(queryClient));
   const [router] = useState(() => createBrowserRouter(routes));
 
   return (
     <QueryClientProvider client={queryClient}>
       <ApiProvider clients={clients}>
-        <ToastProvider>
-          <RouterProvider router={router} />
-        </ToastProvider>
+        <SessionProvider controller={session}>
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
+        </SessionProvider>
       </ApiProvider>
     </QueryClientProvider>
   );

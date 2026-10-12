@@ -11,6 +11,9 @@ export interface ApiTransportOptions {
   // Reads the in-memory access token (HLD-19 §4). It is never stored in
   // browser persistence or a URL; the session feature owns it.
   accessToken?: AccessTokenSource;
+  // Renews the access token after the server refuses an expired one,
+  // resolving true when a new one is held. The session feature owns it.
+  refresh?: () => Promise<boolean>;
 }
 
 // bearer adds the access token to every call when one is held. Calls that
@@ -23,6 +26,26 @@ function bearer(source: AccessTokenSource): Interceptor {
       req.header.set("Authorization", `Bearer ${token}`);
     }
     return next(req);
+  };
+}
+
+// refreshOnce handles an access token the server no longer accepts: it
+// asks the session to refresh, then repeats the call once with the new
+// token (console brief §6 rule 4). A call sent without a token, the
+// refresh call itself, and a repeat that fails again are not retried — a
+// second refusal is the session ending, which the session feature turns
+// into a return to sign-in.
+function refreshOnce(source: AccessTokenSource, refresh: () => Promise<boolean>): Interceptor {
+  return (next) => async (req) => {
+    const sent = source();
+    try {
+      return await next(req);
+    } catch (err) {
+      const refusedToken = sent !== undefined && ConnectError.from(err).code === Code.Unauthenticated;
+      if (!refusedToken || req.method.name === "RefreshSession") throw err;
+      if (!(await refresh())) throw err;
+      return next(req);
+    }
   };
 }
 
@@ -46,6 +69,12 @@ export function createApiTransport(options: ApiTransportOptions = {}): Transport
     // Same-origin requests send the HttpOnly refresh cookie that the server
     // scopes to AuthService. Nothing in the page can read it.
     fetch: (input, init) => globalThis.fetch(input, { ...init, credentials: "same-origin" }),
-    interceptors: [publicOnly(baseUrl), ...(options.accessToken ? [bearer(options.accessToken)] : [])],
+    // Outermost first: the guard sees every call, a refreshed retry passes
+    // back through bearer and so carries the new token.
+    interceptors: [
+      publicOnly(baseUrl),
+      ...(options.accessToken && options.refresh ? [refreshOnce(options.accessToken, options.refresh)] : []),
+      ...(options.accessToken ? [bearer(options.accessToken)] : []),
+    ],
   });
 }

@@ -46,7 +46,7 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `SignOut` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console sign-out; access ends on the next request |
 | `ChangePassword` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console account screen; ends the person's other sessions; the one call a must-change token may make besides `SignOut` |
 | `RequestPasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console "forgot password": a single-use emailed link; the same answer for every email |
-| `CompletePasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console reset and invitation pages: redeems the link and ends every session |
+| `CompletePasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console reset and invitation pages: redeems the link and ends every session. An unusable link and an out-of-bounds password are both `INVALID_ARGUMENT`; check the length (8–64 code points) first |
 | `CreateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions screen; the only response carrying a generated secret |
 | `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
 | `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |

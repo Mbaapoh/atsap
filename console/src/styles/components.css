@@ -82,3 +82,31 @@
 .toast-info { color: var(--color-info); }
 .toast-warning { color: var(--color-warning); }
 .toast .icon-button { color: var(--color-text-muted); }
+
+/* Form fields: label above, hint and error tied to the input. */
+.field { display: grid; gap: var(--space-1); margin-block-end: var(--space-4); }
+.field-label { font-weight: 600; }
+.field-hint { margin: 0; color: var(--color-text-muted); font-size: 0.875rem; }
+.field-error { margin: 0; color: var(--color-danger); font-size: 0.875rem; font-weight: 600; }
+.input {
+  min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font: inherit;
+}
+.input[aria-invalid="true"] { border-color: var(--color-danger); }
+.input[readonly] { background: var(--color-surface-muted); }
+.form-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-block-start: var(--space-2); }
+.link-button { background: none; border: 0; padding: 0; color: var(--color-action-primary); font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* Sign-in, recovery and Tenant choice: one centred card, outside the shell. */
+.auth-layout { min-height: 100vh; display: grid; place-items: center; padding: var(--space-6) var(--space-4); background: var(--color-canvas); }
+.auth-card {
+  width: 100%; max-width: 420px; padding: var(--space-6); border-radius: var(--radius-md);
+  border: 1px solid var(--color-border); background: var(--color-surface); box-shadow: var(--shadow-sm);
+}
+.auth-card h1 { margin: 0 0 var(--space-2); font-size: 1.5rem; }
+.auth-card .product { display: block; margin-block-end: var(--space-5); font-weight: 700; }
+.auth-footer { margin-block-start: var(--space-5); }
+.choice-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.choice-list .button { width: 100%; justify-content: space-between; }
+.choice-detail { color: var(--color-text-muted); font-weight: 400; }
+.tenant-indicator { display: inline-flex; gap: var(--space-2); align-items: baseline; }

@@ -1,19 +1,18 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 import { primaryNav } from "./nav";
 import { routes } from "./routes";
+import type { SessionState } from "../features/auth/session";
+import { renderApp } from "../test/session";
+import { initialSession } from "../features/auth/session";
 
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
-  return router;
+function renderAt(path: string, state?: SessionState) {
+  return renderApp(routes, path, state).router;
 }
 
 describe("Phase A route tree", () => {
   it.each([
-    ["/sign-in", "Sign in"],
     ["/", "Overview"],
     ["/licence", "Licence"],
     ["/users", "Users"],
@@ -33,7 +32,8 @@ describe("Phase A route tree", () => {
   });
 
   it("sign-in stands outside the shell", () => {
-    renderAt("/sign-in");
+    renderAt("/sign-in", { ...initialSession, status: "signed-out" });
+    expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Main" })).not.toBeInTheDocument();
   });
 

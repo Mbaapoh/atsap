@@ -1,6 +1,10 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { ApiClients } from "./clients";
 
+// Adapters type their clients through this re-export; only the API layer
+// and the composition root import the clients module itself.
+export type { ApiClients };
+
 const ApiContext = createContext<ApiClients | null>(null);
 
 export function ApiProvider({ clients, children }: { clients: ApiClients; children: ReactNode }) {

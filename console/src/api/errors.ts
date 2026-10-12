@@ -31,11 +31,15 @@ const messages: Record<ApiErrorKind, string> = {
 // page, a toast or a log.
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
+  // retryAfterSeconds is the server's throttle delay (Retry-After), when
+  // it gave one. Respect it; never guess a shorter one.
+  readonly retryAfterSeconds: number | undefined;
 
-  constructor(kind: ApiErrorKind) {
+  constructor(kind: ApiErrorKind, retryAfterSeconds?: number) {
     super(messages[kind]);
     this.name = "ApiError";
     this.kind = kind;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -67,7 +71,11 @@ function kindOf(code: Code): ApiErrorKind {
 // toApiError turns anything a call threw into an ApiError.
 export function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
-  return new ApiError(kindOf(ConnectError.from(err).code));
+  const ce = ConnectError.from(err);
+  const kind = kindOf(ce.code);
+  if (kind !== "throttled") return new ApiError(kind);
+  const wait = Number.parseInt(ce.metadata.get("Retry-After") ?? "", 10);
+  return new ApiError(kind, Number.isFinite(wait) && wait > 0 ? wait : undefined);
 }
 
 // callApi runs one generated-client call for an adapter and converts any

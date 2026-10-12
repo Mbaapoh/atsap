@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PUBLIC_PROCEDURES } from "../src/api/publicApi";
+import { mockSession } from "./support/session";
 
 // console-foundation task 1.3: in a real browser, every request the
 // console makes on every page stays on its own origin, and every API call
@@ -11,6 +12,7 @@ test("every request stays on the console's origin and inside the public API", as
   const origin = new URL(baseURL!).origin;
   const seen: string[] = [];
   page.on("request", (req) => seen.push(req.url()));
+  await mockSession(page);
 
   for (const path of pages) {
     await page.goto(path);

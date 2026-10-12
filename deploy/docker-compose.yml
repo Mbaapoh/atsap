@@ -127,7 +127,9 @@ services:
       ATSAPBX_SMTP_ADDR: mailpit:1025
       ATSAPBX_SMTP_INSECURE: "true"
       ATSAPBX_COOKIE_INSECURE: "true"
-      ATSAPBX_CONSOLE_URL: http://localhost:8080
+      # Emailed reset and invitation links open the console's dev server
+      # (Tilt's `console` resource, D-60); production sets its own origin.
+      ATSAPBX_CONSOLE_URL: http://localhost:5173
     ports:
       - "8080:8080"
     # No healthcheck stanza yet: the image is distroless (no shell/curl),

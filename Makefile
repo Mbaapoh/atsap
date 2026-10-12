@@ -177,7 +177,7 @@ console-test: ## Typecheck and run the console's component tests
 console-build: ## Build the console for production into console/dist
 	cd console && mise exec -- npm run build
 
-console-e2e: ## Console browser E2E (needs Chromium; the dev rig API on :8080 for API tests)
+console-e2e: ## Console browser E2E (Chromium; *.rig.spec.ts need the Tilt rig and skip without it)
 	cd console && mise exec -- npm run e2e
 
 console-audit: ## Audit the console's production dependencies (high and above)

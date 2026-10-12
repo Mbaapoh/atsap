@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { mockSession } from "./support/session";
+
+test.beforeEach(async ({ page }) => {
+  await mockSession(page);
+});
 
 // console-foundation task 1.2: keyboard-only use of the shell in a real
 // browser, at desktop and phone widths.
@@ -8,6 +13,8 @@ test.describe("desktop", () => {
 
   test("Tab walks skip link, then the navigation in order, with a visible focus ring", async ({ page }) => {
     await page.goto("/");
+    // The session restores before the shell renders.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const expected = ["Skip to content", "Overview", "Users", "Extensions", "Trunks & routes", "Call history", "Account"];
     for (const name of expected) {
       await page.keyboard.press("Tab");
@@ -21,6 +28,8 @@ test.describe("desktop", () => {
 
   test("Skip to content moves past the navigation", async ({ page }) => {
     await page.goto("/users");
+    // The session restores before the shell renders.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.keyboard.press("Tab");
     await page.keyboard.press("Enter");
     await page.keyboard.press("Tab");
@@ -33,6 +42,8 @@ test.describe("phone", () => {
 
   test("the drawer opens from the keyboard, traps focus, makes the page inert, and closes on Escape", async ({ page }) => {
     await page.goto("/");
+    // The session restores before the shell renders.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
     const menu = page.getByRole("button", { name: "Open navigation" });
     await menu.focus();
@@ -57,6 +68,8 @@ test.describe("phone", () => {
 
   test("choosing a page in the drawer lands on its heading", async ({ page }) => {
     await page.goto("/");
+    // The session restores before the shell renders.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Open navigation" }).click();
     await page.getByRole("dialog").getByRole("link", { name: "Extensions" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
@@ -65,6 +78,8 @@ test.describe("phone", () => {
 
   test("nothing scrolls the page sideways", async ({ page }) => {
     await page.goto("/calls");
+    // The session restores before the shell renders.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
   });

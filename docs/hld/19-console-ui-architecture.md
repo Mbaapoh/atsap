@@ -74,9 +74,26 @@ remain server responsibilities.
   or analytics.
 - A single refresh attempt may follow an expired access token. Failure clears
   client auth state and returns the user to sign-in.
+  Concurrent refusals share that one attempt, a repeat that is refused again
+  is not retried, and refreshes are serialized across the browser's tabs
+  (Web Locks) so two tabs never present the same rotating secret at once —
+  which the server would treat as a replay and end the session (D-62). On
+  load the console tries the cookie once to restore the session; the
+  session remembers the chosen membership, so a reload keeps the Tenant.
+- Reset and invitation links carry their secret in the URL fragment
+  (`/reset#…`, `/invite#…`), which is never sent to a server; the page takes
+  it and removes it from the address bar at once. The server answers an
+  unusable link with `INVALID_ARGUMENT`, the code it also uses for a
+  password out of bounds, so the page checks the length first with the
+  server's rule (8 to 64 code points) and reads any later refusal as the
+  link's.
+- A must-change password reaches only the account page (change password,
+  sign out); every other route redirects there.
 - The selected Tenant comes from authenticated memberships. It is displayed
   persistently, and every tenant-scoped request carries the selected Tenant ID.
-  A tenant mismatch is a server refusal, never a client-side switch.
+  A tenant mismatch is a server refusal, never a client-side switch. A change
+  of person or Tenant empties the query cache, so nothing fetched in one
+  scope is shown in another.
 - Controls are hidden when the current permission set does not allow the
   action, but the server remains the enforcement point (PRD AC-10.8).
 - Licence keys, password values, and SIP/trunk secrets never appear in a
