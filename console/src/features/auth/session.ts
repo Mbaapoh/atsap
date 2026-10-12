@@ -28,8 +28,12 @@ export interface AccessGrant {
 //  - signed-in: holding an access token for one Tenant.
 export type SessionStatus = "restoring" | "signed-out" | "choosing-tenant" | "no-access" | "signed-in";
 
-// EndedReason explains a signed-out state the person did not ask for.
-export type EndedReason = "expired" | "unavailable";
+// EndedReason says why the person is signed out, for the sign-in page.
+//  - expired: the server would no longer renew it (idle or absolute
+//    limit reached, signed out elsewhere, or a password change);
+//  - signed-out: the person signed out;
+//  - unavailable: the server could not be reached to restore it.
+export type EndedReason = "expired" | "signed-out" | "unavailable";
 
 export interface SessionState {
   status: SessionStatus;

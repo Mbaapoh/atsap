@@ -110,3 +110,5 @@
 .choice-list .button { width: 100%; justify-content: space-between; }
 .choice-detail { color: var(--color-text-muted); font-weight: 400; }
 .tenant-indicator { display: inline-flex; gap: var(--space-2); align-items: baseline; }
+.account-section { max-width: 480px; margin-block-start: var(--space-6); }
+.account-section h2 { font-size: 1.125rem; margin: 0 0 var(--space-3); }

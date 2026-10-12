@@ -4,6 +4,7 @@ import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
 import { RequireSession } from "../features/auth/RequireSession";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { SelectTenantPage } from "../features/auth/SelectTenantPage";
+import { SessionExpiryNotice } from "../features/auth/SessionExpiryNotice";
 import { SignInPage } from "../features/auth/SignInPage";
 import { TenantIndicator } from "../features/auth/TenantIndicator";
 import { AppShell } from "./AppShell";
@@ -22,7 +23,7 @@ export const routes: RouteObject[] = [
   {
     element: (
       <RequireSession>
-        <AppShell tenant={<TenantIndicator />} />
+        <AppShell tenant={<TenantIndicator />} notice={<SessionExpiryNotice />} />
       </RequireSession>
     ),
     children: [

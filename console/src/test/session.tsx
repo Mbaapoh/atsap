@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
 import { ApiProvider } from "../api/ApiProvider";
+import { ToastProvider } from "../components/Toast";
 import { createApiClients } from "../api/clients";
 import { createApiTransport } from "../api/transport";
 import { SessionContext, SessionController } from "../features/auth/adapter";
@@ -39,7 +40,9 @@ export function renderApp(routes: RouteObject[], path: string, state: SessionSta
     <QueryClientProvider client={queryClient}>
       <ApiProvider clients={clients}>
         <SessionContext.Provider value={controller}>
-          <RouterProvider router={router} />
+          <ToastProvider>
+            <RouterProvider router={router} />
+          </ToastProvider>
         </SessionContext.Provider>
       </ApiProvider>
     </QueryClientProvider>,

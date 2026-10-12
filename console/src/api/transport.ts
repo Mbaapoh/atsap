@@ -29,6 +29,12 @@ function bearer(source: AccessTokenSource): Interceptor {
   };
 }
 
+// NO_REFRESH are procedures whose UNAUTHENTICATED is about what the
+// person typed, not the token: refreshing and resending would repeat a
+// wrong current password, and count it twice against the throttle. The
+// session feature renews a nearly expired token before calling them.
+const NO_REFRESH = new Set(["RefreshSession", "ChangePassword"]);
+
 // refreshOnce handles an access token the server no longer accepts: it
 // asks the session to refresh, then repeats the call once with the new
 // token (console brief §6 rule 4). A call sent without a token, the
@@ -42,7 +48,7 @@ function refreshOnce(source: AccessTokenSource, refresh: () => Promise<boolean>)
       return await next(req);
     } catch (err) {
       const refusedToken = sent !== undefined && ConnectError.from(err).code === Code.Unauthenticated;
-      if (!refusedToken || req.method.name === "RefreshSession") throw err;
+      if (!refusedToken || NO_REFRESH.has(req.method.name)) throw err;
       if (!(await refresh())) throw err;
       return next(req);
     }

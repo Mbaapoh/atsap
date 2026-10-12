@@ -67,6 +67,10 @@ async function withRefreshLock<T>(run: () => Promise<T>): Promise<T> {
   return locks.request("atsapbx-session-refresh", run);
 }
 
+// FRESH_MARGIN_MS is how close to expiry a token is renewed before a call
+// that must not be retried.
+const FRESH_MARGIN_MS = 60_000;
+
 export interface SessionControllerOptions {
   // onScopeChange runs whenever the person or Tenant behind the token
   // changes (sign-in, Tenant switch, sign-out, session end), so no
@@ -149,8 +153,27 @@ export class SessionController {
       await callApi(() => this.auth.signOut({}));
     } finally {
       this.scopeChanged();
-      this.store.clear();
+      this.store.clear("signed-out");
     }
+  }
+
+  // ensureFresh renews a token that expires within FRESH_MARGIN_MS, for
+  // calls whose refusal cannot be told apart from an expired token.
+  private async ensureFresh(): Promise<void> {
+    const expiresAt = this.store.get().access?.expiresAt;
+    if (expiresAt && expiresAt.getTime() - Date.now() < FRESH_MARGIN_MS) {
+      await this.refresh();
+    }
+  }
+
+  // changePassword checks the current password and sets the new one. The
+  // server ends every other session of the person; this one continues,
+  // and is renewed so a must-change token becomes a normal one.
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.ensureFresh();
+    await callApi(() => this.auth.changePassword({ currentPassword, newPassword }));
+    const res = await callApi(() => withRefreshLock(() => this.auth.refreshSession({})));
+    this.store.set(toState(res));
   }
 
   async requestPasswordReset(email: string): Promise<void> {

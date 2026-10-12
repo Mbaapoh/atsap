@@ -88,7 +88,17 @@ remain server responsibilities.
   server's rule (8 to 64 code points) and reads any later refusal as the
   link's.
 - A must-change password reaches only the account page (change password,
-  sign out); every other route redirects there.
+  sign out); every other route redirects there. The server refuses that
+  token for anything else.
+- `ChangePassword` is never retried after a refresh: its UNAUTHENTICATED
+  means a wrong current password, and resending would count it twice
+  against the throttle. The console renews a token within a minute of
+  expiry before sending it instead.
+- Session end is always explained: the shell warns five minutes before the
+  session's end with the time and a *Stay signed in* action (which cannot
+  extend past the absolute limit); once the time passes the console asks
+  the server rather than assuming; the sign-in page then says the session
+  ended, or confirms a sign-out the person asked for.
 - The selected Tenant comes from authenticated memberships. It is displayed
   persistently, and every tenant-scoped request carries the selected Tenant ID.
   A tenant mismatch is a server refusal, never a client-side switch. A change

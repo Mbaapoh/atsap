@@ -59,6 +59,10 @@ test("sign in, choose a Tenant, survive a reload, switch, and sign out", async (
   // A reload drops the in-memory token; the cookie restores the session,
   // in the Tenant chosen before.
   await page.goto("/users");
+  // Let the restore on this load finish before reloading: interrupting a
+  // refresh in flight currently ends the session (see the known-defect
+  // test at the end of this file).
+  await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeVisible();
   await expect(page.locator(".tenant-indicator")).toContainText(acme!.name);
@@ -122,3 +126,32 @@ test("recover a password through the emailed link", async ({ page }) => {
   await signIn(page, user.email, next);
   await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
 });
+
+// KNOWN DEFECT (server, D-62): when a refresh's response never reaches the
+// browser — a reload, a closed tab or a dropped connection while it is in
+// flight — the server has already rotated the secret, the browser still
+// holds the previous one, and the next restore is treated as a replay:
+// the session is revoked and a false security warning is logged. Marked
+// test.fail() so the suite stays green while it reproduces the defect; it
+// starts failing — flag to remove the marker — once the server accepts
+// the previous secret for a short grace window.
+test("a refresh interrupted in flight does not end the session", async ({ page }) => {
+  test.fail(true, "server revokes on reuse of the just-rotated secret (D-62); grace window not yet built");
+  user = seedUser(["Acme"]);
+  await signIn(page, user.email, FIXTURE_PASSWORD);
+  await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
+
+  // The next restore reaches the server, which rotates the secret, but
+  // its response is lost on the way back: the browser keeps the cookie it
+  // had. (Restoring that cookie explicitly makes the state exact.)
+  const before = await page.context().cookies();
+  const reached = page.waitForResponse("**/atsapbx.v1.AuthService/RefreshSession");
+  await page.reload();
+  await reached;
+  await page.context().clearCookies();
+  await page.context().addCookies(before);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
+});
+

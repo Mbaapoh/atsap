@@ -53,7 +53,7 @@ configuration file, and without being told what Asterisk is.
 
 1. **Console design input** (owner): the console design document, from
    the shared design input form. The console changes start from it.
-2. **`console-foundation`** (0.1, 1.2, 1.3, 2.1 done; next 2.2 account and password change): React + TypeScript ([D-36](DECISIONS.md)),
+2. **`console-foundation`** (0.1, 1.2, 1.3, 2.1, 2.2 done; next 2.3 licence status and activation): React + TypeScript ([D-36](DECISIONS.md)),
    TypeScript clients generated from the same protos, session handling
    (in-memory token, silent refresh, tenant picker), layout, Sign in and
    Licence screens; browser e2e (Playwright) walking A1.
@@ -129,7 +129,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1) done | 4/11 |
+| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2) done | 5/11 |
 
 ## Open gaps
 
@@ -140,6 +140,7 @@ design; *accepted* = no fix planned.
 
 | Gap | Where it came from | Severity |
 |---|---|---|
+| A refresh interrupted in flight (reload, closed tab, dropped connection) ends the session: the browser keeps the just-rotated secret and the server treats it as a replay (D-62), logging a false security warning | console-foundation 2.2 (`auth.rig.spec.ts`, marked expected-fail) | **High** — pilot: needs a short grace window for the previous secret; owner decision pending |
 | Two trunks on one carrier address are indistinguishable for inbound calls | inbound G3 | **High** — pilot: wrong-tenant attribution once two tenants share a carrier |
 | Before activation (Setup), tenant and extension caps read 0 = unlimited | license-provisioning-enforcement | Medium — hardening: provisioning is unbounded until a licence is applied |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |
@@ -164,6 +165,8 @@ design; *accepted* = no fix planned.
 ## How to see it working
 
 ```bash
+make tilt-up          # the stack, live-updating; console on http://localhost:5173
+make dev-user         # a console login: dev@example.test, two Tenants
 make dev-licence      # once: licence the dev app (nothing committed)
 make rig-restore      # between test tiers
 make uat-auto         # walking skeleton, real phones

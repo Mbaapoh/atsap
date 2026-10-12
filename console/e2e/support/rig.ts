@@ -103,3 +103,16 @@ export async function latestLink(to: string, timeoutMs = 15_000): Promise<string
   }
   throw new Error(`no link emailed to ${to}`);
 }
+
+// adminResetPassword runs the operator recovery command inside the app
+// container (D-66 §3) and returns the temporary, must-change password it
+// prints once.
+export function adminResetPassword(email: string): string {
+  const out = execFileSync("docker", ["exec", "deploy-app-1", "/out/app", "admin", "reset-password", "-email", email], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  const temporary = out.trim().split("\n").pop()?.trim();
+  if (!temporary) throw new Error("admin reset-password printed no password");
+  return temporary;
+}

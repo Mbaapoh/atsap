@@ -98,8 +98,10 @@ export function SignInPage() {
   const ended =
     session.endedReason === "expired" ? (
       <Alert tone="info" title="Your session has ended">
-        <p>Sign in again to continue.</p>
+        <p>Sign in again to continue. If your password was changed, use the new one.</p>
       </Alert>
+    ) : session.endedReason === "signed-out" ? (
+      <Alert tone="success" title="You have signed out" />
     ) : session.endedReason === "unavailable" ? (
       <Alert tone="warning" title="The server could not be reached">
         <p>Check your connection, then sign in.</p>
