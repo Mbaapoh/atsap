@@ -89,6 +89,11 @@ hot-reloads; edit a `.proto` and both sides regenerate. No image rebuilds.
 `make dev` / `make dev-app` rebuild the production image and refuse while
 Tilt is running (D-60).
 
+To try the console: `make dev-user` creates a login (dev@example.test, two
+Tenants) and prints it; open http://localhost:5173. `make console-check`
+runs every console test tier: unit and component, e2e, integration and UAT
+against the rig (docs/TOOLSET.md §3a).
+
 `mise run <task>` delegates to the same-named `make` target (`:` → `-`),
 so `mise run dev:down` ≡ `make dev-down`; `mise exec -- make help` lists
 every workflow (D-60).

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 // The dev rig (make tilt-up): Postgres in deploy-postgres-1, the API on
 // :8080 behind the console's dev proxy, Mailpit on :8025. Fixtures are
@@ -21,16 +22,21 @@ function psql(sql: string): string {
   });
 }
 
-// rigAvailable reports whether the rig is up, so a spec can skip with a
-// reason instead of failing on a laptop without it.
+// rigAvailable reports whether the rig is up. A spec skips with a reason
+// when it is not — unless ATSAPBX_RIG_REQUIRED=1 (set by the make targets
+// that run these tiers), where a missing rig is a failure, never a pass.
 export async function rigAvailable(): Promise<boolean> {
+  let up = false;
   try {
     psql("SELECT 1;");
-    const res = await fetch("http://localhost:8080/healthz");
-    return res.ok;
+    up = (await fetch("http://localhost:8080/healthz")).ok;
   } catch {
-    return false;
+    up = false;
   }
+  if (!up && process.env.ATSAPBX_RIG_REQUIRED === "1") {
+    throw new Error("the dev rig is not running (make tilt-up), and this tier requires it");
+  }
+  return up;
 }
 
 export interface RigUser {
@@ -39,25 +45,33 @@ export interface RigUser {
   cleanup: () => void;
 }
 
+export interface SeedOptions {
+  // platformAdmin makes the membership in the first Tenant a platform
+  // administrator with installation-wide (system) scope, as
+  // `atsap-api bootstrap` creates one.
+  platformAdmin?: boolean;
+}
+
 // seedUser creates one person with a password and an administrator
 // membership in each of tenantNames' new Tenants.
-export function seedUser(tenantNames: string[]): RigUser {
+export function seedUser(tenantNames: string[], options: SeedOptions = {}): RigUser {
   const tag = randomUUID().slice(0, 8);
   const email = `console-e2e-${tag}@example.test`;
   const tenants = tenantNames.map((n) => ({ id: randomUUID(), name: `${n} ${tag}` }));
   const memberships = tenants
-    .map(
-      (t) => `
+    .map((t, i) => {
+      const [role, scope] = options.platformAdmin && i === 0 ? ["PLATFORM_ADMIN", "system"] : ["TENANT_ADMIN", "tenant"];
+      return `
 BEGIN;
 SELECT set_config('app.tenant_id', '${t.id}', true);
 WITH p AS (
   INSERT INTO principals (id, tenant_id, user_id, role, status)
-  VALUES (gen_random_uuid(), '${t.id}', (SELECT id FROM users WHERE email = '${email}'), 'TENANT_ADMIN', 'ACTIVE')
+  VALUES (gen_random_uuid(), '${t.id}', (SELECT id FROM users WHERE email = '${email}'), '${role}', 'ACTIVE')
   RETURNING id
 )
-INSERT INTO role_bindings (principal_id, tenant_id, role, scope) SELECT id, '${t.id}', 'TENANT_ADMIN', 'tenant' FROM p;
-COMMIT;`,
-    )
+INSERT INTO role_bindings (principal_id, tenant_id, role, scope) SELECT id, '${t.id}', '${role}', '${scope}' FROM p;
+COMMIT;`;
+    })
     .join("\n");
   psql(`
 ${tenants.map((t) => `INSERT INTO tenants (id, name, status, residency_zone) VALUES ('${t.id}', '${t.name}', 'ACTIVE', 'EU');`).join("\n")}
@@ -115,4 +129,14 @@ export function adminResetPassword(email: string): string {
   const temporary = out.trim().split("\n").pop()?.trim();
   if (!temporary) throw new Error("admin reset-password printed no password");
   return temporary;
+}
+
+// rigLicenceKey is the licence token the rig runs on (`make dev-licence`
+// writes it to the repository's .env, which is never committed). Applying
+// it again through the console leaves the rig licensed exactly as before.
+export function rigLicenceKey(): string {
+  const env = readFileSync(new URL("../../../.env", import.meta.url), "utf8");
+  const key = /^ATSAPBX_LICENSE_TOKEN=(.+)$/m.exec(env)?.[1]?.trim();
+  if (!key) throw new Error("no ATSAPBX_LICENSE_TOKEN in .env: run make dev-licence");
+  return key;
 }

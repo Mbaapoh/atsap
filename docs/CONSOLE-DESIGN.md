@@ -176,7 +176,9 @@ installation “Valid”. A system-scope operator also sees **Apply
 licence**.
 
 Use `GetLicenseStatus` to render this page and `ApplyLicenseKey` only
-after clear confirmation. The key is secret: use a masked multiline input;
+after clear confirmation. The key is secret: use a masked input (a
+password field, which every browser masks; a licence key is one line)
+with an explicit Show control that masks it again after 30 seconds;
 never show it in a toast, URL, telemetry, or error. Refresh status in place
 after success; do not promise a restart or interrupt a call.
 

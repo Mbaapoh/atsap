@@ -53,7 +53,7 @@ configuration file, and without being told what Asterisk is.
 
 1. **Console design input** (owner): the console design document, from
    the shared design input form. The console changes start from it.
-2. **`console-foundation`** (0.1, 1.2, 1.3, 2.1, 2.2 done; next 2.3 licence status and activation): React + TypeScript ([D-36](DECISIONS.md)),
+2. **`console-foundation`** (0.1, 1.2, 1.3, 2.1, 2.2, 2.3 done; next 3.x overview and proof): React + TypeScript ([D-36](DECISIONS.md)),
    TypeScript clients generated from the same protos, session handling
    (in-memory token, silent refresh, tenant picker), layout, Sign in and
    Licence screens; browser e2e (Playwright) walking A1.
@@ -129,7 +129,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2) done | 5/11 |
+| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2), licence (2.3) done | 6/11 |
 
 ## Open gaps
 

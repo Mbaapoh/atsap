@@ -139,6 +139,20 @@ Pinned with `npm install --save-exact`, locked by the committed
 Router, Redux, Zustand, Jest, Cypress, Axios, GraphQL clients, CSS-in-JS
 runtimes, and component kits.
 
+**Console test tiers.** These mirror the backend's tiers, and every one runs before a console task is
+done (`make console-check` runs them in order):
+
+| Tier | Command | What it proves |
+|---|---|---|
+| Unit and component | `make console-test` | Typecheck, then Vitest with jsdom and MSW: adapters, components, routes, the adapter-boundary scan |
+| e2e | `make console-e2e` | Playwright in Chromium with the API mocked (`e2e/*.spec.ts`): keyboard use, focus, layout at 1280 px and 390 px |
+| Integration | `make console-integration` | Playwright against the real API on the Tilt rig (`e2e/*.rig.spec.ts`): sessions, cookies, server errors, Mailpit email |
+| UAT | `make console-uat` | The HLD-18 user journeys end to end on the rig (`e2e/uat/*.uat.spec.ts`), as a person does them |
+
+The integration and UAT tiers fail, never skip, when the rig is down
+(`ATSAPBX_RIG_REQUIRED=1`). Run outside those targets, the same specs skip
+with a reason. `make console-audit` and `make console-build` complete the gate.
+
 ---
 
 ### Engine interfaces: ARI, AMI, Stasis, sorcery

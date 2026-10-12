@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { ApiProvider } from "../../api/ApiProvider";
 import { createApiClients } from "../../api/clients";
 import { ApiError } from "../../api/errors";
-import { CapacityLevel, LicenseCondition, LicenseTier } from "../../api/gen/atsapbx/v1/licensing_pb";
+import { CapacityLevel, LicenseCondition, LicenseState, LicenseTier } from "../../api/gen/atsapbx/v1/licensing_pb";
 import { createApiTransport } from "../../api/transport";
 import { server } from "../../test/msw";
 import { toLicenceSummary, useLicenceStatus } from "./adapter";
@@ -51,6 +51,8 @@ describe("licence adapter", () => {
       condition: LicenseCondition.CAPACITY_WARNING,
       tier: LicenseTier.COMMERCIAL,
       capacity: CapacityLevel.WARNING,
+      state: LicenseState.VALID,
+      reason: "",
       edition: "standard",
       channels: 16,
       channelsInUse: 13,

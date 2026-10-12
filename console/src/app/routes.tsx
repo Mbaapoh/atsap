@@ -7,6 +7,9 @@ import { SelectTenantPage } from "../features/auth/SelectTenantPage";
 import { SessionExpiryNotice } from "../features/auth/SessionExpiryNotice";
 import { SignInPage } from "../features/auth/SignInPage";
 import { TenantIndicator } from "../features/auth/TenantIndicator";
+import { LicenceIndicator } from "../features/licence/LicenceIndicator";
+import { LicencePage } from "../features/licence/LicencePage";
+import { RequireLicence } from "../features/licence/RequireLicence";
 import { AppShell } from "./AppShell";
 import { NotFound, RoutePlaceholder } from "./RoutePlaceholder";
 
@@ -23,15 +26,29 @@ export const routes: RouteObject[] = [
   {
     element: (
       <RequireSession>
-        <AppShell tenant={<TenantIndicator />} notice={<SessionExpiryNotice />} />
+        <AppShell tenant={<TenantIndicator />} licence={<LicenceIndicator />} notice={<SessionExpiryNotice />} />
       </RequireSession>
     ),
     children: [
       { index: true, element: <RoutePlaceholder title="Overview" /> },
-      { path: "licence", element: <RoutePlaceholder title="Licence" /> },
+      { path: "licence", element: <LicencePage /> },
       { path: "users", element: <RoutePlaceholder title="Users" /> },
-      { path: "extensions", element: <RoutePlaceholder title="Extensions" /> },
-      { path: "trunks", element: <RoutePlaceholder title="Trunks & routes" /> },
+      {
+        path: "extensions",
+        element: (
+          <RequireLicence area="Extensions">
+            <RoutePlaceholder title="Extensions" />
+          </RequireLicence>
+        ),
+      },
+      {
+        path: "trunks",
+        element: (
+          <RequireLicence area="Trunks and routes">
+            <RoutePlaceholder title="Trunks & routes" />
+          </RequireLicence>
+        ),
+      },
       { path: "calls", element: <RoutePlaceholder title="Call history" /> },
       { path: "account", element: <AccountPage /> },
       { path: "*", element: <NotFound /> },

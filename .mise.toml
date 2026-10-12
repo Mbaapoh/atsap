@@ -118,8 +118,20 @@ description = "Build the console for production into console/dist"
 run = "make console-build"
 
 [tasks."console:e2e"]
-description = "Console browser E2E (Playwright, Chromium)"
+description = "Console browser E2E with the API mocked (Playwright, Chromium)"
 run = "make console-e2e"
+
+[tasks."console:integration"]
+description = "Console against the real API on the Tilt rig"
+run = "make console-integration"
+
+[tasks."console:uat"]
+description = "Console UAT: the HLD-18 user journeys on the Tilt rig"
+run = "make console-uat"
+
+[tasks."console:check"]
+description = "Every console tier: unit and component, e2e, integration, UAT, audit"
+run = "make console-check"
 
 [tasks."console:audit"]
 description = "Audit the console's production dependencies (high and above)"

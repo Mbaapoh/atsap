@@ -112,3 +112,20 @@
 .tenant-indicator { display: inline-flex; gap: var(--space-2); align-items: baseline; }
 .account-section { max-width: 480px; margin-block-start: var(--space-6); }
 .account-section h2 { font-size: 1.125rem; margin: 0 0 var(--space-3); }
+
+/* Licence page */
+.licence-headline { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid currentColor; margin-block: var(--space-4); }
+.licence-headline p { margin: 0; color: var(--color-text); }
+.licence-headline .licence-condition { font-weight: 700; font-size: 1.125rem; }
+.licence-success { background: var(--color-success-surface); color: var(--color-success); }
+.licence-info { background: var(--color-info-surface); color: var(--color-info); }
+.licence-warning { background: var(--color-warning-surface); color: var(--color-warning); }
+.licence-danger { background: var(--color-danger-surface); color: var(--color-danger); }
+.licence-neutral { background: var(--color-surface-muted); color: var(--color-text-muted); }
+.facts { display: grid; gap: 0; margin: 0; max-width: 640px; border-top: 1px solid var(--color-border); }
+.facts-row { display: grid; grid-template-columns: minmax(10rem, 1fr) 2fr; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
+.facts dt { font-weight: 600; }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.secret-input { display: flex; gap: var(--space-2); }
+.secret-input .input { flex: 1; min-width: 0; font-family: var(--font-mono-numeric); }
+@media (max-width: 480px) { .facts-row { grid-template-columns: 1fr; gap: 0; } }

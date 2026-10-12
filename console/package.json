@@ -16,7 +16,9 @@
     "gen": "buf generate ../api --template buf.gen.yaml",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project e2e",
+    "integration": "ATSAPBX_RIG_REQUIRED=1 playwright test --project integration",
+    "uat": "ATSAPBX_RIG_REQUIRED=1 playwright test --project uat",
     "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {

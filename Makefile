@@ -167,7 +167,7 @@ tidy: ## Tidy go modules
 
 # Node and npm are pinned in console/mise.toml, which mise only reads from
 # inside console/, so every recipe runs npm through `mise exec` there.
-.PHONY: console-install console-gen console-test console-build console-e2e console-audit
+.PHONY: console-install console-gen console-test console-build console-e2e console-integration console-uat console-check console-audit
 console-install: ## Install the console's locked dependencies (npm ci)
 	cd console && mise exec -- npm ci
 
@@ -180,8 +180,16 @@ console-test: ## Typecheck and run the console's component tests
 console-build: ## Build the console for production into console/dist
 	cd console && mise exec -- npm run build
 
-console-e2e: ## Console browser E2E (Chromium; *.rig.spec.ts need the Tilt rig and skip without it)
+console-e2e: ## Console browser E2E with the API mocked (Chromium)
 	cd console && mise exec -- npm run e2e
+
+console-integration: ## Console against the real API on the Tilt rig (fails if the rig is down)
+	cd console && mise exec -- npm run integration
+
+console-uat: ## Console UAT: the HLD-18 user journeys end to end on the Tilt rig
+	cd console && mise exec -- npm run uat
+
+console-check: console-test console-e2e console-integration console-uat console-audit ## Every console tier, in order
 
 console-audit: ## Audit the console's production dependencies (high and above)
 	cd console && mise exec -- npm run audit:prod

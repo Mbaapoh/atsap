@@ -20,9 +20,9 @@ describe("Phase A route tree", () => {
     ["/trunks", "Trunks & routes"],
     ["/calls", "Call history"],
     ["/account", "Account"],
-  ])("%s renders its page heading", (path, title) => {
+  ])("%s renders its page heading", async (path, title) => {
     renderAt(path);
-    expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: title })).toBeInTheDocument();
   });
 
   it("an unknown address says so, inside the shell", () => {
