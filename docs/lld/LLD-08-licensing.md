@@ -419,7 +419,7 @@ file as the design source.
 |---|---|---|
 | `licensing-capacity-grace` | `VerifyToken` and the trusted key set, `ApplyLicenseKey` as a domain operation, `ATSAPBX_LICENSE_TOKEN` intake, signed-payload storage with load-time re-verification, atomic counter with burst, 7-day grace tracker, `licensing_state` migration, and the `stub_license.go` cutover | First |
 | `licensing-apply-key` | The `ApplyLicenseKey`/`GetLicenseStatus` **RPCs** and CLI, hardware fingerprint collection and 3-of-5 matching, console licence screen | After: gives the token a portal, an operator interface and machine binding. *(The RPCs landed in `console-apis-phase-a`.)* |
-| `licensing-status-conditions` | §6.1: condition, tier and capacity level on `GetLicenseStatus` | Before `console-foundation` task 2.3 (the licence screen) |
+| `licensing-status-conditions` | §6.1: condition, tier and capacity level on `GetLicenseStatus` | **Archived** 2026-10-12, before `console-foundation` task 2.3 |
 
 **Re-sliced 2026-09-09.** Token intake moved into the first change
 because D-52 removed the unsigned path: with no token applied an

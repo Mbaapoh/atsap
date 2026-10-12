@@ -7,10 +7,8 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-10-11, after `identity-accounts-and-sessions`
-was archived, Google sign-in was decided (D-67) and MFA moved to Phase B.
-Every Phase A backend change is archived; the console is next, from the
-owner's design document.
+**Last updated:** 2026-10-12, after `licensing-status-conditions` was archived
+(D-70) and the `console-foundation` scaffold landed (D-68, D-69).
 
 ## Keeping it current
 
@@ -59,9 +57,9 @@ configuration file, and without being told what Asterisk is.
    TypeScript clients generated from the same protos, session handling
    (in-memory token, silent refresh, tenant picker), layout, Sign in and
    Licence screens; browser e2e (Playwright) walking A1.
-   - **`licensing-status-conditions`** (proposed, D-70): `GetLicenseStatus`
-     reports the PRD condition, tier and capacity level. Lands before task
-     2.3, the licence screen.
+   - ~~`licensing-status-conditions`~~ **archived** (D-70): `GetLicenseStatus`
+     reports the PRD condition, tier and capacity level, so the licence
+     screen (task 2.3) is unblocked.
 3. **`console-admin-screens`**: Users, Extensions, Trunks and routes, Call
    history; browser e2e walking A2–A5. **Phase A is done when this passes.**
 4. **`phase-a-hardening`** (small): `GetCall` stops exposing the engine
@@ -125,13 +123,13 @@ that link.
 | 2026-10-11 | `pbx-inbound-and-emergency` | 24/24 | U I W E A |
 | 2026-10-11 | `console-apis-phase-a` | 13/13 | U I W E (A as regression) |
 | 2026-10-11 | `identity-accounts-and-sessions` | 26/26 | U I W E (A as regression) |
+| 2026-10-12 | `licensing-status-conditions` | 7/7 | U W E |
 
 ## Active changes
 
 | Change | State | Tasks |
 |---|---|---|
 | `console-foundation` | Scaffold milestone done (0.1); screens next | 1/11 |
-| `licensing-status-conditions` | Proposed, not applied | 0/7 |
 
 ## Open gaps
 
