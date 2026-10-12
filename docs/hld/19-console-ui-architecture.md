@@ -88,8 +88,8 @@ AppShell
 │   ├── Extensions
 │   ├── Connectivity and routing
 │   ├── Call history
-│   ├── Licence
-│   └── Account
+│   └── Account (utility link)
+├── Top bar: Tenant · Licence status pill (links to /licence) · account
 └── Feature boundaries
     ├── identity      users, roles, account
     ├── licensing     status, activation

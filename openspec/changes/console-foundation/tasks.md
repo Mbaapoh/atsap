@@ -9,9 +9,9 @@
 - [ ] 1.1 Create the React + TypeScript application with generated ConnectRPC
   clients. Verify generated clients compile from the current protos with no
   hand-written RPC request/response types.
-- [ ] 1.2 Implement semantic tokens, app shell, responsive navigation, focus
+- [x] 1.2 Implement semantic tokens, app shell, responsive navigation, focus
   management, status badges, alerts, table primitives, confirmation dialog,
-  and toast. Verify keyboard-only navigation and WCAG AA contrast.
+  and toast. Verify keyboard-only navigation and WCAG AA contrast. *(done 2026-10-12 — `components/`: StatusBadge, Alert (role and focus-on-mount for error summaries), PageHeader, EmptyState, DataTable (named, keyboard-scrollable region; no column hidden), Modal (focus trap, Escape, page made inert, focus restored; hand-built because jsdom has no `<dialog>`), ConfirmDialog (explicit verb, Cancel first when destructive, busy disables both), Toast (polite region, dismissible, pauses while read); shell with TopBar (Tenant · licence pill · account) and a modal drawer below 768 px; `LicenceStatusPill` maps the server's condition to words, icon and tone. **Owner decision:** Licence leaves the main navigation for the top-bar pill; HLD-19 and CONSOLE-DESIGN updated. Verified: 64 component tests including a contrast gate over the real token file (fault-injected: a low-contrast muted text fails it) and the focus trap (fault-injected: removing Tab handling fails the dialog and drawer tests); 9 Playwright tests at 1280 px and 390 px: Tab order with a visible focus ring, skip link, drawer keyboard use with the page inert, no sideways scroll. **Found by the browser tests:** the menu button showed on desktop (a later, equally specific `.icon-button` rule won); fixed.)*
 - [ ] 1.3 Implement an API client/feature adapter boundary. Verify no component
   imports raw transport details and no request targets a private endpoint.
 

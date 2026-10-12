@@ -100,8 +100,11 @@ telephony configuration before activation.
 
 ### Navigation rules
 
-- Primary navigation contains only the six Phase A workflow screens. Account
-  and sign out are utility actions, not workflow screens.
+- Primary navigation contains the five Phase A workflow screens: Overview,
+  Users, Extensions, Trunks & routes, and Call history. Licence is reached
+  from the top bar's status pill, not from the navigation (owner decision,
+  2026-10-12). Account and sign out are utility actions, not workflow
+  screens.
 - Group connectivity and routing as one navigation item. Its page may use tabs:
   **Trunks**, **Outbound routes**, **Inbound numbers**, and **Emergency**.
 - Do not add dormant menu items for queues, IVR, recordings, voicemail,

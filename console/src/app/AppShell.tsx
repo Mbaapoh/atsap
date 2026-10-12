@@ -1,26 +1,44 @@
-import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
-import { primaryNav } from "./nav";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Outlet, useLocation } from "react-router";
+import { CloseIcon } from "../components/icons";
+import { Modal } from "../components/Modal";
+import { NavLinks } from "./NavLinks";
+import { TopBar } from "./TopBar";
 
-// The signed-in frame (CONSOLE-DESIGN "App shell"). After each navigation
-// it moves focus to the page heading and announces the new page, so
-// keyboard and screen-reader users land where sighted users look.
-export function AppShell() {
+interface AppShellProps {
+  tenant?: ReactNode;
+  licence?: ReactNode;
+}
+
+// AppShell is the signed-in frame (CONSOLE-DESIGN "App shell", HLD-19 §7):
+// a 240 px navigation rail on wide screens, a menu button and modal drawer
+// below 768 px, a top bar, and the page. After each navigation it moves
+// focus to the page heading and announces the new page, so keyboard and
+// screen-reader users land where sighted users look.
+export function AppShell({ tenant, licence }: AppShellProps) {
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const firstRender = useRef(true);
 
   useEffect(() => {
-    const heading = mainRef.current?.querySelector<HTMLElement>("h1");
+    setDrawerOpen(false);
     if (firstRender.current) {
       firstRender.current = false;
       return;
     }
-    if (heading) {
-      heading.focus();
-      setAnnouncement(`${heading.textContent ?? ""} page`);
-    }
+    // After the drawer closes, its focus restoration runs first; the
+    // heading then takes focus, which is where the user wants to be.
+    const id = window.setTimeout(() => {
+      const heading = mainRef.current?.querySelector<HTMLElement>("h1");
+      if (heading) {
+        heading.focus();
+        setAnnouncement(`${heading.textContent ?? ""} page`);
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [location.pathname]);
 
   return (
@@ -30,24 +48,29 @@ export function AppShell() {
       </a>
       <nav className="side-nav" aria-label="Main">
         <div className="product">AtsaPBX</div>
-        <ul>
-          {primaryNav.map((item) => (
-            <li key={item.path}>
-              <NavLink to={item.path} end={item.path === "/"}>
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-        <ul className="utility">
-          <li>
-            <NavLink to="/account">Account</NavLink>
-          </li>
-        </ul>
+        <NavLinks />
       </nav>
-      <main id="main" ref={mainRef} className="content">
-        <Outlet />
-      </main>
+      <div className="shell-main">
+        <TopBar tenant={tenant} licence={licence} menuOpen={drawerOpen} onMenu={() => setDrawerOpen(true)} menuButtonRef={menuButton} />
+        <main id="main" ref={mainRef} className="content" tabIndex={-1}>
+          <Outlet />
+        </main>
+      </div>
+      <Modal open={drawerOpen} onClose={() => setDrawerOpen(false)} labelledBy="nav-drawer-title" className="nav-drawer">
+        <div id="nav-drawer" className="nav-drawer-inner">
+          <div className="nav-drawer-head">
+            <span id="nav-drawer-title" className="product">
+              AtsaPBX
+            </span>
+            <button type="button" className="icon-button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)}>
+              <CloseIcon />
+            </button>
+          </div>
+          <nav aria-label="Main">
+            <NavLinks onNavigate={() => setDrawerOpen(false)} />
+          </nav>
+        </div>
+      </Modal>
       <div className="visually-hidden" role="status" aria-live="polite">
         {announcement}
       </div>

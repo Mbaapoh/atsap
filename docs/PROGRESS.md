@@ -129,7 +129,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-foundation` | Scaffold milestone done (0.1); screens next | 1/11 |
+| `console-foundation` | Scaffold (0.1) and shared components (1.2) done | 2/11 |
 
 ## Open gaps
 

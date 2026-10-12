@@ -24,20 +24,30 @@ a { color: var(--color-info); }
 .skip-link { position: absolute; left: var(--space-2); top: -40px; z-index: var(--z-toast); background: var(--color-surface); padding: var(--space-2) var(--space-3); }
 .skip-link:focus { top: var(--space-2); }
 
-/* Shell: a 240 px rail and a content canvas. The modal drawer for small
-   screens arrives with task 1.2. */
+/* Shell: a 240 px rail, a top bar and the page canvas (CONSOLE-DESIGN
+   "App shell"). Below 768 px the rail gives way to a menu button and a
+   modal drawer. */
 .shell { display: grid; grid-template-columns: var(--nav-width) minmax(0, 1fr); min-height: 100vh; }
-.side-nav { background: var(--color-nav); color: var(--color-nav-text); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-6); }
-.side-nav .product { font-weight: 700; font-size: 1.125rem; }
-.side-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
-.side-nav a { display: block; color: var(--color-nav-text); text-decoration: none; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
-.side-nav a[aria-current="page"] { background: var(--color-action-primary); color: var(--color-on-primary); }
-.side-nav .utility { margin-top: auto; }
-.side-nav :focus-visible { outline-color: var(--color-focus-on-dark); }
-.content { padding: var(--space-7); min-width: 0; }
+.side-nav { background: var(--color-nav); color: var(--color-nav-text); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-6); position: sticky; top: 0; height: 100vh; overflow-y: auto; z-index: var(--z-nav); }
+.product { font-weight: 700; font-size: 1.125rem; }
+.nav-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.nav-list a { display: block; color: var(--color-nav-text); text-decoration: none; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
+.nav-list a:hover { background: rgb(255 255 255 / 0.08); }
+.nav-list a[aria-current="page"] { background: var(--color-action-primary); color: var(--color-on-primary); }
+.nav-list.utility { margin-top: auto; border-top: 1px solid rgb(255 255 255 / 0.15); padding-top: var(--space-3); }
+.side-nav :focus-visible, .nav-drawer :focus-visible { outline-color: var(--color-focus-on-dark); }
+.shell-main { display: flex; flex-direction: column; min-width: 0; }
+.top-bar { display: flex; align-items: center; gap: var(--space-3); min-height: var(--topbar-height); padding: 0 var(--space-7); background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+.top-bar-items { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+.top-bar .menu-button, .top-bar .product-compact { display: none; }
+.content { padding: var(--space-7); min-width: 0; flex: 1; }
+.content:focus { outline: none; }
 
 @media (max-width: 767px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
+  .side-nav { display: none; }
+  .top-bar .menu-button, .top-bar .product-compact { display: inline-flex; }
+  .top-bar { padding: 0 var(--space-4); }
   .content { padding: var(--space-4); }
 }
 @media (prefers-reduced-motion: reduce) {

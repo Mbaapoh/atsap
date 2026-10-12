@@ -2,6 +2,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import { ApiProvider } from "../api/ApiProvider";
+import { ToastProvider } from "../components/Toast";
 import { createApiClients } from "../api/clients";
 import { createApiTransport } from "../api/transport";
 import { routes } from "./routes";
@@ -29,7 +30,9 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ApiProvider clients={clients}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </ApiProvider>
     </QueryClientProvider>
   );

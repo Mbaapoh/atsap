@@ -34,5 +34,8 @@ export default defineConfig({
     setupFiles: ["src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     restoreMocks: true,
+    // The contrast gate reads the real token file (src/styles/
+    // contrast.test.ts); Vitest otherwise empties CSS imports.
+    css: { include: [/tokens\.css/] },
   },
 });
