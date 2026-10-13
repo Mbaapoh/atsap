@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
@@ -59,5 +61,20 @@ describe("usePermissions", () => {
   it("an administrator of the current tenant administers it", () => {
     const { result } = renderHook(() => usePermissions(), { wrapper: wrapperFor(signedIn()) });
     expect(result.current.canAdminister).toBe(true);
+  });
+});
+
+// console-admin-screens design risk "the hard-coded role catalogue drifts
+// from identity's table": the console's catalogue must name exactly the
+// roles the server's permission table defines, so adding or renaming one
+// on either side fails here.
+describe("role catalogue against the server's permission table", () => {
+  it("names exactly the roles identity defines", () => {
+    const source = readFileSync(resolve(process.cwd(), "../api/internal/identity/application/service.go"), "utf8");
+    const table = /var DefaultPermissions = map\[string\]\[\]string\{([\s\S]*?)\n\}/.exec(source)?.[1];
+    expect(table, "DefaultPermissions not found in identity's service.go").toBeDefined();
+    const serverRoles = [...table!.matchAll(/^\s*"([A-Z_]+)":/gm)].map((m) => m[1]).sort();
+    expect(serverRoles.length).toBeGreaterThan(0);
+    expect(ROLE_CATALOGUE.map((r) => r.role).sort()).toEqual(serverRoles);
   });
 });
