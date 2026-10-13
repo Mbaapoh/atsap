@@ -28,8 +28,25 @@
 
 ## 3. Overview and proof
 
-- [ ] 3.1 Implement the API-backed readiness checklist and compact licence
-  summary. Verify no health metric or call status is fabricated.
+- [x] 3.1 Implement the API-backed readiness checklist and compact licence
+  summary. Verify no health metric or call status is fabricated. *(done 2026-10-13 — Overview: compact licence summary (the server's condition, channels in use of licensed); a setup checklist whose five steps each state their rule and read one public API fact for the session's Tenant:
+  - licence in force (`GetLicenseStatus`, not Setup);
+  - a user besides the first administrator (`ListPrincipals`, at most 2 read);
+  - an extension (`ListExtensions`);
+  - a trunk and a route (`ListTrunks` + `ListRoutes`);
+  - a completed call (`ListCalls` state Terminated, any answered among the latest 50).
+
+  A fact that cannot be read shows "Could not check", with "your role cannot see this" when refused, never Done. Recent calls (latest 5) show the server's Call state verbatim and an answered duration; trunk health shows the server's observed health and appears only when trunks exist. No CPU, memory, uptime or health score. Checklist links are named by purpose ("Go to Extensions"), and table captions differ from their section names, so landmarks and links are unambiguous.
+
+  **Found and fixed:** `AppShell` focused the page heading on first load under React's development double effects, which the Tab-order test now catches.
+
+  Verified across every tier:
+  - 185 component tests, 12 of them for the overview; fault-injected (an unreadable fact counted as done, a call state relabelled "Answered"), each caught;
+  - e2e 13;
+  - integration 10, including the overview against the real API: a new tenant's real state, then an extension created through the public API flips its step to Done and is deleted through the API, with `pbx reconcile` clean afterwards;
+  - UAT 1.
+
+  Console coverage floors ratcheted to 93.8 / 85.1 / 96 / 94.3.)*
 - [ ] 3.2 Add browser E2E for A1, including Setup gate, successful licence
   application, session recovery, Tenant selection, and responsive navigation.
 - [ ] 3.3 Add an API-traffic assertion and browser-render scan proving that no

@@ -10,6 +10,7 @@ import { TenantIndicator } from "../features/auth/TenantIndicator";
 import { LicenceIndicator } from "../features/licence/LicenceIndicator";
 import { LicencePage } from "../features/licence/LicencePage";
 import { RequireLicence } from "../features/licence/RequireLicence";
+import { OverviewPage } from "../features/overview/OverviewPage";
 import { AppShell } from "./AppShell";
 import { NotFound, RoutePlaceholder } from "./RoutePlaceholder";
 
@@ -30,7 +31,7 @@ export const routes: RouteObject[] = [
       </RequireSession>
     ),
     children: [
-      { index: true, element: <RoutePlaceholder title="Overview" /> },
+      { index: true, element: <OverviewPage /> },
       { path: "licence", element: <LicencePage /> },
       { path: "users", element: <RoutePlaceholder title="Users" /> },
       {

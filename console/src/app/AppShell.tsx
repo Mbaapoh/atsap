@@ -24,14 +24,18 @@ export function AppShell({ tenant, licence, notice }: AppShellProps) {
   const menuButton = useRef<HTMLButtonElement>(null);
   const [announcement, setAnnouncement] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const firstRender = useRef(true);
+  // lastPath is the page focus was last settled for. Comparing paths,
+  // rather than counting renders, keeps a repeated effect (React runs
+  // effects twice in development) from treating the first page as a
+  // navigation and pulling focus to its heading.
+  const lastPath = useRef(location.pathname);
 
   useEffect(() => {
     setDrawerOpen(false);
-    if (firstRender.current) {
-      firstRender.current = false;
+    if (lastPath.current === location.pathname) {
       return;
     }
+    lastPath.current = location.pathname;
     // After the drawer closes, its focus restoration runs first; the
     // heading then takes focus, which is where the user wants to be.
     const id = window.setTimeout(() => {

@@ -22,12 +22,23 @@ export async function mockLicence(page: Page, status: Record<string, unknown> = 
   );
 }
 
+// mockEmptyTenant answers the overview's reads for a new tenant: one
+// user, and no extensions, trunks, routes or calls.
+export async function mockEmptyTenant(page: Page): Promise<void> {
+  const empty = { contentType: "application/json", body: "{}" };
+  await page.route("**/atsapbx.v1.IdentityService/ListPrincipals", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ principals: [{}] }) }));
+  for (const p of ["PbxService/ListExtensions", "PbxService/ListTrunks", "PbxService/ListRoutes", "TelephonyService/ListCalls"]) {
+    await page.route(`**/atsapbx.v1.${p}`, (r) => r.fulfill(empty));
+  }
+}
+
 // mockSession answers the console's on-load RefreshSession with a session
 // for one Tenant (with roles), and the licence status with a valid
 // licence, for specs about the signed-in shell rather than about signing
 // in (auth.rig.spec.ts covers that against the real API).
 export async function mockSession(page: Page, roles: string[] = ["TENANT_ADMIN"]): Promise<void> {
   await mockLicence(page);
+  await mockEmptyTenant(page);
   await page.route("**/atsapbx.v1.AuthService/RefreshSession", (route) =>
     route.fulfill({
       contentType: "application/json",

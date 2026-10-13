@@ -30,7 +30,7 @@ test("keyboard users reach the navigation and land on the heading", async ({ pag
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
-  await page.getByRole("link", { name: "Users" }).focus();
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Users" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { level: 1, name: "Users" })).toBeFocused();
 });
