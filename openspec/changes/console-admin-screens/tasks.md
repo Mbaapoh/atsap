@@ -173,6 +173,17 @@
   - **New `make console-soak`** (`scripts/console-soak.sh`) runs the integration tier `RUNS` times (default 3). It fails unless 22 tenant-data and engine tables (identity, sessions, PBX, `ps_*`, calls, usage) hold the same row counts afterwards, then runs `atsap-api pbx reconcile` in the app container.
 
   Verified: `make console-soak` — 24/24 three times in a row, "No residue: 22 tables unchanged after 3 runs", and reconcile "No divergence: the engine matches the platform".)*
-- [ ] 6.2 UAT journeys A2–A5 on the rig, including a real phone registering with the console-issued credentials (A3) and a real call appearing in the history (A5). Verify they run green in `make console-uat`.
+- [x] 6.2 UAT journeys A2–A5 on the rig, including a real phone registering with the console-issued credentials (A3) and a real call appearing in the history (A5). Verify they run green in `make console-uat`. *(done 2026-10-13:
+  - **`e2e/uat/a2-users.uat.spec.ts`:**
+    - The administrator adds a supervisor with an initial password.
+    - The supervisor signs in, sees the people, and has no Add and no row actions. The server itself answers their `ProvisionPrincipal` with 403, because hiding is not enforcement.
+    - The administrator grants Tenant administrator, then disables them, and they can no longer sign in.
+  - **`e2e/uat/a3-a5-phone-and-call.uat.spec.ts`**, on real baresip phones (`e2e/uat/support/phone.ts`, the same template and ports as `scripts/uat-placement.sh`):
+    - **A3:** the extension is created in the console, and a phone is configured **only** from what the credential panel showed: server, port, transport, SIP username and password. The list then shows it Registered.
+    - **A4:** trunk to the carrier phone and the +44 route, in the console. An inbound number is assigned to the extension and the emergency country is set (117 built in).
+    - **A5:** a real call is placed through the public API (Phase A has no dialler) and answered by the carrier. The console's call history, filtered Outbound and Terminated, shows it with a real duration and the server's termination reason. No engine id is on screen, and no Answered, Missed or Failed.
+  - **Rig cleanup** also removes `placed_call_legs`. No baresip is left running, the fixtures are gone, and reconcile is clean afterwards.
+
+  Verified: `make console-uat` 3/3 (A1, A2, A3–A5), and the full `make console-check` green.)*
 - [ ] 6.3 Extend the exposure scans (rig and mocked) to every new screen, including the credential panel's sanctioned SIP username. Verify by fault injection: a secret left in a list, and the SIP username outside its element, are each caught.
 - [ ] 6.4 Run every console tier (`make console-check`), ratchet the coverage floors, and record coverage and gaps in `coverage.md`. Verify the floors do not fall.

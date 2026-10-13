@@ -93,6 +93,7 @@ ${memberships}
 DELETE FROM audit_logs WHERE tenant_id IN (${ids});
 DELETE FROM outbox WHERE tenant_id IN (${ids});
 DELETE FROM auth_events WHERE user_id = (SELECT id FROM users WHERE email = '${email}');
+DELETE FROM placed_call_legs WHERE tenant_id IN (${ids});
 DELETE FROM calls WHERE tenant_id IN (${ids});
 DELETE FROM inbound_numbers WHERE tenant_id IN (${ids});
 DELETE FROM emergency_numbers WHERE tenant_id IN (${ids});
