@@ -4,7 +4,7 @@
 
 ## 2. API
 
-- [ ] 2.1 Add `GetSipRegistrar` to `pbx.proto` (request: `tenant_id`; response: `configured`, `host`, `port`, `transport`), regenerate the Go and console clients, and keep `buf lint` and `buf breaking` clean. Verify the console typechecks with the regenerated clients.
+- [x] 2.1 Add `GetSipRegistrar` to `pbx.proto` (request: `tenant_id`; response: `configured`, `host`, `port`, `transport`), regenerate the Go and console clients, and keep `buf lint` and `buf breaking` clean. Verify the console typechecks with the regenerated clients. *(done 2026-10-13: the RPC and messages are added; `buf lint` is clean; `buf breaking` against develop is clean (additive); the Go stubs, console TypeScript and `docs/api/openapi.yaml` are regenerated. The console typechecks and its 185 tests pass; the public-procedure list picks up the new method from the descriptors.)*
 - [ ] 2.2 Implement the read in pbx-core: a `ConfigService.SipRegistrar` authorized with the extension-read action for the caller's tenant, and the RPC handler mapping it. Verify with application tests (authorized, refused, not configured) and wire tests (another tenant refused, every field mapped).
 
 ## 3. Wiring and proof

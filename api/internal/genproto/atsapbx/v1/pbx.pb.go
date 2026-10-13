@@ -899,6 +899,122 @@ func (x *RegenerateSecretResponse) GetSecret() string {
 	return ""
 }
 
+type GetSipRegistrarRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSipRegistrarRequest) Reset() {
+	*x = GetSipRegistrarRequest{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSipRegistrarRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSipRegistrarRequest) ProtoMessage() {}
+
+func (x *GetSipRegistrarRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSipRegistrarRequest.ProtoReflect.Descriptor instead.
+func (*GetSipRegistrarRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetSipRegistrarRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+type GetSipRegistrarResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// False when the installation has not configured a public registrar
+	// host; host is then empty and the other fields carry no meaning.
+	Configured bool `protobuf:"varint,1,opt,name=configured,proto3" json:"configured,omitempty"`
+	// A hostname or IP address, with no scheme, port or user part.
+	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	Port int32  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	// "udp", "tcp" or "tls".
+	Transport     string `protobuf:"bytes,4,opt,name=transport,proto3" json:"transport,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSipRegistrarResponse) Reset() {
+	*x = GetSipRegistrarResponse{}
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSipRegistrarResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSipRegistrarResponse) ProtoMessage() {}
+
+func (x *GetSipRegistrarResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSipRegistrarResponse.ProtoReflect.Descriptor instead.
+func (*GetSipRegistrarResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetSipRegistrarResponse) GetConfigured() bool {
+	if x != nil {
+		return x.Configured
+	}
+	return false
+}
+
+func (x *GetSipRegistrarResponse) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *GetSipRegistrarResponse) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *GetSipRegistrarResponse) GetTransport() string {
+	if x != nil {
+		return x.Transport
+	}
+	return ""
+}
+
 // Trunk is what a caller sees of a carrier connection. It carries no
 // secret and no engine object of any kind.
 type Trunk struct {
@@ -924,7 +1040,7 @@ type Trunk struct {
 
 func (x *Trunk) Reset() {
 	*x = Trunk{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[13]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -936,7 +1052,7 @@ func (x *Trunk) String() string {
 func (*Trunk) ProtoMessage() {}
 
 func (x *Trunk) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[13]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -949,7 +1065,7 @@ func (x *Trunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Trunk.ProtoReflect.Descriptor instead.
 func (*Trunk) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{13}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Trunk) GetTrunkId() string {
@@ -1035,7 +1151,7 @@ type CreateTrunkRequest struct {
 
 func (x *CreateTrunkRequest) Reset() {
 	*x = CreateTrunkRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[14]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1047,7 +1163,7 @@ func (x *CreateTrunkRequest) String() string {
 func (*CreateTrunkRequest) ProtoMessage() {}
 
 func (x *CreateTrunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[14]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1060,7 +1176,7 @@ func (x *CreateTrunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTrunkRequest.ProtoReflect.Descriptor instead.
 func (*CreateTrunkRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{14}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CreateTrunkRequest) GetTenantId() string {
@@ -1128,7 +1244,7 @@ type CreateTrunkResponse struct {
 
 func (x *CreateTrunkResponse) Reset() {
 	*x = CreateTrunkResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[15]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1256,7 @@ func (x *CreateTrunkResponse) String() string {
 func (*CreateTrunkResponse) ProtoMessage() {}
 
 func (x *CreateTrunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[15]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1269,7 @@ func (x *CreateTrunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTrunkResponse.ProtoReflect.Descriptor instead.
 func (*CreateTrunkResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{15}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CreateTrunkResponse) GetTrunk() *Trunk {
@@ -1174,7 +1290,7 @@ type ListTrunksRequest struct {
 
 func (x *ListTrunksRequest) Reset() {
 	*x = ListTrunksRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[16]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1186,7 +1302,7 @@ func (x *ListTrunksRequest) String() string {
 func (*ListTrunksRequest) ProtoMessage() {}
 
 func (x *ListTrunksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[16]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1199,7 +1315,7 @@ func (x *ListTrunksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTrunksRequest.ProtoReflect.Descriptor instead.
 func (*ListTrunksRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{16}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListTrunksRequest) GetTenantId() string {
@@ -1232,7 +1348,7 @@ type ListTrunksResponse struct {
 
 func (x *ListTrunksResponse) Reset() {
 	*x = ListTrunksResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[17]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1244,7 +1360,7 @@ func (x *ListTrunksResponse) String() string {
 func (*ListTrunksResponse) ProtoMessage() {}
 
 func (x *ListTrunksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[17]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1257,7 +1373,7 @@ func (x *ListTrunksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTrunksResponse.ProtoReflect.Descriptor instead.
 func (*ListTrunksResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{17}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListTrunksResponse) GetTrunks() []*Trunk {
@@ -1286,7 +1402,7 @@ type UpdateTrunkRequest struct {
 
 func (x *UpdateTrunkRequest) Reset() {
 	*x = UpdateTrunkRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[18]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1298,7 +1414,7 @@ func (x *UpdateTrunkRequest) String() string {
 func (*UpdateTrunkRequest) ProtoMessage() {}
 
 func (x *UpdateTrunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[18]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1311,7 +1427,7 @@ func (x *UpdateTrunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTrunkRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTrunkRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{18}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UpdateTrunkRequest) GetTenantId() string {
@@ -1386,7 +1502,7 @@ type UpdateTrunkResponse struct {
 
 func (x *UpdateTrunkResponse) Reset() {
 	*x = UpdateTrunkResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[19]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1398,7 +1514,7 @@ func (x *UpdateTrunkResponse) String() string {
 func (*UpdateTrunkResponse) ProtoMessage() {}
 
 func (x *UpdateTrunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[19]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1411,7 +1527,7 @@ func (x *UpdateTrunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTrunkResponse.ProtoReflect.Descriptor instead.
 func (*UpdateTrunkResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{19}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdateTrunkResponse) GetTrunk() *Trunk {
@@ -1431,7 +1547,7 @@ type DeleteTrunkRequest struct {
 
 func (x *DeleteTrunkRequest) Reset() {
 	*x = DeleteTrunkRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[20]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1443,7 +1559,7 @@ func (x *DeleteTrunkRequest) String() string {
 func (*DeleteTrunkRequest) ProtoMessage() {}
 
 func (x *DeleteTrunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[20]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1456,7 +1572,7 @@ func (x *DeleteTrunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTrunkRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTrunkRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{20}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DeleteTrunkRequest) GetTenantId() string {
@@ -1481,7 +1597,7 @@ type DeleteTrunkResponse struct {
 
 func (x *DeleteTrunkResponse) Reset() {
 	*x = DeleteTrunkResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[21]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1493,7 +1609,7 @@ func (x *DeleteTrunkResponse) String() string {
 func (*DeleteTrunkResponse) ProtoMessage() {}
 
 func (x *DeleteTrunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[21]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1506,7 +1622,7 @@ func (x *DeleteTrunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTrunkResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTrunkResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{21}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{23}
 }
 
 // Route sends dialled numbers matching prefix_pattern to trunk_id.
@@ -1528,7 +1644,7 @@ type Route struct {
 
 func (x *Route) Reset() {
 	*x = Route{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[22]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1540,7 +1656,7 @@ func (x *Route) String() string {
 func (*Route) ProtoMessage() {}
 
 func (x *Route) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[22]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1553,7 +1669,7 @@ func (x *Route) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Route.ProtoReflect.Descriptor instead.
 func (*Route) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{22}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Route) GetRouteId() string {
@@ -1604,7 +1720,7 @@ type CreateRouteRequest struct {
 
 func (x *CreateRouteRequest) Reset() {
 	*x = CreateRouteRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[23]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1616,7 +1732,7 @@ func (x *CreateRouteRequest) String() string {
 func (*CreateRouteRequest) ProtoMessage() {}
 
 func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[23]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1629,7 +1745,7 @@ func (x *CreateRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteRequest.ProtoReflect.Descriptor instead.
 func (*CreateRouteRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{23}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateRouteRequest) GetTenantId() string {
@@ -1676,7 +1792,7 @@ type CreateRouteResponse struct {
 
 func (x *CreateRouteResponse) Reset() {
 	*x = CreateRouteResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[24]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1688,7 +1804,7 @@ func (x *CreateRouteResponse) String() string {
 func (*CreateRouteResponse) ProtoMessage() {}
 
 func (x *CreateRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[24]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1701,7 +1817,7 @@ func (x *CreateRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRouteResponse.ProtoReflect.Descriptor instead.
 func (*CreateRouteResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{24}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *CreateRouteResponse) GetRoute() *Route {
@@ -1722,7 +1838,7 @@ type ListRoutesRequest struct {
 
 func (x *ListRoutesRequest) Reset() {
 	*x = ListRoutesRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[25]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1734,7 +1850,7 @@ func (x *ListRoutesRequest) String() string {
 func (*ListRoutesRequest) ProtoMessage() {}
 
 func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[25]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1747,7 +1863,7 @@ func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
 func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{25}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListRoutesRequest) GetTenantId() string {
@@ -1780,7 +1896,7 @@ type ListRoutesResponse struct {
 
 func (x *ListRoutesResponse) Reset() {
 	*x = ListRoutesResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[26]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1792,7 +1908,7 @@ func (x *ListRoutesResponse) String() string {
 func (*ListRoutesResponse) ProtoMessage() {}
 
 func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[26]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1805,7 +1921,7 @@ func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
 func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{26}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListRoutesResponse) GetRoutes() []*Route {
@@ -1825,7 +1941,7 @@ type DeleteRouteRequest struct {
 
 func (x *DeleteRouteRequest) Reset() {
 	*x = DeleteRouteRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[27]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1837,7 +1953,7 @@ func (x *DeleteRouteRequest) String() string {
 func (*DeleteRouteRequest) ProtoMessage() {}
 
 func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[27]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1850,7 +1966,7 @@ func (x *DeleteRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRouteRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{27}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DeleteRouteRequest) GetTenantId() string {
@@ -1875,7 +1991,7 @@ type DeleteRouteResponse struct {
 
 func (x *DeleteRouteResponse) Reset() {
 	*x = DeleteRouteResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[28]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1887,7 +2003,7 @@ func (x *DeleteRouteResponse) String() string {
 func (*DeleteRouteResponse) ProtoMessage() {}
 
 func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[28]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1900,7 +2016,7 @@ func (x *DeleteRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRouteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteRouteResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{28}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{30}
 }
 
 type PlaceCallRequest struct {
@@ -1916,7 +2032,7 @@ type PlaceCallRequest struct {
 
 func (x *PlaceCallRequest) Reset() {
 	*x = PlaceCallRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[29]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1928,7 +2044,7 @@ func (x *PlaceCallRequest) String() string {
 func (*PlaceCallRequest) ProtoMessage() {}
 
 func (x *PlaceCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[29]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1941,7 +2057,7 @@ func (x *PlaceCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceCallRequest.ProtoReflect.Descriptor instead.
 func (*PlaceCallRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{29}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *PlaceCallRequest) GetTenantId() string {
@@ -1975,7 +2091,7 @@ type PlaceCallResponse struct {
 
 func (x *PlaceCallResponse) Reset() {
 	*x = PlaceCallResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[30]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1987,7 +2103,7 @@ func (x *PlaceCallResponse) String() string {
 func (*PlaceCallResponse) ProtoMessage() {}
 
 func (x *PlaceCallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[30]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2000,7 +2116,7 @@ func (x *PlaceCallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaceCallResponse.ProtoReflect.Descriptor instead.
 func (*PlaceCallResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{30}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *PlaceCallResponse) GetCallId() string {
@@ -2020,7 +2136,7 @@ type HangupCallRequest struct {
 
 func (x *HangupCallRequest) Reset() {
 	*x = HangupCallRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[31]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2032,7 +2148,7 @@ func (x *HangupCallRequest) String() string {
 func (*HangupCallRequest) ProtoMessage() {}
 
 func (x *HangupCallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[31]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2045,7 +2161,7 @@ func (x *HangupCallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HangupCallRequest.ProtoReflect.Descriptor instead.
 func (*HangupCallRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{31}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *HangupCallRequest) GetTenantId() string {
@@ -2070,7 +2186,7 @@ type HangupCallResponse struct {
 
 func (x *HangupCallResponse) Reset() {
 	*x = HangupCallResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[32]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2082,7 +2198,7 @@ func (x *HangupCallResponse) String() string {
 func (*HangupCallResponse) ProtoMessage() {}
 
 func (x *HangupCallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[32]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2095,7 +2211,7 @@ func (x *HangupCallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HangupCallResponse.ProtoReflect.Descriptor instead.
 func (*HangupCallResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{32}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{34}
 }
 
 // EmergencyNumber is one effective emergency number and where it comes
@@ -2111,7 +2227,7 @@ type EmergencyNumber struct {
 
 func (x *EmergencyNumber) Reset() {
 	*x = EmergencyNumber{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[33]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2123,7 +2239,7 @@ func (x *EmergencyNumber) String() string {
 func (*EmergencyNumber) ProtoMessage() {}
 
 func (x *EmergencyNumber) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[33]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2136,7 +2252,7 @@ func (x *EmergencyNumber) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmergencyNumber.ProtoReflect.Descriptor instead.
 func (*EmergencyNumber) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{33}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *EmergencyNumber) GetNumber() string {
@@ -2164,7 +2280,7 @@ type SetEmergencyProfileRequest struct {
 
 func (x *SetEmergencyProfileRequest) Reset() {
 	*x = SetEmergencyProfileRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[34]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2176,7 +2292,7 @@ func (x *SetEmergencyProfileRequest) String() string {
 func (*SetEmergencyProfileRequest) ProtoMessage() {}
 
 func (x *SetEmergencyProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[34]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2189,7 +2305,7 @@ func (x *SetEmergencyProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetEmergencyProfileRequest.ProtoReflect.Descriptor instead.
 func (*SetEmergencyProfileRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{34}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SetEmergencyProfileRequest) GetTenantId() string {
@@ -2214,7 +2330,7 @@ type SetEmergencyProfileResponse struct {
 
 func (x *SetEmergencyProfileResponse) Reset() {
 	*x = SetEmergencyProfileResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[35]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2226,7 +2342,7 @@ func (x *SetEmergencyProfileResponse) String() string {
 func (*SetEmergencyProfileResponse) ProtoMessage() {}
 
 func (x *SetEmergencyProfileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[35]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2239,7 +2355,7 @@ func (x *SetEmergencyProfileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetEmergencyProfileResponse.ProtoReflect.Descriptor instead.
 func (*SetEmergencyProfileResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{35}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{37}
 }
 
 type GetEmergencyProfileRequest struct {
@@ -2251,7 +2367,7 @@ type GetEmergencyProfileRequest struct {
 
 func (x *GetEmergencyProfileRequest) Reset() {
 	*x = GetEmergencyProfileRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[36]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2263,7 +2379,7 @@ func (x *GetEmergencyProfileRequest) String() string {
 func (*GetEmergencyProfileRequest) ProtoMessage() {}
 
 func (x *GetEmergencyProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[36]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2276,7 +2392,7 @@ func (x *GetEmergencyProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmergencyProfileRequest.ProtoReflect.Descriptor instead.
 func (*GetEmergencyProfileRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{36}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *GetEmergencyProfileRequest) GetTenantId() string {
@@ -2301,7 +2417,7 @@ type GetEmergencyProfileResponse struct {
 
 func (x *GetEmergencyProfileResponse) Reset() {
 	*x = GetEmergencyProfileResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[37]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2313,7 +2429,7 @@ func (x *GetEmergencyProfileResponse) String() string {
 func (*GetEmergencyProfileResponse) ProtoMessage() {}
 
 func (x *GetEmergencyProfileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[37]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2326,7 +2442,7 @@ func (x *GetEmergencyProfileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmergencyProfileResponse.ProtoReflect.Descriptor instead.
 func (*GetEmergencyProfileResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{37}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetEmergencyProfileResponse) GetCountryCode() string {
@@ -2368,7 +2484,7 @@ type CreateEmergencyNumberRequest struct {
 
 func (x *CreateEmergencyNumberRequest) Reset() {
 	*x = CreateEmergencyNumberRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[38]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2380,7 +2496,7 @@ func (x *CreateEmergencyNumberRequest) String() string {
 func (*CreateEmergencyNumberRequest) ProtoMessage() {}
 
 func (x *CreateEmergencyNumberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[38]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2393,7 +2509,7 @@ func (x *CreateEmergencyNumberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateEmergencyNumberRequest.ProtoReflect.Descriptor instead.
 func (*CreateEmergencyNumberRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{38}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CreateEmergencyNumberRequest) GetTenantId() string {
@@ -2418,7 +2534,7 @@ type CreateEmergencyNumberResponse struct {
 
 func (x *CreateEmergencyNumberResponse) Reset() {
 	*x = CreateEmergencyNumberResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[39]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2430,7 +2546,7 @@ func (x *CreateEmergencyNumberResponse) String() string {
 func (*CreateEmergencyNumberResponse) ProtoMessage() {}
 
 func (x *CreateEmergencyNumberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[39]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2443,7 +2559,7 @@ func (x *CreateEmergencyNumberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateEmergencyNumberResponse.ProtoReflect.Descriptor instead.
 func (*CreateEmergencyNumberResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{39}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{41}
 }
 
 type ListEmergencyNumbersRequest struct {
@@ -2455,7 +2571,7 @@ type ListEmergencyNumbersRequest struct {
 
 func (x *ListEmergencyNumbersRequest) Reset() {
 	*x = ListEmergencyNumbersRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[40]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2467,7 +2583,7 @@ func (x *ListEmergencyNumbersRequest) String() string {
 func (*ListEmergencyNumbersRequest) ProtoMessage() {}
 
 func (x *ListEmergencyNumbersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[40]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2480,7 +2596,7 @@ func (x *ListEmergencyNumbersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEmergencyNumbersRequest.ProtoReflect.Descriptor instead.
 func (*ListEmergencyNumbersRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{40}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListEmergencyNumbersRequest) GetTenantId() string {
@@ -2499,7 +2615,7 @@ type ListEmergencyNumbersResponse struct {
 
 func (x *ListEmergencyNumbersResponse) Reset() {
 	*x = ListEmergencyNumbersResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[41]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2511,7 +2627,7 @@ func (x *ListEmergencyNumbersResponse) String() string {
 func (*ListEmergencyNumbersResponse) ProtoMessage() {}
 
 func (x *ListEmergencyNumbersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[41]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2524,7 +2640,7 @@ func (x *ListEmergencyNumbersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEmergencyNumbersResponse.ProtoReflect.Descriptor instead.
 func (*ListEmergencyNumbersResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{41}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListEmergencyNumbersResponse) GetNumbers() []*EmergencyNumber {
@@ -2544,7 +2660,7 @@ type DeleteEmergencyNumberRequest struct {
 
 func (x *DeleteEmergencyNumberRequest) Reset() {
 	*x = DeleteEmergencyNumberRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[42]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2556,7 +2672,7 @@ func (x *DeleteEmergencyNumberRequest) String() string {
 func (*DeleteEmergencyNumberRequest) ProtoMessage() {}
 
 func (x *DeleteEmergencyNumberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[42]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2569,7 +2685,7 @@ func (x *DeleteEmergencyNumberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEmergencyNumberRequest.ProtoReflect.Descriptor instead.
 func (*DeleteEmergencyNumberRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{42}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DeleteEmergencyNumberRequest) GetTenantId() string {
@@ -2594,7 +2710,7 @@ type DeleteEmergencyNumberResponse struct {
 
 func (x *DeleteEmergencyNumberResponse) Reset() {
 	*x = DeleteEmergencyNumberResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[43]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2606,7 +2722,7 @@ func (x *DeleteEmergencyNumberResponse) String() string {
 func (*DeleteEmergencyNumberResponse) ProtoMessage() {}
 
 func (x *DeleteEmergencyNumberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[43]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2619,7 +2735,7 @@ func (x *DeleteEmergencyNumberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEmergencyNumberResponse.ProtoReflect.Descriptor instead.
 func (*DeleteEmergencyNumberResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{43}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{45}
 }
 
 // InboundNumber is a public number that rings one of the tenant's
@@ -2636,7 +2752,7 @@ type InboundNumber struct {
 
 func (x *InboundNumber) Reset() {
 	*x = InboundNumber{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[44]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2648,7 +2764,7 @@ func (x *InboundNumber) String() string {
 func (*InboundNumber) ProtoMessage() {}
 
 func (x *InboundNumber) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[44]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2661,7 +2777,7 @@ func (x *InboundNumber) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboundNumber.ProtoReflect.Descriptor instead.
 func (*InboundNumber) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{44}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *InboundNumber) GetInboundNumberId() string {
@@ -2696,7 +2812,7 @@ type CreateInboundNumberRequest struct {
 
 func (x *CreateInboundNumberRequest) Reset() {
 	*x = CreateInboundNumberRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[45]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2708,7 +2824,7 @@ func (x *CreateInboundNumberRequest) String() string {
 func (*CreateInboundNumberRequest) ProtoMessage() {}
 
 func (x *CreateInboundNumberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[45]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2721,7 +2837,7 @@ func (x *CreateInboundNumberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateInboundNumberRequest.ProtoReflect.Descriptor instead.
 func (*CreateInboundNumberRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{45}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *CreateInboundNumberRequest) GetTenantId() string {
@@ -2754,7 +2870,7 @@ type CreateInboundNumberResponse struct {
 
 func (x *CreateInboundNumberResponse) Reset() {
 	*x = CreateInboundNumberResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[46]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2766,7 +2882,7 @@ func (x *CreateInboundNumberResponse) String() string {
 func (*CreateInboundNumberResponse) ProtoMessage() {}
 
 func (x *CreateInboundNumberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[46]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2779,7 +2895,7 @@ func (x *CreateInboundNumberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateInboundNumberResponse.ProtoReflect.Descriptor instead.
 func (*CreateInboundNumberResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{46}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CreateInboundNumberResponse) GetInboundNumber() *InboundNumber {
@@ -2798,7 +2914,7 @@ type ListInboundNumbersRequest struct {
 
 func (x *ListInboundNumbersRequest) Reset() {
 	*x = ListInboundNumbersRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[47]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2810,7 +2926,7 @@ func (x *ListInboundNumbersRequest) String() string {
 func (*ListInboundNumbersRequest) ProtoMessage() {}
 
 func (x *ListInboundNumbersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[47]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2823,7 +2939,7 @@ func (x *ListInboundNumbersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInboundNumbersRequest.ProtoReflect.Descriptor instead.
 func (*ListInboundNumbersRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{47}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListInboundNumbersRequest) GetTenantId() string {
@@ -2842,7 +2958,7 @@ type ListInboundNumbersResponse struct {
 
 func (x *ListInboundNumbersResponse) Reset() {
 	*x = ListInboundNumbersResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[48]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2854,7 +2970,7 @@ func (x *ListInboundNumbersResponse) String() string {
 func (*ListInboundNumbersResponse) ProtoMessage() {}
 
 func (x *ListInboundNumbersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[48]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2867,7 +2983,7 @@ func (x *ListInboundNumbersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInboundNumbersResponse.ProtoReflect.Descriptor instead.
 func (*ListInboundNumbersResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{48}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListInboundNumbersResponse) GetNumbers() []*InboundNumber {
@@ -2887,7 +3003,7 @@ type DeleteInboundNumberRequest struct {
 
 func (x *DeleteInboundNumberRequest) Reset() {
 	*x = DeleteInboundNumberRequest{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[49]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2899,7 +3015,7 @@ func (x *DeleteInboundNumberRequest) String() string {
 func (*DeleteInboundNumberRequest) ProtoMessage() {}
 
 func (x *DeleteInboundNumberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[49]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2912,7 +3028,7 @@ func (x *DeleteInboundNumberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteInboundNumberRequest.ProtoReflect.Descriptor instead.
 func (*DeleteInboundNumberRequest) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{49}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *DeleteInboundNumberRequest) GetTenantId() string {
@@ -2937,7 +3053,7 @@ type DeleteInboundNumberResponse struct {
 
 func (x *DeleteInboundNumberResponse) Reset() {
 	*x = DeleteInboundNumberResponse{}
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[50]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2949,7 +3065,7 @@ func (x *DeleteInboundNumberResponse) String() string {
 func (*DeleteInboundNumberResponse) ProtoMessage() {}
 
 func (x *DeleteInboundNumberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atsapbx_v1_pbx_proto_msgTypes[50]
+	mi := &file_atsapbx_v1_pbx_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2962,7 +3078,7 @@ func (x *DeleteInboundNumberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteInboundNumberResponse.ProtoReflect.Descriptor instead.
 func (*DeleteInboundNumberResponse) Descriptor() ([]byte, []int) {
-	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{50}
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{52}
 }
 
 var File_atsapbx_v1_pbx_proto protoreflect.FileDescriptor
@@ -3018,7 +3134,16 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\fextension_id\x18\x02 \x01(\tR\vextensionId\"g\n" +
 	"\x18RegenerateSecretResponse\x123\n" +
 	"\textension\x18\x01 \x01(\v2\x15.atsapbx.v1.ExtensionR\textension\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x94\x02\n" +
+	"\x06secret\x18\x02 \x01(\tR\x06secret\"5\n" +
+	"\x16GetSipRegistrarRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"\x7f\n" +
+	"\x17GetSipRegistrarResponse\x12\x1e\n" +
+	"\n" +
+	"configured\x18\x01 \x01(\bR\n" +
+	"configured\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1c\n" +
+	"\ttransport\x18\x04 \x01(\tR\ttransport\"\x94\x02\n" +
 	"\x05Trunk\x12\x19\n" +
 	"\btrunk_id\x18\x01 \x01(\tR\atrunkId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3155,7 +3280,7 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x18TRUNK_HEALTH_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14TRUNK_HEALTH_HEALTHY\x10\x01\x12\x19\n" +
 	"\x15TRUNK_HEALTH_DEGRADED\x10\x02\x12\x1a\n" +
-	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x032\xb8\x10\n" +
+	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x032\x94\x11\n" +
 	"\n" +
 	"PbxService\x12Z\n" +
 	"\x0fCreateExtension\x12\".atsapbx.v1.CreateExtensionRequest\x1a#.atsapbx.v1.CreateExtensionResponse\x12Q\n" +
@@ -3163,7 +3288,8 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x0eListExtensions\x12!.atsapbx.v1.ListExtensionsRequest\x1a\".atsapbx.v1.ListExtensionsResponse\x12Z\n" +
 	"\x0fUpdateExtension\x12\".atsapbx.v1.UpdateExtensionRequest\x1a#.atsapbx.v1.UpdateExtensionResponse\x12Z\n" +
 	"\x0fDeleteExtension\x12\".atsapbx.v1.DeleteExtensionRequest\x1a#.atsapbx.v1.DeleteExtensionResponse\x12]\n" +
-	"\x10RegenerateSecret\x12#.atsapbx.v1.RegenerateSecretRequest\x1a$.atsapbx.v1.RegenerateSecretResponse\x12N\n" +
+	"\x10RegenerateSecret\x12#.atsapbx.v1.RegenerateSecretRequest\x1a$.atsapbx.v1.RegenerateSecretResponse\x12Z\n" +
+	"\x0fGetSipRegistrar\x12\".atsapbx.v1.GetSipRegistrarRequest\x1a#.atsapbx.v1.GetSipRegistrarResponse\x12N\n" +
 	"\vCreateTrunk\x12\x1e.atsapbx.v1.CreateTrunkRequest\x1a\x1f.atsapbx.v1.CreateTrunkResponse\x12K\n" +
 	"\n" +
 	"ListTrunks\x12\x1d.atsapbx.v1.ListTrunksRequest\x1a\x1e.atsapbx.v1.ListTrunksResponse\x12N\n" +
@@ -3198,7 +3324,7 @@ func file_atsapbx_v1_pbx_proto_rawDescGZIP() []byte {
 }
 
 var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
 var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(DeviceType)(0),                       // 0: atsapbx.v1.DeviceType
 	(RegistrationStatus)(0),               // 1: atsapbx.v1.RegistrationStatus
@@ -3216,44 +3342,46 @@ var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(*DeleteExtensionResponse)(nil),       // 13: atsapbx.v1.DeleteExtensionResponse
 	(*RegenerateSecretRequest)(nil),       // 14: atsapbx.v1.RegenerateSecretRequest
 	(*RegenerateSecretResponse)(nil),      // 15: atsapbx.v1.RegenerateSecretResponse
-	(*Trunk)(nil),                         // 16: atsapbx.v1.Trunk
-	(*CreateTrunkRequest)(nil),            // 17: atsapbx.v1.CreateTrunkRequest
-	(*CreateTrunkResponse)(nil),           // 18: atsapbx.v1.CreateTrunkResponse
-	(*ListTrunksRequest)(nil),             // 19: atsapbx.v1.ListTrunksRequest
-	(*ListTrunksResponse)(nil),            // 20: atsapbx.v1.ListTrunksResponse
-	(*UpdateTrunkRequest)(nil),            // 21: atsapbx.v1.UpdateTrunkRequest
-	(*UpdateTrunkResponse)(nil),           // 22: atsapbx.v1.UpdateTrunkResponse
-	(*DeleteTrunkRequest)(nil),            // 23: atsapbx.v1.DeleteTrunkRequest
-	(*DeleteTrunkResponse)(nil),           // 24: atsapbx.v1.DeleteTrunkResponse
-	(*Route)(nil),                         // 25: atsapbx.v1.Route
-	(*CreateRouteRequest)(nil),            // 26: atsapbx.v1.CreateRouteRequest
-	(*CreateRouteResponse)(nil),           // 27: atsapbx.v1.CreateRouteResponse
-	(*ListRoutesRequest)(nil),             // 28: atsapbx.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),            // 29: atsapbx.v1.ListRoutesResponse
-	(*DeleteRouteRequest)(nil),            // 30: atsapbx.v1.DeleteRouteRequest
-	(*DeleteRouteResponse)(nil),           // 31: atsapbx.v1.DeleteRouteResponse
-	(*PlaceCallRequest)(nil),              // 32: atsapbx.v1.PlaceCallRequest
-	(*PlaceCallResponse)(nil),             // 33: atsapbx.v1.PlaceCallResponse
-	(*HangupCallRequest)(nil),             // 34: atsapbx.v1.HangupCallRequest
-	(*HangupCallResponse)(nil),            // 35: atsapbx.v1.HangupCallResponse
-	(*EmergencyNumber)(nil),               // 36: atsapbx.v1.EmergencyNumber
-	(*SetEmergencyProfileRequest)(nil),    // 37: atsapbx.v1.SetEmergencyProfileRequest
-	(*SetEmergencyProfileResponse)(nil),   // 38: atsapbx.v1.SetEmergencyProfileResponse
-	(*GetEmergencyProfileRequest)(nil),    // 39: atsapbx.v1.GetEmergencyProfileRequest
-	(*GetEmergencyProfileResponse)(nil),   // 40: atsapbx.v1.GetEmergencyProfileResponse
-	(*CreateEmergencyNumberRequest)(nil),  // 41: atsapbx.v1.CreateEmergencyNumberRequest
-	(*CreateEmergencyNumberResponse)(nil), // 42: atsapbx.v1.CreateEmergencyNumberResponse
-	(*ListEmergencyNumbersRequest)(nil),   // 43: atsapbx.v1.ListEmergencyNumbersRequest
-	(*ListEmergencyNumbersResponse)(nil),  // 44: atsapbx.v1.ListEmergencyNumbersResponse
-	(*DeleteEmergencyNumberRequest)(nil),  // 45: atsapbx.v1.DeleteEmergencyNumberRequest
-	(*DeleteEmergencyNumberResponse)(nil), // 46: atsapbx.v1.DeleteEmergencyNumberResponse
-	(*InboundNumber)(nil),                 // 47: atsapbx.v1.InboundNumber
-	(*CreateInboundNumberRequest)(nil),    // 48: atsapbx.v1.CreateInboundNumberRequest
-	(*CreateInboundNumberResponse)(nil),   // 49: atsapbx.v1.CreateInboundNumberResponse
-	(*ListInboundNumbersRequest)(nil),     // 50: atsapbx.v1.ListInboundNumbersRequest
-	(*ListInboundNumbersResponse)(nil),    // 51: atsapbx.v1.ListInboundNumbersResponse
-	(*DeleteInboundNumberRequest)(nil),    // 52: atsapbx.v1.DeleteInboundNumberRequest
-	(*DeleteInboundNumberResponse)(nil),   // 53: atsapbx.v1.DeleteInboundNumberResponse
+	(*GetSipRegistrarRequest)(nil),        // 16: atsapbx.v1.GetSipRegistrarRequest
+	(*GetSipRegistrarResponse)(nil),       // 17: atsapbx.v1.GetSipRegistrarResponse
+	(*Trunk)(nil),                         // 18: atsapbx.v1.Trunk
+	(*CreateTrunkRequest)(nil),            // 19: atsapbx.v1.CreateTrunkRequest
+	(*CreateTrunkResponse)(nil),           // 20: atsapbx.v1.CreateTrunkResponse
+	(*ListTrunksRequest)(nil),             // 21: atsapbx.v1.ListTrunksRequest
+	(*ListTrunksResponse)(nil),            // 22: atsapbx.v1.ListTrunksResponse
+	(*UpdateTrunkRequest)(nil),            // 23: atsapbx.v1.UpdateTrunkRequest
+	(*UpdateTrunkResponse)(nil),           // 24: atsapbx.v1.UpdateTrunkResponse
+	(*DeleteTrunkRequest)(nil),            // 25: atsapbx.v1.DeleteTrunkRequest
+	(*DeleteTrunkResponse)(nil),           // 26: atsapbx.v1.DeleteTrunkResponse
+	(*Route)(nil),                         // 27: atsapbx.v1.Route
+	(*CreateRouteRequest)(nil),            // 28: atsapbx.v1.CreateRouteRequest
+	(*CreateRouteResponse)(nil),           // 29: atsapbx.v1.CreateRouteResponse
+	(*ListRoutesRequest)(nil),             // 30: atsapbx.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),            // 31: atsapbx.v1.ListRoutesResponse
+	(*DeleteRouteRequest)(nil),            // 32: atsapbx.v1.DeleteRouteRequest
+	(*DeleteRouteResponse)(nil),           // 33: atsapbx.v1.DeleteRouteResponse
+	(*PlaceCallRequest)(nil),              // 34: atsapbx.v1.PlaceCallRequest
+	(*PlaceCallResponse)(nil),             // 35: atsapbx.v1.PlaceCallResponse
+	(*HangupCallRequest)(nil),             // 36: atsapbx.v1.HangupCallRequest
+	(*HangupCallResponse)(nil),            // 37: atsapbx.v1.HangupCallResponse
+	(*EmergencyNumber)(nil),               // 38: atsapbx.v1.EmergencyNumber
+	(*SetEmergencyProfileRequest)(nil),    // 39: atsapbx.v1.SetEmergencyProfileRequest
+	(*SetEmergencyProfileResponse)(nil),   // 40: atsapbx.v1.SetEmergencyProfileResponse
+	(*GetEmergencyProfileRequest)(nil),    // 41: atsapbx.v1.GetEmergencyProfileRequest
+	(*GetEmergencyProfileResponse)(nil),   // 42: atsapbx.v1.GetEmergencyProfileResponse
+	(*CreateEmergencyNumberRequest)(nil),  // 43: atsapbx.v1.CreateEmergencyNumberRequest
+	(*CreateEmergencyNumberResponse)(nil), // 44: atsapbx.v1.CreateEmergencyNumberResponse
+	(*ListEmergencyNumbersRequest)(nil),   // 45: atsapbx.v1.ListEmergencyNumbersRequest
+	(*ListEmergencyNumbersResponse)(nil),  // 46: atsapbx.v1.ListEmergencyNumbersResponse
+	(*DeleteEmergencyNumberRequest)(nil),  // 47: atsapbx.v1.DeleteEmergencyNumberRequest
+	(*DeleteEmergencyNumberResponse)(nil), // 48: atsapbx.v1.DeleteEmergencyNumberResponse
+	(*InboundNumber)(nil),                 // 49: atsapbx.v1.InboundNumber
+	(*CreateInboundNumberRequest)(nil),    // 50: atsapbx.v1.CreateInboundNumberRequest
+	(*CreateInboundNumberResponse)(nil),   // 51: atsapbx.v1.CreateInboundNumberResponse
+	(*ListInboundNumbersRequest)(nil),     // 52: atsapbx.v1.ListInboundNumbersRequest
+	(*ListInboundNumbersResponse)(nil),    // 53: atsapbx.v1.ListInboundNumbersResponse
+	(*DeleteInboundNumberRequest)(nil),    // 54: atsapbx.v1.DeleteInboundNumberRequest
+	(*DeleteInboundNumberResponse)(nil),   // 55: atsapbx.v1.DeleteInboundNumberResponse
 }
 var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.Extension.device_type:type_name -> atsapbx.v1.DeviceType
@@ -3266,63 +3394,65 @@ var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	3,  // 7: atsapbx.v1.UpdateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
 	3,  // 8: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
 	2,  // 9: atsapbx.v1.Trunk.health:type_name -> atsapbx.v1.TrunkHealth
-	16, // 10: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
-	16, // 11: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
-	16, // 12: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
-	25, // 13: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
-	25, // 14: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
-	36, // 15: atsapbx.v1.GetEmergencyProfileResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
-	36, // 16: atsapbx.v1.ListEmergencyNumbersResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
-	47, // 17: atsapbx.v1.CreateInboundNumberResponse.inbound_number:type_name -> atsapbx.v1.InboundNumber
-	47, // 18: atsapbx.v1.ListInboundNumbersResponse.numbers:type_name -> atsapbx.v1.InboundNumber
+	18, // 10: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	18, // 11: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
+	18, // 12: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	27, // 13: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
+	27, // 14: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
+	38, // 15: atsapbx.v1.GetEmergencyProfileResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
+	38, // 16: atsapbx.v1.ListEmergencyNumbersResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
+	49, // 17: atsapbx.v1.CreateInboundNumberResponse.inbound_number:type_name -> atsapbx.v1.InboundNumber
+	49, // 18: atsapbx.v1.ListInboundNumbersResponse.numbers:type_name -> atsapbx.v1.InboundNumber
 	4,  // 19: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
 	6,  // 20: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
 	8,  // 21: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
 	10, // 22: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
 	12, // 23: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
 	14, // 24: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
-	17, // 25: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
-	19, // 26: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
-	21, // 27: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
-	23, // 28: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
-	26, // 29: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
-	28, // 30: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
-	30, // 31: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
-	32, // 32: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
-	34, // 33: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
-	37, // 34: atsapbx.v1.PbxService.SetEmergencyProfile:input_type -> atsapbx.v1.SetEmergencyProfileRequest
-	39, // 35: atsapbx.v1.PbxService.GetEmergencyProfile:input_type -> atsapbx.v1.GetEmergencyProfileRequest
-	41, // 36: atsapbx.v1.PbxService.CreateEmergencyNumber:input_type -> atsapbx.v1.CreateEmergencyNumberRequest
-	43, // 37: atsapbx.v1.PbxService.ListEmergencyNumbers:input_type -> atsapbx.v1.ListEmergencyNumbersRequest
-	45, // 38: atsapbx.v1.PbxService.DeleteEmergencyNumber:input_type -> atsapbx.v1.DeleteEmergencyNumberRequest
-	48, // 39: atsapbx.v1.PbxService.CreateInboundNumber:input_type -> atsapbx.v1.CreateInboundNumberRequest
-	50, // 40: atsapbx.v1.PbxService.ListInboundNumbers:input_type -> atsapbx.v1.ListInboundNumbersRequest
-	52, // 41: atsapbx.v1.PbxService.DeleteInboundNumber:input_type -> atsapbx.v1.DeleteInboundNumberRequest
-	5,  // 42: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
-	7,  // 43: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
-	9,  // 44: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
-	11, // 45: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
-	13, // 46: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
-	15, // 47: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
-	18, // 48: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
-	20, // 49: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
-	22, // 50: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
-	24, // 51: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
-	27, // 52: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
-	29, // 53: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
-	31, // 54: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
-	33, // 55: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
-	35, // 56: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
-	38, // 57: atsapbx.v1.PbxService.SetEmergencyProfile:output_type -> atsapbx.v1.SetEmergencyProfileResponse
-	40, // 58: atsapbx.v1.PbxService.GetEmergencyProfile:output_type -> atsapbx.v1.GetEmergencyProfileResponse
-	42, // 59: atsapbx.v1.PbxService.CreateEmergencyNumber:output_type -> atsapbx.v1.CreateEmergencyNumberResponse
-	44, // 60: atsapbx.v1.PbxService.ListEmergencyNumbers:output_type -> atsapbx.v1.ListEmergencyNumbersResponse
-	46, // 61: atsapbx.v1.PbxService.DeleteEmergencyNumber:output_type -> atsapbx.v1.DeleteEmergencyNumberResponse
-	49, // 62: atsapbx.v1.PbxService.CreateInboundNumber:output_type -> atsapbx.v1.CreateInboundNumberResponse
-	51, // 63: atsapbx.v1.PbxService.ListInboundNumbers:output_type -> atsapbx.v1.ListInboundNumbersResponse
-	53, // 64: atsapbx.v1.PbxService.DeleteInboundNumber:output_type -> atsapbx.v1.DeleteInboundNumberResponse
-	42, // [42:65] is the sub-list for method output_type
-	19, // [19:42] is the sub-list for method input_type
+	16, // 25: atsapbx.v1.PbxService.GetSipRegistrar:input_type -> atsapbx.v1.GetSipRegistrarRequest
+	19, // 26: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
+	21, // 27: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
+	23, // 28: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
+	25, // 29: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
+	28, // 30: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
+	30, // 31: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
+	32, // 32: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
+	34, // 33: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
+	36, // 34: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
+	39, // 35: atsapbx.v1.PbxService.SetEmergencyProfile:input_type -> atsapbx.v1.SetEmergencyProfileRequest
+	41, // 36: atsapbx.v1.PbxService.GetEmergencyProfile:input_type -> atsapbx.v1.GetEmergencyProfileRequest
+	43, // 37: atsapbx.v1.PbxService.CreateEmergencyNumber:input_type -> atsapbx.v1.CreateEmergencyNumberRequest
+	45, // 38: atsapbx.v1.PbxService.ListEmergencyNumbers:input_type -> atsapbx.v1.ListEmergencyNumbersRequest
+	47, // 39: atsapbx.v1.PbxService.DeleteEmergencyNumber:input_type -> atsapbx.v1.DeleteEmergencyNumberRequest
+	50, // 40: atsapbx.v1.PbxService.CreateInboundNumber:input_type -> atsapbx.v1.CreateInboundNumberRequest
+	52, // 41: atsapbx.v1.PbxService.ListInboundNumbers:input_type -> atsapbx.v1.ListInboundNumbersRequest
+	54, // 42: atsapbx.v1.PbxService.DeleteInboundNumber:input_type -> atsapbx.v1.DeleteInboundNumberRequest
+	5,  // 43: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
+	7,  // 44: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
+	9,  // 45: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
+	11, // 46: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
+	13, // 47: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
+	15, // 48: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
+	17, // 49: atsapbx.v1.PbxService.GetSipRegistrar:output_type -> atsapbx.v1.GetSipRegistrarResponse
+	20, // 50: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
+	22, // 51: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
+	24, // 52: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
+	26, // 53: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
+	29, // 54: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
+	31, // 55: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
+	33, // 56: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
+	35, // 57: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
+	37, // 58: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
+	40, // 59: atsapbx.v1.PbxService.SetEmergencyProfile:output_type -> atsapbx.v1.SetEmergencyProfileResponse
+	42, // 60: atsapbx.v1.PbxService.GetEmergencyProfile:output_type -> atsapbx.v1.GetEmergencyProfileResponse
+	44, // 61: atsapbx.v1.PbxService.CreateEmergencyNumber:output_type -> atsapbx.v1.CreateEmergencyNumberResponse
+	46, // 62: atsapbx.v1.PbxService.ListEmergencyNumbers:output_type -> atsapbx.v1.ListEmergencyNumbersResponse
+	48, // 63: atsapbx.v1.PbxService.DeleteEmergencyNumber:output_type -> atsapbx.v1.DeleteEmergencyNumberResponse
+	51, // 64: atsapbx.v1.PbxService.CreateInboundNumber:output_type -> atsapbx.v1.CreateInboundNumberResponse
+	53, // 65: atsapbx.v1.PbxService.ListInboundNumbers:output_type -> atsapbx.v1.ListInboundNumbersResponse
+	55, // 66: atsapbx.v1.PbxService.DeleteInboundNumber:output_type -> atsapbx.v1.DeleteInboundNumberResponse
+	43, // [43:67] is the sub-list for method output_type
+	19, // [19:43] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -3339,7 +3469,7 @@ func file_atsapbx_v1_pbx_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_pbx_proto_rawDesc), len(file_atsapbx_v1_pbx_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   51,
+			NumMessages:   53,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

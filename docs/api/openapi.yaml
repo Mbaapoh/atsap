@@ -1070,6 +1070,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.RegenerateSecretResponse'
+  /atsapbx.v1.PbxService/GetSipRegistrar:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: GetSipRegistrar
+      description: |-
+        GetSipRegistrar returns where devices register: the installation's
+         public SIP registrar address, as its installer configured it. When no
+         public host is configured it says so (configured = false) rather than
+         guess. Authorized like reading the tenant's extensions.
+      operationId: atsapbx.v1.PbxService.GetSipRegistrar
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetSipRegistrarRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetSipRegistrarResponse'
   /atsapbx.v1.PbxService/CreateTrunk:
     post:
       tags:
@@ -3093,6 +3133,37 @@ components:
           title: extension
           $ref: '#/components/schemas/atsapbx.v1.Extension'
       title: GetExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.GetSipRegistrarRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: GetSipRegistrarRequest
+      additionalProperties: false
+    atsapbx.v1.GetSipRegistrarResponse:
+      type: object
+      properties:
+        configured:
+          type: boolean
+          title: configured
+          description: |-
+            False when the installation has not configured a public registrar
+             host; host is then empty and the other fields carry no meaning.
+        host:
+          type: string
+          title: host
+          description: A hostname or IP address, with no scheme, port or user part.
+        port:
+          type: integer
+          title: port
+          format: int32
+        transport:
+          type: string
+          title: transport
+          description: '"udp", "tcp" or "tls".'
+      title: GetSipRegistrarResponse
       additionalProperties: false
     atsapbx.v1.HangupCallRequest:
       type: object

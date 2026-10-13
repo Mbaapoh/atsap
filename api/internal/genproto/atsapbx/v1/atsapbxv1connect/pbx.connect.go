@@ -50,6 +50,9 @@ const (
 	// PbxServiceRegenerateSecretProcedure is the fully-qualified name of the PbxService's
 	// RegenerateSecret RPC.
 	PbxServiceRegenerateSecretProcedure = "/atsapbx.v1.PbxService/RegenerateSecret"
+	// PbxServiceGetSipRegistrarProcedure is the fully-qualified name of the PbxService's
+	// GetSipRegistrar RPC.
+	PbxServiceGetSipRegistrarProcedure = "/atsapbx.v1.PbxService/GetSipRegistrar"
 	// PbxServiceCreateTrunkProcedure is the fully-qualified name of the PbxService's CreateTrunk RPC.
 	PbxServiceCreateTrunkProcedure = "/atsapbx.v1.PbxService/CreateTrunk"
 	// PbxServiceListTrunksProcedure is the fully-qualified name of the PbxService's ListTrunks RPC.
@@ -115,6 +118,11 @@ type PbxServiceClient interface {
 	// working the moment this returns — two live credentials for one
 	// extension is the state a rotation exists to end.
 	RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error)
+	// GetSipRegistrar returns where devices register: the installation's
+	// public SIP registrar address, as its installer configured it. When no
+	// public host is configured it says so (configured = false) rather than
+	// guess. Authorized like reading the tenant's extensions.
+	GetSipRegistrar(context.Context, *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error)
 	// CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
 	// secret, if any, is accepted here and on UpdateTrunk and is never
 	// returned by any call — unlike an extension secret, it was chosen by
@@ -224,6 +232,12 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+PbxServiceRegenerateSecretProcedure,
 			connect.WithSchema(pbxServiceMethods.ByName("RegenerateSecret")),
+			connect.WithClientOptions(opts...),
+		),
+		getSipRegistrar: connect.NewClient[v1.GetSipRegistrarRequest, v1.GetSipRegistrarResponse](
+			httpClient,
+			baseURL+PbxServiceGetSipRegistrarProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("GetSipRegistrar")),
 			connect.WithClientOptions(opts...),
 		),
 		createTrunk: connect.NewClient[v1.CreateTrunkRequest, v1.CreateTrunkResponse](
@@ -339,6 +353,7 @@ type pbxServiceClient struct {
 	updateExtension       *connect.Client[v1.UpdateExtensionRequest, v1.UpdateExtensionResponse]
 	deleteExtension       *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
 	regenerateSecret      *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
+	getSipRegistrar       *connect.Client[v1.GetSipRegistrarRequest, v1.GetSipRegistrarResponse]
 	createTrunk           *connect.Client[v1.CreateTrunkRequest, v1.CreateTrunkResponse]
 	listTrunks            *connect.Client[v1.ListTrunksRequest, v1.ListTrunksResponse]
 	updateTrunk           *connect.Client[v1.UpdateTrunkRequest, v1.UpdateTrunkResponse]
@@ -386,6 +401,11 @@ func (c *pbxServiceClient) DeleteExtension(ctx context.Context, req *connect.Req
 // RegenerateSecret calls atsapbx.v1.PbxService.RegenerateSecret.
 func (c *pbxServiceClient) RegenerateSecret(ctx context.Context, req *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error) {
 	return c.regenerateSecret.CallUnary(ctx, req)
+}
+
+// GetSipRegistrar calls atsapbx.v1.PbxService.GetSipRegistrar.
+func (c *pbxServiceClient) GetSipRegistrar(ctx context.Context, req *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error) {
+	return c.getSipRegistrar.CallUnary(ctx, req)
 }
 
 // CreateTrunk calls atsapbx.v1.PbxService.CreateTrunk.
@@ -494,6 +514,11 @@ type PbxServiceHandler interface {
 	// working the moment this returns — two live credentials for one
 	// extension is the state a rotation exists to end.
 	RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error)
+	// GetSipRegistrar returns where devices register: the installation's
+	// public SIP registrar address, as its installer configured it. When no
+	// public host is configured it says so (configured = false) rather than
+	// guess. Authorized like reading the tenant's extensions.
+	GetSipRegistrar(context.Context, *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error)
 	// CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
 	// secret, if any, is accepted here and on UpdateTrunk and is never
 	// returned by any call — unlike an extension secret, it was chosen by
@@ -599,6 +624,12 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		PbxServiceRegenerateSecretProcedure,
 		svc.RegenerateSecret,
 		connect.WithSchema(pbxServiceMethods.ByName("RegenerateSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceGetSipRegistrarHandler := connect.NewUnaryHandler(
+		PbxServiceGetSipRegistrarProcedure,
+		svc.GetSipRegistrar,
+		connect.WithSchema(pbxServiceMethods.ByName("GetSipRegistrar")),
 		connect.WithHandlerOptions(opts...),
 	)
 	pbxServiceCreateTrunkHandler := connect.NewUnaryHandler(
@@ -717,6 +748,8 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServiceDeleteExtensionHandler.ServeHTTP(w, r)
 		case PbxServiceRegenerateSecretProcedure:
 			pbxServiceRegenerateSecretHandler.ServeHTTP(w, r)
+		case PbxServiceGetSipRegistrarProcedure:
+			pbxServiceGetSipRegistrarHandler.ServeHTTP(w, r)
 		case PbxServiceCreateTrunkProcedure:
 			pbxServiceCreateTrunkHandler.ServeHTTP(w, r)
 		case PbxServiceListTrunksProcedure:
@@ -782,6 +815,10 @@ func (UnimplementedPbxServiceHandler) DeleteExtension(context.Context, *connect.
 
 func (UnimplementedPbxServiceHandler) RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.RegenerateSecret is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) GetSipRegistrar(context.Context, *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.GetSipRegistrar is not implemented"))
 }
 
 func (UnimplementedPbxServiceHandler) CreateTrunk(context.Context, *connect.Request[v1.CreateTrunkRequest]) (*connect.Response[v1.CreateTrunkResponse], error) {

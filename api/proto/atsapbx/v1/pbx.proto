@@ -50,6 +50,12 @@ service PbxService {
   // extension is the state a rotation exists to end.
   rpc RegenerateSecret(RegenerateSecretRequest) returns (RegenerateSecretResponse);
 
+  // GetSipRegistrar returns where devices register: the installation's
+  // public SIP registrar address, as its installer configured it. When no
+  // public host is configured it says so (configured = false) rather than
+  // guess. Authorized like reading the tenant's extensions.
+  rpc GetSipRegistrar(GetSipRegistrarRequest) returns (GetSipRegistrarResponse);
+
   // CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
   // secret, if any, is accepted here and on UpdateTrunk and is never
   // returned by any call — unlike an extension secret, it was chosen by
@@ -226,6 +232,21 @@ message RegenerateSecretResponse {
   Extension extension = 1;
   // The new secret, returned exactly once, as at creation.
   string secret = 2;
+}
+
+message GetSipRegistrarRequest {
+  string tenant_id = 1;
+}
+
+message GetSipRegistrarResponse {
+  // False when the installation has not configured a public registrar
+  // host; host is then empty and the other fields carry no meaning.
+  bool configured = 1;
+  // A hostname or IP address, with no scheme, port or user part.
+  string host = 2;
+  int32 port = 3;
+  // "udp", "tcp" or "tls".
+  string transport = 4;
 }
 
 // TrunkHealth is what the platform has OBSERVED about a carrier from
