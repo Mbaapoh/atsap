@@ -124,6 +124,7 @@ that link.
 | 2026-10-11 | `console-apis-phase-a` | 13/13 | U I W E (A as regression) |
 | 2026-10-11 | `identity-accounts-and-sessions` | 26/26 | U I W E (A as regression) |
 | 2026-10-12 | `licensing-status-conditions` | 7/7 | U W E |
+| 2026-10-13 | `pbx-sip-registrar-settings` | 5/5 | U I W E (A as regression) |
 
 ## Active changes
 
