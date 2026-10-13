@@ -1064,6 +1064,46 @@ func TestCallArrived_RecordsTheRoutersDirectionAndCaller(t *testing.T) {
 	}
 }
 
+// TestCallArrived_PresentsTheCallerToTheDestination covers
+// phase-a-hardening task 1.3: the ringing phone is shown who is calling
+// (it showed "anonymous"). A user-entered display name or a carrier's
+// caller number can never rewrite the presented number: the characters
+// that delimit or escape the engine's "name" <number> form are dropped.
+func TestCallArrived_PresentsTheCallerToTheDestination(t *testing.T) {
+	cases := []struct {
+		name     string
+		decision ports.InboundDecision
+		want     string
+	}{
+		{"extension with a name", ports.InboundDecision{DestinationURI: "PJSIP/1002", Direction: domain.Internal, CallerNumber: "1001", CallerName: "Reception"}, `"Reception" <1001>`},
+		{"extension without a name", ports.InboundDecision{DestinationURI: "PJSIP/1002", Direction: domain.Internal, CallerNumber: "1001"}, "<1001>"},
+		{"carrier caller", connectDecision(), "<+1555000111>"},
+		{"hostile name", ports.InboundDecision{DestinationURI: "PJSIP/1002", Direction: domain.Internal, CallerNumber: "1001", CallerName: "Boss\" <999> \\\n\x00x"}, `"Boss 999 x" <1001>`},
+		{"hostile number", ports.InboundDecision{DestinationURI: "PJSIP/1002", Direction: domain.Inbound, CallerNumber: "12<3>\"4 5"}, "<12345>"},
+		{"nothing presentable", ports.InboundDecision{DestinationURI: "PJSIP/1002", Direction: domain.Inbound, CallerNumber: "<>"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := arrivedHarness(&fakeInboundRouter{decision: tc.decision})
+			arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+			require.Len(t, h.mediaGW.originateCalls, 1)
+			assert.Equal(t, tc.want, h.mediaGW.originateCalls[0].CallerID)
+		})
+	}
+}
+
+// TestInitiateCall_PresentsNoCallerID pins the other half of task 1.3:
+// API-placed calls are unchanged — their legs carry no caller ID.
+func TestInitiateCall_PresentsNoCallerID(t *testing.T) {
+	h := newHarness()
+	initiateTestCall(t, h)
+	require.Len(t, h.mediaGW.originateCalls, 2)
+	for _, req := range h.mediaGW.originateCalls {
+		assert.Empty(t, req.CallerID)
+	}
+}
+
 // TestCallArrived_Refusals covers every router refusal cause: the
 // channel is rejected with the mapped cause, the call terminates with
 // the reason, and no other leg is ever originated.

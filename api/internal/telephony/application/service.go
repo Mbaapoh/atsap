@@ -238,7 +238,7 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	}
 
 	for _, p := range call.Participants {
-		if err := s.originateParticipant(ctx, cmd.TenantID, callID, p); err != nil {
+		if err := s.originateParticipant(ctx, cmd.TenantID, callID, p, ""); err != nil {
 			return shareddomain.CallID{}, fmt.Errorf("originate participant %s: %w", p.ID, err)
 		}
 	}
@@ -399,7 +399,10 @@ func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, 
 	if err := s.saveCall(ctx, call); err != nil {
 		return err
 	}
-	if err := s.originateParticipant(ctx, tenantID, callID, destination); err != nil {
+	// The destination is shown who is calling: the dialling extension,
+	// or the carrier's caller (phase-a-hardening D2).
+	callerID := presentedCallerID(call.SourceNumber, decision.CallerName)
+	if err := s.originateParticipant(ctx, tenantID, callID, destination, callerID); err != nil {
 		return fmt.Errorf("originate arrived destination %s: %w", destination.ID, err)
 	}
 
@@ -733,9 +736,10 @@ func (s *Service) endForRemaining(ctx context.Context, call *domain.Call, now ti
 // tenantID/callID/participantID, and records a channel-history entry.
 // bridgeID is intentionally empty here: no bridge exists yet at
 // origination time — ensureBridge creates it on the first connect.
-func (s *Service) originateParticipant(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID, p *domain.CallParticipant) error {
+func (s *Service) originateParticipant(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID, p *domain.CallParticipant, callerID string) error {
 	req := ports.OriginateRequest{
 		EndpointURI: p.EndpointURI,
+		CallerID:    callerID,
 		ChannelID:   string(participantChannel(p.ID)),
 		Variables: map[string]string{
 			"ATSA_TENANT_ID":      tenantID.String(),

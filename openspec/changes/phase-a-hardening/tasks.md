@@ -37,12 +37,25 @@
   - `TestRouter_TrunkCallToAssignedDIDRingsExtension` asserts that a carrier gets no caller override.
   - `TestRouter_UnassignedDIDAndUnknownSourceAreNotFound` covers a deleted extension's phone.
   - The Go unit, integration (`atsapbx_test`), e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).)*
-- [ ] 1.3 The destination leg of an arriving call is originated with the caller ID `"Name" <number>`, or just the number when there is no name. The name is sanitized first: `"`, `<`, `>`, `\` and control characters are removed.
+- [x] 1.3 The destination leg of an arriving call is originated with the caller ID `"Name" <number>`, or just the number when there is no name. The name is sanitized first: `"`, `<`, `>`, `\` and control characters are removed.
 
   Verify:
   - unit: the media gateway receives the expected caller ID;
   - a hostile display name cannot change the presented number;
   - API-placed calls are unchanged.
+
+  *(done 2026-10-13: `presentedCallerID` (`telephony/application/callerid.go`) builds `"Name" <number>`, or `<number>` with no name.
+  - The number keeps only letters, digits and `+*#._-`.
+  - The name loses `"`, `<`, `>`, `\` and control characters, and its whitespace is collapsed.
+  - An empty number presents nothing.
+
+  `CallArrived` passes it to the destination leg's origination. API-placed legs pass none.
+
+  Verified:
+  - `TestCallArrived_PresentsTheCallerToTheDestination` covers six cases: with and without a name, a carrier caller, a hostile name, a hostile number, and nothing presentable. Five of them failed before the change.
+  - `TestInitiateCall_PresentsNoCallerID`.
+  - The Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).
+  - On the owner's two real baresip phones, a 1001 → 1002 call is now shown on 1002 as `sip:1001@…`, where it was `anonymous@anonymous.invalid`, and is recorded `INTERNAL`, from `1001` to `1002`.)*
 - [ ] 1.4 Real-phone UAT. `scripts/uat-inbound.sh` asserts:
   - the inbound call is INBOUND with the carrier's number as source;
   - the desk-phone call is OUTBOUND with the extension's number as source;
