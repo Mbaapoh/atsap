@@ -66,7 +66,10 @@ configuration file, and without being told what Asterisk is.
    browser tests on the real API and UAT with real phones walking A2–A5.
 4. **`phase-a-hardening`** (small): `GetCall` stops exposing the engine
    endpoint; no provisioning before a licence is applied; the hang-up log
-   noise.
+   noise; the app must notice when another process takes over its Stasis
+   app (Asterisk logs "Replacing Stasis app 'voip-app'") — on 2026-10-13 a
+   second app process did, and calls then stuck at Presenting with no log
+   or readiness failure until the app was restarted.
 
 ### Before a pilot
 
