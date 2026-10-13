@@ -50,12 +50,18 @@ export function secretFindings(where: string, text: string, secrets: Record<stri
 // shown labelled where a phone is configured — sits in an element marked
 // data-sip-username (console-admin-screens D3). Its text is replaced by a
 // placeholder before scanning, so the pattern is allowed there and caught
-// everywhere else. Text is read from the whole document, hidden or not.
+// everywhere else. Text is read from the whole document, hidden or not,
+// one text node at a time.
 export async function renderedSurface(page: Page): Promise<string> {
   return page.evaluate(() => {
     const clone = document.body.cloneNode(true) as HTMLElement;
     for (const el of Array.from(clone.querySelectorAll("[data-sip-username]"))) el.textContent = "<sip-username>";
-    const parts: string[] = [document.title, clone.textContent ?? ""];
+    // Each text node separately: textContent runs adjacent elements
+    // together ("SIP username" + id + "Copy"), and a word-boundary
+    // pattern would then miss an identifier between them.
+    const parts: string[] = [document.title];
+    const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) parts.push(n.nodeValue ?? "");
     for (const el of Array.from(document.querySelectorAll("*"))) {
       for (const attr of Array.from(el.attributes)) parts.push(attr.value);
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) parts.push(el.value);
@@ -110,6 +116,10 @@ export interface Credentials {
   password?: string;
   licenceKey?: string;
   refreshSecret?: string;
+  // writeOnly are secrets the console sends and must never get back or
+  // show: a carrier's trunk secret travels only in the request that sets
+  // it (sentTo), never in a response, a URL or on screen.
+  writeOnly?: { name: string; value: string; sentTo: string[] }[];
 }
 
 export function trafficFindings(exchanges: Exchange[], creds: Credentials): Finding[] {
@@ -134,6 +144,10 @@ export function trafficFindings(exchanges: Exchange[], creds: Credentials): Find
     if (creds.refreshSecret) {
       findings.push(...secretFindings(`${e.procedure} body`, e.requestBody + e.responseBody + e.url, { refreshSecret: creds.refreshSecret }));
     }
+    for (const w of creds.writeOnly ?? []) {
+      if (!w.sentTo.includes(e.procedure)) findings.push(...secretFindings(`${e.procedure} request`, e.requestBody, { [w.name]: w.value }));
+      findings.push(...secretFindings(`${e.procedure} response`, e.responseBody + e.url, { [w.name]: w.value }));
+    }
   }
   return findings;
 }
@@ -146,6 +160,7 @@ export function renderFindings(where: string, surface: string, exchanges: Exchan
   if (creds.password) secrets.password = creds.password;
   if (creds.licenceKey) secrets.licenceKey = creds.licenceKey;
   if (creds.refreshSecret) secrets.refreshSecret = creds.refreshSecret;
+  for (const w of creds.writeOnly ?? []) secrets[w.name] = w.value;
   exchanges.forEach((e, i) => {
     const token = e.authorization?.replace(/^Bearer /, "");
     if (token) secrets[`access token #${i}`] = token;

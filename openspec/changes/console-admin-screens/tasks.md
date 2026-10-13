@@ -185,5 +185,20 @@
   - **Rig cleanup** also removes `placed_call_legs`. No baresip is left running, the fixtures are gone, and reconcile is clean afterwards.
 
   Verified: `make console-uat` 3/3 (A1, A2, A3–A5), and the full `make console-check` green.)*
-- [ ] 6.3 Extend the exposure scans (rig and mocked) to every new screen, including the credential panel's sanctioned SIP username. Verify by fault injection: a secret left in a list, and the SIP username outside its element, are each caught.
+- [x] 6.3 Extend the exposure scans (rig and mocked) to every new screen, including the credential panel's sanctioned SIP username. Verify by fault injection: a secret left in a list, and the SIP username outside its element, are each caught. *(done 2026-10-13:
+  - **Scanner** (`e2e/support/exposure.ts`):
+    - A new `writeOnly` credential class: a trunk secret may travel only in the request that sets it, never in a response, a URL or on screen.
+    - **Found and fixed by the fault injection:** `renderedSurface` read `textContent`, which runs adjacent elements together ("SIP username" + id + "Copy"). The word-boundary engine patterns then missed an id between other words. It now scans each text node separately, and a self-test covers the adjacent case.
+  - **Rig scan** (`exposure.rig.spec.ts`):
+    - Now backed by an inbound number, an emergency country and number, and a call record.
+    - It adds a trunk with a secret and an extension through the screens. The credential panel is scanned with only its marked SIP username allowed.
+    - Afterwards every page is rescanned for the one-time SIP password, which must appear in no request and in no response but `CreateExtension`.
+    - The non-vacuity checks now include `ListInboundNumbers`, `GetEmergencyProfile`, `ListCalls`, `CreateTrunk` and `CreateExtension`.
+  - **Mocked scan** (`exposure.spec.ts`):
+    - Hostile errors for the inbound and emergency reads.
+    - The credential panel with an engine-id username, clean while shown and gone after Done.
+    - Fault injection 1: the panel's marker removed, so the username sits outside its element. Caught, as exactly one engine-id finding.
+    - Fault injection 2: the one-time password appended to a list cell, then hidden in an attribute. Caught both times.
+
+  Verified: e2e 22, integration 24, UAT 3, component 385, secrets clean, all in one `make console-check`.)*
 - [ ] 6.4 Run every console tier (`make console-check`), ratchet the coverage floors, and record coverage and gaps in `coverage.md`. Verify the floors do not fall.
