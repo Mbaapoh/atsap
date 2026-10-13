@@ -12,6 +12,7 @@
 | Date | Change |
 |---|---|
 | 2026-09-07 | Initial draft. |
+| 2026-10-13 | **§6 gains `GetSipRegistrar`** (`pbx-sip-registrar-settings`): the console can tell an administrator where a phone registers, so flow A3 completes without leaving the console (HLD-18 §7). Configured per installation; read with the extension-read permission. |
 | 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
 | 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
 | 2026-10-11 | **§3.1 added: extensions and the people who use them (D-65), Phase B design.** `ExtensionAssignment` (owner) and `Agent` (queue membership, state, hot-desk device), both keyed by `PrincipalID`; call participants gain the extension and owner. New Phase B change `pbx-extension-assignment` heads §12's Phase B list. Phase A is unchanged, and its console works without the link (HLD 18 §7). |
@@ -444,6 +445,7 @@ Every configuration operation here has one: the Phase A console slice
 | Capability | Wire? | Consumer |
 |---|---|---|
 | `CreateExtension`, `ListExtensions`, `UpdateExtension`, `DeleteExtension` | **RPC** | Console extensions screen (flow A3) |
+| `GetSipRegistrar` | **RPC** | Console extension credential panel (flow A3): the installation's public registrar address from `SIP_PUBLIC_HOST/PORT/TRANSPORT`, never guessed — unset reads "not configured" (`pbx-sip-registrar-settings`) |
 | `CreateTrunk`, `ListTrunks`, `UpdateTrunk`, `DeleteTrunk` | **RPC** | Console trunks screen (flow A4) |
 | `CreateRoute`, `ListRoutes`, `DeleteRoute` | **RPC** | Console outbound routing (flow A4) |
 | `PlaceCall`, `HangupCall` | **RPC** | The UAT harness, which BRD §16 requires to demonstrate Phase A **through the public API**; the Phase B agent UI is the second consumer |

@@ -189,7 +189,7 @@ console-integration: ## Console against the real API on the Tilt rig (fails if t
 console-uat: ## Console UAT: the HLD-18 user journeys end to end on the Tilt rig
 	cd console && mise exec -- npm run uat
 
-console-check: console-test console-e2e console-integration console-uat console-audit ## Every console tier, in order
+console-check: console-test console-e2e console-integration console-uat console-audit secrets ## Every console tier, in order, plus the secret scan
 
 console-audit: ## Audit the console's production dependencies (high and above)
 	cd console && mise exec -- npm run audit:prod

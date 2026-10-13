@@ -20,4 +20,10 @@ regexes = [
   '''^eyJhbGciOiJFZERTQSJ9\.c2VjcmV0LWxpY2VuY2UtcGF5bG9hZA\.c2lnbmF0dXJl$''',
   # api/internal/pbx/application/extension_cap_integration_test.go: a dummy secret digest
   '''^0123456789abcdef0123456789abcdef$''',
+  # console/e2e/a1.spec.ts: base64 of "a1-journey-key"
+  '''^eyJhbGciOiJFZERTQSJ9\.YTEtam91cm5leS1rZXk\.c2ln$''',
+  # console/e2e/exposure.rig.spec.ts: base64 of {"exposure":"test"} and "exposure-key"
+  '''^eyJleHBvc3VyZSI6InRlc3QifQ\.ZXhwb3N1cmUta2V5\.c2ln$''',
+  # console/e2e/exposure.rig.spec.ts: a sample engine endpoint id (the scanner's own test input)
+  '''^e_0123456789abcdef0123456789abcdef$''',
 ]

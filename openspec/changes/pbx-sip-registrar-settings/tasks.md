@@ -10,4 +10,9 @@
 ## 3. Wiring and proof
 
 - [x] 3.1 Wire the settings into the composition root, set `SIP_PUBLIC_HOST=localhost` for the rig in compose, and document all three in `.env.example`. Verify with an e2e test against the running app: the configured address is returned, and a caller without permission is refused. *(done 2026-10-13: `main.go` builds the service `WithRegistrar` from config; compose sets `SIP_PUBLIC_HOST=localhost` for the rig; `.env.example` documents all three settings and why the host is never guessed. The e2e `TestConsoleAPIs_SipRegistrar` passes against the running app (Tilt live-updated, no rebuild): the operator gets localhost:5060/udp and a supervisor, who cannot read extensions, gets 403.)*
-- [ ] 3.2 Update API.md and LLD-03, run every backend tier (unit, integration, e2e, UATs), and record the results. Verify `make ci` and `make quality` pass.
+- [x] 3.2 Update API.md and LLD-03, run every backend tier (unit, integration, e2e, UATs), and record the results. Verify `make ci` and `make quality` pass. *(done 2026-10-13: API.md and LLD-03 §6 and history updated. Results:
+  - `make ci` passes;
+  - `make quality` passes, after the secret scan caught three new synthetic console fixtures from console-foundation 3.2/3.3; they are allowlisted by exact value, and `secrets` now runs in `make console-check` too;
+  - `make coverage-all`: unit, integration and e2e all pass, with merged Go coverage at 82.7% of 6,152 statements (the floor is ratcheted);
+  - `uat-auto`, `uat-placement` and `uat-inbound` PASS;
+  - `pbx reconcile` reports no divergence.)*
