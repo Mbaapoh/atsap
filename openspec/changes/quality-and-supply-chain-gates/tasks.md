@@ -21,7 +21,7 @@
 
 - [x] 5.1 Pin osv-scanner in mise. Add `make sca` scanning `api/go.mod` and `console/package-lock.json` with the D-35 licence allowlist and `quality/osv-scanner.toml` for documented exceptions. Verify it passes, and that a planted GPL-licensed dependency and a known-vulnerable version each fail it.
 - [x] 5.2 Pin gitleaks. Add `make secrets` with `quality/gitleaks.toml`, which allowlists only the synthetic fixtures, each with a comment. Run a one-off full-history scan and record the result. Verify a planted fake AWS key fails it.
-- [ ] 5.3 Upgrade Trivy (digest-pinned) and add CycloneDX SBOM generation per image (`make sbom`). Verify both images scan with HIGH and CRITICAL gating and that the SBOMs list the Go modules and the Asterisk image's OS packages.
+- [ ] 5.3 Upgrade Trivy (digest-pinned) and add CycloneDX SBOM generation per image (`make sbom`). Verify both images scan with HIGH and CRITICAL gating and that the SBOMs list the Go modules and the Asterisk image's OS packages. *(partial, 2026-10-13: Trivy 0.75.0 pinned and in Jenkins; the CycloneDX SBOM of the API image lists its Go modules (27 components, `x/crypto` v0.55.0, stdlib 1.26.9); the API image is clean. **Blocked:** the Asterisk image fails, with 20 fixable HIGH findings (python3.11 deb12u8 → deb12u9) and 440 HIGH/CRITICAL findings Debian has not fixed yet. The image is single-stage and ships its build toolchain (build-essential, git, subversion, wget, Python). That needs an owner decision: a multi-stage runtime image (its own change, regression on the phone UATs), and whether the gate ignores findings Debian has not fixed (`--ignore-unfixed`).)*
 
 ## 6. CI and docs
 
