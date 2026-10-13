@@ -100,7 +100,7 @@
 
 ## 3. No provisioning before a licence is applied (D-72)
 
-- [ ] 3.1 Add `ErrNotLicensed` in pbx-core's and identity's ports, mapped to `FAILED_PRECONDITION` "no licence is applied".
+- [x] 3.1 Add `ErrNotLicensed` in pbx-core's and identity's ports, mapped to `FAILED_PRECONDITION` "no licence is applied".
   - The composition root's licence adapter returns it from `MaxExtensions`/`MaxTenants` while the entitlement is Setup.
   - A degraded installation keeps its caps.
   - `bootstrap` keeps `noTenantCap`.
@@ -113,6 +113,22 @@
   - integration: nothing is stored or projected on refusal;
   - the bootstrap path still creates the first tenant;
   - `make test`, `make lint`, `make console-check`.
+
+  *(done 2026-10-13:
+  - `ErrNotLicensed` ("no licence is applied") is added in `pbx/ports` and `identity/ports`. Each RPC layer maps it to `FAILED_PRECONDITION`, naming what to do.
+  - The composition root's adapter reads the caps through `extensionCap` and `tenantCap`, which report Setup as each context's own `ErrNotLicensed`. Free, licensed and degraded caps pass through unchanged.
+  - The bootstrap keeps `noTenantCap`.
+  - D-72 was recorded in `aa9d4db`.
+  - The console's refusal copy now reads "The licence does not allow another extension: none is applied yet, or its limit is reached. See the Licence page."
+
+  Verified:
+  - `TestCaps_NotLicensedBeforeActivation` (cmd);
+  - `TestErrorMapping` gains a not-licensed case (pbx rpc);
+  - `TestProvisionTenant_NotLicensedIsFailedPrecondition` (identity rpc): FAILED_PRECONDITION for the platform administrator, PERMISSION_DENIED for a tenant administrator, and no tenant created;
+  - integration `TestCreateExtension_NotLicensedIsRefusedOnTheWire`: through the real service and handler, nothing is stored in `extensions` or projected to `ps_endpoints`;
+  - the bootstrap integration test still passes;
+  - the console test covers the not-licensed reply, which shows console copy and never the server's text;
+  - the Go unit, integration, e2e and lint tiers pass, `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean), and `make docs` passes.)*
 
 ## 4. A taken-over Stasis application is noticed (D-73)
 

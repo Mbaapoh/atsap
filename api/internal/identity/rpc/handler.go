@@ -474,6 +474,8 @@ func mapErr(err error) error {
 		// FAILED_PRECONDITION, never PERMISSION_DENIED: the caller holds
 		// the permission, the installation lacks the licence (AC-06.14).
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("licence entitlement exceeded: tenant limit reached"))
+	case errors.Is(err, ports.ErrNotLicensed):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("no licence is applied: apply one before provisioning tenants"))
 	case errors.Is(err, ports.ErrLastAdministrator):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot revoke the last tenant administrator"))
 	case errors.Is(err, ports.ErrAlreadyMember):

@@ -264,6 +264,8 @@ func mapErr(err error) error {
 		// FAILED_PRECONDITION, never PERMISSION_DENIED: the caller holds
 		// the permission, the installation lacks the licence (AC-06.14).
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("licence entitlement exceeded: extension limit reached"))
+	case errors.Is(err, ports.ErrNotLicensed):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("no licence is applied: apply one before adding extensions"))
 	case errors.Is(err, ports.ErrInvalidInput):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid extension"))
 	default:

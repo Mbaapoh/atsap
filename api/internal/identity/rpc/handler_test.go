@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/domain"
 	"atsap-api/internal/identity/memstore"
+	"atsap-api/internal/identity/ports"
 	"atsap-api/internal/identity/rpc"
 )
 
@@ -146,6 +148,38 @@ func TestProvisionTenant_RequiresSystemScope(t *testing.T) {
 		Email:    "admin-b@example.test", Password: "correct-pw-b-battery", Role: "TENANT_ADMIN",
 	}))
 	require.NoError(t, err, "a platform operator may provision a tenant's first administrator")
+}
+
+// Before a licence is applied no tenant is provisioned through the API:
+// FAILED_PRECONDITION saying so, nothing stored, and an unauthorized
+// caller still learns nothing about the licence (phase-a-hardening task
+// 3.1, D-72).
+func TestProvisionTenant_NotLicensedIsFailedPrecondition(t *testing.T) {
+	e := newEnv(t)
+	tenantA := e.seedTenant(t, "Acme")
+	adminA := e.seedUser(t, tenantA, "admin-a", "correct-pw-a-battery", "TENANT_ADMIN", domain.ScopeTenant)
+	op := e.seedUser(t, tenantA, "op", "correct-pw-op-battery", "PLATFORM_ADMIN", domain.ScopeSystem)
+	e.st.TenantCapErr = fmt.Errorf("licence state Setup: %w", ports.ErrNotLicensed)
+	created := func() (n int) {
+		for _, a := range e.st.Audit {
+			if a.Action == "tenant.create" {
+				n++
+			}
+		}
+		return n
+	}
+	before := created() // seeding Acme provisioned one
+
+	_, err := e.h.ProvisionTenant(op.ctx, connect.NewRequest(&atsapbxv1.ProvisionTenantRequest{Name: "B", ResidencyZone: "EU"}))
+	requireCode(t, err, connect.CodeFailedPrecondition)
+	var cerr *connect.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Contains(t, cerr.Message(), "no licence is applied")
+
+	_, err = e.h.ProvisionTenant(adminA.ctx, connect.NewRequest(&atsapbxv1.ProvisionTenantRequest{Name: "B", ResidencyZone: "EU"}))
+	requireCode(t, err, connect.CodePermissionDenied)
+
+	assert.Equal(t, before, created(), "no tenant was provisioned")
 }
 
 // --- tenant cap on the wire (LLD-02 §4a.1, AC-06.14) -----------------

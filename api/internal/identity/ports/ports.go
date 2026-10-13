@@ -71,6 +71,12 @@ var (
 	// an administrator to check their roles when they need to check their
 	// licence (LLD-02 §4a.1, AC-06.14).
 	ErrEntitlementExceeded = errors.New("licence entitlement exceeded")
+
+	// ErrNotLicensed is an installation with no licence applied: no
+	// tenant is provisioned through the API before activation (D-72).
+	// The tenant-cap port reports it; the operator's bootstrap does not
+	// consult that port.
+	ErrNotLicensed = errors.New("no licence is applied")
 )
 
 // ThrottledError carries how long a throttled caller must wait.

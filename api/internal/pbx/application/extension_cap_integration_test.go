@@ -202,3 +202,29 @@ func TestCreateExtension_AtCapIsFailedPreconditionOnTheWire(t *testing.T) {
 	require.ErrorAs(t, err, &cerr)
 	assert.Contains(t, cerr.Message(), "licence entitlement", "the reason identifies the licence, not the caller's roles")
 }
+
+// Before a licence is applied, nothing is provisioned: the refusal is
+// FAILED_PRECONDITION saying so, and neither the extension nor its engine
+// projection is written (phase-a-hardening task 3.1, D-72).
+func TestCreateExtension_NotLicensedIsRefusedOnTheWire(t *testing.T) {
+	h := newHarness(t)
+	notLicensed := ports.ExtensionCapFunc(func(context.Context) (int, error) {
+		return 0, fmt.Errorf("licence state Setup: %w", ports.ErrNotLicensed)
+	})
+	svc := application.NewService(h.pool, pbxpg.NewStore(), pbxpg.NewTrunkStore(), pbxpg.NewRouteStore(), notLicensed, h.projector, h.authz,
+		identitypg.NewStore(h.pool), testRealm)
+
+	_, err := rpc.NewPbxHandler(svc).CreateExtension(h.ctx, connect.NewRequest(&atsapbxv1.CreateExtensionRequest{
+		TenantId: h.tenant.String(), Number: "7000", DisplayName: "before activation",
+		DeviceType: atsapbxv1.DeviceType_DEVICE_TYPE_SIP,
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err), "never PERMISSION_DENIED")
+	var cerr *connect.Error
+	require.ErrorAs(t, err, &cerr)
+	assert.Contains(t, cerr.Message(), "no licence is applied")
+	assert.Zero(t, h.countTenantRow(t, `SELECT count(*) FROM extensions`))
+	var projected int
+	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(), `SELECT count(*) FROM ps_endpoints`).Scan(&projected))
+	assert.Zero(t, projected, "nothing is projected to the engine")
+}

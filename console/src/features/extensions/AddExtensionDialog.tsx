@@ -49,7 +49,7 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
     } catch (err) {
       const e = toApiError(err);
       if (e.kind === "exists") setErrors({ number: `Extension ${number} already exists in this tenant.` });
-      else if (e.kind === "conflict") setFailure("The licence allows no more extensions. Free one up or extend the licence.");
+      else if (e.kind === "conflict") setFailure("The licence does not allow another extension: none is applied yet, or its limit is reached. See the Licence page.");
       else if (e.kind === "forbidden") setFailure("Your role cannot add extensions.");
       else if (e.kind === "invalid") setFailure("Some details are not valid. Check the number and name.");
       else setFailure(e.message);

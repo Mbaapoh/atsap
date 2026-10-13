@@ -282,6 +282,7 @@ func TestErrorMapping(t *testing.T) {
 		{"duplicate number", ports.ErrNumberTaken, connect.CodeAlreadyExists},
 		{"invalid input", ports.ErrInvalidInput, connect.CodeInvalidArgument},
 		{"entitlement exceeded", fmt.Errorf("extension cap 10 reached: %w", ports.ErrEntitlementExceeded), connect.CodeFailedPrecondition},
+		{"not licensed", fmt.Errorf("read extension cap: %w", ports.ErrNotLicensed), connect.CodeFailedPrecondition},
 		{"unexpected", errors.New("connection reset by peer"), connect.CodeInternal},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

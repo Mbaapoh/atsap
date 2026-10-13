@@ -37,6 +37,11 @@ var (
 	// identity gives for its own (LLD-02 §4a.1, AC-06.14).
 	ErrEntitlementExceeded = errors.New("licence entitlement exceeded")
 
+	// ErrNotLicensed is an installation with no licence applied: nothing
+	// is provisioned before activation (D-72). The cap port reports it,
+	// so this context still never reads the licence itself.
+	ErrNotLicensed = errors.New("no licence is applied")
+
 	// ErrTrunkCapacity is every trunk selected for a destination being at
 	// its channel limit (pbx-core/trunk-routing). A precondition, not a
 	// fault: the call may succeed once a channel frees.

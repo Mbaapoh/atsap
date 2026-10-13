@@ -147,8 +147,15 @@ describe("creating an extension", () => {
     await user.clear(dialog.getByLabelText("Number"));
     await user.type(dialog.getByLabelText("Number"), "1099");
     await user.click(dialog.getByRole("button", { name: "Add extension" }));
-    expect(await dialog.findByText("The licence allows no more extensions. Free one up or extend the licence.")).toBeInTheDocument();
+    expect(await dialog.findByText("The licence does not allow another extension: none is applied yet, or its limit is reached. See the Licence page.")).toBeInTheDocument();
     expect(screen.queryByText(/entitlement exceeded/)).not.toBeInTheDocument();
+
+    // Before a licence is applied (phase-a-hardening task 3.1): the same
+    // console copy, never the server's text.
+    reply = { code: "failed_precondition", message: "no licence is applied" };
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+    expect(await dialog.findByText(/none is applied yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/no licence is applied/)).not.toBeInTheDocument();
   });
 
   it("checks the number and name before sending", async () => {
