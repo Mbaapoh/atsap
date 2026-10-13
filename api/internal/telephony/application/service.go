@@ -621,7 +621,13 @@ func (s *Service) ParticipantLeft(ctx context.Context, _, callIDStr, participant
 
 	call, ok := s.loadCall(callID)
 	if !ok {
-		return fmt.Errorf("participant left for call %s: %w", callID, ErrCallNotFound)
+		// The call already ended — the first leg to leave finalized it and
+		// released this one — or predates a restart. Either way there is
+		// nothing to act on, and it happens after every two-party call, so
+		// it is not an error (phase-a-hardening D6).
+		s.logger.Debug("participant left a call no longer in flight",
+			"call_id", callID, "participant_id", participantID)
+		return nil
 	}
 
 	if call.State != domain.CallActive && call.State != domain.CallDegraded {

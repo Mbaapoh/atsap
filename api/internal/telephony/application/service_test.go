@@ -648,9 +648,14 @@ func TestParticipantLeft_LastConnectedTerminates(t *testing.T) {
 	}
 
 	// The second leg's own ChannelDestroyed then arrives for a call that
-	// is already over: the expected echo, not a second ending.
-	err := h.svc.ParticipantLeft(ctx, corrs[1].TenantID, corrs[1].CallID, corrs[1].ParticipantID)
-	assert.ErrorIs(t, err, application.ErrCallNotFound)
+	// is already over: the expected echo, not a second ending — and not
+	// an error either (phase-a-hardening task 5.1: it was logged at ERROR
+	// after every hang-up).
+	require.NoError(t, h.svc.ParticipantLeft(ctx, corrs[1].TenantID, corrs[1].CallID, corrs[1].ParticipantID))
+	again := h.callStore.get(callID)
+	assert.Equal(t, domain.CallTerminated, again.State, "the ended call is untouched")
+	assert.Equal(t, "normal clearing", again.TerminationReason)
+	assert.Len(t, h.mediaGW.destroyedChans, 1, "nothing more is released")
 }
 
 // TestParticipantLeft_NeverAnswered_TerminatesDirectly covers the
@@ -787,10 +792,14 @@ func TestParticipantAnswered_AddToBridgeFailure(t *testing.T) {
 	_ = callID
 }
 
+// A leg leaving a call this process holds no record of — already ended,
+// or from before a restart — has nothing to act on: it is not an error.
 func TestParticipantLeft_UnknownCall(t *testing.T) {
 	h := newHarness()
 	err := h.svc.ParticipantLeft(context.Background(), "tenant-1", shareddomain.NewCallID().String(), shareddomain.NewParticipantID().String())
-	assert.ErrorIs(t, err, application.ErrCallNotFound)
+	assert.NoError(t, err)
+	assert.Empty(t, h.mediaGW.destroyedChans)
+	assert.Empty(t, h.callStore.calls, "nothing is recorded")
 }
 
 func TestParticipantLeft_BadCallID(t *testing.T) {

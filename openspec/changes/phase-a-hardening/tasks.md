@@ -170,11 +170,20 @@
 
 ## 5. No false error after a hang-up
 
-- [ ] 5.1 `ParticipantLeft` for a call no longer in memory logs at DEBUG and returns nil.
+- [x] 5.1 `ParticipantLeft` for a call no longer in memory logs at DEBUG and returns nil.
 
   Verify:
   - unit;
   - on the rig, after a real call, no "participant-left handler failed" line in the app log.
+
+  *(done 2026-10-13: when `ParticipantLeft` finds no in-flight call, it logs at DEBUG with the call and participant ids and returns nil.
+
+  Verified:
+  - `TestParticipantLeft_LastConnectedTerminates`: the second leg's echo returns nil, and the ended call is untouched, with nothing more released.
+  - `TestParticipantLeft_UnknownCall` returns nil and records and releases nothing.
+  - Both tests failed before the change.
+  - The Go unit, integration, e2e and lint tiers pass, `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean), and `make uat-inbound` passes.
+  - **On the rig**, after the app redeployed at 21:06:35 UTC, the full e2e tier, the console tiers and the three-call real-phone UAT left zero "participant-left handler failed" lines and zero ERROR lines in the app log. The previous e2e run, at 21:02–21:03, logged dozens.)*
 
 ## 6. Close-out
 
