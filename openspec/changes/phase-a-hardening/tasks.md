@@ -151,12 +151,22 @@
     - health follows the connection: disconnected before, nil while connected, disconnected after.
   - integration `TestStreamEvents_RealEngineReportsTheTakeover`: against the rig's real Asterisk 22.11 with a throwaway application name, the first stream stops with the replaced error, and `ari show apps` lists only `voip-app` afterwards. ARI settings come from the environment, then `.env`, then `.env.example`, with no credential in code.
   - The Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).)*
-- [ ] 4.2 Add a `call-events` readiness checker, failing while the stream is disconnected or replaced. Record D-73 in `docs/DECISIONS.md`.
+- [x] 4.2 Add a `call-events` readiness checker, failing while the stream is disconnected or replaced. Record D-73 in `docs/DECISIONS.md`.
 
   Verify:
   - unit: the checker in each state;
   - e2e on the rig: `/readyz` lists `call-events` as passing;
   - Tilt shows the app ready after a rebuild.
+
+  *(done 2026-10-13: `callEventsChecker` (`cmd/atsap-api/readiness.go`) wraps the ARI client's `EventsHealth()` as the `call-events` check, registered next to postgres and nats. D-73 was recorded in `aa9d4db`.
+
+  Verified:
+  - `TestCallEventsChecker`, through a real `/readyz` handler: receiving events gives 200 and ok; a disconnected stream, a replaced application or any other error gives 503 and error.
+  - e2e `TestReadiness_ReportsCallEvents` on the running app: 200, `call-events: ok`.
+  - **Live on the rig:** a second connection registered `voip-app` for 3 seconds, as the stray process did this morning. The app logged an ERROR naming `voip-app` and `/readyz` returned 503 with `call-events: error`. `tilt trigger app` restored it: ready again, and `ari show apps` lists `voip-app`.
+  - The Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean), as does `make docs`.
+
+  **Found while testing:** one e2e run failed (`TestConsoleAPIs_LicenceConditions`: "the rig starts with no call held"). An earlier test's carrier call had stuck at Presenting because ARI's answer request timed out, while Asterisk spent about 5 seconds resolving `locslhodt`. That is the host of the owner's "test" trunk in Dev Acme, a misspelling of `localhost` typed during the walkthrough. The stuck test call was hung up, and the whole e2e tier then passed. The weakness, that one tenant's unresolvable trunk host stalls call setup for every tenant, is recorded in task 6.1.)*
 
 ## 5. No false error after a hang-up
 

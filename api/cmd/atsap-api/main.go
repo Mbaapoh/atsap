@@ -304,6 +304,7 @@ func run() int {
 			}
 			return nil
 		}},
+		callEventsChecker(ariClient),
 	}
 
 	httpSrv := server.NewWithHandlers(cfg.HTTPAddr, checkers, handlers)
