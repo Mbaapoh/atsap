@@ -33,6 +33,8 @@ export const OVERVIEW_URLS = {
   calls: api("TelephonyService/ListCalls"),
 };
 
+export const REGISTRAR_URL = api("PbxService/GetSipRegistrar");
+
 export const server = setupServer(
   http.post(LICENCE_STATUS_URL, () => HttpResponse.json({ status: validLicence })),
   http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [{}] })),
@@ -40,4 +42,5 @@ export const server = setupServer(
   http.post(OVERVIEW_URLS.trunks, () => HttpResponse.json({})),
   http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({})),
   http.post(OVERVIEW_URLS.calls, () => HttpResponse.json({})),
+  http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp" })),
 );

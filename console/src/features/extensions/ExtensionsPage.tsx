@@ -1,11 +1,14 @@
 import { useState } from "react";
+import { usePermissions } from "../auth/permissions";
+import { AddExtensionDialog } from "./AddExtensionDialog";
+import { CredentialsPanel } from "./CredentialsPanel";
 import { Alert } from "../../components/Alert";
 import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
 import { PageHeader } from "../../components/PageHeader";
 import { Pager } from "../../components/Pager";
 import { StatusBadge } from "../../components/StatusBadge";
-import { useExtensions, type ExtensionRow } from "./adapter";
+import { useExtensions, type Credentials, type ExtensionRow } from "./adapter";
 import { deviceLabel, registrationBadge } from "./copy";
 
 export const extensionColumns: Column<ExtensionRow>[] = [
@@ -21,10 +24,31 @@ export const extensionColumns: Column<ExtensionRow>[] = [
 export function ExtensionsPage() {
   const [page, setPage] = useState(0);
   const extensions = useExtensions(page);
+  const { canAdminister } = usePermissions();
+  const [adding, setAdding] = useState(false);
+  // credentials hold a just-issued secret until the person confirms
+  // they saved it; nothing else ever holds it.
+  const [credentials, setCredentials] = useState<Credentials | null>(null);
 
   return (
     <section className="page" aria-labelledby="page-title">
-      <PageHeader title="Extensions" description="Numbers your phones register to. Registration is what the platform currently observes." />
+      <PageHeader
+        title="Extensions"
+        description="Numbers your phones register to. Registration is what the platform currently observes."
+        action={
+          canAdminister ? (
+            <button type="button" className="button button-primary" onClick={() => setAdding(true)}>
+              Add extension
+            </button>
+          ) : undefined
+        }
+      />
+      <AddExtensionDialog open={adding} onClose={() => setAdding(false)} onCreated={setCredentials} />
+      <CredentialsPanel
+        credentials={credentials}
+        title={`Extension ${credentials?.extension.number ?? ""} created`}
+        onDone={() => setCredentials(null)}
+      />
       {extensions.isPending ? <p role="status">Loading extensions…</p> : null}
       {extensions.isError ? (
         <Alert tone="danger" title="Extensions could not be loaded">

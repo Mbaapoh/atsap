@@ -68,7 +68,16 @@
   - component 230, e2e 18.
 
   The secret scan flagged a synthetic SIP username in a test fixture. SIP usernames are non-secret engine ids by design, so `quality/gitleaks.toml` now allowlists exactly that shape (`e_` + 32 hex); a planted AWS key beside one is still caught. The 2.4 note is corrected to the measured component count, 225.)*
-- [ ] 3.2 Create an extension and show the credential panel: the labelled SIP username, the secret and the registrar address. Verify the secret is absent from the list, the query cache, the mutation cache and the URL after acknowledgement; that a duplicate number is refused at its field; and that the Setup gate still applies.
+- [x] 3.2 Create an extension and show the credential panel: the labelled SIP username, the secret and the registrar address. Verify the secret is absent from the list, the query cache, the mutation cache and the URL after acknowledgement; that a duplicate number is refused at its field; and that the Setup gate still applies. *(done 2026-10-13: `useRegistrar` (GetSipRegistrar; null when not configured) and `useCreateExtension` (CreateExtension; the mutation reset and never cached; the list refetched). `AddExtensionDialog` checks the number (2–20 digits) and the name (up to 100 characters) with the server's bounds, tells "Extension 1001 already exists in this tenant" apart from "The licence allows no more extensions", and is shown to administrators only. `CredentialsPanel` (`OneTimeSecret`) shows the SIP server, port, transport, the labelled SIP username (`data-sip-username`) and the SIP password, with a warning when the registrar is not configured or cannot be read.
+
+  **API-layer refinement:** `ApiError` gains kind `exists` (ALREADY_EXISTS), so a duplicate and a failed precondition are no longer one kind; Add user and the mapping test are updated.
+
+  Verified:
+  - 5 component tests: an exact request; the panel's fields and marking; the secret gone from page, mutation cache, query cache and URL after Done; not configured; duplicate versus licence cap; validation before sending; administrators only;
+  - integration against the real API, run twice: create through the console, the panel shows localhost:5060/UDP and a real `e_` username, the panel scans clean, then Not registered in the list with neither secret nor username left on the page; no residue; `pbx reconcile` clean;
+  - component 235, e2e 18, secrets clean (one made-up base32 password allowlisted by exact value).
+
+  The Setup gate still applies (existing licence tests).)*
 - [ ] 3.3 Edit the display name and device type; rotate the secret (same panel); delete with a confirmation that states the phone stops working at once. Verify each mutation refetches and that rotation invalidates the old secret on the rig.
 
 ## 4. Trunks, routes, inbound and emergency (HLD-18 A4)

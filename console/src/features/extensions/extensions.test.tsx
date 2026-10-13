@@ -67,3 +67,110 @@ describe("extensions list", () => {
     expect(await screen.findByText("Your role cannot see this tenant's extensions.")).toBeInTheDocument();
   });
 });
+
+describe("creating an extension", () => {
+  const CREATE = "http://localhost:3000/atsapbx.v1.PbxService/CreateExtension";
+  const SECRET = "KZXW6YTBOI4TCMRTGQ2DKNRXHA4TS2LB";
+
+  async function openAndFill(user: ReturnType<typeof import("@testing-library/user-event").default.setup>, number = "1004", name = "Lobby") {
+    await user.click(await screen.findByRole("button", { name: "Add extension" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Add an extension" }));
+    if (number) await user.type(dialog.getByLabelText("Number"), number);
+    if (name) await user.type(dialog.getByLabelText("Name"), name);
+    return dialog;
+  }
+
+  it("creates once, then shows server, SIP username and password once", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    let body: unknown;
+    let lists = 0;
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => {
+        lists++;
+        return HttpResponse.json({ extensions: [ext1001] });
+      }),
+      http.post(CREATE, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ extension: { ...ext1001, extensionId: "x4", number: "1004", displayName: "Lobby", authUsername: ENGINE_ID }, secret: SECRET });
+      }),
+    );
+    const user = userEvent.setup();
+    const { queryClient } = renderApp(routes, "/extensions");
+    const dialog = await openAndFill(user);
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+
+    const panel = within(await screen.findByRole("dialog", { name: "Extension 1004 created" }));
+    expect(body).toEqual({ tenantId: tenantA.tenantId, number: "1004", displayName: "Lobby", deviceType: "DEVICE_TYPE_SIP" });
+    expect(panel.getByText("localhost")).toBeInTheDocument();
+    expect(panel.getByText("5060")).toBeInTheDocument();
+    expect(panel.getByText("UDP")).toBeInTheDocument();
+    expect(panel.getByText(SECRET)).toBeInTheDocument();
+    const username = panel.getByText(ENGINE_ID);
+    expect(username).toHaveAttribute("data-sip-username");
+    expect(lists).toBeGreaterThan(1);
+
+    await user.click(panel.getByRole("checkbox", { name: "I have saved these details" }));
+    await user.click(panel.getByRole("button", { name: "Done" }));
+    expect(document.body.textContent).not.toContain(SECRET);
+    expect(JSON.stringify(queryClient.getMutationCache().getAll().map((m) => m.state.data))).not.toContain(SECRET);
+    expect(JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data))).not.toContain(SECRET);
+    expect(window.location.href).not.toContain(SECRET);
+  });
+
+  it("says when the SIP server address is not configured", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const { REGISTRAR_URL } = await import("../../test/msw");
+    server.use(
+      http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: false })),
+      http.post(CREATE, () => HttpResponse.json({ extension: { ...ext1001, number: "1004" }, secret: SECRET })),
+    );
+    const user = userEvent.setup();
+    renderApp(routes, "/extensions");
+    const dialog = await openAndFill(user);
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+    const panel = within(await screen.findByRole("dialog", { name: "Extension 1004 created" }));
+    expect(panel.getByText("The SIP server address is not configured")).toBeInTheDocument();
+    expect(panel.queryByText("SIP server", { selector: "dt" })).not.toBeInTheDocument();
+  });
+
+  it("tells a taken number from a full licence", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    let reply = { code: "already_exists", message: "extension number already exists in this tenant" };
+    server.use(http.post(CREATE, () => HttpResponse.json(reply, { status: reply.code === "already_exists" ? 409 : 400 })));
+    const user = userEvent.setup();
+    renderApp(routes, "/extensions");
+    const dialog = await openAndFill(user, "1001");
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+    expect(await dialog.findByText("Extension 1001 already exists in this tenant.")).toBeInTheDocument();
+
+    reply = { code: "failed_precondition", message: "licence entitlement exceeded: extension limit reached" };
+    await user.clear(dialog.getByLabelText("Number"));
+    await user.type(dialog.getByLabelText("Number"), "1099");
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+    expect(await dialog.findByText("The licence allows no more extensions. Free one up or extend the licence.")).toBeInTheDocument();
+    expect(screen.queryByText(/entitlement exceeded/)).not.toBeInTheDocument();
+  });
+
+  it("checks the number and name before sending", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    let sent = 0;
+    server.use(http.post(CREATE, () => {
+      sent++;
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/extensions");
+    const dialog = await openAndFill(user, "1a", "");
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+    expect(dialog.getByLabelText("Number")).toHaveAccessibleDescription("Use 2 to 20 digits, like 1001.");
+    expect(dialog.getByLabelText("Name")).toHaveAccessibleDescription("Enter a name, like Reception.");
+    expect(sent).toBe(0);
+  });
+
+  it("is offered to administrators only", async () => {
+    const { signedIn } = await import("../../test/session");
+    renderApp(routes, "/extensions", signedIn({ memberships: [{ ...tenantA, roles: ["SUPERVISOR"] }] }));
+    await screen.findByRole("heading", { level: 1, name: "Extensions" });
+    expect(screen.queryByRole("button", { name: "Add extension" })).not.toBeInTheDocument();
+  });
+});

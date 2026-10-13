@@ -78,7 +78,7 @@ describe("errors reaching components", () => {
     [Code.Unauthenticated, "unauthenticated"],
     [Code.PermissionDenied, "forbidden"],
     [Code.NotFound, "not-found"],
-    [Code.AlreadyExists, "conflict"],
+    [Code.AlreadyExists, "exists"],
     [Code.FailedPrecondition, "conflict"],
     [Code.InvalidArgument, "invalid"],
     [Code.ResourceExhausted, "throttled"],

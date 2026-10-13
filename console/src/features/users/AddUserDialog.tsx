@@ -54,7 +54,7 @@ export function AddUserDialog({ open, onClose }: { open: boolean; onClose: () =>
       onClose();
     } catch (err) {
       const e = err instanceof ApiError ? err : new ApiError("unknown");
-      if (e.kind === "conflict") setErrors({ email: "This person is already a member of this tenant." });
+      if (e.kind === "exists") setErrors({ email: "This person is already a member of this tenant." });
       else if (e.kind === "invalid") setFailure("Some details are not valid. Check the email address and password.");
       else if (e.kind === "forbidden") setFailure("Your role cannot add people to this tenant.");
       else setFailure(e.message);

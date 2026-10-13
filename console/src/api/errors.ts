@@ -8,6 +8,7 @@ export type ApiErrorKind =
   | "unauthenticated"
   | "forbidden"
   | "not-found"
+  | "exists"
   | "conflict"
   | "invalid"
   | "throttled"
@@ -18,7 +19,8 @@ const messages: Record<ApiErrorKind, string> = {
   unauthenticated: "Your session has ended. Sign in again to continue.",
   forbidden: "You do not have permission to do this.",
   "not-found": "This item no longer exists. It may have been removed.",
-  conflict: "This changed since you opened it. Reload and try again.",
+  exists: "That already exists.",
+  conflict: "This cannot be done in the current state. Reload and try again.",
   invalid: "Some details are not valid. Check them and try again.",
   throttled: "Too many attempts. Wait a moment, then try again.",
   unavailable: "The server could not be reached. Try again shortly.",
@@ -52,6 +54,7 @@ function kindOf(code: Code): ApiErrorKind {
     case Code.NotFound:
       return "not-found";
     case Code.AlreadyExists:
+      return "exists";
     case Code.Aborted:
     case Code.FailedPrecondition:
       return "conflict";

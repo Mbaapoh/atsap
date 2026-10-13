@@ -24,6 +24,8 @@ regexes = [
   '''^eyJhbGciOiJFZERTQSJ9\.YTEtam91cm5leS1rZXk\.c2ln$''',
   # console/e2e/exposure.rig.spec.ts: base64 of {"exposure":"test"} and "exposure-key"
   '''^eyJleHBvc3VyZSI6InRlc3QifQ\.ZXhwb3N1cmUta2V5\.c2ln$''',
+  # console/src/features/extensions/extensions.test.tsx: a made-up base32 SIP password
+  '''^KZXW6YTBOI4TCMRTGQ2DKNRXHA4TS2LB$''',
   # Extension SIP usernames: an engine endpoint id, "e_" + 32 hex. Not a
   # secret by design — it is the username a phone presents, shown to the
   # administrator configuring it (pbx/domain/credential.go). The secret is

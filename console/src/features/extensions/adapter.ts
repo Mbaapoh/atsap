@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
 import { DeviceType, RegistrationStatus, type Extension } from "../../api/gen/atsapbx/v1/pbx_pb";
@@ -62,4 +63,70 @@ export function useExtensions(page: number) {
     placeholderData: keepPreviousData,
     refetchInterval: REGISTRATION_REFRESH_MS,
   });
+}
+
+// Registrar is where phones register (pbx-sip-registrar-settings), or
+// null when the installer has not configured a public address.
+export interface Registrar {
+  host: string;
+  port: number;
+  transport: string;
+}
+
+export function useRegistrar() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  return useQuery<Registrar | null, ApiError>({
+    queryKey: ["sip-registrar", tenantId],
+    queryFn: () =>
+      callApi(async () => {
+        const r = await pbx.getSipRegistrar({ tenantId });
+        return r.configured ? { host: r.host, port: r.port, transport: r.transport } : null;
+      }),
+    enabled: tenantId !== "",
+    staleTime: 5 * 60_000,
+  });
+}
+
+// Credentials are what a phone needs, shown once (console brief §6 rule 8).
+export interface Credentials {
+  extension: ExtensionRow;
+  secret: string;
+}
+
+export interface NewExtension {
+  number: string;
+  name: string;
+  device: DeviceType;
+}
+
+// useCreateExtension creates an extension and returns its credentials
+// once. The mutation is reset as soon as it settles and never cached, so
+// the secret lives only in the caller's panel state.
+export function useCreateExtension() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const mutation = useMutation<Credentials, ApiError, NewExtension>({
+    mutationFn: (e) =>
+      callApi(async () => {
+        const res = await pbx.createExtension({ tenantId, number: e.number, displayName: e.name, deviceType: e.device });
+        if (!res.extension) throw new Error("no extension returned");
+        return { extension: toExtensionRow(res.extension), secret: res.secret };
+      }),
+    gcTime: 0,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: extensionKeys.all(tenantId) }),
+  });
+  const { mutateAsync, reset } = mutation;
+  const create = useCallback(
+    async (e: NewExtension) => {
+      try {
+        return await mutateAsync(e);
+      } finally {
+        reset();
+      }
+    },
+    [mutateAsync, reset],
+  );
+  return { create };
 }
