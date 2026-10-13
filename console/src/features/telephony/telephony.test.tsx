@@ -281,6 +281,24 @@ describe("inbound numbers", () => {
     expect(document.body.textContent).not.toMatch(/x1|x2|e_[0-9a-f]{32}/);
   });
 
+  it("shows a placeholder, never an id, while the extensions are still loading", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    server.use(
+      http.post(INBOUND_URL, () => HttpResponse.json({ numbers: [did1] })),
+      http.post(OVERVIEW_URLS.extensions, async () => {
+        await held;
+        return HttpResponse.json({ extensions: [reception] });
+      }),
+    );
+    renderApp(routes, "/trunks");
+    const table = within(await screen.findByRole("table", { name: "Inbound numbers of this tenant" }));
+    expect(await table.findByRole("row", { name: /^237222000111 …/ })).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/x1/);
+    release();
+    expect(await table.findByRole("row", { name: /237222000111 1001 · Reception/ })).toBeInTheDocument();
+  });
+
   it("reads every extension, page by page, to name them", async () => {
     const offsets: number[] = [];
     const many = Array.from({ length: 200 }, (_, i) => ({ extensionId: `p${i}`, number: String(2000 + i), displayName: `Desk ${i}` }));
