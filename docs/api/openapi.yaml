@@ -3663,6 +3663,11 @@ components:
         endpointUri:
           type: string
           title: endpoint_uri
+          description: |-
+            Deprecated and never filled: a participant's engine endpoint is an
+             engine identifier, which no public response carries. Kept, not
+             removed, so existing clients still decode (phase-a-hardening D3).
+          deprecated: true
         state:
           type: string
           title: state

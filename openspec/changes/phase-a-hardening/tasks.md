@@ -78,12 +78,25 @@
 
 ## 2. No engine endpoint in `GetCall`
 
-- [ ] 2.1 Stop filling `Participant.endpoint_uri`; mark it `deprecated = true` with a comment saying it is never filled.
+- [x] 2.1 Stop filling `Participant.endpoint_uri`; mark it `deprecated = true` with a comment saying it is never filled.
 
   Verify:
   - `TestGetCall_NoChannelIDLeakage` also refuses `PJSIP/` and `e_…` forms;
   - `make proto` passes (`buf breaking`);
   - the console's regenerated clients typecheck, and `make console-check` passes.
+
+  *(done 2026-10-13: `GetCall` no longer sets `endpoint_uri`. The proto field is `[deprecated = true]`, with a comment saying it is never filled. Tilt regenerated the Go and TypeScript stubs and `docs/api/openapi.yaml`, and the console marks the field `@deprecated` and never read it.
+
+  Verified:
+  - `TestGetCall_Success` asserts the field is empty.
+  - `TestGetCall_NoChannelIDInResponseContent` now uses a real `PJSIP/e_…` participant and refuses `pjsip` and `[et]_<32 hex>`. Both tests failed before the change and showed the leak.
+  - `make proto` (`buf lint` and `buf breaking`) passes.
+  - The Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).
+
+  **Found while testing:**
+  - The walking skeleton's "raw body scan" decoded `GetCall` into a three-field struct and re-marshalled that, so it never saw the participants. It now scans the body as received, including for engine ids.
+  - `GetCall`'s doc comment cited a test, `TestGetCall_NoChannelIDLeakage`, that does not exist. It now names the real ones.
+  - `make docs` failed because the change cited D-72 and D-73 before they were recorded. Both are now recorded (previous commit).)*
 
 ## 3. No provisioning before a licence is applied (D-72)
 

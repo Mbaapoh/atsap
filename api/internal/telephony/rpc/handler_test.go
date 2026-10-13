@@ -51,13 +51,17 @@ func (f *fakeCallStore) AddChannelHistory(context.Context, shareddomain.TenantID
 
 func (f *fakeCallStore) RecordUsageTicks(context.Context, []domain.UsageTick) error { return nil }
 
+// engineEndpoint is the shape of a real participant's engine endpoint: the
+// identifier pbx-core derives for an extension (D-65).
+const engineEndpoint = "e_0123456789abcdef0123456789abcdef"
+
 func testCall(t *testing.T) (*domain.Call, shareddomain.TenantID) {
 	t.Helper()
 	tenantID := shareddomain.NewTenantID()
 	call := domain.NewCall(shareddomain.NewCallID(), tenantID, domain.Outbound, "1000", "1001", time.Now().UTC())
 	caller := &domain.CallParticipant{
 		ID: shareddomain.NewParticipantID(), CallID: call.ID, TenantID: tenantID,
-		Role: domain.RoleCaller, EndpointURI: "PJSIP/1000", State: domain.ParticipantConnected, BillableSeconds: 42,
+		Role: domain.RoleCaller, EndpointURI: "PJSIP/" + engineEndpoint, State: domain.ParticipantConnected, BillableSeconds: 42,
 	}
 	require.NoError(t, call.AddParticipant(caller))
 	call.State = domain.CallActive
@@ -80,7 +84,7 @@ func TestGetCall_Success(t *testing.T) {
 	assert.Equal(t, "Active", resp.Msg.GetState())
 	assert.Equal(t, "1000", resp.Msg.GetSourceNumber())
 	require.Len(t, resp.Msg.GetParticipants(), 1)
-	assert.Equal(t, "PJSIP/1000", resp.Msg.GetParticipants()[0].GetEndpointUri())
+	assert.Empty(t, resp.Msg.GetParticipants()[0].GetEndpointUri(), "the deprecated endpoint field is never filled (phase-a-hardening task 2.1)")
 	assert.Equal(t, int32(42), resp.Msg.GetParticipants()[0].GetBillableSeconds())
 }
 
@@ -145,8 +149,9 @@ func assertNoChannelFields(t *testing.T, md protoreflect.MessageDescriptor, seen
 }
 
 // TestGetCall_NoChannelIDInResponseContent is the content-level half:
-// marshals an actual response (with a real participant) to JSON and
-// asserts no "channel"-shaped substring appears anywhere in it.
+// marshals an actual response (with a participant reached at a real
+// engine endpoint) to JSON and asserts no channel-shaped substring and no
+// engine endpoint appears anywhere in it.
 func TestGetCall_NoChannelIDInResponseContent(t *testing.T) {
 	store := newFakeCallStore()
 	call, tenantID := testCall(t)
@@ -164,6 +169,8 @@ func TestGetCall_NoChannelIDInResponseContent(t *testing.T) {
 	var asMap map[string]any
 	require.NoError(t, json.Unmarshal(raw, &asMap))
 	assert.NotContains(t, strings.ToLower(string(raw)), "channel")
+	assert.NotContains(t, strings.ToLower(string(raw)), "pjsip")
+	assert.NotRegexp(t, `[et]_[0-9a-f]{32}`, string(raw), "no engine endpoint id (phase-a-hardening task 2.1)")
 }
 
 // TestTenantID covers the matcher the auth interceptor uses to enforce

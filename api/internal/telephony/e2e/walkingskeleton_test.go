@@ -32,7 +32,9 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -414,12 +416,16 @@ func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomai
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GetCall status %d", resp.StatusCode)
 	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read GetCall: %v", err)
+	}
 	var parsed struct {
 		State    string `json:"state"`
 		CallID   string `json:"callId"`
 		TenantID string `json:"tenantId"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.Unmarshal(raw, &parsed); err != nil {
 		t.Fatalf("decode GetCall: %v", err)
 	}
 	if parsed.State != "Terminated" {
@@ -428,21 +434,22 @@ func assertPublicGetCall(t *testing.T, ctx context.Context, tenantID shareddomai
 	if parsed.CallID != callID.String() {
 		t.Errorf("GetCall callId mismatch")
 	}
-	// raw body scan: no infrastructure channel identifier leaks
-	raw := marshaledForLeakCheck(parsed)
+	// The body as it came off the wire, participants included: no
+	// infrastructure channel identifier and no engine endpoint. (This
+	// once re-marshalled the three fields above and so never saw the
+	// participants — phase-a-hardening task 2.1.)
 	for _, bad := range []string{"atsa-part-", "channel_id", "\"channel\"", "PJSIP"} {
-		if strings.Contains(raw, bad) {
+		if strings.Contains(string(raw), bad) {
 			t.Errorf("GetCall response leaks %q: %s", bad, raw)
 		}
 	}
+	if engineID.Match(raw) {
+		t.Errorf("GetCall response leaks an engine endpoint id: %s", raw)
+	}
 }
 
-// marshaledForLeakCheck re-marshals the decoded struct so we scan the wire
-// representation, not a hand-built string.
-func marshaledForLeakCheck(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}
+// engineID matches pbx-core's derived engine identifiers (e_…, t_…).
+var engineID = regexp.MustCompile(`[et]_[0-9a-f]{32}`)
 
 // hangupCallChannels finds every Asterisk channel currently tagged with
 // the given call's ATSA_CALL_ID correlation variable and hangs each one

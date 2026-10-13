@@ -178,7 +178,12 @@ type Participant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ParticipantId string                 `protobuf:"bytes,1,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
 	// role is one of: CALLER, AGENT, IVR, QUEUE, SUPERVISOR, SPECIALIST, AI.
-	Role        string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	Role string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	// Deprecated and never filled: a participant's engine endpoint is an
+	// engine identifier, which no public response carries. Kept, not
+	// removed, so existing clients still decode (phase-a-hardening D3).
+	//
+	// Deprecated: Marked as deprecated in atsapbx/v1/telephony.proto.
 	EndpointUri string `protobuf:"bytes,3,opt,name=endpoint_uri,json=endpointUri,proto3" json:"endpoint_uri,omitempty"`
 	// state is one of: Invited, Ringing, Connected, OnHold, Transferring,
 	// Disconnected.
@@ -232,6 +237,7 @@ func (x *Participant) GetRole() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in atsapbx/v1/telephony.proto.
 func (x *Participant) GetEndpointUri() string {
 	if x != nil {
 		return x.EndpointUri
@@ -525,11 +531,11 @@ const file_atsapbx_v1_telephony_proto_rawDesc = "" +
 	"\rsource_number\x18\x05 \x01(\tR\fsourceNumber\x12\x1f\n" +
 	"\vdest_number\x18\x06 \x01(\tR\n" +
 	"destNumber\x12;\n" +
-	"\fparticipants\x18\a \x03(\v2\x17.atsapbx.v1.ParticipantR\fparticipants\"\xac\x01\n" +
+	"\fparticipants\x18\a \x03(\v2\x17.atsapbx.v1.ParticipantR\fparticipants\"\xb0\x01\n" +
 	"\vParticipant\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12\x12\n" +
-	"\x04role\x18\x02 \x01(\tR\x04role\x12!\n" +
-	"\fendpoint_uri\x18\x03 \x01(\tR\vendpointUri\x12\x14\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12%\n" +
+	"\fendpoint_uri\x18\x03 \x01(\tB\x02\x18\x01R\vendpointUri\x12\x14\n" +
 	"\x05state\x18\x04 \x01(\tR\x05state\x12)\n" +
 	"\x10billable_seconds\x18\x05 \x01(\x05R\x0fbillableSeconds\"\x8b\x02\n" +
 	"\x10ListCallsRequest\x12\x1b\n" +

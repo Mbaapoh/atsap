@@ -111,9 +111,11 @@ func toCallSummary(c ports.CallSummary) *atsapbxv1.CallSummary {
 }
 
 // GetCall returns a Call's current state and participants. The
-// response never contains an Asterisk channel identifier — proven by
-// TestGetCall_NoChannelIDLeakage, an automated scan of every string
-// field in the response (docs/hld/01-architecture.md §6.2).
+// response never contains an Asterisk channel identifier or engine
+// endpoint (docs/hld/01-architecture.md §6.2) — proven by
+// TestGetCallResponse_NoChannelFieldsInSchema and
+// TestGetCall_NoChannelIDInResponseContent here, and by the walking
+// skeleton's scan of the body on the wire.
 func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[atsapbxv1.GetCallRequest]) (*connect.Response[atsapbxv1.GetCallResponse], error) {
 	tenantID, err := shareddomain.ParseTenantID(req.Msg.GetTenantId())
 	if err != nil {
@@ -139,9 +141,10 @@ func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[ats
 	}
 	for _, p := range call.Participants {
 		resp.Participants = append(resp.Participants, &atsapbxv1.Participant{
-			ParticipantId:   p.ID.String(),
-			Role:            string(p.Role),
-			EndpointUri:     p.EndpointURI,
+			ParticipantId: p.ID.String(),
+			Role:          string(p.Role),
+			// endpoint_uri is deprecated and never filled: a participant's
+			// engine endpoint is an engine identifier (phase-a-hardening D3).
 			State:           string(p.State),
 			BillableSeconds: wire.Int32(p.BillableSeconds),
 		})
