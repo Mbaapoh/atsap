@@ -9,5 +9,5 @@
 
 ## 3. Wiring and proof
 
-- [ ] 3.1 Wire the settings into the composition root, set `SIP_PUBLIC_HOST=localhost` for the rig in compose, and document all three in `.env.example`. Verify with an e2e test against the running app: the configured address is returned, and a caller without permission is refused.
+- [x] 3.1 Wire the settings into the composition root, set `SIP_PUBLIC_HOST=localhost` for the rig in compose, and document all three in `.env.example`. Verify with an e2e test against the running app: the configured address is returned, and a caller without permission is refused. *(done 2026-10-13: `main.go` builds the service `WithRegistrar` from config; compose sets `SIP_PUBLIC_HOST=localhost` for the rig; `.env.example` documents all three settings and why the host is never guessed. The e2e `TestConsoleAPIs_SipRegistrar` passes against the running app (Tilt live-updated, no rebuild): the operator gets localhost:5060/udp and a supervisor, who cannot read extensions, gets 403.)*
 - [ ] 3.2 Update API.md and LLD-03, run every backend tier (unit, integration, e2e, UATs), and record the results. Verify `make ci` and `make quality` pass.

@@ -305,3 +305,34 @@ func TestConsoleAPIs_LicenceConditions(t *testing.T) {
 		}
 	})
 }
+
+// pbx-sip-registrar-settings task 3.1: the running app reports the rig's
+// configured registrar address to an operator, and refuses a role that
+// may not read extensions.
+func TestConsoleAPIs_SipRegistrar(t *testing.T) {
+	r := newRig(t)
+	var reg struct {
+		Configured bool   `json:"configured"`
+		Host       string `json:"host"`
+		Port       int    `json:"port"`
+		Transport  string `json:"transport"`
+	}
+	r.call(t, "PbxService/GetSipRegistrar", r.token, map[string]any{"tenantId": r.tenant.String()}, &reg, http.StatusOK)
+	assert.True(t, reg.Configured)
+	assert.Equal(t, "localhost", reg.Host, "deploy/docker-compose.yml sets SIP_PUBLIC_HOST for the rig")
+	assert.Equal(t, 5060, reg.Port)
+	assert.Equal(t, "udp", reg.Transport)
+
+	const pw = "e2e-supervisor-password-ok"
+	supEmail := fmt.Sprintf("sup-reg-%d@e2e.invalid", time.Now().UnixNano())
+	t.Cleanup(func() { forgetFixtureUser(r.pool, r.tenant, supEmail) })
+	r.call(t, "IdentityService/ProvisionPrincipal", r.token, map[string]any{
+		"tenantId": r.tenant.String(), "email": supEmail, "password": pw, "role": "SUPERVISOR",
+	}, nil, http.StatusOK)
+	var sup struct {
+		Token string `json:"token"`
+	}
+	r.call(t, "IdentityService/AuthenticateUser", "", map[string]any{
+		"tenantId": r.tenant.String(), "username": supEmail, "password": pw}, &sup, http.StatusOK)
+	r.call(t, "PbxService/GetSipRegistrar", sup.Token, map[string]any{"tenantId": r.tenant.String()}, nil, http.StatusForbidden)
+}

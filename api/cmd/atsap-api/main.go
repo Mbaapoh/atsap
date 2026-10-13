@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	pbxports "atsap-api/internal/pbx/ports"
+
 	connectrpc "connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 	natsgo "github.com/nats-io/nats.go"
@@ -260,6 +262,11 @@ func run() int {
 	// configuration stores; the router answers telephony-core's
 	// InboundRouter port through the composition root, never an import
 	// (LLD-03 §4.2). pbx-core is constructed before telephony needs it.
+	// Where devices register: the installation's public face, which only
+	// the installer knows (pbx-sip-registrar-settings).
+	pbxSvc = pbxSvc.WithRegistrar(pbxports.SipRegistrar{
+		Host: cfg.SIPPublicHost, Port: cfg.SIPPublicPort, Transport: cfg.SIPPublicTransport,
+	})
 	pbxSvc = pbxSvc.
 		WithEmergencyStores(pbxpostgres.NewInboundNumberStore(), pbxpostgres.NewEmergencyStore()).
 		WithInbound(pbxapp.Inbound{
