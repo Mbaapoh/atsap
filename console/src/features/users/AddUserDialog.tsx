@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { Modal } from "../../components/Modal";
 import { TextField } from "../../components/TextField";
@@ -53,7 +53,7 @@ export function AddUserDialog({ open, onClose }: { open: boolean; onClose: () =>
       reset();
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       if (e.kind === "exists") setErrors({ email: "This person is already a member of this tenant." });
       else if (e.kind === "invalid") setFailure("Some details are not valid. Check the email address and password.");
       else if (e.kind === "forbidden") setFailure("Your role cannot add people to this tenant.");

@@ -1,4 +1,5 @@
 import { PageHeader } from "../../components/PageHeader";
+import { RoutesSection } from "./RoutesSection";
 import { TrunksSection } from "./TrunksSection";
 
 // TrunksRoutesPage is HLD-18 flow A4: the carriers, how outbound calls are
@@ -10,6 +11,7 @@ export function TrunksRoutesPage() {
     <section className="page" aria-labelledby="page-title">
       <PageHeader title="Trunks & routes" description="Your carriers, how calls reach them, and the numbers that reach you." />
       <TrunksSection />
+      <RoutesSection />
     </section>
   );
 }

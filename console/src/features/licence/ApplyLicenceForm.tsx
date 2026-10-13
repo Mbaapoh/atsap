@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/Toast";
@@ -50,7 +50,7 @@ export function ApplyLicenceForm() {
       toast.show("Licence applied.");
     } catch (err) {
       setConfirming(false);
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       if (e.kind === "invalid") setKeyError("This key did not verify. Check that you pasted all of it, and that it was issued for this installation.");
       else if (e.kind === "forbidden") setFailure("Only a platform administrator can apply a licence.");
       else setFailure(e.message);

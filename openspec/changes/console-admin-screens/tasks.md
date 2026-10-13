@@ -100,7 +100,23 @@
   - 5 component tests: list wording and health; validation (scheme or port in the host; a secret without a username) and the exact create request, with the secret in no page or cache; edit with an empty secret not sent; delete copy and request; no controls for a supervisor;
   - integration against the real API, run twice: add with a secret, edit with the engine credential fingerprint unchanged, delete with its route gone and the engine auth row gone; `pbx reconcile` clean;
   - component 244, e2e 19, secrets clean.)*
-- [ ] 4.2 Outbound routes: list (prefix, trunk name, cost, priority), create and delete, with an overlap warning that explains the selection order; "replace" is a confirmed create-then-delete. Verify there is no Edit route action, and that the warning appears without blocking the save.
+- [x] 4.2 Outbound routes: list (prefix, trunk name, cost, priority), create and delete, with an overlap warning that explains the selection order; "replace" is a confirmed create-then-delete. Verify there is no Edit route action, and that the warning appears without blocking the save. *(done 2026-10-13:
+  - **Adapter:** `useRoutes` and `useRouteChanges` (create and delete; there is no update in the API).
+  - **`routing.ts`:** the prefix rule (digits and X, optional +, up to the server's 50 characters), `overlaps` (X matches any digit), and cost parsing to micros, exact with bigint, up to 6 decimals.
+  - **`RoutesSection`:** prefix, trunk by name (never an id), stored cost and priority. The row menu is only "Replace…" and "Delete route…"; there is no Edit. "Add route" is disabled with a hint until a trunk exists.
+  - **`RouteDialog`:** shows a non-blocking overlap notice naming the overlapping routes and the real order. The order is read from `compareCandidates`: healthy trunks before degraded ones, then longest prefix, then priority, then stored cost. Writing the note found that the design omitted the health step; the proposal and design are corrected.
+  - **Replace:** confirmed, and it creates the new route before deleting the old. If the delete fails, the dialog says the new route exists and the old one must be removed.
+
+  **Found and fixed:**
+  - Console branch and function coverage had fallen below the D-71 floors since section 3 (79.3% branches at 4.1). This was the first full `console-check` after those tasks.
+  - The fix is `admin-dialogs.test.tsx`: every admin dialog refused with each error kind, carrying an engine-laden server message, and shown only as console copy (33 cases). Every dialog closes on Cancel and on Escape sending nothing (13). Trunk and route field limits are covered too.
+  - The 15 copies of `instanceof ApiError ? … : new ApiError("unknown")` now use the existing `toApiError`.
+  - Console floors ratcheted to 95.7 / 87.3 / 97.9 / 96.9.
+
+  Verified:
+  - component 328 (route list, no Edit; the exact create request; the overlap notice shown while the save goes through; replace order `create` then `delete r1`; a failed replace; delete; no trunks; load failure; supervisor);
+  - integration 21/21, including the new rig test: two routes added through the UI (the overlap notice is seen), the API listing exact prefix, trunk, cost 15000 micros and priority, a replace onto a second carrier, then a delete;
+  - e2e 19, UAT 1, secrets clean.)*
 - [ ] 4.3 Inbound numbers: assign a DID to an extension, list and remove. Verify assignments name the extension by number and display name, and that removal is confirmed.
 - [ ] 4.4 Emergency: the country profile and the effective emergency set, with built-in numbers marked, plus the create and delete controls the API supports. Verify built-in numbers cannot be deleted from the console, and that a tenant without a country is told so.
 

@@ -109,3 +109,150 @@ describe("trunks", () => {
     expect(screen.queryByRole("button", { name: /^Actions for/ })).not.toBeInTheDocument();
   });
 });
+
+// console-admin-screens task 4.2: outbound routes (HLD-18 A4).
+
+const routeA = { routeId: "r1", prefixPattern: "+237", trunkId: "t1", costPerMinuteMicros: "15000", priority: 1 };
+const routeB = { routeId: "r2", prefixPattern: "+2376", trunkId: "t2", costPerMinuteMicros: "0", priority: 0 };
+
+function routeList(list = [routeA, routeB]) {
+  return http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({ routes: list }));
+}
+
+describe("outbound routes", () => {
+  it("lists prefix, trunk name, stored cost and priority; there is no Edit route", async () => {
+    server.use(trunks(), routeList());
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    const table = within(await screen.findByRole("table", { name: "Outbound routes of this tenant" }));
+    const a = table.getByRole("row", { name: /\+237 Carrier A/ });
+    expect(a).toHaveTextContent("0.015");
+    expect(a).toHaveTextContent("1");
+    expect(table.getByRole("row", { name: /\+2376 Carrier B/ })).toHaveTextContent("0");
+    expect(table.queryByText("t1")).not.toBeInTheDocument(); // ids are never shown
+    await user.click(screen.getByRole("button", { name: "Actions for route +237" }));
+    const items = screen.getAllByRole("menuitem").map((m) => m.textContent);
+    expect(items).toEqual(["Replace…", "Delete route…"]);
+    expect(screen.queryByRole("menuitem", { name: /Edit/ })).not.toBeInTheDocument();
+  });
+
+  it("adds a route with exactly what was entered; overlap is explained, never blocked", async () => {
+    let body: unknown;
+    server.use(trunks(), routeList([routeA]), http.post(api("CreateRoute"), async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ route: {} });
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await screen.findByRole("table", { name: "Outbound routes of this tenant" });
+    await user.click(screen.getByRole("button", { name: "Add route" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Add an outbound route" }));
+    await user.type(dialog.getByLabelText("Prefix"), "sip:+23769");
+    await user.type(dialog.getByLabelText("Cost per minute (optional)"), "0.1234567");
+    await user.click(dialog.getByRole("button", { name: "Add route" }));
+    expect(dialog.getByLabelText("Prefix")).toHaveAccessibleDescription(/Use digits and X/);
+    expect(dialog.getByLabelText("Cost per minute (optional)")).toHaveAccessibleDescription(/up to 6 decimals/);
+    expect(body).toBeUndefined();
+
+    await user.clear(dialog.getByLabelText("Prefix"));
+    await user.type(dialog.getByLabelText("Prefix"), "+23769");
+    await user.clear(dialog.getByLabelText("Cost per minute (optional)"));
+    await user.type(dialog.getByLabelText("Cost per minute (optional)"), "0.02");
+    await user.selectOptions(dialog.getByLabelText("Trunk"), "Carrier B");
+    await user.clear(dialog.getByLabelText("Priority"));
+    await user.type(dialog.getByLabelText("Priority"), "3");
+    expect(dialog.getByText(/overlaps \+237 \(Carrier A\)/)).toHaveTextContent(/healthy trunk are tried before those on a degraded one; then the longest matching prefix comes first, then the lower priority, then the lower stored cost/);
+    await user.click(dialog.getByRole("button", { name: "Add route" }));
+    expect(await screen.findByText("Route +23769 added.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, prefixPattern: "+23769", trunkId: "t2", costPerMinuteMicros: "20000", priority: 3 });
+  });
+
+  it("replace is confirmed, then creates the new route before deleting the old", async () => {
+    const order: string[] = [];
+    let created: unknown;
+    server.use(
+      trunks(),
+      routeList(),
+      http.post(api("CreateRoute"), async ({ request }) => {
+        created = await request.json();
+        order.push("create");
+        return HttpResponse.json({ route: {} });
+      }),
+      http.post(api("DeleteRoute"), async ({ request }) => {
+        order.push(`delete ${((await request.json()) as { routeId: string }).routeId}`);
+        return HttpResponse.json({});
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await user.click(await screen.findByRole("button", { name: "Actions for route +237" }));
+    await user.click(screen.getByRole("menuitem", { name: "Replace…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Replace route +237" }));
+    expect(dialog.getByLabelText("Prefix")).toHaveValue("+237");
+    expect(dialog.getByLabelText("Cost per minute (optional)")).toHaveValue("0.015");
+    await user.selectOptions(dialog.getByLabelText("Trunk"), "Carrier B");
+    await user.click(dialog.getByRole("button", { name: "Continue" }));
+    expect(order).toEqual([]);
+    const confirm = within(screen.getByRole("dialog", { name: "Replace route +237?" }));
+    expect(confirm.getByText(/added first, then the old one is deleted/)).toBeInTheDocument();
+    await user.click(confirm.getByRole("button", { name: "Replace route" }));
+    expect(await screen.findByText("Route +237 replaced.")).toBeInTheDocument();
+    expect(order).toEqual(["create", "delete r1"]);
+    expect(created).toEqual({ tenantId: tenantA.tenantId, prefixPattern: "+237", trunkId: "t2", costPerMinuteMicros: "15000", priority: 1 });
+  });
+
+  it("a replace whose delete fails says the new route exists and the old must go", async () => {
+    server.use(
+      trunks(),
+      routeList(),
+      http.post(api("CreateRoute"), () => HttpResponse.json({ route: {} })),
+      http.post(api("DeleteRoute"), () => HttpResponse.json({ code: "internal", message: "pq: stasis-out" }, { status: 500 })),
+    );
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await user.click(await screen.findByRole("button", { name: "Actions for route +237" }));
+    await user.click(screen.getByRole("menuitem", { name: "Replace…" }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await user.click(screen.getByRole("button", { name: "Replace route" }));
+    expect(await screen.findByText(/The new route was added, but the old one could not be deleted/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/pq|stasis/);
+  });
+
+  it("deletes a route after confirmation", async () => {
+    let body: unknown;
+    server.use(trunks(), routeList(), http.post(api("DeleteRoute"), async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await user.click(await screen.findByRole("button", { name: "Actions for route +2376" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete route…" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Delete route +2376?" }));
+    expect(confirm.getByText(/no longer use Carrier B/)).toBeInTheDocument();
+    await user.click(confirm.getByRole("button", { name: "Delete route" }));
+    expect(await screen.findByText("Route +2376 deleted.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, routeId: "r2" });
+  });
+
+  it("without trunks, adding a route is not offered", async () => {
+    server.use(trunks([]), routeList([]));
+    renderApp(routes, "/trunks");
+    expect(await screen.findByText("No outbound routes yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add route" })).toBeDisabled();
+    expect(screen.getByText(/Add a trunk first/)).toBeInTheDocument();
+  });
+
+  it("a failed load is console copy; a non-administrator gets no controls", async () => {
+    server.use(trunks(), http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({ code: "internal", message: "ps_endpoints" }, { status: 500 })));
+    const { unmount } = renderApp(routes, "/trunks");
+    expect(await screen.findByText("Routes could not be loaded")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("ps_endpoints");
+    unmount();
+    server.use(routeList());
+    renderApp(routes, "/trunks", signedIn({ memberships: [{ ...tenantA, roles: ["SUPERVISOR"] }] }));
+    await screen.findByRole("table", { name: "Outbound routes of this tenant" });
+    expect(screen.queryByRole("button", { name: "Add route" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Actions for route/ })).not.toBeInTheDocument();
+  });
+});

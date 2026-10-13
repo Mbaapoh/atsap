@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router";
-import { ApiError } from "../../api/errors";
+import { ApiError, toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { TextField } from "../../components/TextField";
 import { useSession, useSessionController, type SignInMethodView } from "./adapter";
@@ -46,7 +46,7 @@ export function SignInPage() {
   if (session.status === "no-access") return <NoAccess />;
 
   function fail(err: unknown, wrongCredentials = WRONG_CREDENTIALS) {
-    const e = err instanceof ApiError ? err : new ApiError("unknown");
+    const e = toApiError(err);
     throttle.hold(e);
     if (e.kind === "throttled") setFailure(throttleMessage(e));
     else if (e.kind === "unauthenticated") setFailure(wrongCredentials);

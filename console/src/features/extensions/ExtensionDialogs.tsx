@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { DeviceType } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -10,7 +10,7 @@ import { useExtensionChanges, type Credentials, type ExtensionRow } from "./adap
 import { deviceLabel } from "./copy";
 
 function failureText(err: unknown, action: string): string {
-  const e = err instanceof ApiError ? err : new ApiError("unknown");
+  const e = toApiError(err);
   if (e.kind === "forbidden") return `Your role cannot ${action} extensions.`;
   if (e.kind === "not-found") return "This extension no longer exists. It may have been removed.";
   return e.message;

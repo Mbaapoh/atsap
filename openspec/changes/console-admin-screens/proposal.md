@@ -19,7 +19,7 @@ HLD-18 §7 defines Phase A as done only when a partner can walk flows A1 → A5 
   - **One-time credential panel** at creation and on secret rotation: the SIP username (labelled as such; it is also the engine endpoint id, D-71 coverage G5), the secret, and the registrar address from `pbx-sip-registrar-settings`. It has a copy control and must be acknowledged before leaving. The secret never appears in a list, form, URL, history, toast or later read.
 - **Trunks & routes (A4):**
   - Trunks: create, edit and delete. The secret is write-only; supplying one requires a username. Health is shown as the platform observed it.
-  - Outbound routes: create, list and delete, with no "Edit route" because the API has no `UpdateRoute`. Overlapping prefixes are allowed, with a warning that explains the real selection order (longest prefix, then priority, then cost).
+  - Outbound routes: create, list and delete, with no "Edit route" because the API has no `UpdateRoute`. Overlapping prefixes are allowed, with a warning that explains the real selection order (healthy trunks before degraded ones, then longest prefix, then priority, then cost).
   - **Inbound numbers:** assign a DID to an extension, list and remove assignments.
   - **Emergency:** the country profile and the effective emergency set, with built-in numbers marked; create and delete only where the API allows.
 - **Call history (A5):**

@@ -85,3 +85,56 @@ test("A4: add, edit (secret kept) and delete a trunk, with its routes", async ({
   expect((await api(request, token, "ListRoutes", { tenantId })).body.routes ?? []).toEqual([]);
   expect(engineAuthFingerprint(endpoint)).toBe("");
 });
+
+test("A4: add, replace and delete outbound routes", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = ((await (await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email: user.email, password: FIXTURE_PASSWORD } })).json()) as { access: { token: string } }).access.token;
+  teardown = () => cleanTelephony(request, token, tenantId);
+  for (const name of ["Carrier R1", "Carrier R2"]) {
+    expect((await api(request, token, "CreateTrunk", { tenantId, name, host: "198.51.100.30", channelLimit: 2 })).status).toBe(200);
+  }
+  const trunkIds = Object.fromEntries(((await api(request, token, "ListTrunks", { tenantId })).body.trunks as { name: string; trunkId: string }[]).map((t) => [t.name, t.trunkId]));
+  const listed = async () =>
+    (((await api(request, token, "ListRoutes", { tenantId })).body.routes ?? []) as Record<string, unknown>[])
+      .map((r) => ({ prefix: r.prefixPattern, trunk: r.trunkId, cost: r.costPerMinuteMicros ?? "0", priority: r.priority ?? 0 }))
+      .sort((a, b) => String(a.prefix).localeCompare(String(b.prefix)));
+
+  await signIn(page, user.email);
+  await page.goto("/trunks");
+  const table = page.getByRole("table", { name: "Outbound routes of this tenant" });
+  for (const [prefix, cost] of [["+237", "0.015"], ["+2376", ""]] as const) {
+    await page.getByRole("button", { name: "Add route" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add an outbound route" });
+    await dialog.getByLabel("Prefix").fill(prefix);
+    await dialog.getByLabel("Cost per minute (optional)").fill(cost);
+    if (prefix === "+2376") await expect(dialog.getByText(/overlaps \+237 \(Carrier R1\)/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Add route" }).click();
+    await expect(page.getByText(`Route ${prefix} added.`)).toBeVisible();
+  }
+  await expect(table.getByRole("row", { name: /\+237 Carrier R1/ })).toContainText("0.015");
+  expect(await listed()).toEqual([
+    { prefix: "+237", trunk: trunkIds["Carrier R1"], cost: "15000", priority: 0 },
+    { prefix: "+2376", trunk: trunkIds["Carrier R1"], cost: "0", priority: 0 },
+  ]);
+
+  // Replace +2376 onto the second carrier: new route first, then the old one goes.
+  await page.getByRole("button", { name: "Actions for route +2376" }).click();
+  await page.getByRole("menuitem", { name: "Replace…" }).click();
+  await page.getByRole("dialog").getByLabel("Trunk").selectOption({ label: "Carrier R2" });
+  await page.getByRole("dialog").getByLabel("Priority").fill("2");
+  await page.getByRole("dialog").getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("dialog", { name: "Replace route +2376?" }).getByRole("button", { name: "Replace route" }).click();
+  await expect(page.getByText("Route +2376 replaced.")).toBeVisible();
+  await expect(table.getByRole("row", { name: /\+2376 Carrier R2/ })).toBeVisible();
+  expect(await listed()).toEqual([
+    { prefix: "+237", trunk: trunkIds["Carrier R1"], cost: "15000", priority: 0 },
+    { prefix: "+2376", trunk: trunkIds["Carrier R2"], cost: "0", priority: 2 },
+  ]);
+
+  await page.getByRole("button", { name: "Actions for route +237", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete route…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete route" }).click();
+  await expect(page.getByText("Route +237 deleted.")).toBeVisible();
+  expect((await listed()).map((r) => r.prefix)).toEqual(["+2376"]);
+});

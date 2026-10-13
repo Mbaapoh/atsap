@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { TextField } from "../../components/TextField";
 import { useSessionController } from "./adapter";
@@ -32,7 +32,7 @@ export function ForgotPasswordPage() {
       await controller.requestPasswordReset(email.trim());
       setSent(true);
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       throttle.hold(e);
       if (e.kind === "invalid") setEmailError("Enter an email address, like name@example.com.");
       else setFailure(e.kind === "throttled" ? throttleMessage(e) : e.message);

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
@@ -84,7 +84,7 @@ export function TrunkDialog({ trunk, open, onClose }: { trunk: TrunkRow | null; 
       toast.show(editing ? `Trunk ${input.name} updated.` : `Trunk ${input.name} added.`);
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       setFailure(
         e.kind === "invalid"
           ? "Some details are not valid. Check the host, port and username."
@@ -152,7 +152,7 @@ export function DeleteTrunkDialog({ trunk, onClose }: { trunk: TrunkRow | null; 
       toast.show(`Trunk ${trunk.name} deleted.`);
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       setFailure(e.kind === "forbidden" ? "Your role cannot delete trunks." : e.kind === "not-found" ? "This trunk no longer exists." : e.message);
     } finally {
       setBusy(false);

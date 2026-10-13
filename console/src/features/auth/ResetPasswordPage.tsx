@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { TextField } from "../../components/TextField";
 import { passwordProblem, PASSWORD_MAX, PASSWORD_MIN, useSessionController } from "./adapter";
@@ -78,7 +78,7 @@ export function ResetPasswordPage({ purpose }: { purpose: "reset" | "invite" }) 
       await controller.completePasswordReset(secret, password);
       setDone(true);
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       throttle.hold(e);
       // The server answers an unusable link with INVALID_ARGUMENT — the
       // code it also uses for a password out of bounds. The length was

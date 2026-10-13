@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { OneTimeSecret } from "../../components/OneTimeSecret";
@@ -29,7 +29,7 @@ export function DisableDialog({ user, onClose }: { user: UserRow | null; onClose
       toast.show(`${name} disabled in this tenant.`);
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       setFailure(e.kind === "forbidden" ? "Your role cannot disable people in this tenant." : e.kind === "conflict" ? `${name} is this tenant's last active administrator and cannot be disabled.` : e.message);
     } finally {
       setBusy(false);
@@ -74,7 +74,7 @@ export function ResetPasswordFlow({ user, onClose }: { user: UserRow | null; onC
       setIssued({ name, password });
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       setFailure(e.kind === "forbidden" ? "Your role cannot reset this person's password. A platform administrator can." : e.message);
     } finally {
       setBusy(false);

@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
@@ -36,7 +36,7 @@ export function GrantRoleDialog({ user, onClose }: { user: UserRow | null; onClo
       setRole("");
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       setFailure(e.kind === "forbidden" ? "Your role cannot grant that role." : e.message);
     } finally {
       setBusy(false);
@@ -99,7 +99,7 @@ export function RevokeRoleDialog({ target, onClose }: { target: { user: UserRow;
       toast.show(`${label} revoked from ${name}.`);
       onClose();
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       setFailure(
         e.kind === "conflict"
           ? `${name} is this tenant's last administrator. Make someone else a tenant administrator first.`

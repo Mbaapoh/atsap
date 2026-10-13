@@ -41,6 +41,7 @@ export function useTenantId(): string {
 export const telephonyKeys = {
   all: (tenantId: string) => ["telephony", tenantId] as const,
   trunks: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "trunks", page] as const,
+  routes: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "routes", page] as const,
 };
 
 export function useTrunks(page: number) {
@@ -111,4 +112,64 @@ export function useTrunkChanges() {
     update: forget(update.mutateAsync, update.reset),
     remove: remove.mutateAsync,
   };
+}
+
+export interface RouteRow {
+  id: string;
+  prefix: string;
+  trunkId: string;
+  costMicros: bigint;
+  priority: number;
+}
+
+export interface RouteInput {
+  prefix: string;
+  trunkId: string;
+  costMicros: bigint;
+  priority: number;
+}
+
+export function useRoutes(page: number) {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  return useQuery<RouteRow[], ApiError>({
+    queryKey: telephonyKeys.routes(tenantId, page),
+    queryFn: () =>
+      callApi(async () =>
+        (await pbx.listRoutes({ tenantId, limit: PAGE_SIZE, offset: page * PAGE_SIZE })).routes.map((r) => ({
+          id: r.routeId,
+          prefix: r.prefixPattern,
+          trunkId: r.trunkId,
+          costMicros: r.costPerMinuteMicros,
+          priority: r.priority,
+        })),
+      ),
+    enabled: tenantId !== "",
+    placeholderData: keepPreviousData,
+  });
+}
+
+// useRouteChanges creates and deletes routes. There is no update in the
+// API, so a change is a replace: create the new route, then delete the
+// old one — in that order, so calls are never left without a route.
+export function useRouteChanges() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: telephonyKeys.all(tenantId) });
+  const create = useMutation<void, ApiError, RouteInput>({
+    mutationFn: (r) =>
+      callApi(async () => {
+        await pbx.createRoute({ tenantId, prefixPattern: r.prefix, trunkId: r.trunkId, costPerMinuteMicros: r.costMicros, priority: r.priority });
+      }),
+    onSuccess: refetch,
+  });
+  const remove = useMutation<void, ApiError, string>({
+    mutationFn: (id) =>
+      callApi(async () => {
+        await pbx.deleteRoute({ tenantId, routeId: id });
+      }),
+    onSuccess: refetch,
+  });
+  return { create: create.mutateAsync, remove: remove.mutateAsync };
 }

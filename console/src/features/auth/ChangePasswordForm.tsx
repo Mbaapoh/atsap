@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { TextField } from "../../components/TextField";
 import { useToast } from "../../components/Toast";
@@ -47,7 +47,7 @@ export function ChangePasswordForm() {
       setErrors({});
       if (mustChange) await navigate("/", { replace: true });
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       throttle.hold(e);
       if (e.kind === "unauthenticated") {
         setErrors({ current: "The current password is not correct." });

@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from "react";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { DeviceType } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { Alert } from "../../components/Alert";
 import { Modal } from "../../components/Modal";
@@ -47,7 +47,7 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
       close();
       onCreated(credentials);
     } catch (err) {
-      const e = err instanceof ApiError ? err : new ApiError("unknown");
+      const e = toApiError(err);
       if (e.kind === "exists") setErrors({ number: `Extension ${number} already exists in this tenant.` });
       else if (e.kind === "conflict") setFailure("The licence allows no more extensions. Free one up or extend the licence.");
       else if (e.kind === "forbidden") setFailure("Your role cannot add extensions.");

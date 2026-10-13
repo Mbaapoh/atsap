@@ -85,7 +85,7 @@ The extensions list also refetches every 15 s while open, because registration i
 
 ### 6. Route overlap: warn and explain, never block
 
-When a new route's prefix overlaps an existing one, the form warns and explains the real selection order: longest prefix first, then priority, then stored cost. It does not block the save. The warning is descriptive text over the routes already listed; it is not a prediction of which trunk a call will use.
+When a new route's prefix overlaps an existing one, the form warns and explains the real selection order: routes on a healthy trunk before those on a degraded one, then longest prefix, then priority, then stored cost (`compareCandidates` in `pbx/domain/route.go`). It does not block the save. The warning is descriptive text over the routes already listed; it is not a prediction of which trunk a call will use.
 
 Changing a route is an explicit "replace" flow: create the new route, then delete the old one. It is offered as two confirmed steps, never as "Edit".
 
