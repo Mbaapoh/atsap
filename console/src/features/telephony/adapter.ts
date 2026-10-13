@@ -42,6 +42,7 @@ export const telephonyKeys = {
   all: (tenantId: string) => ["telephony", tenantId] as const,
   trunks: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "trunks", page] as const,
   routes: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "routes", page] as const,
+  inbound: (tenantId: string) => [...telephonyKeys.all(tenantId), "inbound"] as const,
 };
 
 export function useTrunks(page: number) {
@@ -168,6 +169,50 @@ export function useRouteChanges() {
     mutationFn: (id) =>
       callApi(async () => {
         await pbx.deleteRoute({ tenantId, routeId: id });
+      }),
+    onSuccess: refetch,
+  });
+  return { create: create.mutateAsync, remove: remove.mutateAsync };
+}
+
+export interface InboundRow {
+  id: string;
+  number: string;
+  extensionId: string;
+}
+
+// useInboundNumbers lists the tenant's DIDs. The API does not page them.
+// Deleting an extension removes its numbers on the server, so this is
+// re-read whenever the page is opened.
+export function useInboundNumbers() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  return useQuery<InboundRow[], ApiError>({
+    queryKey: telephonyKeys.inbound(tenantId),
+    queryFn: () =>
+      callApi(async () =>
+        (await pbx.listInboundNumbers({ tenantId })).numbers.map((n) => ({ id: n.inboundNumberId, number: n.number, extensionId: n.extensionId })),
+      ),
+    enabled: tenantId !== "",
+  });
+}
+
+export function useInboundChanges() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: telephonyKeys.inbound(tenantId) });
+  const create = useMutation<void, ApiError, { number: string; extensionId: string }>({
+    mutationFn: (n) =>
+      callApi(async () => {
+        await pbx.createInboundNumber({ tenantId, number: n.number, extensionId: n.extensionId });
+      }),
+    onSuccess: refetch,
+  });
+  const remove = useMutation<void, ApiError, string>({
+    mutationFn: (id) =>
+      callApi(async () => {
+        await pbx.deleteInboundNumber({ tenantId, inboundNumberId: id });
       }),
     onSuccess: refetch,
   });

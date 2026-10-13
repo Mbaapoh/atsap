@@ -1,4 +1,5 @@
 import { PageHeader } from "../../components/PageHeader";
+import { InboundSection } from "./InboundSection";
 import { RoutesSection } from "./RoutesSection";
 import { TrunksSection } from "./TrunksSection";
 
@@ -12,6 +13,7 @@ export function TrunksRoutesPage() {
       <PageHeader title="Trunks & routes" description="Your carriers, how calls reach them, and the numbers that reach you." />
       <TrunksSection />
       <RoutesSection />
+      <InboundSection />
     </section>
   );
 }

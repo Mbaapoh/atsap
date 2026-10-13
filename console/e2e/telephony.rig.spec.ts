@@ -138,3 +138,49 @@ test("A4: add, replace and delete outbound routes", async ({ page, request }) =>
   await expect(page.getByText("Route +237 deleted.")).toBeVisible();
   expect((await listed()).map((r) => r.prefix)).toEqual(["+2376"]);
 });
+
+test("A4: assign an inbound number to an extension and remove it", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = ((await (await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email: user.email, password: FIXTURE_PASSWORD } })).json()) as { access: { token: string } }).access.token;
+  const number = `77${String(Date.now()).slice(-4)}`;
+  const created = await api(request, token, "CreateExtension", { tenantId, number, displayName: "Inbound e2e", deviceType: "DEVICE_TYPE_SIP" });
+  expect(created, JSON.stringify(created.body)).toMatchObject({ status: 200 });
+  const extensionId = created.body.extension.extensionId as string;
+  teardown = async () => {
+    for (const n of (await api(request, token, "ListInboundNumbers", { tenantId })).body.numbers ?? []) {
+      await api(request, token, "DeleteInboundNumber", { tenantId, inboundNumberId: n.inboundNumberId });
+    }
+    await api(request, token, "DeleteExtension", { tenantId, extensionId });
+  };
+  const did = `+237699${String(Date.now()).slice(-6)}`;
+
+  await signIn(page, user.email);
+  await page.goto("/trunks");
+  await page.getByRole("button", { name: "Assign number" }).click();
+  const dialog = page.getByRole("dialog", { name: "Assign an inbound number" });
+  await dialog.getByLabel("Number").fill(did);
+  await dialog.getByLabel("Rings extension").selectOption({ label: `${number} · Inbound e2e` });
+  await dialog.getByRole("button", { name: "Assign number" }).click();
+  await expect(page.getByText(`${did} now rings ${number} · Inbound e2e.`)).toBeVisible();
+
+  // Stored as digits; the leading + is not significant.
+  const stored = did.slice(1);
+  const table = page.getByRole("table", { name: "Inbound numbers of this tenant" });
+  await expect(table.getByRole("row", { name: new RegExp(`${stored} ${number} · Inbound e2e`) })).toBeVisible();
+  expect((await api(request, token, "ListInboundNumbers", { tenantId })).body.numbers).toEqual([expect.objectContaining({ number: stored, extensionId })]);
+
+  // The same number again, written without +, is the same number.
+  await page.getByRole("button", { name: "Assign number" }).click();
+  await dialog.getByLabel("Number").fill(stored);
+  await dialog.getByRole("button", { name: "Assign number" }).click();
+  await expect(dialog.getByText("This number is already assigned in this tenant. Remove it first to move it.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  await page.getByRole("button", { name: `Actions for number ${stored}` }).click();
+  await page.getByRole("menuitem", { name: "Remove number…" }).click();
+  await expect(page.getByRole("dialog")).toContainText(`stop ringing extension ${number} · Inbound e2e`);
+  await page.getByRole("dialog").getByRole("button", { name: "Remove number" }).click();
+  await expect(page.getByText(`${stored} removed.`)).toBeVisible();
+  expect((await api(request, token, "ListInboundNumbers", { tenantId })).body.numbers ?? []).toEqual([]);
+});

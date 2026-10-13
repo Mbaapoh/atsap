@@ -3,7 +3,7 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { routes } from "../app/routes";
-import { OVERVIEW_URLS, server } from "../test/msw";
+import { INBOUND_URL, OVERVIEW_URLS, server } from "../test/msw";
 import { renderApp } from "../test/session";
 
 // console-admin-screens: every admin dialog answers every refusal with
@@ -25,6 +25,7 @@ const lists = [
   http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [ext] })),
   http.post(OVERVIEW_URLS.trunks, () => HttpResponse.json({ trunks: [trunk] })),
   http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({ routes: [route] })),
+  http.post(INBOUND_URL, () => HttpResponse.json({ numbers: [{ inboundNumberId: "d1", number: "237222000111", extensionId: "x1" }] })),
 ];
 
 async function menu(user: UserEvent, actions: string, item: string) {
@@ -171,6 +172,24 @@ const flows: Record<string, Flow> = {
       await press(user, "Delete route");
     },
   },
+  "assign number": {
+    path: "/trunks",
+    procedure: "PbxService/CreateInboundNumber",
+    run: async (user) => {
+      await screen.findByText("1001 · Reception");
+      await user.click(screen.getByRole("button", { name: "Assign number" }));
+      await user.type(dialog().getByLabelText("Number"), "237222000999");
+      await press(user, "Assign number");
+    },
+  },
+  "remove number": {
+    path: "/trunks",
+    procedure: "PbxService/DeleteInboundNumber",
+    run: async (user) => {
+      await menu(user, "number 237222000111", "Remove number…");
+      await press(user, "Remove number");
+    },
+  },
 };
 
 // What each dialog says, per refusal. A kind a dialog has no words of its
@@ -209,6 +228,12 @@ const expected: [string, string, string | RegExp][] = [
   ["replace route", "internal", /Something went wrong/],
   ["delete route", "permission_denied", "Your role cannot change routes."],
   ["delete route", "internal", /Something went wrong/],
+  ["assign number", "permission_denied", "Your role cannot change inbound numbers."],
+  ["assign number", "not_found", "That extension or number no longer exists. Reload and try again."],
+  ["assign number", "invalid_argument", "Some details are not valid. Check the number."],
+  ["assign number", "internal", /Something went wrong/],
+  ["remove number", "permission_denied", "Your role cannot change inbound numbers."],
+  ["remove number", "internal", /Something went wrong/],
 ];
 
 describe("admin dialogs refused by the server", () => {
@@ -239,6 +264,11 @@ const openers: [string, string, (user: UserEvent) => Promise<void>, string][] = 
   ["delete trunk", "/trunks", (u) => menu(u, "trunk Carrier A", "Delete trunk…"), "Cancel"],
   ["add route", "/trunks", (u) => u.click(screen.getByRole("button", { name: "Add route" })), "Cancel"],
   ["delete route", "/trunks", (u) => menu(u, "route +237", "Delete route…"), "Cancel"],
+  ["assign number", "/trunks", async (u) => {
+    await screen.findByText("1001 · Reception");
+    await u.click(screen.getByRole("button", { name: "Assign number" }));
+  }, "Cancel"],
+  ["remove number", "/trunks", (u) => menu(u, "number 237222000111", "Remove number…"), "Cancel"],
 ];
 
 describe("admin dialogs left without saving", () => {

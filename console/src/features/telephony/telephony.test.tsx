@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { routes } from "../../app/routes";
-import { OVERVIEW_URLS, server } from "../../test/msw";
+import { INBOUND_URL, OVERVIEW_URLS, server } from "../../test/msw";
 import { renderApp, signedIn, tenantA } from "../../test/session";
 
 // console-admin-screens task 4.1: trunks (HLD-18 A4).
@@ -254,5 +254,125 @@ describe("outbound routes", () => {
     await screen.findByRole("table", { name: "Outbound routes of this tenant" });
     expect(screen.queryByRole("button", { name: "Add route" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Actions for route/ })).not.toBeInTheDocument();
+  });
+});
+
+// console-admin-screens task 4.3: inbound numbers (HLD-18 A4).
+
+const reception = { extensionId: "x1", number: "1001", displayName: "Reception", authUsername: "e_0123456789abcdef0123456789abcdef" };
+const kitchen = { extensionId: "x2", number: "1002", displayName: "" };
+const did1 = { inboundNumberId: "d1", number: "237222000111", extensionId: "x1" };
+const did2 = { inboundNumberId: "d2", number: "237222000112", extensionId: "x2" };
+
+function inbound(list: object[] = [did1, did2], extensions: object[] = [reception, kitchen]) {
+  return [
+    http.post(INBOUND_URL, () => HttpResponse.json({ numbers: list })),
+    http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions })),
+  ];
+}
+
+describe("inbound numbers", () => {
+  it("names each assignment's extension by number and display name, never an id or SIP username", async () => {
+    server.use(...inbound());
+    renderApp(routes, "/trunks");
+    const table = within(await screen.findByRole("table", { name: "Inbound numbers of this tenant" }));
+    expect(await table.findByRole("row", { name: /237222000111 1001 · Reception/ })).toBeInTheDocument();
+    expect(table.getByRole("row", { name: /237222000112 1002/ })).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/x1|x2|e_[0-9a-f]{32}/);
+  });
+
+  it("reads every extension, page by page, to name them", async () => {
+    const offsets: number[] = [];
+    const many = Array.from({ length: 200 }, (_, i) => ({ extensionId: `p${i}`, number: String(2000 + i), displayName: `Desk ${i}` }));
+    server.use(
+      http.post(INBOUND_URL, () => HttpResponse.json({ numbers: [{ ...did1, extensionId: "late" }] })),
+      http.post(OVERVIEW_URLS.extensions, async ({ request }) => {
+        const { offset = 0, limit } = (await request.json()) as { offset?: number; limit: number };
+        if (limit !== 200) return HttpResponse.json({});
+        offsets.push(offset);
+        return HttpResponse.json({ extensions: offset === 0 ? many : [{ extensionId: "late", number: "3000", displayName: "Annex" }] });
+      }),
+    );
+    renderApp(routes, "/trunks");
+    const table = within(await screen.findByRole("table", { name: "Inbound numbers of this tenant" }));
+    expect(await table.findByText("3000 · Annex")).toBeInTheDocument();
+    expect(offsets).toEqual([0, 200]);
+  });
+
+  it("assigns a number to the chosen extension, exactly as entered", async () => {
+    let body: unknown;
+    server.use(...inbound([]), http.post(api("CreateInboundNumber"), async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ inboundNumber: {} });
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    expect(await screen.findByText("No inbound numbers yet")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Assign number" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Assign an inbound number" }));
+    expect(dialog.getAllByRole("option").map((o) => o.textContent)).toEqual(["1001 · Reception", "1002"]);
+    await user.type(dialog.getByLabelText("Number"), "+237 222");
+    await user.click(dialog.getByRole("button", { name: "Assign number" }));
+    expect(dialog.getByLabelText("Number")).toHaveAccessibleDescription(/Use digits only/);
+    expect(body).toBeUndefined();
+    await user.clear(dialog.getByLabelText("Number"));
+    await user.type(dialog.getByLabelText("Number"), "+237222000113");
+    await user.selectOptions(dialog.getByLabelText("Rings extension"), "1002");
+    await user.click(dialog.getByRole("button", { name: "Assign number" }));
+    expect(await screen.findByText("+237222000113 now rings 1002.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, number: "+237222000113", extensionId: "x2" });
+  });
+
+  it("a number already assigned is explained at the field", async () => {
+    server.use(...inbound(), http.post(api("CreateInboundNumber"), () => HttpResponse.json({ code: "already_exists", message: "inbound number taken" }, { status: 409 })));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await screen.findByRole("table", { name: "Inbound numbers of this tenant" });
+    await user.click(await screen.findByRole("button", { name: "Assign number" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByLabelText("Number"), "237222000111");
+    await user.click(dialog.getByRole("button", { name: "Assign number" }));
+    expect(await dialog.findByText("This number is already assigned in this tenant. Remove it first to move it.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("inbound number taken");
+  });
+
+  it("removal is confirmed and names the extension that stops ringing", async () => {
+    let body: unknown;
+    server.use(...inbound(), http.post(api("DeleteInboundNumber"), async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await screen.findByText("1001 · Reception");
+    await user.click(screen.getByRole("button", { name: "Actions for number 237222000111" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove number…" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Remove 237222000111?" }));
+    expect(confirm.getByText("Calls to 237222000111 stop ringing extension 1001 · Reception. The extension itself keeps working.")).toBeInTheDocument();
+    expect(confirm.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(body).toBeUndefined();
+    await user.click(confirm.getByRole("button", { name: "Remove number" }));
+    expect(await screen.findByText("237222000111 removed.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, inboundNumberId: "d1" });
+  });
+
+  it("without extensions there is nothing to assign; a non-administrator gets no controls", async () => {
+    server.use(...inbound([], []));
+    const { unmount } = renderApp(routes, "/trunks");
+    expect(await screen.findByText(/Add an extension first/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Assign number" })).toBeDisabled();
+    unmount();
+    server.use(...inbound());
+    renderApp(routes, "/trunks", signedIn({ memberships: [{ ...tenantA, roles: ["SUPERVISOR"] }] }));
+    await screen.findByText("1001 · Reception");
+    expect(screen.queryByRole("button", { name: "Assign number" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Actions for number/ })).not.toBeInTheDocument();
+  });
+
+  it("a failed load is console copy", async () => {
+    server.use(http.post(INBOUND_URL, () => HttpResponse.json({ code: "permission_denied", message: "ps_endpoints" }, { status: 403 })));
+    renderApp(routes, "/trunks");
+    expect(await screen.findByText("Your role cannot see this tenant's inbound numbers.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("ps_endpoints");
   });
 });

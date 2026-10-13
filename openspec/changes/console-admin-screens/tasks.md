@@ -117,7 +117,18 @@
   - component 328 (route list, no Edit; the exact create request; the overlap notice shown while the save goes through; replace order `create` then `delete r1`; a failed replace; delete; no trunks; load failure; supervisor);
   - integration 21/21, including the new rig test: two routes added through the UI (the overlap notice is seen), the API listing exact prefix, trunk, cost 15000 micros and priority, a replace onto a second carrier, then a delete;
   - e2e 19, UAT 1, secrets clean.)*
-- [ ] 4.3 Inbound numbers: assign a DID to an extension, list and remove. Verify assignments name the extension by number and display name, and that removal is confirmed.
+- [x] 4.3 Inbound numbers: assign a DID to an extension, list and remove. Verify assignments name the extension by number and display name, and that removal is confirmed. *(done 2026-10-13:
+  - **Adapter:** `useInboundNumbers` and `useInboundChanges` (create, delete). The list is not paged by the API.
+  - **`useExtensionDirectory`** (extensions adapter) reads every extension in pages of 200, the server's maximum, keeping number and name only. It sits under the extensions key, so extension changes refresh it.
+  - **`InboundSection`:** number, and the extension it rings as "1001 · Reception", never an id or SIP username. "Assign number" is disabled with a hint until an extension exists.
+  - **`AssignNumberDialog`:** follows the server's number rule (digits with an optional +, up to 32). A number already taken is explained at the field. On the server "+237…" and "237…" are the same number, and the rig proves it.
+  - **`RemoveNumberDialog`:** confirmed, Cancel focused, naming the extension that stops ringing and saying the extension keeps working.
+
+  Verified:
+  - component 343 (naming, never ids; directory paging across 200; the exact create request; validation; taken number; confirmed removal; no extensions; supervisor; load failure; both dialogs added to the refusal and Cancel/Escape tables);
+  - integration 22/22: a new rig test assigns with +, the API stores digits, the + less duplicate is refused, then removal;
+  - e2e 19, UAT 1, secrets clean;
+  - floors ratcheted.)*
 - [ ] 4.4 Emergency: the country profile and the effective emergency set, with built-in numbers marked, plus the create and delete controls the API supports. Verify built-in numbers cannot be deleted from the console, and that a tenant without a country is told so.
 
 ## 5. Call history (HLD-18 A5)
