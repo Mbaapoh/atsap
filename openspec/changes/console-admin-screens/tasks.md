@@ -56,11 +56,18 @@
   Verified:
   - 7 component tests: generator (alphabet, length, bounds, uniqueness, rejection of biased bytes); confirmed disable and direct enable with exact requests; the shown password equals the sent one and is nowhere afterwards (page, mutation cache, storage); a refused reset shows no password and says nothing about other tenants;
   - integration against the real API: reset a second person through the console, read the temporary password from the panel, sign that person in (must change); disable them, after which they cannot get in; no residue;
-  - component 226, e2e 18, secrets clean.)*
+  - component 225, e2e 18, secrets clean.)*
 
 ## 3. Extensions (HLD-18 A3)
 
-- [ ] 3.1 Extensions adapter and list: number, display name, device type and registration (Registered / Not registered, as observed), refreshed every 15 s. Verify each status renders its own badge, and that an unspecified status reads "Unknown", never "Not registered".
+- [x] 3.1 Extensions adapter and list: number, display name, device type and registration (Registered / Not registered, as observed), refreshed every 15 s. Verify each status renders its own badge, and that an unspecified status reads "Unknown", never "Not registered". *(done 2026-10-13: `features/extensions/adapter.ts` (`useExtensions(page)` pages ListExtensions for the session's Tenant and re-reads every 15 s; `ExtensionRow` keeps the SIP username only for the credential panel) and `ExtensionsPage` (number, name, device in words, observed registration badge, Pager, empty state, refusal copy).
+
+  Verified:
+  - 5 component tests: fields and Registered / Not registered / Unknown (never "Not registered" for an unreported status); no SIP username anywhere in the list markup; the periodic re-read updates the badge; empty; 403 as console copy;
+  - integration against the real API: an API-created extension listed as Not registered with the device in words, and the page scans free of engine ids;
+  - component 230, e2e 18.
+
+  The secret scan flagged a synthetic SIP username in a test fixture. SIP usernames are non-secret engine ids by design, so `quality/gitleaks.toml` now allowlists exactly that shape (`e_` + 32 hex); a planted AWS key beside one is still caught. The 2.4 note is corrected to the measured component count, 225.)*
 - [ ] 3.2 Create an extension and show the credential panel: the labelled SIP username, the secret and the registrar address. Verify the secret is absent from the list, the query cache, the mutation cache and the URL after acknowledgement; that a duplicate number is refused at its field; and that the Setup gate still applies.
 - [ ] 3.3 Edit the display name and device type; rotate the secret (same panel); delete with a confirmation that states the phone stops working at once. Verify each mutation refetches and that rotation invalidates the old secret on the rig.
 

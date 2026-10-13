@@ -24,6 +24,9 @@ regexes = [
   '''^eyJhbGciOiJFZERTQSJ9\.YTEtam91cm5leS1rZXk\.c2ln$''',
   # console/e2e/exposure.rig.spec.ts: base64 of {"exposure":"test"} and "exposure-key"
   '''^eyJleHBvc3VyZSI6InRlc3QifQ\.ZXhwb3N1cmUta2V5\.c2ln$''',
-  # console/e2e/exposure.rig.spec.ts: a sample engine endpoint id (the scanner's own test input)
-  '''^e_0123456789abcdef0123456789abcdef$''',
+  # Extension SIP usernames: an engine endpoint id, "e_" + 32 hex. Not a
+  # secret by design — it is the username a phone presents, shown to the
+  # administrator configuring it (pbx/domain/credential.go). The secret is
+  # a separate value and stays fully scanned.
+  '''^e_[0-9a-f]{32}$''',
 ]

@@ -12,6 +12,7 @@ import { LicencePage } from "../features/licence/LicencePage";
 import { RequireLicence } from "../features/licence/RequireLicence";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { UsersPage } from "../features/users/UsersPage";
+import { ExtensionsPage } from "../features/extensions/ExtensionsPage";
 import { AppShell } from "./AppShell";
 import { NotFound, RoutePlaceholder } from "./RoutePlaceholder";
 
@@ -39,7 +40,7 @@ export const routes: RouteObject[] = [
         path: "extensions",
         element: (
           <RequireLicence area="Extensions">
-            <RoutePlaceholder title="Extensions" />
+            <ExtensionsPage />
           </RequireLicence>
         ),
       },
