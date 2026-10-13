@@ -2451,6 +2451,54 @@ D-40 (Go standards), D-60 (mise owns pins), D-68 (console dependencies)
 
 ---
 
+**D-72 · Nothing is provisioned before a licence is applied (2026-10-13).**
+
+**Decision:** While no licence has been applied (the Setup state),
+creating an extension or provisioning a tenant through the public API is
+refused with `FAILED_PRECONDITION` and a reason saying no licence is
+applied. The signal travels through the cap ports pbx-core and identity
+already own, as a "not licensed" error rather than a number, so neither
+context depends on licensing. The operator's command-line bootstrap of the
+first tenant and its platform administrator is exempt: a licence can only
+be applied once that administrator exists. A degraded installation keeps
+its caps and is unaffected (AC-06.13).
+
+**Context:** Unlimited is spelled 0 (D-49, D-51), and the Setup
+entitlement also carries 0, so before activation both caps read as
+unlimited and provisioning was unbounded. D-52 already says absence of an
+entitlement is never unlimited; this applies it to provisioning.
+
+**Related Decisions:** D-49, D-51, D-52
+**Traceability:** `openspec/changes/phase-a-hardening` (design D4, task
+3.1); specs `pbx-core/extension-management`, `identity/tenant-provisioning`
+
+---
+
+**D-73 · A taken-over Stasis application fails readiness and is not taken
+back (2026-10-13).**
+
+**Decision:** The app reports itself not ready while it is not receiving
+call events: while its ARI event connection is down, and after Asterisk
+reports `ApplicationReplaced` because another process registered the same
+Stasis application. A takeover is logged at ERROR. The app does not
+re-register the application by itself. An operator or orchestrator
+restarts it.
+
+**Context:** On 2026-10-13 a second app process on the dev rig took the
+application over. Asterisk keeps the old connection open but sends it
+nothing, so the running app kept reporting ready while calls stuck at
+Presenting. If the app re-registered automatically, two live instances
+would take the application from each other in turn and lose calls on
+both, each still reporting ready. One instance that says it is not ready
+is the safer failure.
+
+**Related Decisions:** D-19 (correlation), D-12 (degradation never
+disables a running system)
+**Traceability:** `openspec/changes/phase-a-hardening` (design D5, tasks
+4.1–4.2); spec `telephony-core/call-lifecycle`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
