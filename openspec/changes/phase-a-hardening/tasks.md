@@ -1,6 +1,6 @@
 ## 1. Calls dialled from a phone are recorded and presented truthfully
 
-- [ ] 1.1 Telephony records the router's decision.
+- [x] 1.1 Telephony records the router's decision.
   - `InboundDecision` gains `CallerNumber` and `CallerName`.
   - `CallArrived` applies a non-empty `CallerNumber` as the call's source.
   - `SaveCall`'s upsert also updates `direction` and `source_number`.
@@ -9,6 +9,21 @@
   - unit: an arriving call resolved INTERNAL with caller `1001` is saved INTERNAL with source `1001`, and an empty caller keeps the channel's number;
   - integration: an upserted call's direction and source change in the row;
   - `make test`, `make lint`.
+
+  *(done 2026-10-13:
+  - `InboundDecision` gains `CallerNumber` and `CallerName`;
+  - `CallArrived` applies a non-empty caller number as the source;
+  - the upsert also sets `direction` and `source_number`.
+
+  Verified:
+  - `TestCallArrived_RecordsTheRoutersDirectionAndCaller` (desk phone → INTERNAL from `1001`; a carrier keeps its number);
+  - `TestCallStore_SaveCall_UpdatesRoutedDirectionAndSource` failed on the old upsert, showing the row kept `e_…`, and passes now, in both `GetCall` and the listing;
+  - the Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).
+
+  **Found while testing:**
+  - The integration tier defaults to the rig's live `atsapbx` and migrates it down. It now runs against `atsapbx_test` (`DATABASE_URL`, `ENGINE_DATABASE_URL`), after the outbox tests were fixed to follow it (`feea947`).
+  - Console branch coverage varied by one branch between runs, because of a race between two queries. A deterministic test fixes it (`6f2c3fd`).
+  - `make test` needs `mise exec`: plain `make` finds a Go without `covdata`.)*
 - [ ] 1.2 The inbound router attributes a desk-phone call to the dialling extension: its number and display name. A trunk call leaves both empty.
 
   Verify:

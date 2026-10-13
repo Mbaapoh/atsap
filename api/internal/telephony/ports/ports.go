@@ -105,6 +105,13 @@ type InboundDecision struct {
 	// the leg to originate when connecting.
 	DestinationURI string
 	Direction      domain.Direction
+	// CallerNumber, when set, replaces the arriving channel's caller
+	// number as the call's source: a desk phone presents its engine
+	// endpoint, and only the router knows the extension behind it. Empty
+	// keeps the channel's number (a carrier's caller).
+	CallerNumber string
+	// CallerName is the caller's display name, shown to the destination.
+	CallerName string
 	// BypassScreening skips capacity and compliance checks. Assigned only
 	// in pbx-core's application layer from its own emergency matcher,
 	// under the same provenance rule as InitiateCallCommand's field.

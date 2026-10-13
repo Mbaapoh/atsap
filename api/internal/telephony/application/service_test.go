@@ -1026,6 +1026,44 @@ func TestCallArrived_ConnectsToActive(t *testing.T) {
 	assert.Equal(t, h.mediaGW.addedToBridge[0].bridgeID, h.mediaGW.addedToBridge[1].bridgeID)
 }
 
+// TestCallArrived_RecordsTheRoutersDirectionAndCaller covers
+// phase-a-hardening task 1.1: the router decides what an arriving call is
+// — a desk phone calling another extension is INTERNAL, from that
+// extension's number, not from the engine endpoint the channel carried —
+// and an empty caller keeps the channel's own number (a carrier call).
+func TestCallArrived_RecordsTheRoutersDirectionAndCaller(t *testing.T) {
+	cases := []struct {
+		name       string
+		decision   ports.InboundDecision
+		wantDir    domain.Direction
+		wantSource string
+	}{
+		{
+			name:       "desk phone to extension",
+			decision:   ports.InboundDecision{DestinationURI: "PJSIP/1002", Direction: domain.Internal, CallerNumber: "1001", CallerName: "Reception"},
+			wantDir:    domain.Internal,
+			wantSource: "1001",
+		},
+		{
+			name:       "carrier call keeps the channel's number",
+			decision:   connectDecision(),
+			wantDir:    domain.Inbound,
+			wantSource: "+1555000111",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := arrivedHarness(&fakeInboundRouter{decision: tc.decision})
+			arriveTestCall(t, h, shareddomain.NewTenantID().String())
+
+			saved := lastSavedCall(t, h)
+			assert.Equal(t, tc.wantDir, saved.Direction)
+			assert.Equal(t, tc.wantSource, saved.SourceNumber)
+			assert.Equal(t, "2000", saved.DestNumber, "the dialled number is unchanged")
+		})
+	}
+}
+
 // TestCallArrived_Refusals covers every router refusal cause: the
 // channel is rejected with the mapped cause, the call terminates with
 // the reason, and no other leg is ever originated.

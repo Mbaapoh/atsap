@@ -107,6 +107,44 @@ func TestCallStore_SaveAndGetCall_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestCallStore_SaveCall_UpdatesRoutedDirectionAndSource covers
+// phase-a-hardening task 1.1: an arriving call is saved before routing
+// with a provisional direction and the channel's caller number, then
+// saved again once the router has decided both. The second save must
+// reach the row — before this, the upsert dropped them and a desk
+// phone's call to another extension stayed INBOUND from "e_…".
+func TestCallStore_SaveCall_UpdatesRoutedDirectionAndSource(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	resetSchema(t, databaseURL)
+	ctx := context.Background()
+
+	pool, err := corepostgres.Open(ctx, databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	tenantID := shareddomain.NewTenantID()
+	seedTenant(t, pool, tenantID)
+	store := telephonypostgres.NewCallStore(pool)
+
+	call := domain.NewCall(shareddomain.NewCallID(), tenantID, domain.Inbound, "e_0123456789abcdef0123456789abcdef", "1002", time.Now().UTC())
+	require.NoError(t, store.SaveCall(ctx, call, nil))
+
+	call.Direction = domain.Internal
+	call.SourceNumber = "1001"
+	require.NoError(t, store.SaveCall(ctx, call, nil))
+
+	got, err := store.GetCall(ctx, tenantID, call.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.Internal, got.Direction)
+	assert.Equal(t, "1001", got.SourceNumber)
+
+	listed, err := store.ListCalls(ctx, tenantID, ports.CallFilter{}, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, domain.Internal, listed[0].Direction, "the history shows the routed direction")
+	assert.Equal(t, "1001", listed[0].SourceNumber)
+}
+
 // TestCallStore_SaveCall_WritesOutboxTransactionally is task 7.1's
 // positive case: an event passed to SaveCall produces exactly one outbox
 // row, correctly addressed and unpublished, in the same call that

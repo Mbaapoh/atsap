@@ -303,8 +303,12 @@ func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, 
 			ports.RefusalUnavailable, "inbound routing failed")
 	}
 	// The router owns the call's direction (inbound from a trunk,
-	// internal between extensions); it is recorded once decided.
+	// internal between extensions) and, for a desk phone, who is calling;
+	// both are recorded once decided.
 	call.Direction = decision.Direction
+	if decision.CallerNumber != "" {
+		call.SourceNumber = decision.CallerNumber
+	}
 
 	if decision.Refuse != ports.RefusalNone {
 		return s.refuseArrived(ctx, callID, callerRef,

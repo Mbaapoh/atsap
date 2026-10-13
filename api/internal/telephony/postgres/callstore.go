@@ -44,6 +44,10 @@ func (s *CallStore) SaveCall(ctx context.Context, call *domain.Call, events []ev
 			INSERT INTO calls (id, tenant_id, direction, state, source_number, dest_number, started_at, answered_at, ended_at, termination_reason)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			ON CONFLICT (id) DO UPDATE SET
+				-- Direction and source are provisional for an arriving call
+				-- until the router decides them, and fixed after.
+				direction          = EXCLUDED.direction,
+				source_number      = EXCLUDED.source_number,
 				state              = EXCLUDED.state,
 				answered_at        = EXCLUDED.answered_at,
 				ended_at           = EXCLUDED.ended_at,
