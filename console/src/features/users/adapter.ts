@@ -133,3 +133,50 @@ export function useRoleChanges() {
   });
   return { grant: grant.mutateAsync, revoke: revoke.mutateAsync };
 }
+
+// useMembershipStatus disables or re-enables a membership of this tenant
+// (SetPrincipalStatus): the person's other tenants are untouched (D-61).
+export function useMembershipStatus() {
+  const { identity } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const mutation = useMutation<void, ApiError, { principalId: string; active: boolean }>({
+    mutationFn: ({ principalId, active }) =>
+      callApi(async () => {
+        await identity.setPrincipalStatus({
+          tenantId,
+          principalId,
+          status: active ? PrincipalStatus.ACTIVE : PrincipalStatus.DISABLED,
+        });
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: userKeys.all(tenantId) }),
+  });
+  return { setActive: mutation.mutateAsync };
+}
+
+// useResetPassword sets a temporary password the person must change at
+// their next sign-in, and ends their sessions (D-64). The password is sent
+// once; the mutation is reset as it settles and never cached.
+export function useResetPassword() {
+  const { identity } = useApiClients();
+  const tenantId = useTenantId();
+  const mutation = useMutation<void, ApiError, { principalId: string; temporaryPassword: string }>({
+    mutationFn: ({ principalId, temporaryPassword }) =>
+      callApi(async () => {
+        await identity.resetPrincipalPassword({ tenantId, principalId, temporaryPassword });
+      }),
+    gcTime: 0,
+  });
+  const { mutateAsync, reset } = mutation;
+  const resetPassword = useCallback(
+    async (principalId: string, temporaryPassword: string) => {
+      try {
+        await mutateAsync({ principalId, temporaryPassword });
+      } finally {
+        reset();
+      }
+    },
+    [mutateAsync, reset],
+  );
+  return { resetPassword };
+}

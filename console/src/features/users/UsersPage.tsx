@@ -2,6 +2,8 @@ import { useState } from "react";
 import { usePermissions } from "../auth/permissions";
 import { AddUserDialog } from "./AddUserDialog";
 import { GrantRoleDialog, RevokeRoleDialog } from "./RoleDialogs";
+import { DisableDialog, ResetPasswordFlow } from "./MembershipDialogs";
+import { useToast } from "../../components/Toast";
 import { RowActions, type RowAction } from "../../components/RowActions";
 import { Alert } from "../../components/Alert";
 import { DataTable, type Column } from "../../components/DataTable";
@@ -10,7 +12,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { Pager } from "../../components/Pager";
 import { StatusBadge } from "../../components/StatusBadge";
 import { roleLabel } from "../auth/permissions";
-import { useUsers, type MembershipStatus, type RoleGrant, type UserRow } from "./adapter";
+import { useMembershipStatus, useUsers, type MembershipStatus, type RoleGrant, type UserRow } from "./adapter";
 
 const statusBadge: Record<MembershipStatus, { label: string; tone: "success" | "neutral" | "warning" }> = {
   active: { label: "Active", tone: "success" },
@@ -39,10 +41,27 @@ export function UsersPage() {
   const [adding, setAdding] = useState(false);
   const [granting, setGranting] = useState<UserRow | null>(null);
   const [revoking, setRevoking] = useState<{ user: UserRow; grant: RoleGrant } | null>(null);
+  const [disabling, setDisabling] = useState<UserRow | null>(null);
+  const [resetting, setResetting] = useState<UserRow | null>(null);
+  const { setActive } = useMembershipStatus();
+  const toast = useToast();
+
+  async function enable(u: UserRow) {
+    try {
+      await setActive({ principalId: u.principalId, active: true });
+      toast.show(`${u.name || u.email} enabled in this tenant.`);
+    } catch {
+      toast.show(`${u.name || u.email} could not be enabled. Try again.`, "warning");
+    }
+  }
 
   function actionsFor(u: UserRow): RowAction[] {
     return [
       { label: "Grant a role…", onSelect: () => setGranting(u) },
+      u.status === "disabled"
+        ? { label: "Enable", onSelect: () => void enable(u) }
+        : { label: "Disable…", onSelect: () => setDisabling(u), destructive: true },
+      { label: "Reset password…", onSelect: () => setResetting(u), destructive: true },
       ...u.roles.map((g) => ({ label: `Revoke ${roleLabel(g.role)}`, onSelect: () => setRevoking({ user: u, grant: g }), destructive: true })),
     ];
   }
@@ -63,6 +82,8 @@ export function UsersPage() {
       <AddUserDialog open={adding} onClose={() => setAdding(false)} />
       <GrantRoleDialog user={granting} onClose={() => setGranting(null)} />
       <RevokeRoleDialog target={revoking} onClose={() => setRevoking(null)} />
+      <DisableDialog user={disabling} onClose={() => setDisabling(null)} />
+      <ResetPasswordFlow user={resetting} onClose={() => setResetting(null)} />
       {users.isPending ? <p role="status">Loading users…</p> : null}
       {users.isError ? (
         <Alert tone="danger" title="Users could not be loaded">

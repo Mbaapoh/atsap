@@ -95,3 +95,55 @@ test("A2: grant and revoke a role; the last administrator cannot be removed", as
   await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   await expect(row).toContainText("Tenant administrator");
 });
+
+test("A2: reset a password (shown once, must be changed) and disable a membership", async ({ page, browser, request }) => {
+  user = seedUser(["Acme"]);
+  const email = `console-e2e-reset-${Date.now()}@example.test`;
+  created.push(email);
+  // A second person, added through the public API.
+  const adminToken = ((await (await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email: user.email, password: FIXTURE_PASSWORD } })).json()) as { access: { token: string } }).access.token;
+  const provisioned = await request.post("/atsapbx.v1.IdentityService/ProvisionPrincipal", {
+    data: { tenantId: user.tenants[0]!.id, email, displayName: "Reset Person", role: "AGENT", password: "original passphrase 1" },
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  expect(provisioned.status()).toBe(200);
+
+  await signIn(page, user.email);
+  await page.goto("/users");
+  await page.getByRole("button", { name: "Actions for Reset Person" }).click();
+  await page.getByRole("menuitem", { name: "Reset password…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Reset password" }).click();
+  const panel = page.getByRole("dialog", { name: "Temporary password for Reset Person" });
+  const temporary = (await panel.locator(".secret-value").textContent())!.trim();
+  expect(temporary).toMatch(/^[A-HJ-NP-Za-km-z2-9]{16}$/);
+  await panel.getByRole("checkbox", { name: "I have saved these details" }).check();
+  await panel.getByRole("button", { name: "Done" }).click();
+  expect(await page.content()).not.toContain(temporary);
+
+  // The person signs in with the temporary password and must change it.
+  const theirs = await browser.newContext();
+  const them = await theirs.newPage();
+  await them.goto("/sign-in");
+  await them.getByLabel("Email").fill(email);
+  await them.getByRole("button", { name: "Continue" }).click();
+  await them.getByLabel("Password", { exact: true }).fill(temporary);
+  await them.getByRole("button", { name: "Sign in" }).click();
+  await expect(them.getByRole("heading", { level: 2, name: "Choose your own password" })).toBeVisible();
+  await theirs.close();
+
+  // Disable the membership: the person can no longer get in.
+  await page.getByRole("button", { name: "Actions for Reset Person" }).click();
+  await page.getByRole("menuitem", { name: "Disable…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Disable" }).click();
+  await expect(page.getByRole("table", { name: "Users of this tenant" }).getByRole("row", { name: /Reset Person/ })).toContainText("Disabled");
+  const again = await browser.newContext();
+  const blocked = await again.newPage();
+  await blocked.goto("/sign-in");
+  await blocked.getByLabel("Email").fill(email);
+  await blocked.getByRole("button", { name: "Continue" }).click();
+  await blocked.getByLabel("Password", { exact: true }).fill(temporary);
+  await blocked.getByRole("button", { name: "Sign in" }).click();
+  await expect(blocked.getByRole("heading", { level: 1, name: "Overview" })).toHaveCount(0);
+  await expect(blocked.getByText(/No active access|The email or password is not correct/)).toBeVisible();
+  await again.close();
+});

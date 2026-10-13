@@ -237,3 +237,68 @@ describe("roles", () => {
     expect(screen.queryByRole("button", { name: /^Actions for/ })).not.toBeInTheDocument();
   });
 });
+
+describe("membership status and password reset", () => {
+  const STATUS = "http://localhost:3000/atsapbx.v1.IdentityService/SetPrincipalStatus";
+  const RESET = "http://localhost:3000/atsapbx.v1.IdentityService/ResetPrincipalPassword";
+  const listing = () => http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [ana, ben] }));
+
+  it("disables after confirmation, and enables directly", async () => {
+    const bodies: unknown[] = [];
+    server.use(listing(), http.post(STATUS, async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Actions for Ana Mbe" }));
+    await user.click(screen.getByRole("menuitem", { name: "Disable…" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Disable Ana Mbe in this tenant?" }));
+    expect(confirm.getByText(/Their other tenants are not affected/)).toBeInTheDocument();
+    await user.click(confirm.getByRole("button", { name: "Disable" }));
+    expect(await screen.findByText("Ana Mbe disabled in this tenant.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Actions for Ben Tabi" }));
+    await user.click(screen.getByRole("menuitem", { name: "Enable" }));
+    expect(await screen.findByText("Ben Tabi enabled in this tenant.")).toBeInTheDocument();
+    expect(bodies).toEqual([
+      { tenantId: tenantA.tenantId, principalId: "p-ana", status: "PRINCIPAL_STATUS_DISABLED" },
+      { tenantId: tenantA.tenantId, principalId: "p-ben", status: "PRINCIPAL_STATUS_ACTIVE" },
+    ]);
+  });
+
+  it("a reset shows the generated password once, exactly as sent, and nowhere after", async () => {
+    let sent = "";
+    server.use(listing(), http.post(RESET, async ({ request }) => {
+      sent = ((await request.json()) as { temporaryPassword: string }).temporaryPassword;
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    const { queryClient } = renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Actions for Ben Tabi" }));
+    await user.click(screen.getByRole("menuitem", { name: "Reset password…" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Reset Ben Tabi's password?" })).getByRole("button", { name: "Reset password" }));
+
+    const panel = within(await screen.findByRole("dialog", { name: "Temporary password for Ben Tabi" }));
+    expect(sent).toMatch(/^[A-HJ-NP-Za-km-z2-9]{16}$/);
+    expect(panel.getByText(sent)).toBeInTheDocument();
+    await user.click(panel.getByRole("checkbox", { name: "I have saved these details" }));
+    await user.click(panel.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(sent);
+    expect(JSON.stringify(queryClient.getMutationCache().getAll().map((m) => m.state.variables))).not.toContain(sent);
+    expect(localStorage.length + sessionStorage.length).toBe(0);
+  });
+
+  it("a refused reset shows no password, and says nothing about the person's other tenants", async () => {
+    server.use(listing(), http.post(RESET, () => HttpResponse.json({ code: "permission_denied", message: "not permitted" }, { status: 403 })));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Actions for Ben Tabi" }));
+    await user.click(screen.getByRole("menuitem", { name: "Reset password…" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Reset password" }));
+    expect(await screen.findByText("Your role cannot reset this person's password. A platform administrator can.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /Temporary password/ })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/other tenant|belongs to/i);
+  });
+});

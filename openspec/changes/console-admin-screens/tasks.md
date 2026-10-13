@@ -51,7 +51,12 @@
   - 4 component tests: only unheld roles, sent at their scope; a confirmed revoke with an exact request; the last-administrator refusal in plain words with no raw text and no success toast; no actions for a supervisor;
   - integration against the real API: grant Agent, revoke it, then the server refuses to remove the last administrator, the console explains it, and the role stays;
   - component 219, e2e 18, secrets clean.)*
-- [ ] 2.4 Disable and enable a membership, and reset a password (generated in the browser, shown once through `OneTimeSecret`). Verify the generated password meets 8–64 code points and never reaches a toast, URL, storage or later read, and that the reset person must change it.
+- [x] 2.4 Disable and enable a membership, and reset a password (generated in the browser, shown once through `OneTimeSecret`). Verify the generated password meets 8–64 code points and never reaches a toast, URL, storage or later read, and that the reset person must change it. *(done 2026-10-13: `useMembershipStatus` (SetPrincipalStatus; a membership only, never the person, D-61) and `useResetPassword` (sent once, the mutation reset and never cached). The `temporaryPassword()` generator draws 16 characters from a 56-character unambiguous alphabet with rejection sampling (about 93 bits). `DisableDialog` is a destructive confirmation that says the person's other tenants are unaffected. `ResetPasswordFlow` confirms, generates, sets, then shows the password once in `OneTimeSecret`; on refusal it is discarded and never shown. Enable needs no confirmation.
+
+  Verified:
+  - 7 component tests: generator (alphabet, length, bounds, uniqueness, rejection of biased bytes); confirmed disable and direct enable with exact requests; the shown password equals the sent one and is nowhere afterwards (page, mutation cache, storage); a refused reset shows no password and says nothing about other tenants;
+  - integration against the real API: reset a second person through the console, read the temporary password from the panel, sign that person in (must change); disable them, after which they cannot get in; no residue;
+  - component 226, e2e 18, secrets clean.)*
 
 ## 3. Extensions (HLD-18 A3)
 
