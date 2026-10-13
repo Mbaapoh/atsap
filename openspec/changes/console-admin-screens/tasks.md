@@ -45,7 +45,12 @@
   - 5 component tests: administrators only (fault-injected); an exact request sent once, the list refreshed, and the password in no cache or page; an empty password not sent, so the server invites; validation before sending and an existing member explained at the email field; the platform role offered only to a platform administrator;
   - integration: an administrator adds a supervisor with an initial password, and that person signs in with it in another browser; no residue;
   - component 215, e2e 18, secrets clean.)*
-- [ ] 2.3 Grant and revoke roles with confirmation. Verify that revoking the last tenant administrator shows the server's refusal in plain words, and that the platform-administrator role is offered only to a platform administrator.
+- [x] 2.3 Grant and revoke roles with confirmation. Verify that revoking the last tenant administrator shows the server's refusal in plain words, and that the platform-administrator role is offered only to a platform administrator. *(done 2026-10-13: `useRoleChanges` (GrantRole and RevokeRole with the grant's scope; the list refetched, nothing optimistic); `GrantRoleDialog` offers only grantable roles the person does not hold; `RevokeRoleDialog` is a destructive confirmation naming the role and the person, with focus on Cancel. The last-administrator refusal (FAILED_PRECONDITION) reads "X is this tenant's last administrator. Make someone else a tenant administrator first." Row actions for administrators only.
+
+  Verified:
+  - 4 component tests: only unheld roles, sent at their scope; a confirmed revoke with an exact request; the last-administrator refusal in plain words with no raw text and no success toast; no actions for a supervisor;
+  - integration against the real API: grant Agent, revoke it, then the server refuses to remove the last administrator, the console explains it, and the role stays;
+  - component 219, e2e 18, secrets clean.)*
 - [ ] 2.4 Disable and enable a membership, and reset a password (generated in the browser, shown once through `OneTimeSecret`). Verify the generated password meets 8–64 code points and never reaches a toast, URL, storage or later read, and that the reset person must change it.
 
 ## 3. Extensions (HLD-18 A3)

@@ -171,3 +171,69 @@ describe("adding a user", () => {
     expect(options).toEqual(["AGENT", "SUPERVISOR", "TENANT_ADMIN"]);
   });
 });
+
+describe("roles", () => {
+  const GRANT = "http://localhost:3000/atsapbx.v1.IdentityService/GrantRole";
+  const REVOKE = "http://localhost:3000/atsapbx.v1.IdentityService/RevokeRole";
+
+  function listing() {
+    return http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [ana, ben] }));
+  }
+
+  it("grants only a role the person does not hold, at its scope", async () => {
+    let body: unknown;
+    server.use(listing(), http.post(GRANT, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Actions for Ben Tabi" }));
+    await user.click(screen.getByRole("menuitem", { name: "Grant a role…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Grant a role to Ben Tabi" }));
+    expect(dialog.getAllByRole("option").map((o) => o.getAttribute("value"))).toEqual(["AGENT", "TENANT_ADMIN"]);
+    await user.selectOptions(dialog.getByLabelText("Role"), "TENANT_ADMIN");
+    await user.click(dialog.getByRole("button", { name: "Grant role" }));
+    expect(await screen.findByText("Tenant administrator granted to Ben Tabi.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, principalId: "p-ben", role: "TENANT_ADMIN", scope: "tenant" });
+  });
+
+  it("revokes after a confirmation that names the role and the person", async () => {
+    let body: unknown;
+    server.use(listing(), http.post(REVOKE, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Actions for Ben Tabi" }));
+    await user.click(screen.getByRole("menuitem", { name: "Revoke Supervisor" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Revoke Supervisor from Ben Tabi?" }));
+    expect(confirm.getByRole("button", { name: "Cancel" })).toHaveFocus(); // destructive: the safe choice first
+    await user.click(confirm.getByRole("button", { name: "Revoke role" }));
+    expect(await screen.findByText("Supervisor revoked from Ben Tabi.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, principalId: "p-ben", role: "SUPERVISOR", scope: "tenant" });
+  });
+
+  it("explains in plain words that the last administrator cannot be removed", async () => {
+    server.use(listing(), http.post(REVOKE, () =>
+      HttpResponse.json({ code: "failed_precondition", message: "cannot revoke the last tenant administrator" }, { status: 400 }),
+    ));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Actions for Ana Mbe" }));
+    await user.click(screen.getByRole("menuitem", { name: "Revoke Tenant administrator" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Revoke role" }));
+    expect(await screen.findByText("Ana Mbe is this tenant's last administrator. Make someone else a tenant administrator first.")).toBeInTheDocument();
+    expect(screen.queryByText("cannot revoke the last tenant administrator")).not.toBeInTheDocument();
+    expect(screen.queryByText(/revoked from/)).not.toBeInTheDocument();
+  });
+
+  it("a non-administrator gets no row actions", async () => {
+    const { signedIn } = await import("../../test/session");
+    server.use(listing());
+    renderApp(routes, "/users", signedIn({ memberships: [{ ...tenantA, roles: ["SUPERVISOR"] }] }));
+    await screen.findByText("Ana Mbe");
+    expect(screen.queryByRole("button", { name: /^Actions for/ })).not.toBeInTheDocument();
+  });
+});

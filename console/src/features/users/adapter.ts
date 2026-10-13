@@ -108,3 +108,28 @@ export function useAddUser() {
   );
   return { add };
 }
+
+// useRoleChanges grants and revokes roles on a membership. Every change is
+// confirmed in the UI first and the list is refetched afterwards; nothing
+// is applied optimistically (console brief: never optimistically revoke).
+export function useRoleChanges() {
+  const { identity } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: userKeys.all(tenantId) });
+  const grant = useMutation<void, ApiError, { principalId: string; grant: RoleGrant }>({
+    mutationFn: ({ principalId, grant: g }) =>
+      callApi(async () => {
+        await identity.grantRole({ tenantId, principalId, role: g.role, scope: g.scope });
+      }),
+    onSuccess: refetch,
+  });
+  const revoke = useMutation<void, ApiError, { principalId: string; grant: RoleGrant }>({
+    mutationFn: ({ principalId, grant: g }) =>
+      callApi(async () => {
+        await identity.revokeRole({ tenantId, principalId, role: g.role, scope: g.scope });
+      }),
+    onSuccess: refetch,
+  });
+  return { grant: grant.mutateAsync, revoke: revoke.mutateAsync };
+}

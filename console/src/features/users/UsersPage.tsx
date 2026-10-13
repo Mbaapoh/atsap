@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { usePermissions } from "../auth/permissions";
 import { AddUserDialog } from "./AddUserDialog";
+import { GrantRoleDialog, RevokeRoleDialog } from "./RoleDialogs";
+import { RowActions, type RowAction } from "../../components/RowActions";
 import { Alert } from "../../components/Alert";
 import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
@@ -8,7 +10,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { Pager } from "../../components/Pager";
 import { StatusBadge } from "../../components/StatusBadge";
 import { roleLabel } from "../auth/permissions";
-import { useUsers, type MembershipStatus, type UserRow } from "./adapter";
+import { useUsers, type MembershipStatus, type RoleGrant, type UserRow } from "./adapter";
 
 const statusBadge: Record<MembershipStatus, { label: string; tone: "success" | "neutral" | "warning" }> = {
   active: { label: "Active", tone: "success" },
@@ -35,6 +37,15 @@ export function UsersPage() {
   const users = useUsers(page);
   const { canAdminister } = usePermissions();
   const [adding, setAdding] = useState(false);
+  const [granting, setGranting] = useState<UserRow | null>(null);
+  const [revoking, setRevoking] = useState<{ user: UserRow; grant: RoleGrant } | null>(null);
+
+  function actionsFor(u: UserRow): RowAction[] {
+    return [
+      { label: "Grant a role…", onSelect: () => setGranting(u) },
+      ...u.roles.map((g) => ({ label: `Revoke ${roleLabel(g.role)}`, onSelect: () => setRevoking({ user: u, grant: g }), destructive: true })),
+    ];
+  }
 
   return (
     <section className="page" aria-labelledby="page-title">
@@ -50,6 +61,8 @@ export function UsersPage() {
         }
       />
       <AddUserDialog open={adding} onClose={() => setAdding(false)} />
+      <GrantRoleDialog user={granting} onClose={() => setGranting(null)} />
+      <RevokeRoleDialog target={revoking} onClose={() => setRevoking(null)} />
       {users.isPending ? <p role="status">Loading users…</p> : null}
       {users.isError ? (
         <Alert tone="danger" title="Users could not be loaded">
@@ -64,6 +77,7 @@ export function UsersPage() {
             columns={userColumns}
             rows={users.data}
             rowKey={(u) => u.principalId}
+            rowActions={canAdminister ? (u) => <RowActions label={u.name || u.email} actions={actionsFor(u)} /> : undefined}
             empty={<EmptyState title="No users yet">People appear here once they are added to this tenant.</EmptyState>}
           />
           <Pager page={page} rowCount={users.data.length} onPage={setPage} label="Users pages" />
