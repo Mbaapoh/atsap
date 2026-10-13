@@ -165,3 +165,6 @@
 .section-header { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; margin-block-end: var(--space-3); }
 .section-header h2 { margin: 0; }
 .section-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.filters { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; margin-block-end: var(--space-4); }
+.filters .field { margin: 0; min-width: 10rem; }
+.filters-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }

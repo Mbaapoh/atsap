@@ -1,5 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { engineAuthFingerprint, FIXTURE_PASSWORD, rigAvailable, seedUser, trunkEndpointId, type RigUser } from "./support/rig";
+import { expect, test, type APIRequestContext } from "@playwright/test";
+import { engineAuthFingerprint, FIXTURE_PASSWORD, rigAvailable, seedUser, signIn, trunkEndpointId, type RigUser } from "./support/rig";
 
 // console-admin-screens: HLD-18 A4 (trunks, routes, inbound, emergency)
 // against the real API on the dev rig.
@@ -20,15 +20,6 @@ test.afterEach(async () => {
   user?.cleanup();
   user = undefined;
 });
-
-export async function signIn(page: Page, email: string) {
-  await page.goto("/sign-in");
-  await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Password", { exact: true }).fill(FIXTURE_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
-}
 
 export async function api(request: APIRequestContext, token: string, procedure: string, data: unknown) {
   const res = await request.post(`/atsapbx.v1.PbxService/${procedure}`, { data, headers: { Authorization: `Bearer ${token}` } });

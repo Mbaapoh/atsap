@@ -1,3 +1,4 @@
+import { expect, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -92,6 +93,7 @@ ${memberships}
 DELETE FROM audit_logs WHERE tenant_id IN (${ids});
 DELETE FROM outbox WHERE tenant_id IN (${ids});
 DELETE FROM auth_events WHERE user_id = (SELECT id FROM users WHERE email = '${email}');
+DELETE FROM calls WHERE tenant_id IN (${ids});
 DELETE FROM inbound_numbers WHERE tenant_id IN (${ids});
 DELETE FROM emergency_numbers WHERE tenant_id IN (${ids});
 DELETE FROM emergency_settings WHERE tenant_id IN (${ids});
@@ -172,4 +174,43 @@ export function engineAuthFingerprint(endpointId: string): string {
 // hex), as pbx/domain/trunk.go derives it.
 export function trunkEndpointId(trunkId: string): string {
   return `t_${trunkId.replace(/-/g, "")}`;
+}
+
+export interface SeedCall {
+  direction: "INBOUND" | "OUTBOUND" | "INTERNAL";
+  state: string;
+  from: string;
+  to: string;
+  startedAt: string; // ISO instant
+  answeredAt?: string;
+  endedAt?: string;
+  reason?: string;
+}
+
+// seedCalls writes call records for a tenant directly, as the telephony
+// core would have stored them, so call history can be read through the
+// real API without placing calls. seedUser's cleanup removes them.
+export function seedCalls(tenantId: string, calls: SeedCall[]): void {
+  const q = (v: string | undefined) => (v === undefined ? "NULL" : `'${v.replace(/'/g, "''")}'`);
+  psql(`
+BEGIN;
+SELECT set_config('app.tenant_id', '${tenantId}', true);
+${calls
+  .map(
+    (c) =>
+      `INSERT INTO calls (tenant_id, direction, state, source_number, dest_number, started_at, answered_at, ended_at, termination_reason) VALUES ('${tenantId}', '${c.direction}', '${c.state}', ${q(c.from)}, ${q(c.to)}, '${c.startedAt}', ${q(c.answeredAt)}, ${q(c.endedAt)}, ${q(c.reason)});`,
+  )
+  .join("\n")}
+COMMIT;`);
+}
+
+// signIn signs a seeded person in through the console and waits for the
+// overview, so a test never navigates away mid-sign-in.
+export async function signIn(page: Page, email: string, password = FIXTURE_PASSWORD) {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
 }

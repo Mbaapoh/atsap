@@ -148,7 +148,22 @@
 
 ## 5. Call history (HLD-18 A5)
 
-- [ ] 5.1 Paged history: time, direction, from, to, the actual Call state, duration and termination reason, with date-range, direction and state filters held in the URL and sent to `ListCalls` together. Verify the request carries all three filters, that states are verbatim (no Answered, Missed or Failed), that Back and reload keep the filters, and that there are no engine identifiers.
+- [x] 5.1 Paged history: time, direction, from, to, the actual Call state, duration and termination reason, with date-range, direction and state filters held in the URL and sent to `ListCalls` together. Verify the request carries all three filters, that states are verbatim (no Answered, Missed or Failed), that Back and reload keep the filters, and that there are no engine identifiers. *(done 2026-10-13:
+  - **`features/calls`:**
+    - `filters.ts`: the address is the source of truth (`from`, `to`, `direction`, `state`, `page`). Unrecognised values are dropped, never sent, and a non-calendar day such as `2026-13-45` is rejected (`Date` would have rolled it over). The days are whole local days, sent as the half-open `[from, to+1)` that `ListCalls` takes.
+    - `CALL_STATES` are the eight PRD §11.1 names as the server's `CallState` spells them.
+    - `adapter.ts`: `useCallHistory`, a read-only `ListCalls` query keyed by the filters.
+    - `copy.ts`: direction and duration words, moved here from the overview, which re-exports them. `serverText` shows server-written text verbatim, but withholds it ("Not shown") if it ever carries engine vocabulary.
+    - `CallsPage`: the filter form follows the address on Back, Forward and reload. An end date before the start date is refused and nothing is sent. "Clear filters" empties the address. The pager keeps the filters. Duration shows "—" when the call was never answered.
+  - **Termination reasons** are shown exactly as stored. The server's set, read from `telephony/application/service.go` and `domain/transitions.go`, is all domain phrases ("normal clearing", "capacity verdict rejected the call", "call setup did not complete", …).
+  - The scaffold `RoutePlaceholder` is gone, since every screen is now real; `NotFound` moved to its own file.
+  - **Rig support:** `seedCalls` writes call rows as the telephony core stores them. Cleanup removes them. `signIn` moved from two spec files into `support/rig.ts`, because importing it from a spec also ran that spec's tests.
+
+  Verified:
+  - unit and component tests: filters, the guard, the exact request with all three filters, verbatim states only, an opened address applied, Back restoring the filters, a refused range, clear, paging with filters kept, engine text withheld, a refused read;
+  - integration 24/24: a new rig test seeds four calls and, over the real API, checks the list, the four filters together in the request and the address, reload and Back, and no Answered, Missed or Failed;
+  - the hostile mocked exposure scan now renders a real `/calls` with an engine-laden termination reason and stays clean;
+  - e2e 19, UAT 1, secrets clean, floors ratcheted.)*
 
 ## 6. Proof
 

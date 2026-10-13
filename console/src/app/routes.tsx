@@ -13,9 +13,10 @@ import { RequireLicence } from "../features/licence/RequireLicence";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { UsersPage } from "../features/users/UsersPage";
 import { ExtensionsPage } from "../features/extensions/ExtensionsPage";
+import { CallsPage } from "../features/calls/CallsPage";
 import { TrunksRoutesPage } from "../features/telephony/TrunksRoutesPage";
 import { AppShell } from "./AppShell";
-import { NotFound, RoutePlaceholder } from "./RoutePlaceholder";
+import { NotFound } from "./NotFound";
 
 // The Phase A route tree (console brief §2, CONSOLE-DESIGN "Routes").
 // Sign-in, recovery and Tenant choice sit outside the shell; everything
@@ -53,7 +54,14 @@ export const routes: RouteObject[] = [
           </RequireLicence>
         ),
       },
-      { path: "calls", element: <RoutePlaceholder title="Call history" /> },
+      {
+        path: "calls",
+        element: (
+          <RequireLicence area="Call history">
+            <CallsPage />
+          </RequireLicence>
+        ),
+      },
       { path: "account", element: <AccountPage /> },
       { path: "*", element: <NotFound /> },
     ],
