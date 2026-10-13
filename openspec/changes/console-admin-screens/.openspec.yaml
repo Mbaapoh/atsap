@@ -1,0 +1,7 @@
+schema: spec-driven
+created: 2026-10-13
+# The console is an API consumer, not a bounded context: it gets no
+# specs/console domain (HLD-19 §1, D-48). Its behaviour is the existing
+# living specs' public API. The one API addition it needs (the SIP
+# registrar address) is its own change, pbx-sip-registrar-settings.
+skip_specs: true
