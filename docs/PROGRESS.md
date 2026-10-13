@@ -53,7 +53,7 @@ configuration file, and without being told what Asterisk is.
 
 1. **Console design input** (owner): the console design document, from
    the shared design input form. The console changes start from it.
-2. **`console-foundation`** (0.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3 done; next 3.4 coverage.md): React + TypeScript ([D-36](DECISIONS.md)),
+2. **`console-foundation`** (all tasks done; ready to archive): React + TypeScript ([D-36](DECISIONS.md)),
    TypeScript clients generated from the same protos, session handling
    (in-memory token, silent refresh, tenant picker), layout, Sign in and
    Licence screens; browser e2e (Playwright) walking A1.
@@ -129,7 +129,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2), licence (2.3), overview (3.1), A1 browser journey (3.2), exposure scans (3.3) done | 9/11 |
+| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2), licence (2.3), overview (3.1), A1 browser journey (3.2), exposure scans (3.3), coverage (3.4) done; ready to archive | 11/11 |
 | `identity-refresh-grace` | Implemented and verified on every tier (D-62 amendment: 30-second grace for the previous refresh secret); ready to archive | 7/7 |
 | `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter and Asterisk image scan pending | 11/13 |
 

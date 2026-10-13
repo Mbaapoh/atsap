@@ -6,9 +6,9 @@
 
 ## 1. Foundation
 
-- [ ] 1.1 Create the React + TypeScript application with generated ConnectRPC
+- [x] 1.1 Create the React + TypeScript application with generated ConnectRPC
   clients. Verify generated clients compile from the current protos with no
-  hand-written RPC request/response types.
+  hand-written RPC request/response types. *(delivered by 0.1; verified 2026-10-13: `npm run gen` from the current `api/proto` produces no diff against the committed `src/api/gen`; typecheck clean; no request or response type is defined outside `src/api/gen` (adapters import the generated ones); `api/clients.test.ts` drives real calls through the generated descriptors.)*
 - [x] 1.2 Implement semantic tokens, app shell, responsive navigation, focus
   management, status badges, alerts, table primitives, confirmation dialog,
   and toast. Verify keyboard-only navigation and WCAG AA contrast. *(done 2026-10-12 — `components/`: StatusBadge, Alert (role and focus-on-mount for error summaries), PageHeader, EmptyState, DataTable (named, keyboard-scrollable region; no column hidden), Modal (focus trap, Escape, page made inert, focus restored; hand-built because jsdom has no `<dialog>`), ConfirmDialog (explicit verb, Cancel first when destructive, busy disables both), Toast (polite region, dismissible, pauses while read); shell with TopBar (Tenant · licence pill · account) and a modal drawer below 768 px; `LicenceStatusPill` maps the server's condition to words, icon and tone. **Owner decision:** Licence leaves the main navigation for the top-bar pill; HLD-19 and CONSOLE-DESIGN updated. Verified: 64 component tests including a contrast gate over the real token file (fault-injected: a low-contrast muted text fails it) and the focus trap (fault-injected: removing Tab handling fails the dialog and drawer tests); 9 Playwright tests at 1280 px and 390 px: Tab order with a visible focus ring, skip link, drawer keyboard use with the page inert, no sideways scroll. **Found by the browser tests:** the menu button showed on desktop (a later, equally specific `.icon-button` rule won); fixed.)*
@@ -88,4 +88,4 @@
   Verified: `make console-check`, with 185 component tests, e2e 17, integration 12, UAT 1 and audit 0. No fixture residue, and `pbx reconcile` reports no divergence.
 
   Known and recorded elsewhere: `GetCall` still returns `Participant.endpoint_uri`, and the console does not call it (PROGRESS gap, `phase-a-hardening`).)*
-- [ ] 3.4 Record coverage and any remaining evidence gap in `coverage.md`.
+- [x] 3.4 Record coverage and any remaining evidence gap in `coverage.md`. *(done 2026-10-13: every design testing commitment and console-brief rule (§6) is mapped to C/E/I/A evidence. Component coverage is 93.9 / 85.2 / 96.1 / 94.4. Ten gaps are recorded with severity, of which G1 (console linter), G3 (Chromium only), G4 (no screen-reader pass), G6 (`GetCall` endpoint_uri) and G10 (Jenkins not yet run) are Medium.)*
