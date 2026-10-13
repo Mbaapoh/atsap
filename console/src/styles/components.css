@@ -91,7 +91,10 @@
 .field-label { font-weight: 600; }
 .field-hint { margin: 0; color: var(--color-text-muted); font-size: 0.875rem; }
 .field-error { margin: 0; color: var(--color-danger); font-size: 0.875rem; font-weight: 600; }
+/* min-width: 0 lets a select shrink to its field: as a grid item it
+   would otherwise be as wide as its longest option. */
 .input {
+  min-width: 0; max-width: 100%;
   min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-sm);
   border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font: inherit;
 }
