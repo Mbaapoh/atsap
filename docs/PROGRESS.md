@@ -69,7 +69,12 @@ configuration file, and without being told what Asterisk is.
    noise; the app must notice when another process takes over its Stasis
    app (Asterisk logs "Replacing Stasis app 'voip-app'") — on 2026-10-13 a
    second app process did, and calls then stuck at Presenting with no log
-   or readiness failure until the app was restarted.
+   or readiness failure until the app was restarted. Also found on the
+   dev rig the same day, a phone dialling another extension (1001 → 1002):
+   the call is recorded INBOUND instead of INTERNAL, its source number is
+   the caller's engine endpoint id instead of 1001 (so the console's
+   history can only show "Not shown"), and the called phone sees the
+   caller as anonymous.
 
 ### Before a pilot
 
