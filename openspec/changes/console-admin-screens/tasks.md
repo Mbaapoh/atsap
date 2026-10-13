@@ -4,7 +4,7 @@
 
 ## 1. Shared foundations
 
-- [ ] 1.1 Add `usePermissions()` (the session's membership roles → may administer) and the Phase A role catalogue (Agent, Supervisor, Tenant administrator; Platform administrator only for a platform administrator). Verify with component tests for every role, and that an unknown role renders by its server name.
+- [x] 1.1 Add `usePermissions()` (the session's membership roles → may administer) and the Phase A role catalogue (Agent, Supervisor, Tenant administrator; Platform administrator only for a platform administrator). Verify with component tests for every role, and that an unknown role renders by its server name. *(done 2026-10-13: `features/auth/permissions.ts` holds `ROLE_CATALOGUE` (Agent, Supervisor, Tenant administrator at tenant scope; Platform administrator at system scope), `roleLabel` (an unknown role keeps its server name), and `permissionsFor`/`usePermissions` (canAdminister, isPlatformAdmin, grantableRoles), reading the session only. The licence page and tenant picker now use it (one source of truth). 12 component tests: every role and combination, the current membership only, unknown roles. Component 197; e2e 17.)*
 - [ ] 1.2 Add offset pagination (50 per page; Next enabled only on a full page; no totals) and a row-actions menu for `DataTable`. Verify with keyboard and screen-reader-name tests, and that no total or page count is ever shown.
 - [ ] 1.3 Add the `OneTimeSecret` panel:
   - copy controls and a required acknowledgement;

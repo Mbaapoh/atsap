@@ -4,7 +4,7 @@ import { ApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { useSession, useSessionController } from "./adapter";
 import { AuthLayout } from "./AuthLayout";
-import { roleLabel } from "./copy";
+import { roleLabel } from "./permissions";
 
 // SelectTenantPage chooses the Tenant to act in: after signing in with
 // several memberships, and whenever the person switches. The server

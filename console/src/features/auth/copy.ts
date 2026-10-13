@@ -12,14 +12,3 @@ export function throttleMessage(err: ApiError): string {
   const m = Math.ceil(s / 60);
   return `Too many attempts. Try again in ${m} minute${m === 1 ? "" : "s"}.`;
 }
-
-const roleNames: Record<string, string> = {
-  PLATFORM_ADMIN: "Platform administrator",
-  TENANT_ADMIN: "Tenant administrator",
-};
-
-// roleLabel names a role in words; an unknown role shows as given rather
-// than being guessed at.
-export function roleLabel(role: string): string {
-  return roleNames[role] ?? role;
-}
