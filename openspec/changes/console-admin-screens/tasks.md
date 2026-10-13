@@ -167,7 +167,12 @@
 
 ## 6. Proof
 
-- [ ] 6.1 Integration specs against the real API for A2, A3, A4 and A5, with cleanup through the API and `pbx reconcile` clean afterwards. Verify they pass three times in a row with no fixture residue.
+- [x] 6.1 Integration specs against the real API for A2, A3, A4 and A5, with cleanup through the API and `pbx reconcile` clean afterwards. Verify they pass three times in a row with no fixture residue. *(done 2026-10-13:
+  - **Rig specs:** A2 (`users.rig.spec.ts`, 4), A3 (`extensions.rig.spec.ts`, 3), A4 (`telephony.rig.spec.ts`: trunks, routes, inbound, emergency) and A5 (`calls.rig.spec.ts`).
+  - **Cleanup:** fixtures the API can remove are removed through it: routes, trunks, extensions, inbound numbers. What the API has no delete for is removed by `seedUser`'s cleanup with the tenant: seeded call records, and a tenant's emergency country. The cleanup now also covers calls, inbound and emergency rows, since those tables do not cascade.
+  - **New `make console-soak`** (`scripts/console-soak.sh`) runs the integration tier `RUNS` times (default 3). It fails unless 22 tenant-data and engine tables (identity, sessions, PBX, `ps_*`, calls, usage) hold the same row counts afterwards, then runs `atsap-api pbx reconcile` in the app container.
+
+  Verified: `make console-soak` — 24/24 three times in a row, "No residue: 22 tables unchanged after 3 runs", and reconcile "No divergence: the engine matches the platform".)*
 - [ ] 6.2 UAT journeys A2–A5 on the rig, including a real phone registering with the console-issued credentials (A3) and a real call appearing in the history (A5). Verify they run green in `make console-uat`.
 - [ ] 6.3 Extend the exposure scans (rig and mocked) to every new screen, including the credential panel's sanctioned SIP username. Verify by fault injection: a secret left in a list, and the SIP username outside its element, are each caught.
 - [ ] 6.4 Run every console tier (`make console-check`), ratchet the coverage floors, and record coverage and gaps in `coverage.md`. Verify the floors do not fall.
