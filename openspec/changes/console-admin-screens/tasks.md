@@ -1,6 +1,6 @@
 ## 0. Dependency
 
-- [ ] 0.1 Propose and apply `pbx-sip-registrar-settings`: the installation's public SIP registrar address (host, port, transport) in the public API, specified in `pbx-core`, configured per installation, and documented. Verify it through its own tiers (unit, wire, e2e) and that the console's regenerated clients typecheck.
+- [x] 0.1 Propose and apply `pbx-sip-registrar-settings`: the installation's public SIP registrar address (host, port, transport) in the public API, specified in `pbx-core`, configured per installation, and documented. Verify it through its own tiers (unit, wire, e2e) and that the console's regenerated clients typecheck. *(done 2026-10-13: proposed, applied in five task commits, and archived as `2026-10-13-pbx-sip-registrar-settings` with its spec synced into `pbx-core/extension-management`. `PbxService.GetSipRegistrar` returns the rig's localhost:5060/udp; the console clients are regenerated and typecheck.)*
 
 ## 1. Shared foundations
 
