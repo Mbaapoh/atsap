@@ -2,8 +2,12 @@
 package config
 
 import (
+	"strconv"
+
 	"fmt"
 	"os"
+
+	pbxdomain "atsap-api/internal/pbx/domain"
 )
 
 // Config holds all runtime settings for the atsap-api process.
@@ -84,6 +88,15 @@ type Config struct {
 	SIPTransport       string
 	SIPWebRTCTransport string
 
+	// SIPPublicHost, SIPPublicPort and SIPPublicTransport are the address
+	// devices register to: the installation's public face, which only the
+	// installer knows (NAT, DNS, port mapping). An empty host means not
+	// configured, and the API says so rather than guessing
+	// (pbx-sip-registrar-settings).
+	SIPPublicHost      string
+	SIPPublicPort      int
+	SIPPublicTransport string
+
 	// LicenseToken is a signed licence in the compact form
 	// domain.SplitToken decodes, supplied so a compose stack, a Helm
 	// chart or a CI job can activate an installation without a portal
@@ -127,6 +140,8 @@ func Load() (Config, error) {
 		SIPRealm:           getEnv("SIP_REALM", "asterisk"),
 		SIPTransport:       getEnv("SIP_TRANSPORT", "transport-udp"),
 		SIPWebRTCTransport: getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
+		SIPPublicHost:      getEnv("SIP_PUBLIC_HOST", ""),
+		SIPPublicTransport: getEnv("SIP_PUBLIC_TRANSPORT", "udp"),
 		LicenseToken:       getEnv("ATSAPBX_LICENSE_TOKEN", ""),
 		JWTPreviousKeysHex: getEnv("ATSAPBX_JWT_PREVIOUS_KEYS", ""),
 		ConsoleURL:         getEnv("ATSAPBX_CONSOLE_URL", "http://localhost:8080"),
@@ -157,8 +172,34 @@ func Load() (Config, error) {
 	if cfg.JWTPrivateKeyHex == "" {
 		return cfg, fmt.Errorf("ATSAPBX_JWT_KEY is required")
 	}
+	if err := cfg.loadSIPPublic(); err != nil {
+		return cfg, err
+	}
 
 	return cfg, nil
+}
+
+// loadSIPPublic reads and checks the public registrar settings. A bad
+// value fails startup, where it is cheap to see, rather than at a phone.
+func (c *Config) loadSIPPublic() error {
+	port, err := strconv.Atoi(getEnv("SIP_PUBLIC_PORT", "5060"))
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("SIP_PUBLIC_PORT must be a port number 1-65535")
+	}
+	c.SIPPublicPort = port
+	switch c.SIPPublicTransport {
+	case "udp", "tcp", "tls":
+	default:
+		return fmt.Errorf("SIP_PUBLIC_TRANSPORT must be udp, tcp or tls")
+	}
+	if c.SIPPublicHost != "" {
+		// The same rule as trunk hosts: a hostname or an IP address, with
+		// no scheme, port or user part (LLD-03 §10.5).
+		if err := pbxdomain.ValidateHost(c.SIPPublicHost); err != nil {
+			return fmt.Errorf("SIP_PUBLIC_HOST must be a hostname or an IP address, with no scheme or port")
+		}
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {

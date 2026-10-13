@@ -1,6 +1,6 @@
 ## 1. Configuration
 
-- [ ] 1.1 Add `SIP_PUBLIC_HOST`, `SIP_PUBLIC_PORT` (default 5060) and `SIP_PUBLIC_TRANSPORT` (default `udp`) to `config.Config`, validated at load: the host as a bare hostname or IP, the port 1–65535, the transport `udp`, `tcp` or `tls`. Verify with config unit tests for defaults and for each invalid value.
+- [x] 1.1 Add `SIP_PUBLIC_HOST`, `SIP_PUBLIC_PORT` (default 5060) and `SIP_PUBLIC_TRANSPORT` (default `udp`) to `config.Config`, validated at load: the host as a bare hostname or IP, the port 1–65535, the transport `udp`, `tcp` or `tls`. Verify with config unit tests for defaults and for each invalid value. *(done 2026-10-13: `config.Config` gains SIPPublicHost, SIPPublicPort and SIPPublicTransport. Validation at load reuses pbx-core's `ValidateHost`, so trunk and registrar hosts follow one rule. Tests cover defaults, overrides, and seven invalid values, each refused with a message naming the setting. Unit suite and lint (0 issues) pass.)*
 
 ## 2. API
 

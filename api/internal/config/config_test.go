@@ -49,6 +49,10 @@ func TestLoad_Defaults(t *testing.T) {
 		SIPRealm:           "asterisk",
 		SIPTransport:       "transport-udp",
 		SIPWebRTCTransport: "transport-wss",
+		// No public registrar host until the installer names one; the
+		// SIP defaults for port and transport.
+		SIPPublicPort:      5060,
+		SIPPublicTransport: "udp",
 		// Links default to the dev console; mail is off until an SMTP
 		// server is named (identity-accounts-and-sessions D10).
 		ConsoleURL: "http://localhost:8080",
@@ -143,5 +147,39 @@ func TestGetEnv(t *testing.T) {
 	}
 	if got := getEnv("GETENV_TEST_UNSET", "fallback"); got != "fallback" {
 		t.Errorf("getEnv(unset) = %q, want fallback %q", got, "fallback")
+	}
+}
+
+func TestLoad_SIPPublicRegistrar(t *testing.T) {
+	setRequired(t)
+	t.Setenv("SIP_PUBLIC_HOST", "pbx.example.com")
+	t.Setenv("SIP_PUBLIC_PORT", "5080")
+	t.Setenv("SIP_PUBLIC_TRANSPORT", "tls")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.SIPPublicHost != "pbx.example.com" || cfg.SIPPublicPort != 5080 || cfg.SIPPublicTransport != "tls" {
+		t.Errorf("got %q %d %q", cfg.SIPPublicHost, cfg.SIPPublicPort, cfg.SIPPublicTransport)
+	}
+}
+
+func TestLoad_SIPPublicRegistrarRejectsBadValues(t *testing.T) {
+	for _, tc := range []struct{ key, value, want string }{
+		{"SIP_PUBLIC_PORT", "0", "SIP_PUBLIC_PORT"},
+		{"SIP_PUBLIC_PORT", "65536", "SIP_PUBLIC_PORT"},
+		{"SIP_PUBLIC_PORT", "sip", "SIP_PUBLIC_PORT"},
+		{"SIP_PUBLIC_TRANSPORT", "wss", "SIP_PUBLIC_TRANSPORT"},
+		{"SIP_PUBLIC_HOST", "sip:pbx.example.com", "SIP_PUBLIC_HOST"},
+		{"SIP_PUBLIC_HOST", "pbx.example.com:5060", "SIP_PUBLIC_HOST"},
+		{"SIP_PUBLIC_HOST", "user@pbx.example.com", "SIP_PUBLIC_HOST"},
+	} {
+		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv(tc.key, tc.value)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Load() error = %v, want one naming %s", err, tc.want)
+			}
+		})
 	}
 }
