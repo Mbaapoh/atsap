@@ -33,7 +33,12 @@
 
 ## 2. Users (HLD-18 A2)
 
-- [ ] 2.1 Users adapter and list: name, email, membership status and roles, paged. Verify the request names the session's Tenant, that the list matches `ListPrincipals`, and that there is no extension column (D-65).
+- [x] 2.1 Users adapter and list: name, email, membership status and roles, paged. Verify the request names the session's Tenant, that the list matches `ListPrincipals`, and that there is no extension column (D-65). *(done 2026-10-13: `features/users/adapter.ts` (`useUsers(page)`: `ListPrincipals` for the session's Tenant with limit 50 and offset paging, mapped to `UserRow`: name, email, membership status, role grants) and `UsersPage` (table, status badges, role labels with unknown roles shown by server name, Pager, an empty state, plain refusal copy).
+
+  Verified:
+  - 4 component tests: tenant and paging in the request; fields, roles and status; an unknown role; no extension column; Next only after a full page; empty; 403 shown as console copy;
+  - integration `users.rig.spec.ts`: the seeded administrator listed with their real role and status;
+  - component 210, e2e 18, secrets clean.)*
 - [ ] 2.2 Add user: email, display name, role and an optional initial password, with the copy that an existing person keeps their own password. Verify `ProvisionPrincipal` is called once, the list refetches, and the copy reveals nothing about whether the email exists elsewhere.
 - [ ] 2.3 Grant and revoke roles with confirmation. Verify that revoking the last tenant administrator shows the server's refusal in plain words, and that the platform-administrator role is offered only to a platform administrator.
 - [ ] 2.4 Disable and enable a membership, and reset a password (generated in the browser, shown once through `OneTimeSecret`). Verify the generated password meets 8–64 code points and never reaches a toast, URL, storage or later read, and that the reset person must change it.

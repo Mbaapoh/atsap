@@ -11,6 +11,7 @@ import { LicenceIndicator } from "../features/licence/LicenceIndicator";
 import { LicencePage } from "../features/licence/LicencePage";
 import { RequireLicence } from "../features/licence/RequireLicence";
 import { OverviewPage } from "../features/overview/OverviewPage";
+import { UsersPage } from "../features/users/UsersPage";
 import { AppShell } from "./AppShell";
 import { NotFound, RoutePlaceholder } from "./RoutePlaceholder";
 
@@ -33,7 +34,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <OverviewPage /> },
       { path: "licence", element: <LicencePage /> },
-      { path: "users", element: <RoutePlaceholder title="Users" /> },
+      { path: "users", element: <UsersPage /> },
       {
         path: "extensions",
         element: (
