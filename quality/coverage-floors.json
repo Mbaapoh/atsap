@@ -22,9 +22,9 @@
     }
   },
   "console": {
-    "statements": 95.9,
-    "branches": 87.4,
-    "functions": 98.1,
-    "lines": 97.1
+    "statements": 96.1,
+    "branches": 87.8,
+    "functions": 98.2,
+    "lines": 97.3
   }
 }

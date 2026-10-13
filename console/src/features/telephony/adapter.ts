@@ -43,6 +43,7 @@ export const telephonyKeys = {
   trunks: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "trunks", page] as const,
   routes: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "routes", page] as const,
   inbound: (tenantId: string) => [...telephonyKeys.all(tenantId), "inbound"] as const,
+  emergency: (tenantId: string) => [...telephonyKeys.all(tenantId), "emergency"] as const,
 };
 
 export function useTrunks(page: number) {
@@ -217,4 +218,60 @@ export function useInboundChanges() {
     onSuccess: refetch,
   });
   return { create: create.mutateAsync, remove: remove.mutateAsync };
+}
+
+export interface EmergencyProfile {
+  // country is "" when none was ever set.
+  country: string;
+  // inCatalogue is false when no country is set or it names none the
+  // platform knows: the tenant must enter its own numbers.
+  inCatalogue: boolean;
+  numbers: { number: string; builtIn: boolean }[];
+}
+
+export function useEmergencyProfile() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  return useQuery<EmergencyProfile, ApiError>({
+    queryKey: telephonyKeys.emergency(tenantId),
+    queryFn: () =>
+      callApi(async () => {
+        const p = await pbx.getEmergencyProfile({ tenantId });
+        return {
+          country: p.countrySet ? p.countryCode : "",
+          inCatalogue: p.inCatalogue,
+          numbers: p.numbers.map((n) => ({ number: n.number, builtIn: n.builtIn })),
+        };
+      }),
+    enabled: tenantId !== "",
+  });
+}
+
+export function useEmergencyChanges() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: telephonyKeys.emergency(tenantId) });
+  const setCountry = useMutation<void, ApiError, string>({
+    mutationFn: (countryCode) =>
+      callApi(async () => {
+        await pbx.setEmergencyProfile({ tenantId, countryCode });
+      }),
+    onSuccess: refetch,
+  });
+  const add = useMutation<void, ApiError, string>({
+    mutationFn: (number) =>
+      callApi(async () => {
+        await pbx.createEmergencyNumber({ tenantId, number });
+      }),
+    onSuccess: refetch,
+  });
+  const remove = useMutation<void, ApiError, string>({
+    mutationFn: (number) =>
+      callApi(async () => {
+        await pbx.deleteEmergencyNumber({ tenantId, number });
+      }),
+    onSuccess: refetch,
+  });
+  return { setCountry: setCountry.mutateAsync, add: add.mutateAsync, remove: remove.mutateAsync };
 }

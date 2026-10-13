@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { routes } from "../../app/routes";
-import { INBOUND_URL, OVERVIEW_URLS, server } from "../../test/msw";
+import { EMERGENCY_URL, INBOUND_URL, OVERVIEW_URLS, server } from "../../test/msw";
 import { renderApp, signedIn, tenantA } from "../../test/session";
 
 // console-admin-screens task 4.1: trunks (HLD-18 A4).
@@ -374,5 +374,141 @@ describe("inbound numbers", () => {
     renderApp(routes, "/trunks");
     expect(await screen.findByText("Your role cannot see this tenant's inbound numbers.")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("ps_endpoints");
+  });
+});
+
+// console-admin-screens task 4.4: emergency (HLD-18 A4).
+
+const cameroon = {
+  countryCode: "CM",
+  countrySet: true,
+  inCatalogue: true,
+  numbers: [{ number: "112", builtIn: true }, { number: "117", builtIn: true }, { number: "1500", builtIn: false }],
+};
+
+function emergency(profile: object = cameroon) {
+  return http.post(EMERGENCY_URL, () => HttpResponse.json(profile));
+}
+
+describe("emergency numbers", () => {
+  it("shows the country and the effective set, built-in numbers marked and without actions", async () => {
+    server.use(emergency());
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    const table = within(await screen.findByRole("table", { name: "Effective emergency numbers of this tenant" }));
+    expect(screen.getByText(/Its emergency numbers are built in/)).toHaveTextContent("Country: CM.");
+    expect(table.getByRole("row", { name: /112 Built in/ })).toBeInTheDocument();
+    expect(table.getByRole("row", { name: /117 Built in/ })).toBeInTheDocument();
+    expect(table.getByRole("row", { name: /1500 Added by this tenant/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Actions for emergency number 112" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Actions for emergency number 117" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Actions for emergency number 1500" }));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Remove…"]);
+    expect(screen.getByText(/still leave through an outbound route/)).toBeInTheDocument();
+  });
+
+  it("a tenant without a country is told so, and can set one", async () => {
+    let body: unknown;
+    server.use(
+      emergency({ countrySet: false, inCatalogue: false, numbers: [{ number: "112", builtIn: true }] }),
+      http.post(api("SetEmergencyProfile"), async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    expect(await screen.findByText("No emergency country is set")).toBeInTheDocument();
+    expect(screen.getByText(/Only 112 is recognised/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Set country" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Set the emergency country" }));
+    await user.type(dialog.getByLabelText("Country code"), "Cameroon");
+    await user.click(dialog.getByRole("button", { name: "Save country" }));
+    expect(dialog.getByLabelText("Country code")).toHaveAccessibleDescription(/two-letter ISO country code/);
+    expect(body).toBeUndefined();
+    await user.clear(dialog.getByLabelText("Country code"));
+    await user.type(dialog.getByLabelText("Country code"), " cm ");
+    await user.click(dialog.getByRole("button", { name: "Save country" }));
+    expect(await screen.findByText("Emergency country set to CM.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, countryCode: "CM" });
+  });
+
+  it("a country without built-in numbers asks for the tenant's own", async () => {
+    server.use(emergency({ countryCode: "ZZ", countrySet: true, inCatalogue: false, numbers: [{ number: "112", builtIn: true }] }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    expect(await screen.findByText("No built-in emergency numbers for ZZ")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change country" }));
+    expect(within(screen.getByRole("dialog", { name: "Change the emergency country" })).getByLabelText("Country code")).toHaveValue("ZZ");
+  });
+
+  it("adds a number exactly as entered; one already built in is explained", async () => {
+    const bodies: unknown[] = [];
+    let reply: { code: string; message: string } | null = { code: "failed_precondition", message: "emergency number is built-in and cannot be removed" };
+    server.use(emergency(), http.post(api("CreateEmergencyNumber"), async ({ request }) => {
+      bodies.push(await request.json());
+      return reply ? HttpResponse.json(reply, { status: 400 }) : HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await user.click(await screen.findByRole("button", { name: "Add number" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Add an emergency number" }));
+    await user.type(dialog.getByLabelText("Number"), "1-500");
+    await user.click(dialog.getByRole("button", { name: "Add number" }));
+    expect(dialog.getByLabelText("Number")).toHaveAccessibleDescription(/Use digits only/);
+    await user.clear(dialog.getByLabelText("Number"));
+    await user.type(dialog.getByLabelText("Number"), "117");
+    await user.click(dialog.getByRole("button", { name: "Add number" }));
+    expect(await dialog.findByText("This number is already a built-in emergency number.")).toBeInTheDocument();
+    reply = null;
+    await user.clear(dialog.getByLabelText("Number"));
+    await user.type(dialog.getByLabelText("Number"), "+1501");
+    await user.click(dialog.getByRole("button", { name: "Add number" }));
+    expect(await screen.findByText("Emergency number +1501 added.")).toBeInTheDocument();
+    expect(bodies).toEqual([{ tenantId: tenantA.tenantId, number: "117" }, { tenantId: tenantA.tenantId, number: "+1501" }]);
+  });
+
+  it("removes a tenant's own number after confirmation", async () => {
+    let body: unknown;
+    server.use(emergency(), http.post(api("DeleteEmergencyNumber"), async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await user.click(await screen.findByRole("button", { name: "Actions for emergency number 1500" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove…" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Remove emergency number 1500?" }));
+    expect(confirm.getByText(/no longer treated as emergency calls/)).toBeInTheDocument();
+    await user.click(confirm.getByRole("button", { name: "Remove number" }));
+    expect(await screen.findByText("Emergency number 1500 removed.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, number: "1500" });
+  });
+
+  it.each([
+    ["failed_precondition", "This number is built in and cannot be removed."],
+    ["not_found", "This number is no longer in the list. Reload to see the current set."],
+  ])("a removal refused with %s is explained", async (code, text) => {
+    server.use(emergency(), http.post(api("DeleteEmergencyNumber"), () => HttpResponse.json({ code, message: "pq: emergency_numbers" }, { status: 400 })));
+    const user = userEvent.setup();
+    renderApp(routes, "/trunks");
+    await user.click(await screen.findByRole("button", { name: "Actions for emergency number 1500" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove…" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove number" }));
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("pq:");
+  });
+
+  it("a non-administrator sees the set with no controls; a refused read is console copy", async () => {
+    server.use(emergency());
+    const { unmount } = renderApp(routes, "/trunks", signedIn({ memberships: [{ ...tenantA, roles: ["SUPERVISOR"] }] }));
+    await screen.findByRole("table", { name: "Effective emergency numbers of this tenant" });
+    expect(screen.queryByRole("button", { name: /country/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add number" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Actions for emergency/ })).not.toBeInTheDocument();
+    unmount();
+    server.use(http.post(EMERGENCY_URL, () => HttpResponse.json({ code: "permission_denied", message: "emergency.read" }, { status: 403 })));
+    renderApp(routes, "/trunks");
+    expect(await screen.findByText("Your role cannot see this tenant's emergency settings.")).toBeInTheDocument();
   });
 });

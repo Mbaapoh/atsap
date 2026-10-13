@@ -35,6 +35,7 @@ export const OVERVIEW_URLS = {
 
 export const REGISTRAR_URL = api("PbxService/GetSipRegistrar");
 export const INBOUND_URL = api("PbxService/ListInboundNumbers");
+export const EMERGENCY_URL = api("PbxService/GetEmergencyProfile");
 
 export const server = setupServer(
   http.post(LICENCE_STATUS_URL, () => HttpResponse.json({ status: validLicence })),
@@ -44,5 +45,6 @@ export const server = setupServer(
   http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({})),
   http.post(OVERVIEW_URLS.calls, () => HttpResponse.json({})),
   http.post(INBOUND_URL, () => HttpResponse.json({})),
+  http.post(EMERGENCY_URL, () => HttpResponse.json({ countryCode: "CM", countrySet: true, inCatalogue: true, numbers: [{ number: "112", builtIn: true }] })),
   http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp" })),
 );

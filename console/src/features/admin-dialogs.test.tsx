@@ -3,7 +3,7 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { routes } from "../app/routes";
-import { INBOUND_URL, OVERVIEW_URLS, server } from "../test/msw";
+import { EMERGENCY_URL, INBOUND_URL, OVERVIEW_URLS, server } from "../test/msw";
 import { renderApp } from "../test/session";
 
 // console-admin-screens: every admin dialog answers every refusal with
@@ -25,6 +25,7 @@ const lists = [
   http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [ext] })),
   http.post(OVERVIEW_URLS.trunks, () => HttpResponse.json({ trunks: [trunk] })),
   http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({ routes: [route] })),
+  http.post(EMERGENCY_URL, () => HttpResponse.json({ countryCode: "CM", countrySet: true, inCatalogue: true, numbers: [{ number: "112", builtIn: true }, { number: "1500" }] })),
   http.post(INBOUND_URL, () => HttpResponse.json({ numbers: [{ inboundNumberId: "d1", number: "237222000111", extensionId: "x1" }] })),
 ];
 
@@ -190,6 +191,31 @@ const flows: Record<string, Flow> = {
       await press(user, "Remove number");
     },
   },
+  "set country": {
+    path: "/trunks",
+    procedure: "PbxService/SetEmergencyProfile",
+    run: async (user) => {
+      await user.click(await screen.findByRole("button", { name: "Change country" }));
+      await press(user, "Save country");
+    },
+  },
+  "add emergency number": {
+    path: "/trunks",
+    procedure: "PbxService/CreateEmergencyNumber",
+    run: async (user) => {
+      await user.click(await screen.findByRole("button", { name: "Add number" }));
+      await user.type(dialog().getByLabelText("Number"), "1501");
+      await press(user, "Add number");
+    },
+  },
+  "remove emergency number": {
+    path: "/trunks",
+    procedure: "PbxService/DeleteEmergencyNumber",
+    run: async (user) => {
+      await menu(user, "emergency number 1500", "Remove…");
+      await press(user, "Remove number");
+    },
+  },
 };
 
 // What each dialog says, per refusal. A kind a dialog has no words of its
@@ -234,6 +260,15 @@ const expected: [string, string, string | RegExp][] = [
   ["assign number", "internal", /Something went wrong/],
   ["remove number", "permission_denied", "Your role cannot change inbound numbers."],
   ["remove number", "internal", /Something went wrong/],
+  ["set country", "permission_denied", "Your role cannot change emergency settings."],
+  ["set country", "invalid_argument", "That is not a two-letter ISO country code."],
+  ["set country", "internal", /Something went wrong/],
+  ["add emergency number", "permission_denied", "Your role cannot change emergency settings."],
+  ["add emergency number", "invalid_argument", "Use digits only, with an optional leading +, like 1500."],
+  ["add emergency number", "internal", /Something went wrong/],
+  ["remove emergency number", "permission_denied", "Your role cannot change emergency settings."],
+  ["remove emergency number", "invalid_argument", "Some details are not valid. Check them and try again."],
+  ["remove emergency number", "internal", /Something went wrong/],
 ];
 
 describe("admin dialogs refused by the server", () => {
@@ -269,6 +304,9 @@ const openers: [string, string, (user: UserEvent) => Promise<void>, string][] = 
     await u.click(screen.getByRole("button", { name: "Assign number" }));
   }, "Cancel"],
   ["remove number", "/trunks", (u) => menu(u, "number 237222000111", "Remove number…"), "Cancel"],
+  ["set country", "/trunks", async (u) => u.click(await screen.findByRole("button", { name: "Change country" })), "Cancel"],
+  ["add emergency number", "/trunks", async (u) => u.click(await screen.findByRole("button", { name: "Add number" })), "Cancel"],
+  ["remove emergency number", "/trunks", (u) => menu(u, "emergency number 1500", "Remove…"), "Cancel"],
 ];
 
 describe("admin dialogs left without saving", () => {

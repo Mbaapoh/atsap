@@ -1,4 +1,5 @@
 import { PageHeader } from "../../components/PageHeader";
+import { EmergencySection } from "./EmergencySection";
 import { InboundSection } from "./InboundSection";
 import { RoutesSection } from "./RoutesSection";
 import { TrunksSection } from "./TrunksSection";
@@ -14,6 +15,7 @@ export function TrunksRoutesPage() {
       <TrunksSection />
       <RoutesSection />
       <InboundSection />
+      <EmergencySection />
     </section>
   );
 }

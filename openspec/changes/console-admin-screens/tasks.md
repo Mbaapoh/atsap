@@ -129,7 +129,22 @@
   - integration 22/22: a new rig test assigns with +, the API stores digits, the + less duplicate is refused, then removal;
   - e2e 19, UAT 1, secrets clean;
   - floors ratcheted.)*
-- [ ] 4.4 Emergency: the country profile and the effective emergency set, with built-in numbers marked, plus the create and delete controls the API supports. Verify built-in numbers cannot be deleted from the console, and that a tenant without a country is told so.
+- [x] 4.4 Emergency: the country profile and the effective emergency set, with built-in numbers marked, plus the create and delete controls the API supports. Verify built-in numbers cannot be deleted from the console, and that a tenant without a country is told so. *(done 2026-10-13:
+  - **Adapter:** `useEmergencyProfile` (`GetEmergencyProfile`, which gives country, catalogue status and the effective set in one call) and `useEmergencyChanges` (set country, add, remove).
+  - **`EmergencySection`:**
+    - No country set: told that only 112 is recognised.
+    - A country with no catalogue: asked for the tenant's own numbers.
+    - Otherwise: "Country: CM. Its emergency numbers are built in."
+    - Each number is marked "Built in" or "Added by this tenant". Built-in rows get **no** row actions, so the console never offers their removal.
+    - The footer states what the server really does, read from `telephony/application/service.go` and `pbx/application/placement.go`: emergency calls skip the licence and calling-rule checks and may exceed a trunk's channel limit, but they still need a matching outbound route. An earlier draft claimed otherwise and was corrected before commit.
+  - **Dialogs:** set or change the country (ISO alpha-2, upper-cased); add a number (an already-built-in number is explained at the field); remove, confirmed, saying the licence and calling rules apply again.
+  - **Rig cleanup** now removes the inbound and emergency rows of each seeded tenant (no cascade on those tables).
+
+  Verified:
+  - component 363 (built-in rows have no actions; no-country and not-in-catalogue states; exact set, add and remove requests; built-in and missing refusals explained; supervisor sees no controls; refused read; three dialogs added to the refusal and Cancel/Escape tables);
+  - integration 23/23: a new rig test sets CM through the UI, sees 112 and 117 built in with no actions, has 117 refused, adds and removes 1500, and confirms the server itself refuses `DeleteEmergencyNumber 117`;
+  - e2e 19, UAT 1, secrets clean;
+  - floors ratcheted.)*
 
 ## 5. Call history (HLD-18 A5)
 

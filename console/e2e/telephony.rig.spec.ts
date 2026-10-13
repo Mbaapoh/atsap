@@ -184,3 +184,50 @@ test("A4: assign an inbound number to an extension and remove it", async ({ page
   await expect(page.getByText(`${stored} removed.`)).toBeVisible();
   expect((await api(request, token, "ListInboundNumbers", { tenantId })).body.numbers ?? []).toEqual([]);
 });
+
+test("A4: emergency — no country is told, a country's numbers are built in, own numbers come and go", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = ((await (await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email: user.email, password: FIXTURE_PASSWORD } })).json()) as { access: { token: string } }).access.token;
+  const effective = async () =>
+    (((await api(request, token, "GetEmergencyProfile", { tenantId })).body.numbers ?? []) as { number: string; builtIn?: boolean }[])
+      .map((n) => `${n.number}${n.builtIn ? "*" : ""}`)
+      .sort();
+
+  await signIn(page, user.email);
+  await page.goto("/trunks");
+  const section = page.getByRole("region", { name: "Emergency numbers", exact: true });
+  await expect(section.getByText("No emergency country is set")).toBeVisible();
+
+  await section.getByRole("button", { name: "Set country" }).click();
+  await page.getByRole("dialog").getByLabel("Country code").fill("cm");
+  await page.getByRole("dialog").getByRole("button", { name: "Save country" }).click();
+  await expect(page.getByText("Emergency country set to CM.")).toBeVisible();
+  await expect(section).toContainText("Country: CM.");
+  const table = section.getByRole("table", { name: "Effective emergency numbers of this tenant" });
+  for (const n of ["112", "117"]) {
+    await expect(table.getByRole("row", { name: new RegExp(`^${n} Built in`) })).toBeVisible();
+    await expect(section.getByRole("button", { name: `Actions for emergency number ${n}` })).toHaveCount(0);
+  }
+
+  // A built-in number cannot be added again; the tenant's own can.
+  await section.getByRole("button", { name: "Add number" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add an emergency number" });
+  await dialog.getByLabel("Number").fill("117");
+  await dialog.getByRole("button", { name: "Add number" }).click();
+  await expect(dialog.getByText("This number is already a built-in emergency number.")).toBeVisible();
+  await dialog.getByLabel("Number").fill("1500");
+  await dialog.getByRole("button", { name: "Add number" }).click();
+  await expect(table.getByRole("row", { name: /^1500 Added by this tenant/ })).toBeVisible();
+  expect(await effective()).toContain("1500");
+
+  // The server refuses to delete a built-in number even when asked directly.
+  expect((await api(request, token, "DeleteEmergencyNumber", { tenantId, number: "117" })).status).toBe(400);
+
+  await section.getByRole("button", { name: "Actions for emergency number 1500" }).click();
+  await page.getByRole("menuitem", { name: "Remove…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove number" }).click();
+  await expect(page.getByText("Emergency number 1500 removed.")).toBeVisible();
+  expect(await effective()).not.toContain("1500");
+  expect(await effective()).toEqual(expect.arrayContaining(["112*", "117*"]));
+});
