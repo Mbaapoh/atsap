@@ -13,6 +13,7 @@ import { RequireLicence } from "../features/licence/RequireLicence";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { UsersPage } from "../features/users/UsersPage";
 import { ExtensionsPage } from "../features/extensions/ExtensionsPage";
+import { TrunksRoutesPage } from "../features/telephony/TrunksRoutesPage";
 import { AppShell } from "./AppShell";
 import { NotFound, RoutePlaceholder } from "./RoutePlaceholder";
 
@@ -48,7 +49,7 @@ export const routes: RouteObject[] = [
         path: "trunks",
         element: (
           <RequireLicence area="Trunks and routes">
-            <RoutePlaceholder title="Trunks & routes" />
+            <TrunksRoutesPage />
           </RequireLicence>
         ),
       },

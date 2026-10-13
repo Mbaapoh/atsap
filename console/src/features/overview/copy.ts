@@ -1,5 +1,4 @@
-import { TrunkHealth } from "../../api/gen/atsapbx/v1/pbx_pb";
-import type { Tone } from "../../components/icons";
+export { trunkHealth } from "../telephony/copy";
 
 // Words for server values. The value itself is never replaced by a
 // different meaning; an unknown value is shown as the server sent it.
@@ -10,12 +9,6 @@ export function directionLabel(direction: string): string {
   return directions[direction] ?? direction;
 }
 
-export const trunkHealth: Record<TrunkHealth, { label: string; tone: Tone }> = {
-  [TrunkHealth.UNSPECIFIED]: { label: "Not yet observed", tone: "neutral" },
-  [TrunkHealth.HEALTHY]: { label: "Healthy", tone: "success" },
-  [TrunkHealth.DEGRADED]: { label: "Degraded", tone: "warning" },
-  [TrunkHealth.UNHEALTHY]: { label: "Unhealthy", tone: "danger" },
-};
 
 // durationLabel writes a call's answered duration; a call never
 // answered has none rather than "0:00".

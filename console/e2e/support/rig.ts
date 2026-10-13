@@ -157,3 +157,16 @@ DELETE FROM users WHERE email = '${email}';
 export function engineCredential(endpointId: string): string {
   return psql(`SELECT COALESCE(md5_cred, '') FROM ps_auths WHERE id = '${endpointId}';`).trim();
 }
+
+// engineAuthFingerprint is a digest of whatever credential the engine
+// holds for an endpoint (ps_auths password and md5_cred), so a spec can
+// prove it unchanged, changed or gone without reading it.
+export function engineAuthFingerprint(endpointId: string): string {
+  return psql(`SELECT md5(COALESCE(password, '') || '|' || COALESCE(md5_cred, '')) FROM ps_auths WHERE id = '${endpointId}';`).trim();
+}
+
+// trunkEndpointId is the engine endpoint id of a trunk ("t_" + its UUID's
+// hex), as pbx/domain/trunk.go derives it.
+export function trunkEndpointId(trunkId: string): string {
+  return `t_${trunkId.replace(/-/g, "")}`;
+}

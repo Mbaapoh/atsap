@@ -63,7 +63,10 @@
 /* Modal layer: confirmation dialog and navigation drawer */
 .modal-layer { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
 .modal-backdrop { position: absolute; inset: 0; background: rgb(23 33 43 / 0.55); }
-.modal { position: relative; background: var(--color-surface); color: var(--color-text); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgb(23 33 43 / 0.25); width: min(480px, 100%); padding: var(--space-6); }
+.modal { position: relative; background: var(--color-surface); color: var(--color-text); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgb(23 33 43 / 0.25); width: min(480px, 100%); padding: var(--space-6);
+  /* A long form must stay reachable: the dialog scrolls inside the
+     viewport rather than pushing its actions off-screen. */
+  max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto; overscroll-behavior: contain; }
 .modal:focus { outline: none; }
 .modal-title { margin: 0 0 var(--space-3); font-size: 1.125rem; }
 .modal-body { color: var(--color-text); }
@@ -159,3 +162,5 @@
 .secret-field dd { margin: 0; display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .secret-value { font-family: var(--font-mono-numeric); padding: var(--space-1) var(--space-2); background: var(--color-surface-muted); border-radius: var(--radius-sm); word-break: break-all; }
 .secret-ack { display: flex; gap: var(--space-2); align-items: center; font-weight: 600; }
+.section-header { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; margin-block-end: var(--space-3); }
+.section-header h2 { margin: 0; }

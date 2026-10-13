@@ -92,7 +92,14 @@
 
 ## 4. Trunks, routes, inbound and emergency (HLD-18 A4)
 
-- [ ] 4.1 Trunks: list (name, host, port, channel limit, priority, observed health), create, edit and delete. The secret is write-only and requires a username. Verify the secret is never read back or rendered, and health is never a form input.
+- [x] 4.1 Trunks: list (name, host, port, channel limit, priority, observed health), create, edit and delete. The secret is write-only and requires a username. Verify the secret is never read back or rendered, and health is never a form input. *(done 2026-10-13: the `features/telephony` adapter (`useTrunks`; `useTrunkChanges` for create, update and delete, never caching the secret and refetching all telephony). `TrunkDialog` handles create and edit with the server's field rules: a bare host, port 1–65535 or empty for 5060, a channel limit of 1 or more, a priority of 0 or more, a username charset, and a secret only with a username. On edit, an empty secret is not sent, so the stored one is kept, as the API documents. `DeleteTrunkDialog` says routes go too. `TrunksSection` shows authentication in words and observed health (never an input). `TrunksRoutesPage` replaces the placeholder. The trunk-health copy moved from the overview into telephony (one source).
+
+  **Found and fixed:** dialogs did not scroll, so the seven-field trunk form pushed its actions off-screen. `.modal` now scrolls within the viewport. A new 360×640 e2e test fails without the fix.
+
+  Verified:
+  - 5 component tests: list wording and health; validation (scheme or port in the host; a secret without a username) and the exact create request, with the secret in no page or cache; edit with an empty secret not sent; delete copy and request; no controls for a supervisor;
+  - integration against the real API, run twice: add with a secret, edit with the engine credential fingerprint unchanged, delete with its route gone and the engine auth row gone; `pbx reconcile` clean;
+  - component 244, e2e 19, secrets clean.)*
 - [ ] 4.2 Outbound routes: list (prefix, trunk name, cost, priority), create and delete, with an overlap warning that explains the selection order; "replace" is a confirmed create-then-delete. Verify there is no Edit route action, and that the warning appears without blocking the save.
 - [ ] 4.3 Inbound numbers: assign a DID to an extension, list and remove. Verify assignments name the extension by number and display name, and that removal is confirmed.
 - [ ] 4.4 Emergency: the country profile and the effective emergency set, with built-in numbers marked, plus the create and delete controls the API supports. Verify built-in numbers cannot be deleted from the console, and that a tenant without a country is told so.
