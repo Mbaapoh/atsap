@@ -1,4 +1,4 @@
-package main
+package wiring
 
 import (
 	"encoding/json"
@@ -34,7 +34,7 @@ func TestCallEventsChecker(t *testing.T) {
 		{"any other failure", errors.New("boom"), http.StatusServiceUnavailable, "error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			checker := callEventsChecker(fakeEvents{err: tc.health})
+			checker := CallEventsChecker(fakeEvents{err: tc.health})
 			assert.Equal(t, "call-events", checker.Name)
 
 			srv := server.NewWithChecks(":0", []server.Checker{checker})

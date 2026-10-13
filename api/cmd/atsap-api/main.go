@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	natsgo "github.com/nats-io/nats.go"
 
+	"atsap-api/cmd/atsap-api/internal/wiring"
 	"atsap-api/internal/config"
 	atsapbxv1connect "atsap-api/internal/genproto/atsapbx/v1/atsapbxv1connect"
 	identityapp "atsap-api/internal/identity/application"
@@ -304,7 +305,7 @@ func run() int {
 			}
 			return nil
 		}},
-		callEventsChecker(ariClient),
+		wiring.CallEventsChecker(ariClient),
 	}
 
 	httpSrv := server.NewWithHandlers(cfg.HTTPAddr, checkers, handlers)

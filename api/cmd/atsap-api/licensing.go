@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	identityports "atsap-api/internal/identity/ports"
+	"atsap-api/cmd/atsap-api/internal/wiring"
 	licensingapp "atsap-api/internal/licensing/application"
 	licensingdomain "atsap-api/internal/licensing/domain"
 	licensingpg "atsap-api/internal/licensing/postgres"
-	pbxports "atsap-api/internal/pbx/ports"
 	corepostgres "atsap-api/internal/postgres"
 	shareddomain "atsap-api/internal/shared/domain"
 	telephonyports "atsap-api/internal/telephony/ports"
@@ -66,7 +65,7 @@ func (a *licenseAdapter) MaxTenants(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return tenantCap(e)
+	return wiring.TenantCap(e)
 }
 
 func (a *licenseAdapter) MaxExtensions(ctx context.Context) (int, error) {
@@ -74,25 +73,7 @@ func (a *licenseAdapter) MaxExtensions(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return extensionCap(e)
-}
-
-// tenantCap and extensionCap read a cap from the entitlement in force.
-// A never-activated installation has caps of zero, and zero is the
-// spelling of "unlimited", so Setup is reported as each context's own
-// not-licensed error instead (D-72). Degraded keeps its caps (AC-06.13).
-func tenantCap(e licensingdomain.Entitlement) (int, error) {
-	if e.State == licensingdomain.StateSetup {
-		return 0, fmt.Errorf("licence state %s: %w", e.State, identityports.ErrNotLicensed)
-	}
-	return e.MaxTenants, nil
-}
-
-func extensionCap(e licensingdomain.Entitlement) (int, error) {
-	if e.State == licensingdomain.StateSetup {
-		return 0, fmt.Errorf("licence state %s: %w", e.State, pbxports.ErrNotLicensed)
-	}
-	return e.MaxExtensions, nil
+	return wiring.ExtensionCap(e)
 }
 
 // newLicenseManager builds the licensing service and applies a licence

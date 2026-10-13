@@ -1,4 +1,4 @@
-package main
+package wiring
 
 import (
 	"errors"
@@ -17,9 +17,9 @@ import (
 // its zero caps must not read as "unlimited" — while a free, licensed or
 // degraded installation passes its caps through unchanged.
 func TestCaps_NotLicensedBeforeActivation(t *testing.T) {
-	_, err := extensionCap(licensingdomain.SetupEntitlement())
+	_, err := ExtensionCap(licensingdomain.SetupEntitlement())
 	assert.True(t, errors.Is(err, pbxports.ErrNotLicensed), "Setup refuses extensions: %v", err)
-	_, err = tenantCap(licensingdomain.SetupEntitlement())
+	_, err = TenantCap(licensingdomain.SetupEntitlement())
 	assert.True(t, errors.Is(err, identityports.ErrNotLicensed), "Setup refuses tenants: %v", err)
 
 	free := licensingdomain.FreeEntitlement()
@@ -35,10 +35,10 @@ func TestCaps_NotLicensedBeforeActivation(t *testing.T) {
 		{"degraded keeps its caps", degraded, licensingdomain.FreeMaxExtensions, licensingdomain.FreeMaxTenants},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			n, err := extensionCap(tc.e)
+			n, err := ExtensionCap(tc.e)
 			require.NoError(t, err)
 			assert.Equal(t, tc.extensions, n)
-			n, err = tenantCap(tc.e)
+			n, err = TenantCap(tc.e)
 			require.NoError(t, err)
 			assert.Equal(t, tc.tenant, n)
 		})
