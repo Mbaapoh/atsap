@@ -132,11 +132,25 @@
 
 ## 4. A taken-over Stasis application is noticed (D-73)
 
-- [ ] 4.1 The ARI client tracks its stream: connected, and replaced on an `ApplicationReplaced` event for its application. On replacement it logs ERROR, closes the connection and stops without reconnecting.
+- [x] 4.1 The ARI client tracks its stream: connected, and replaced on an `ApplicationReplaced` event for its application. On replacement it logs ERROR, closes the connection and stops without reconnecting.
 
   Verify:
   - unit: event handling and the stream state;
   - integration against the rig's Asterisk with a throwaway application name: a second registration makes the first stream stop with the replaced error.
+
+  *(done 2026-10-13: `ari.Client` keeps two atomic flags.
+  - **connected** is set while a websocket is up.
+  - **replaced** is set when an `ApplicationReplaced` names its own application.
+
+  `streamOnce` returns `ErrApplicationReplaced` on that event, without passing it to the handler, and ignores another application's replacement. `StreamEvents` logs ERROR with the application name and returns without reconnecting. `EventsHealth()` reports `ErrApplicationReplaced`, `ErrEventsDisconnected` or nil.
+
+  Verified:
+  - unit tests:
+    - the stream stops for good, connecting once and seeing only events from before the replacement;
+    - another application's replacement is ignored;
+    - health follows the connection: disconnected before, nil while connected, disconnected after.
+  - integration `TestStreamEvents_RealEngineReportsTheTakeover`: against the rig's real Asterisk 22.11 with a throwaway application name, the first stream stops with the replaced error, and `ari show apps` lists only `voip-app` afterwards. ARI settings come from the environment, then `.env`, then `.env.example`, with no credential in code.
+  - The Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).)*
 - [ ] 4.2 Add a `call-events` readiness checker, failing while the stream is disconnected or replaced. Record D-73 in `docs/DECISIONS.md`.
 
   Verify:

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -307,5 +308,118 @@ func settle() {
 	for i := 0; i < 3; i++ {
 		runtime.Gosched()
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// --- the application taken over (phase-a-hardening task 4.1, D-73) ---------
+
+// replacingServer accepts event connections and, on each, sends the given
+// messages and then holds the connection open, as Asterisk does after an
+// ApplicationReplaced. It counts the connections it accepted.
+func replacingServer(t *testing.T, messages ...string) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var accepted atomic.Int32
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		accepted.Add(1)
+		for _, m := range messages {
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(m)); err != nil {
+				return
+			}
+		}
+		for { // held open and silent, until the client leaves
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &accepted
+}
+
+func TestStreamEvents_StopsForGoodWhenItsApplicationIsReplaced(t *testing.T) {
+	srv, accepted := replacingServer(t,
+		`{"type":"StasisStart","channel":{"id":"chan1"}}`,
+		`{"type":"ApplicationReplaced","application":"voip-app"}`,
+	)
+	c := New(srv.URL, "u", "p", "voip-app")
+
+	var mu sync.Mutex
+	var got []string
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := c.StreamEvents(ctx, func(e Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, e.Type)
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	if !errors.Is(err, ErrApplicationReplaced) {
+		t.Fatalf("StreamEvents() = %v, want ErrApplicationReplaced", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("StreamEvents waited for the context instead of stopping on the replacement")
+	}
+	if n := accepted.Load(); n != 1 {
+		t.Errorf("connected %d times, want 1: a replaced application is never taken back", n)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0] != "StasisStart" {
+		t.Errorf("handler saw %v, want only the StasisStart before the replacement", got)
+	}
+	if err := c.EventsHealth(); !errors.Is(err, ErrApplicationReplaced) {
+		t.Errorf("EventsHealth() = %v, want ErrApplicationReplaced", err)
+	}
+}
+
+func TestStreamOnce_IgnoresAnotherApplicationsReplacement(t *testing.T) {
+	srv, _ := replacingServer(t, `{"type":"ApplicationReplaced","application":"someone-else"}`)
+	c := New(srv.URL, "u", "p", "voip-app")
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/events"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err := c.streamOnce(ctx, wsURL, func(Event) {})
+	if errors.Is(err, ErrApplicationReplaced) {
+		t.Fatal("another application's replacement stopped this stream")
+	}
+	if err := c.EventsHealth(); errors.Is(err, ErrApplicationReplaced) {
+		t.Errorf("EventsHealth() = %v after another application's replacement", err)
+	}
+}
+
+func TestEventsHealth_FollowsTheConnection(t *testing.T) {
+	srv, _ := replacingServer(t)
+	c := New(srv.URL, "u", "p", "voip-app")
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/events"
+
+	if err := c.EventsHealth(); !errors.Is(err, ErrEventsDisconnected) {
+		t.Fatalf("before connecting: EventsHealth() = %v, want ErrEventsDisconnected", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = c.streamOnce(ctx, wsURL, func(Event) {})
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for c.EventsHealth() != nil && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := c.EventsHealth(); err != nil {
+		t.Fatalf("while connected: EventsHealth() = %v, want nil", err)
+	}
+
+	cancel()
+	<-done
+	if err := c.EventsHealth(); !errors.Is(err, ErrEventsDisconnected) {
+		t.Errorf("after the connection ended: EventsHealth() = %v, want ErrEventsDisconnected", err)
 	}
 }

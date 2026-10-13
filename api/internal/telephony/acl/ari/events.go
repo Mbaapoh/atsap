@@ -3,6 +3,7 @@ package ari
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,28 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+// ErrApplicationReplaced is the engine having handed this client's Stasis
+// application to another connection — another process registered the
+// same name. The engine keeps this connection open and silent, so without
+// it the stream would look healthy while receiving nothing (D-73).
+var ErrApplicationReplaced = errors.New("ari: the Stasis application was taken over by another connection")
+
+// ErrEventsDisconnected is the event stream not being connected.
+var ErrEventsDisconnected = errors.New("ari: event stream not connected")
+
+// EventsHealth reports whether this client is receiving call events: nil
+// while its stream is connected and its application is its own. It is a
+// readiness check, cheap and side-effect free.
+func (c *Client) EventsHealth() error {
+	switch {
+	case c.replaced.Load():
+		return ErrApplicationReplaced
+	case !c.connected.Load():
+		return ErrEventsDisconnected
+	}
+	return nil
+}
 
 // Event is one message from the ARI event WebSocket. Type identifies the
 // event (e.g. "StasisStart", "ChannelHangupRequest"); Raw holds the full
@@ -82,9 +105,14 @@ const (
 // and dispatches events to handler until the context is cancelled,
 // reconnecting with jittered backoff whenever the connection drops.
 //
-// It returns only when ctx is done. A dropped connection is expected
-// operational noise, not a reason to give up: the engine restarting must
-// leave the platform reconnecting rather than deaf.
+// It returns when ctx is done, or with ErrApplicationReplaced when the
+// engine hands the application to another connection. A dropped
+// connection is expected operational noise, not a reason to give up: the
+// engine restarting must leave the platform reconnecting rather than
+// deaf. A takeover is different: reconnecting would take the application
+// back, and two processes doing that to each other lose calls on both
+// while each looks healthy. So this one stops, says so, and reports
+// itself not ready (D-73).
 func (c *Client) StreamEvents(ctx context.Context, handler EventHandler, logger *slog.Logger) error {
 	wsURL := c.eventsURL()
 	backoff := baseBackoff
@@ -95,6 +123,11 @@ func (c *Client) StreamEvents(ctx context.Context, handler EventHandler, logger 
 		}
 
 		connectedFor, err := c.streamOnce(ctx, wsURL, handler)
+		if errors.Is(err, ErrApplicationReplaced) {
+			logger.Error("ari: another connection took over this Stasis application; this instance no longer receives call events and will not take it back — restart it once the other process is gone",
+				"application", c.appName)
+			return err
+		}
 		if ctx.Err() != nil {
 			// Cancellation is how this loop is meant to end, so it is not
 			// reported as a stream failure.
@@ -163,6 +196,8 @@ func (c *Client) streamOnce(ctx context.Context, wsURL string, handler EventHand
 	defer func() { _ = conn.Close() }()
 
 	connectedAt := time.Now()
+	c.connected.Store(true)
+	defer c.connected.Store(false)
 
 	// Close the connection when the context is cancelled, so a blocked
 	// ReadMessage returns.
@@ -190,10 +225,15 @@ func (c *Client) streamOnce(ctx context.Context, wsURL string, handler EventHand
 		}
 
 		var envelope struct {
-			Type string `json:"type"`
+			Type        string `json:"type"`
+			Application string `json:"application"`
 		}
 		if err := json.Unmarshal(data, &envelope); err != nil {
 			continue
+		}
+		if envelope.Type == "ApplicationReplaced" && envelope.Application == c.appName {
+			c.replaced.Store(true)
+			return time.Since(connectedAt), ErrApplicationReplaced
 		}
 		handler(Event{Type: envelope.Type, Raw: data})
 	}

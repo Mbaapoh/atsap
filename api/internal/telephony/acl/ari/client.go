@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,6 +25,12 @@ type Client struct {
 	password string
 	appName  string
 	http     *http.Client
+
+	// The event stream's state, for readiness (D-73): connected while a
+	// websocket is up; replaced once the engine has handed this client's
+	// Stasis application to another connection, which is permanent.
+	connected atomic.Bool
+	replaced  atomic.Bool
 }
 
 // Timeouts for the REST side of ARI.
