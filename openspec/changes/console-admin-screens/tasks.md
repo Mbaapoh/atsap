@@ -6,12 +6,28 @@
 
 - [x] 1.1 Add `usePermissions()` (the session's membership roles → may administer) and the Phase A role catalogue (Agent, Supervisor, Tenant administrator; Platform administrator only for a platform administrator). Verify with component tests for every role, and that an unknown role renders by its server name. *(done 2026-10-13: `features/auth/permissions.ts` holds `ROLE_CATALOGUE` (Agent, Supervisor, Tenant administrator at tenant scope; Platform administrator at system scope), `roleLabel` (an unknown role keeps its server name), and `permissionsFor`/`usePermissions` (canAdminister, isPlatformAdmin, grantableRoles), reading the session only. The licence page and tenant picker now use it (one source of truth). 12 component tests: every role and combination, the current membership only, unknown roles. Component 197; e2e 17.)*
 - [x] 1.2 Add offset pagination (50 per page; Next enabled only on a full page; no totals) and a row-actions menu for `DataTable`. Verify with keyboard and screen-reader-name tests, and that no total or page count is ever shown. *(done 2026-10-13: `components/Pager` shows "Page N" with Previous/Next, enables Next only after a full page of 50, never shows a total, and is absent for a single page. `components/RowActions` is a WAI-ARIA menu button named after its row: Arrow Down opens it, arrows, Home and End move, disabled items are skipped, Escape returns focus, destructive actions are listed last, and an outside click closes it. 5 component tests; component suite 202. **Found:** the hidden " for …" text lost its space in the accessible name, so it now uses an explicit `aria-label` beginning with the visible word.)*
-- [ ] 1.3 Add the `OneTimeSecret` panel:
+- [x] 1.3 Add the `OneTimeSecret` panel:
   - copy controls and a required acknowledgement;
   - not dismissible, and in-app navigation blocked, until acknowledged;
   - `beforeunload` while unacknowledged;
   - the secret held in panel state only;
-  - `data-sip-username` marking the one sanctioned engine-id element.
+  - `data-sip-username` marking the one sanctioned engine-id element. *(done 2026-10-13: `components/OneTimeSecret`:
+  - copy controls per value;
+  - an acknowledgement checkbox, with Done disabled until it is ticked;
+  - Escape and the backdrop ignored;
+  - a React Router `useBlocker` that holds any in-app navigation while the panel is open, explains why, and lets it continue after Done;
+  - `beforeunload` while open;
+  - values gone from the page after close;
+  - one `data-sip-username` element.
+
+  `renderedSurface` now replaces that element's text before scanning, reads the whole document including hidden text (stricter), and still scans attributes.
+
+  Verified:
+  - 4 component tests (copy, cannot dismiss, navigation held then continued, unload prompt);
+  - 1 browser test of the scanner (allowed inside the marked element; caught in other text and in an attribute);
+  - component 206, e2e 18, rig exposure spec 2 of 2, secrets clean.
+
+  **Found while building:** an initial focus on the disabled Done button would have been lost, and an acknowledgement tick released a held navigation early; both were fixed before commit.)*
 
   Extend `e2e/support/exposure.ts` to allow the engine-id pattern only inside that element. Verify with component tests (cannot close, cannot navigate, discarded on close) and with the scanner's allow and deny cases.
 

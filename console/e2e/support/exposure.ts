@@ -45,9 +45,17 @@ export function secretFindings(where: string, text: string, secrets: Record<stri
 // renderedSurface is everything a person or assistive technology can get
 // from the page: its text, and every attribute value (links, labels,
 // titles, form values, data attributes).
+//
+// The one sanctioned engine identifier — an extension's SIP username,
+// shown labelled where a phone is configured — sits in an element marked
+// data-sip-username (console-admin-screens D3). Its text is replaced by a
+// placeholder before scanning, so the pattern is allowed there and caught
+// everywhere else. Text is read from the whole document, hidden or not.
 export async function renderedSurface(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const parts: string[] = [document.title, document.body.innerText];
+    const clone = document.body.cloneNode(true) as HTMLElement;
+    for (const el of Array.from(clone.querySelectorAll("[data-sip-username]"))) el.textContent = "<sip-username>";
+    const parts: string[] = [document.title, clone.textContent ?? ""];
     for (const el of Array.from(document.querySelectorAll("*"))) {
       for (const attr of Array.from(el.attributes)) parts.push(attr.value);
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) parts.push(el.value);

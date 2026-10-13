@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { renderFindings, renderedSurface, type Finding } from "./support/exposure";
+import { engineFindings, renderFindings, renderedSurface, type Finding } from "./support/exposure";
 import { mockSession } from "./support/session";
 
 // console-foundation task 3.3, hermetic half: the API is mocked to be as
@@ -66,4 +66,15 @@ test("engine detail in API responses and errors never reaches the screen", async
   findings.push(...renderFindings("/licence after a refusal", await renderedSurface(page), [], {}));
 
   expect(findings).toEqual([]);
+});
+
+test("the SIP username is allowed in its marked element, and caught anywhere else", async ({ page }) => {
+  await page.setContent(`<main><dl><dt>SIP username</dt><dd><code data-sip-username>${ENGINE}</code></dd></dl></main>`);
+  expect(engineFindings("allowed", await renderedSurface(page))).toEqual([]);
+
+  await page.setContent(`<main><p>Endpoint ${ENGINE}</p><code data-sip-username>${ENGINE}</code></main>`);
+  expect(engineFindings("outside", await renderedSurface(page)).map((f) => f.what)).toEqual([`engine endpoint id: ${ENGINE}`]);
+
+  await page.setContent(`<main><a title="${ENGINE}" href="#">x</a></main>`);
+  expect(engineFindings("attribute", await renderedSurface(page))).not.toEqual([]);
 });
