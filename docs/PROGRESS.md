@@ -7,9 +7,10 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-10-13, after `console-admin-screens` was archived: the
-A2–A5 console screens, proven in the browser on the real API and by UAT
-with real phones.
+**Last updated:** 2026-10-13, after `phase-a-hardening` was completed:
+phone-dialled calls recorded and presented truthfully, a taken-over Stasis
+application noticed, no engine endpoint in `GetCall`, nothing provisioned
+before a licence, and no false error after every hang-up.
 
 ## Keeping it current
 
@@ -64,17 +65,14 @@ configuration file, and without being told what Asterisk is.
 3. ~~`console-admin-screens`~~ **archived** 2026-10-13: Users, Extensions,
    Trunks & routes (with inbound numbers and emergency), Call history;
    browser tests on the real API and UAT with real phones walking A2–A5.
-4. **`phase-a-hardening`** (small): `GetCall` stops exposing the engine
-   endpoint; no provisioning before a licence is applied; the hang-up log
-   noise; the app must notice when another process takes over its Stasis
-   app (Asterisk logs "Replacing Stasis app 'voip-app'") — on 2026-10-13 a
-   second app process did, and calls then stuck at Presenting with no log
-   or readiness failure until the app was restarted. Also found on the
-   dev rig the same day, a phone dialling another extension (1001 → 1002):
-   the call is recorded INBOUND instead of INTERNAL, its source number is
-   the caller's engine endpoint id instead of 1001 (so the console's
-   history can only show "Not shown"), and the called phone sees the
-   caller as anonymous.
+4. **`phase-a-hardening`** done 2026-10-13 (ready to archive):
+   - a call dialled on a phone is recorded with its real direction (INTERNAL or OUTBOUND) and from the dialling extension's number, and the ringing phone is shown who is calling;
+   - a Stasis application taken over by another process is logged and fails readiness (D-73);
+   - `GetCall` returns no engine endpoint;
+   - nothing is provisioned before a licence is applied (D-72);
+   - no false ERROR after every hang-up.
+
+   It is proven by unit, integration, e2e (including a live takeover on the rig) and real-phone UAT, which now also covers a phone-to-phone call.
 
 ### Before a pilot
 
@@ -98,7 +96,8 @@ that link.
 ### Phase B — order (designed, not started)
 
 1. `pbx-extension-assignment`: who owns an extension; calls record the
-   extension and person; `GetCall` stops exposing engine endpoints.
+   extension and person. (`GetCall` already exposes no engine endpoint:
+   `phase-a-hardening`.)
 2. `pbx-ivr-flows`: auto-attendant, business hours, holidays.
 3. `pbx-queues`: ACD queues, agents and state, hot-desking (US-03.4).
 4. LLD-09 `reporting`: immutable CDR, per-second usage, export,
@@ -156,9 +155,9 @@ design; *accepted* = no fix planned.
 |---|---|---|
 | The Asterisk image is single-stage and ships its build toolchain: Trivy finds 20 fixable HIGH (Python 3.11) and 440 HIGH/CRITICAL that Debian has not fixed yet, so the image gate cannot pass | quality-and-supply-chain-gates 5.3 | **High** — pilot: multi-stage runtime image; owner decision on `--ignore-unfixed` |
 | Two trunks on one carrier address are indistinguishable for inbound calls | inbound G3 | **High** — pilot: wrong-tenant attribution once two tenants share a carrier |
-| Before activation (Setup), tenant and extension caps read 0 = unlimited | license-provisioning-enforcement | Medium — hardening: provisioning is unbounded until a licence is applied |
+| ~~Before activation (Setup), tenant and extension caps read 0 = unlimited~~ | license-provisioning-enforcement | Closed: `phase-a-hardening` task 3.1 (D-72) |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |
-| `GetCall` returns `Participant.endpoint_uri` (`PJSIP/e_…`), an engine identifier | console-apis-phase-a G3 | Medium — hardening: `GetCall` stops exposing it in `phase-a-hardening`; the person-aware participant fields come with `pbx-extension-assignment` (D-65) |
+| ~~`GetCall` returns `Participant.endpoint_uri` (`PJSIP/e_…`), an engine identifier~~ | console-apis-phase-a G3 | Closed: `phase-a-hardening` task 2.1 (deprecated, never filled); person-aware participant fields come with `pbx-extension-assignment` (D-65) |
 | No external sign-in yet; providers can be configured only in the database | D-63, D-67, identity G1 | Planned: `identity-oidc-google` (Gmail and Workspace) before a pilot; company-domain SSO later |
 | No RPC for a person to change their own email or display name | identity G2 | Low: with the console's account screen |
 | The per-address login throttle is shared by everyone behind one address | identity G4 | Accepted (D-64): runs reset after 15 quiet minutes |
@@ -166,14 +165,18 @@ design; *accepted* = no fix planned.
 | No formal CDR (immutable, per-second usage, export); calls and participants are recorded and listable | HLD 04 §5, LLD-09 | Phase B: reporting |
 | No MFA for password users | D-63, D-66 | Planned: `identity-mfa` (TOTP and passkeys; required for administrators) in **Phase B, before GA**; Google sign-ins get Google's 2-step verification |
 | No SCIM provisioning (leavers removed in the customer's IdP keep their membership) | D-66 | Planned: `identity-scim` after MFA |
-| Call history has no extension column: `CallSummary` carries none | console-admin-screens G3 | Low — hardening: an API field in `phase-a-hardening` |
+| Call history has no extension column: `CallSummary` carries none (a phone-dialled call's source is now its extension number) | console-admin-screens G3 | Low — B: with `pbx-extension-assignment`, which records the call's extension |
 | No `ListRoles` RPC: the console's role catalogue mirrors identity's table (a contract test fails on drift) | console-admin-screens G1 | Accepted until custom roles |
 | No `Retry-After` on the 503 for capacity refusals (Asterisk cannot add it) | inbound G1 | Low |
 | Emergency catalogue is CM and US only (owner decision); other countries are tenant-entered | inbound G2 | Accepted |
 | Toll-fraud outbound classes not enforced | call-placement G4 | Medium — pilot: tenant country now exists to build it on |
 | No `Degraded` trunk health from latency; unanswered calls not attributed (no SIP cause) | call-placement G1, G2 | Low |
 | Both legs of an API-placed call ring at once | call-placement G6 | Low |
-| ERROR log "participant-left handler failed: call not found" after every hang-up | call-placement G3, inbound G6 | Low — hardening: noise |
+| ~~ERROR log "participant-left handler failed: call not found" after every hang-up~~ | call-placement G3, inbound G6 | Closed: `phase-a-hardening` task 5.1 |
+| A trunk host that does not resolve (a typo such as `locslhodt`) makes Asterisk block about 5 s on DNS while identifying SIP requests, stalling call setup for **every** tenant; the API accepts any host | phase-a-hardening (found on the dev rig, 2026-10-13) | **High** — pilot: refuse or flag an unresolvable host at creation, and keep DNS off the identify path |
+| Outbound calls present no caller ID to the carrier: a tenant has no presentation number yet | phase-a-hardening (design non-goal) | Medium — pilot |
+| A Stasis application taken over by another process is not taken back: the instance stays not-ready until restarted | phase-a-hardening D5 | Accepted (D-73) |
+| The Go integration tier defaults to the rig's live database and migrates it down; run it with `DATABASE_URL`/`ENGINE_DATABASE_URL` on `atsapbx_test` to keep the rig's data | phase-a-hardening (found while testing) | Low — tooling: make the scratch database the default |
 | Static fixtures 1000/1001 cannot dial (no tenant) | inbound G5 | Accepted |
 | e2e/UAT need the host firewall to admit the Docker bridge on UDP 5070–5071 and 18000–18039 | call-placement G7 | Environment |
 | No live test of a full trunk being passed over, or of a trunk failing to originate | inbound G4, call-placement G8 | Low: proven at integration |

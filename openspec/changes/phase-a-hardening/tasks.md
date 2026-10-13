@@ -187,7 +187,7 @@
 
 ## 6. Close-out
 
-- [ ] 6.1 Update `docs/PROGRESS.md`:
+- [x] 6.1 Update `docs/PROGRESS.md`:
   - Phase A step 4 done;
   - the known-gaps table: GetCall endpoint, pre-activation caps and the hang-up noise closed; the outbound caller ID towards carriers added as a new gap.
 
@@ -196,3 +196,29 @@
   - ratchet the coverage floors.
 
   Verify: everything passes, and the measured coverage is recorded.
+
+  *(done 2026-10-13: `docs/PROGRESS.md` updates:
+  - Phase A step 4 is marked done (ready to archive).
+  - In the Phase B order, `GetCall` is noted as already clean.
+  - Three gaps are closed: the pre-activation caps (D-72), the `GetCall` endpoint, and the hang-up noise.
+  - The extension column moves to B, with `pbx-extension-assignment`.
+  - New gaps:
+    - **High:** an unresolvable trunk host stalls Asterisk's SIP identification for every tenant.
+    - **Medium:** no caller ID towards carriers.
+    - **Accepted:** no automatic re-take after a takeover (D-73).
+    - **Low:** the integration tier defaults to the rig's live database.
+
+  Measured:
+  - `make coverage-all` gives Go 82.9% of 6196 statements across unit, integration (on `atsapbx_test`) and e2e, against a floor of 82.7.
+  - `make coverage` gives unit 76.8% of 3928, against a floor of 76.3.
+  - The floors were ratcheted to 82.8 and 76.8. The console floors are unchanged, at 96.3 / 88.1 / 98.3 / 97.4.
+
+  Every tier passes:
+  - `make console-check` (387 / 24 / 24 / 3, audit 0, secrets clean);
+  - `make uat-inbound` (INBOUND from carrier; OUTBOUND from the extension; phone to phone shown `'UAT phone' <number>` and recorded INTERNAL);
+  - `make uat-auto` and `make uat-placement`;
+  - `make docs` and `make proto`.
+
+  The owner's Dev Acme extensions survived every tier.
+
+  **Found while measuring:** the first unit tests in `package main` (tasks 3.1 and 4.2) linked the whole app into a unit test binary, and unit coverage read 48.7% of 6196 statements, a change of denominator. The cap functions and the call-events checker moved to `cmd/atsap-api/internal/wiring` (`3b557dc`). The paths in the 3.1 and 4.2 notes refer to their original location.)*

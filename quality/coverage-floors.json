@@ -1,7 +1,7 @@
 {
   "go": {
     "all": {
-      "total": 82.7,
+      "total": 82.8,
       "packages": {
         "atsap-api/internal/identity/domain": 97.7,
         "atsap-api/internal/licensing/domain": 99,
@@ -11,7 +11,7 @@
       }
     },
     "unit": {
-      "total": 76.3,
+      "total": 76.8,
       "packages": {
         "atsap-api/internal/identity/domain": 95.5,
         "atsap-api/internal/licensing/domain": 98,
