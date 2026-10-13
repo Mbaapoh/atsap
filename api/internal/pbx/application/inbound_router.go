@@ -122,8 +122,16 @@ func (s *Service) resolveDeskPhoneCall(ctx context.Context, req telephonyports.I
 	var (
 		res       domain.Resolution
 		emergency domain.EmergencyNumberSet
+		caller    domain.Extension
 	)
 	err := s.pool.WithTenant(ctx, req.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		// The phone presents its engine endpoint as its caller number;
+		// the call is attributed to the extension behind it.
+		var err error
+		caller, err = s.store.Get(ctx, tx, req.TenantID, dialling)
+		if err != nil {
+			return err
+		}
 		country, _, err := in.Emergency.GetCountry(ctx, tx)
 		if err != nil {
 			return err
@@ -164,6 +172,9 @@ func (s *Service) resolveDeskPhoneCall(ctx context.Context, req telephonyports.I
 		return notFound, nil
 	case errors.Is(err, domain.ErrUnroutable):
 		return notFound, nil
+	case errors.Is(err, ports.ErrNotFound):
+		// The dialling extension no longer exists: an unknown source.
+		return notFound, nil
 	case err != nil:
 		return telephonyports.InboundDecision{}, err
 	}
@@ -174,6 +185,8 @@ func (s *Service) resolveDeskPhoneCall(ctx context.Context, req telephonyports.I
 			DestinationURI:  addresser.ExtensionAddress(*res.Destination.ExtensionID),
 			Direction:       telephonydomain.Internal,
 			BypassScreening: res.Emergency,
+			CallerNumber:    caller.Number,
+			CallerName:      caller.DisplayName,
 		}, nil
 	}
 
@@ -203,6 +216,8 @@ func (s *Service) resolveDeskPhoneCall(ctx context.Context, req telephonyports.I
 			DestinationURI:  addresser.TrunkAddress(c.Trunk.ID, req.Dialled),
 			Direction:       telephonydomain.Outbound,
 			BypassScreening: res.Emergency,
+			CallerNumber:    caller.Number,
+			CallerName:      caller.DisplayName,
 		}, nil
 	}
 	return telephonyports.InboundDecision{Refuse: telephonyports.RefusalUnavailable}, nil

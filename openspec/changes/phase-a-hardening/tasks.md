@@ -24,11 +24,19 @@
   - The integration tier defaults to the rig's live `atsapbx` and migrates it down. It now runs against `atsapbx_test` (`DATABASE_URL`, `ENGINE_DATABASE_URL`), after the outbox tests were fixed to follow it (`feea947`).
   - Console branch coverage varied by one branch between runs, because of a race between two queries. A deterministic test fixes it (`6f2c3fd`).
   - `make test` needs `mise exec`: plain `make` finds a Go without `covdata`.)*
-- [ ] 1.2 The inbound router attributes a desk-phone call to the dialling extension: its number and display name. A trunk call leaves both empty.
+- [x] 1.2 The inbound router attributes a desk-phone call to the dialling extension: its number and display name. A trunk call leaves both empty.
 
   Verify:
   - unit: a desk phone dialling another extension, and a route, each carry the dialling extension's number and name;
   - a trunk call carries neither.
+
+  *(done 2026-10-13: `resolveDeskPhoneCall` reads the dialling extension in its own transaction and returns its number and display name on both the internal and the trunk decision. A trunk call returns neither. A phone whose extension no longer exists is refused "not found", like any unknown source, rather than surfacing as an internal error.
+
+  Verified:
+  - `TestRouter_DeskPhoneDialPlan` now dials as a real phone does, presenting its `e_…` username as the caller number, where it used to pass `1001`, which hid the defect. It asserts `1001` / "Ext 1001" on the internal and the outbound decision, and it failed before the change.
+  - `TestRouter_TrunkCallToAssignedDIDRingsExtension` asserts that a carrier gets no caller override.
+  - `TestRouter_UnassignedDIDAndUnknownSourceAreNotFound` covers a deleted extension's phone.
+  - The Go unit, integration (`atsapbx_test`), e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).)*
 - [ ] 1.3 The destination leg of an arriving call is originated with the caller ID `"Name" <number>`, or just the number when there is no name. The name is sanitized first: `"`, `<`, `>`, `\` and control characters are removed.
 
   Verify:

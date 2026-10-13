@@ -336,6 +336,8 @@ func TestRouter_TrunkCallToAssignedDIDRingsExtension(t *testing.T) {
 	assert.Equal(t, "PJSIP/"+extSource(ext.Extension.ID), decision.DestinationURI)
 	assert.Equal(t, telephonydomain.Inbound, decision.Direction)
 	assert.False(t, decision.BypassScreening)
+	assert.Empty(t, decision.CallerNumber, "a carrier's caller number stands")
+	assert.Empty(t, decision.CallerName)
 }
 
 func TestRouter_UnassignedDIDAndUnknownSourceAreNotFound(t *testing.T) {
@@ -347,6 +349,11 @@ func TestRouter_UnassignedDIDAndUnknownSourceAreNotFound(t *testing.T) {
 
 	decision = h.route(t, "1000", "442071234599", "+1555000111")
 	assert.Equal(t, telephonyports.RefusalNotFound, decision.Refuse, "an unknown source is refused")
+
+	// A phone whose extension was deleted is an unknown source too.
+	gone := shareddomain.NewExtensionID()
+	decision = h.route(t, extSource(gone), "1001", extSource(gone))
+	assert.Equal(t, telephonyports.RefusalNotFound, decision.Refuse, "a deleted extension's phone is refused")
 }
 
 func TestRouter_DeskPhoneDialPlan(t *testing.T) {
@@ -356,17 +363,26 @@ func TestRouter_DeskPhoneDialPlan(t *testing.T) {
 	trunk := h.createTrunk(t, "carrier", "203.0.113.10", 30)
 	h.createRoute(t, "44", trunk.ID, 1)
 
-	internal := h.route(t, extSource(alice.Extension.ID), "1002", "1001")
+	// A real phone presents its SIP username — the engine endpoint id —
+	// as its caller number; the router attributes the call to the
+	// extension behind it (phase-a-hardening task 1.2).
+	phone := extSource(alice.Extension.ID)
+
+	internal := h.route(t, phone, "1002", phone)
 	assert.Equal(t, telephonyports.RefusalNone, internal.Refuse)
 	assert.Equal(t, "PJSIP/"+extSource(bob.Extension.ID), internal.DestinationURI)
 	assert.Equal(t, telephonydomain.Internal, internal.Direction)
+	assert.Equal(t, "1001", internal.CallerNumber)
+	assert.Equal(t, "Ext 1001", internal.CallerName)
 
-	external := h.route(t, extSource(alice.Extension.ID), "+442071234567", "1001")
+	external := h.route(t, phone, "+442071234567", phone)
 	assert.Equal(t, telephonyports.RefusalNone, external.Refuse)
 	assert.Equal(t, telephonydomain.Outbound, external.Direction)
 	assert.Contains(t, external.DestinationURI, domain.TrunkEndpointIdentifier(trunk.ID))
+	assert.Equal(t, "1001", external.CallerNumber)
+	assert.Equal(t, "Ext 1001", external.CallerName)
 
-	unroutable := h.route(t, extSource(alice.Extension.ID), "999000111222", "1001")
+	unroutable := h.route(t, phone, "999000111222", phone)
 	assert.Equal(t, telephonyports.RefusalNotFound, unroutable.Refuse)
 }
 
