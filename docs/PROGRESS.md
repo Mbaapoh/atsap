@@ -7,8 +7,9 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-10-12, after `licensing-status-conditions` was archived
-(D-70) and the `console-foundation` scaffold landed (D-68, D-69).
+**Last updated:** 2026-10-13, after `console-admin-screens` was archived: the
+A2–A5 console screens, proven in the browser on the real API and by UAT
+with real phones.
 
 ## Keeping it current
 
@@ -28,7 +29,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 13 changes archived, every console slice A endpoint exists | **Not started** | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 14 changes archived, every console slice A endpoint exists | **A2–A5 screens done** (`console-admin-screens`); A1 screens done in `console-foundation` (ready to archive) | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -44,10 +45,10 @@ configuration file, and without being told what Asterisk is.
 | Flow | Backend | Proven | Console screen |
 |---|---|---|---|
 | A1 First run: install to first login, licence | Licence RPCs ✅ (`console-apis-phase-a`). Console session, sign-in by email, tenant choice, throttling, password change and recovery ✅ (`identity-accounts-and-sessions`) | U I W E | ☐ Sign in · ☐ Licence status and activation · ☐ Account (change or reset password) |
-| A2 Add a user and give them a role | Add by email (one person, many tenants), invite, disable, grant, list, revoke, administrator reset ✅ | U I W E | ☐ Users, roles, permissions |
-| A3 Add an extension a phone can register to | ✅ | U I W E A | ☐ Extensions with registration status |
-| A4 Connect a SIP trunk and route outbound calls | ✅ (plus DIDs and emergency profile) | U I W E A | ☐ Trunks and routes with health |
-| A5 The first real call (out, in, desk phone, emergency) | Calls ✅. Call history list ✅ (`console-apis-phase-a`) | U I W E A | ☐ Call history (read-only) |
+| A2 Add a user and give them a role | Add by email (one person, many tenants), invite, disable, grant, list, revoke, administrator reset ✅ | U I W E | ✅ Users, roles, permissions (`console-admin-screens`; browser, rig, UAT) |
+| A3 Add an extension a phone can register to | ✅ | U I W E A | ✅ Extensions with registration status, credentials shown once (`console-admin-screens`; UAT: a real phone registers with them) |
+| A4 Connect a SIP trunk and route outbound calls | ✅ (plus DIDs and emergency profile) | U I W E A | ✅ Trunks and routes with health, inbound numbers, emergency (`console-admin-screens`; browser, rig, UAT) |
+| A5 The first real call (out, in, desk phone, emergency) | Calls ✅. Call history list ✅ (`console-apis-phase-a`) | U I W E A | ✅ Call history, read-only, filters in the address (`console-admin-screens`; UAT: a real call appears) |
 
 ### Phase A — next steps, in order
 
@@ -60,8 +61,9 @@ configuration file, and without being told what Asterisk is.
    - ~~`licensing-status-conditions`~~ **archived** (D-70): `GetLicenseStatus`
      reports the PRD condition, tier and capacity level, so the licence
      screen (task 2.3) is unblocked.
-3. **`console-admin-screens`**: Users, Extensions, Trunks and routes, Call
-   history; browser e2e walking A2–A5. **Phase A is done when this passes.**
+3. ~~`console-admin-screens`~~ **archived** 2026-10-13: Users, Extensions,
+   Trunks & routes (with inbound numbers and emergency), Call history;
+   browser tests on the real API and UAT with real phones walking A2–A5.
 4. **`phase-a-hardening`** (small): `GetCall` stops exposing the engine
    endpoint; no provisioning before a licence is applied; the hang-up log
    noise.
@@ -125,6 +127,7 @@ that link.
 | 2026-10-11 | `identity-accounts-and-sessions` | 26/26 | U I W E (A as regression) |
 | 2026-10-12 | `licensing-status-conditions` | 7/7 | U W E |
 | 2026-10-13 | `pbx-sip-registrar-settings` | 5/5 | U I W E (A as regression) |
+| 2026-10-13 | `console-admin-screens` | 20/20 | Console: component, browser (mocked), browser on the real API (×3, no residue), UAT with real phones |
 
 ## Active changes
 
@@ -155,6 +158,8 @@ design; *accepted* = no fix planned.
 | No formal CDR (immutable, per-second usage, export); calls and participants are recorded and listable | HLD 04 §5, LLD-09 | Phase B: reporting |
 | No MFA for password users | D-63, D-66 | Planned: `identity-mfa` (TOTP and passkeys; required for administrators) in **Phase B, before GA**; Google sign-ins get Google's 2-step verification |
 | No SCIM provisioning (leavers removed in the customer's IdP keep their membership) | D-66 | Planned: `identity-scim` after MFA |
+| Call history has no extension column: `CallSummary` carries none | console-admin-screens G3 | Low — hardening: an API field in `phase-a-hardening` |
+| No `ListRoles` RPC: the console's role catalogue mirrors identity's table (a contract test fails on drift) | console-admin-screens G1 | Accepted until custom roles |
 | No `Retry-After` on the 503 for capacity refusals (Asterisk cannot add it) | inbound G1 | Low |
 | Emergency catalogue is CM and US only (owner decision); other countries are tenant-entered | inbound G2 | Accepted |
 | Toll-fraud outbound classes not enforced | call-placement G4 | Medium — pilot: tenant country now exists to build it on |

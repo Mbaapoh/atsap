@@ -203,6 +203,6 @@
   Verified: e2e 22, integration 24, UAT 3, component 385, secrets clean, all in one `make console-check`.)*
 - [x] 6.4 Run every console tier (`make console-check`), ratchet the coverage floors, and record coverage and gaps in `coverage.md`. Verify the floors do not fall. *(done 2026-10-13:
   - `make console-check` is green in one run: component 386, e2e 22, integration 24, UAT 3, audit 0, secrets clean. `make console-soak` is clean (6.1).
-  - Floors ratcheted after every task from 4.2 on, now 96.3 / 88.0 / 98.3 / 97.4. They never fell during this section. They had fallen during sections 2–3, as found and restored in 4.2; this is recorded in `coverage.md`.
+  - Floors ratcheted after every task from 4.2 on, now 96.3 / 88.1 / 98.3 / 97.4. They never fell during this section. They had fallen during sections 2–3, as found and restored in 4.2; this is recorded in `coverage.md`.
   - **`coverage.md`** maps flows A2–A5, the design's eight decisions and its risks, and brief rules 6–10 to their proofs, with per-area coverage, what proving found, and gaps G1–G7.
   - **Found and fixed while writing it:** the design's mitigation for catalogue drift, "a test compares the catalogue with identity's roles", had never been built. `permissions.test.tsx` now reads identity's `DefaultPermissions` table and requires the console's `ROLE_CATALOGUE` to name exactly those roles.)*
