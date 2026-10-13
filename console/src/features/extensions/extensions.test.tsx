@@ -174,3 +174,76 @@ describe("creating an extension", () => {
     expect(screen.queryByRole("button", { name: "Add extension" })).not.toBeInTheDocument();
   });
 });
+
+describe("editing, rotating and deleting", () => {
+  const UPDATE = "http://localhost:3000/atsapbx.v1.PbxService/UpdateExtension";
+  const ROTATE = "http://localhost:3000/atsapbx.v1.PbxService/RegenerateSecret";
+  const DELETE = "http://localhost:3000/atsapbx.v1.PbxService/DeleteExtension";
+  const NEW_SECRET = "KZXW6YTBOI4TCMRTGQ2DKNRXHA4TS2LB";
+
+  async function setup() {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    server.use(http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [ext1001] })));
+    const user = userEvent.setup();
+    const view = renderApp(routes, "/extensions");
+    await user.click(await screen.findByRole("button", { name: "Actions for extension 1001" }));
+    return { user, ...view };
+  }
+
+  it("edits the name and device, never the number", async () => {
+    let body: unknown;
+    server.use(http.post(UPDATE, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const { user } = await setup();
+    await user.click(screen.getByRole("menuitem", { name: "Edit…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Edit extension 1001" }));
+    expect(dialog.queryByLabelText("Number")).not.toBeInTheDocument();
+    await user.clear(dialog.getByLabelText("Name"));
+    await user.type(dialog.getByLabelText("Name"), "Front desk");
+    await user.selectOptions(dialog.getByLabelText("Device"), dialog.getByRole("option", { name: "Browser phone (WebRTC)" }));
+    await user.click(dialog.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText("Extension 1001 updated.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, extensionId: "x1", displayName: "Front desk", deviceType: "DEVICE_TYPE_WEBRTC" });
+  });
+
+  it("rotates after confirmation and shows the new password once", async () => {
+    server.use(http.post(ROTATE, () => HttpResponse.json({ extension: ext1001, secret: NEW_SECRET })));
+    const { user, queryClient } = await setup();
+    await user.click(screen.getByRole("menuitem", { name: "Rotate SIP password…" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Rotate the SIP password of extension 1001?" }));
+    expect(confirm.getByText(/stops working at once/)).toBeInTheDocument();
+    await user.click(confirm.getByRole("button", { name: "Rotate password" }));
+    const panel = within(await screen.findByRole("dialog", { name: "New SIP password for extension 1001" }));
+    expect(panel.getByText(NEW_SECRET)).toBeInTheDocument();
+    await user.click(panel.getByRole("checkbox", { name: "I have saved these details" }));
+    await user.click(panel.getByRole("button", { name: "Done" }));
+    expect(document.body.textContent).not.toContain(NEW_SECRET);
+    expect(JSON.stringify(queryClient.getMutationCache().getAll().map((m) => m.state.data))).not.toContain(NEW_SECRET);
+  });
+
+  it("deletes after a confirmation that says the phone stops and its numbers go", async () => {
+    let body: unknown;
+    server.use(http.post(DELETE, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({});
+    }));
+    const { user } = await setup();
+    await user.click(screen.getByRole("menuitem", { name: "Delete extension…" }));
+    const confirm = within(screen.getByRole("dialog", { name: "Delete extension 1001?" }));
+    expect(confirm.getByText("Its phone stops working at once, and any inbound numbers assigned to it are removed. This cannot be undone.")).toBeInTheDocument();
+    expect(confirm.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await user.click(confirm.getByRole("button", { name: "Delete extension" }));
+    expect(await screen.findByText("Extension 1001 deleted.")).toBeInTheDocument();
+    expect(body).toEqual({ tenantId: tenantA.tenantId, extensionId: "x1" });
+  });
+
+  it("an extension already gone is explained, not shown as an error code", async () => {
+    server.use(http.post(DELETE, () => HttpResponse.json({ code: "not_found", message: "not found" }, { status: 404 })));
+    const { user } = await setup();
+    await user.click(screen.getByRole("menuitem", { name: "Delete extension…" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete extension" }));
+    expect(await screen.findByText("This extension no longer exists. It may have been removed.")).toBeInTheDocument();
+  });
+});

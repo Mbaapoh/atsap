@@ -150,3 +150,10 @@ DELETE FROM auth_events WHERE user_id = (SELECT id FROM users WHERE email = '${e
 DELETE FROM users WHERE email = '${email}';
 `);
 }
+
+// engineCredential reads the digest Asterisk holds for an endpoint id
+// (ps_auths.md5_cred), so a spec can prove the engine's copy changed — or
+// is gone — without ever reading a secret.
+export function engineCredential(endpointId: string): string {
+  return psql(`SELECT COALESCE(md5_cred, '') FROM ps_auths WHERE id = '${endpointId}';`).trim();
+}

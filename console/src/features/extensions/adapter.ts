@@ -130,3 +130,49 @@ export function useCreateExtension() {
   );
   return { create };
 }
+
+// useExtensionChanges edits, rotates and deletes. Every change is
+// confirmed in the UI first and the list is refetched afterwards; nothing
+// is optimistic. A rotated secret is returned once, never cached.
+export function useExtensionChanges() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: extensionKeys.all(tenantId) });
+  const update = useMutation<void, ApiError, { id: string; name: string; device: DeviceType }>({
+    mutationFn: ({ id, name, device }) =>
+      callApi(async () => {
+        await pbx.updateExtension({ tenantId, extensionId: id, displayName: name, deviceType: device });
+      }),
+    onSuccess: refetch,
+  });
+  const remove = useMutation<void, ApiError, string>({
+    mutationFn: (id) =>
+      callApi(async () => {
+        await pbx.deleteExtension({ tenantId, extensionId: id });
+      }),
+    onSuccess: refetch,
+  });
+  const rotation = useMutation<Credentials, ApiError, string>({
+    mutationFn: (id) =>
+      callApi(async () => {
+        const res = await pbx.regenerateSecret({ tenantId, extensionId: id });
+        if (!res.extension) throw new Error("no extension returned");
+        return { extension: toExtensionRow(res.extension), secret: res.secret };
+      }),
+    gcTime: 0,
+    onSuccess: refetch,
+  });
+  const { mutateAsync: rotateAsync, reset: resetRotation } = rotation;
+  const rotate = useCallback(
+    async (id: string) => {
+      try {
+        return await rotateAsync(id);
+      } finally {
+        resetRotation();
+      }
+    },
+    [rotateAsync, resetRotation],
+  );
+  return { update: update.mutateAsync, remove: remove.mutateAsync, rotate };
+}

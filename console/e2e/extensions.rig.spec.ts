@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { engineFindings, renderedSurface } from "./support/exposure";
-import { FIXTURE_PASSWORD, rigAvailable, seedUser, type RigUser } from "./support/rig";
+import { engineCredential, FIXTURE_PASSWORD, rigAvailable, seedUser, type RigUser } from "./support/rig";
 
 // console-admin-screens: HLD-18 A3 (extensions) against the real API.
 
@@ -96,4 +96,62 @@ test("A3: create an extension and receive its credentials once, with the registr
   const after = await page.content();
   expect(after).not.toContain(secret);
   expect(after).not.toContain(username);
+});
+
+test("A3: edit, rotate (the engine's credential changes) and delete (the engine forgets it)", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = await apiToken(request, user.email);
+  const number = `74${String(Date.now()).slice(-4)}`;
+  const res = await request.post("/atsapbx.v1.PbxService/CreateExtension", {
+    data: { tenantId, number, displayName: "Change e2e", deviceType: "DEVICE_TYPE_SIP" },
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const created = (await res.json()) as { extension: { extensionId: string; authUsername: string } };
+  let deleted = false;
+  teardown = async () => {
+    if (!deleted) {
+      await request.post("/atsapbx.v1.PbxService/DeleteExtension", { data: { tenantId, extensionId: created.extension.extensionId }, headers: { Authorization: `Bearer ${token}` } });
+    }
+  };
+  const endpoint = created.extension.authUsername;
+  const before = engineCredential(endpoint);
+  expect(before).not.toBe("");
+
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(user.email);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(FIXTURE_PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Overview" })).toBeVisible();
+  await page.goto("/extensions");
+  const row = page.getByRole("table", { name: "Extensions of this tenant" }).getByRole("row", { name: new RegExp(number) });
+  const actions = page.getByRole("button", { name: `Actions for extension ${number}` });
+
+  // Edit.
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Edit…" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Renamed e2e");
+  await page.getByRole("dialog").getByRole("button", { name: "Save changes" }).click();
+  await expect(row).toContainText("Renamed e2e");
+
+  // Rotate: a new password shown once, and the engine's credential changed.
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Rotate SIP password…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Rotate password" }).click();
+  const panel = page.getByRole("dialog", { name: `New SIP password for extension ${number}` });
+  const secret = (await panel.locator(".secret-value").last().textContent())!.trim();
+  await panel.getByRole("checkbox", { name: "I have saved these details" }).check();
+  await panel.getByRole("button", { name: "Done" }).click();
+  expect(engineCredential(endpoint)).not.toBe(before);
+  expect(await page.content()).not.toContain(secret);
+
+  // Delete: gone from the list, and the engine no longer knows it.
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Delete extension…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete extension" }).click();
+  await expect(page.getByText(`Extension ${number} deleted.`)).toBeVisible();
+  deleted = true;
+  await expect(row).toHaveCount(0);
+  expect(engineCredential(endpoint)).toBe("");
 });

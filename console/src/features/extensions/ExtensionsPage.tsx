@@ -2,6 +2,8 @@ import { useState } from "react";
 import { usePermissions } from "../auth/permissions";
 import { AddExtensionDialog } from "./AddExtensionDialog";
 import { CredentialsPanel } from "./CredentialsPanel";
+import { DeleteExtensionDialog, EditExtensionDialog, RotateSecretDialog } from "./ExtensionDialogs";
+import { RowActions } from "../../components/RowActions";
 import { Alert } from "../../components/Alert";
 import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
@@ -29,6 +31,17 @@ export function ExtensionsPage() {
   // credentials hold a just-issued secret until the person confirms
   // they saved it; nothing else ever holds it.
   const [credentials, setCredentials] = useState<Credentials | null>(null);
+  const [credentialsTitle, setCredentialsTitle] = useState("");
+  const [editing, setEditing] = useState<ExtensionRow | null>(null);
+  const [rotating, setRotating] = useState<ExtensionRow | null>(null);
+  const [deleting, setDeleting] = useState<ExtensionRow | null>(null);
+
+  function show(title: string) {
+    return (c: Credentials) => {
+      setCredentialsTitle(title.replace("{number}", c.extension.number));
+      setCredentials(c);
+    };
+  }
 
   return (
     <section className="page" aria-labelledby="page-title">
@@ -43,12 +56,11 @@ export function ExtensionsPage() {
           ) : undefined
         }
       />
-      <AddExtensionDialog open={adding} onClose={() => setAdding(false)} onCreated={setCredentials} />
-      <CredentialsPanel
-        credentials={credentials}
-        title={`Extension ${credentials?.extension.number ?? ""} created`}
-        onDone={() => setCredentials(null)}
-      />
+      <AddExtensionDialog open={adding} onClose={() => setAdding(false)} onCreated={show("Extension {number} created")} />
+      <EditExtensionDialog extension={editing} onClose={() => setEditing(null)} />
+      <RotateSecretDialog extension={rotating} onClose={() => setRotating(null)} onRotated={show("New SIP password for extension {number}")} />
+      <DeleteExtensionDialog extension={deleting} onClose={() => setDeleting(null)} />
+      <CredentialsPanel credentials={credentials} title={credentialsTitle} onDone={() => setCredentials(null)} />
       {extensions.isPending ? <p role="status">Loading extensions…</p> : null}
       {extensions.isError ? (
         <Alert tone="danger" title="Extensions could not be loaded">
@@ -63,6 +75,20 @@ export function ExtensionsPage() {
             columns={extensionColumns}
             rows={extensions.data}
             rowKey={(e) => e.id}
+            rowActions={
+              canAdminister
+                ? (e) => (
+                    <RowActions
+                      label={`extension ${e.number}`}
+                      actions={[
+                        { label: "Edit…", onSelect: () => setEditing(e) },
+                        { label: "Rotate SIP password…", onSelect: () => setRotating(e), destructive: true },
+                        { label: "Delete extension…", onSelect: () => setDeleting(e), destructive: true },
+                      ]}
+                    />
+                  )
+                : undefined
+            }
             empty={<EmptyState title="No extensions yet">Add an extension, then register a phone to it with the details shown.</EmptyState>}
           />
           <Pager page={page} rowCount={extensions.data.length} onPage={setPage} label="Extensions pages" />

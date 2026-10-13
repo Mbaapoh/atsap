@@ -78,7 +78,17 @@
   - component 235, e2e 18, secrets clean (one made-up base32 password allowlisted by exact value).
 
   The Setup gate still applies (existing licence tests).)*
-- [ ] 3.3 Edit the display name and device type; rotate the secret (same panel); delete with a confirmation that states the phone stops working at once. Verify each mutation refetches and that rotation invalidates the old secret on the rig.
+- [x] 3.3 Edit the display name and device type; rotate the secret (same panel); delete with a confirmation that states the phone stops working at once. Verify each mutation refetches and that rotation invalidates the old secret on the rig. *(done 2026-10-13: `useExtensionChanges` (UpdateExtension, DeleteExtension, and RegenerateSecret returned once with the mutation reset and never cached; each refetches). Three row actions for administrators:
+  - Edit… (name and device; the number is identity and not editable);
+  - Rotate SIP password… (a confirmation that the current password stops at once, then the same one-time credential panel);
+  - Delete extension… (a destructive confirmation that says the phone stops working at once and its inbound numbers are removed).
+
+  The delete copy was checked against the server first: `DeleteExtension` removes the extension's DIDs in the same transaction and audits each removal, so the copy states exactly that.
+
+  Verified:
+  - 4 component tests: exact update request with no number field; rotate confirmation and the new password shown once, then gone from the page and mutation cache; delete confirmation copy with focus on Cancel and an exact request; an already-deleted extension explained;
+  - integration against the real API, run twice: edit, rotate (the engine credential `ps_auths.md5_cred` changes, read via a digest-only helper) and delete (the engine row is gone); no residue; `pbx reconcile` clean;
+  - component 239, e2e 18, secrets clean.)*
 
 ## 4. Trunks, routes, inbound and emergency (HLD-18 A4)
 
