@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
 import { PrincipalStatus, type ListedPrincipal } from "../../api/gen/atsapbx/v1/identity_pb";
@@ -62,4 +63,48 @@ export function useUsers(page: number) {
     enabled: tenantId !== "",
     placeholderData: keepPreviousData,
   });
+}
+
+export interface NewUser {
+  email: string;
+  displayName: string;
+  role: string;
+  // initialPassword is optional: without it a new person is invited by
+  // email; it is never applied to a person who already has an account.
+  initialPassword: string;
+}
+
+// useAddUser adds a membership. The initial password goes to the server
+// and nowhere else: the mutation is reset as soon as it settles and never
+// cached (gcTime 0), as with the licence key.
+export function useAddUser() {
+  const { identity } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const mutation = useMutation<void, ApiError, NewUser>({
+    mutationFn: (u) =>
+      callApi(async () => {
+        await identity.provisionPrincipal({
+          tenantId,
+          email: u.email,
+          displayName: u.displayName,
+          role: u.role,
+          password: u.initialPassword,
+        });
+      }),
+    gcTime: 0,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: userKeys.all(tenantId) }),
+  });
+  const { mutateAsync, reset } = mutation;
+  const add = useCallback(
+    async (u: NewUser) => {
+      try {
+        await mutateAsync(u);
+      } finally {
+        reset();
+      }
+    },
+    [mutateAsync, reset],
+  );
+  return { add };
 }

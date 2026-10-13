@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { usePermissions } from "../auth/permissions";
+import { AddUserDialog } from "./AddUserDialog";
 import { Alert } from "../../components/Alert";
 import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
@@ -31,10 +33,23 @@ export const userColumns: Column<UserRow>[] = [
 export function UsersPage() {
   const [page, setPage] = useState(0);
   const users = useUsers(page);
+  const { canAdminister } = usePermissions();
+  const [adding, setAdding] = useState(false);
 
   return (
     <section className="page" aria-labelledby="page-title">
-      <PageHeader title="Users" description="People who can sign in to this tenant, and what each may do." />
+      <PageHeader
+        title="Users"
+        description="People who can sign in to this tenant, and what each may do."
+        action={
+          canAdminister ? (
+            <button type="button" className="button button-primary" onClick={() => setAdding(true)}>
+              Add user
+            </button>
+          ) : undefined
+        }
+      />
+      <AddUserDialog open={adding} onClose={() => setAdding(false)} />
       {users.isPending ? <p role="status">Loading users…</p> : null}
       {users.isError ? (
         <Alert tone="danger" title="Users could not be loaded">

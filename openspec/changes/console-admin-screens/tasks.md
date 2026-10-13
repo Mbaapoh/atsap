@@ -39,7 +39,12 @@
   - 4 component tests: tenant and paging in the request; fields, roles and status; an unknown role; no extension column; Next only after a full page; empty; 403 shown as console copy;
   - integration `users.rig.spec.ts`: the seeded administrator listed with their real role and status;
   - component 210, e2e 18, secrets clean.)*
-- [ ] 2.2 Add user: email, display name, role and an optional initial password, with the copy that an existing person keeps their own password. Verify `ProvisionPrincipal` is called once, the list refetches, and the copy reveals nothing about whether the email exists elsewhere.
+- [x] 2.2 Add user: email, display name, role and an optional initial password, with the copy that an existing person keeps their own password. Verify `ProvisionPrincipal` is called once, the list refetches, and the copy reveals nothing about whether the email exists elsewhere. *(done 2026-10-13: `useAddUser` calls `ProvisionPrincipal` once; the mutation is reset and never cached; the list is refetched. `AddUserDialog` collects email, name, role (grantable roles only) and an optional initial password, with the hint "Leave empty to invite a new person by email. Someone who already has an account keeps their own password." The same words and confirmation apply whether or not the email exists elsewhere. The "Add user" action is shown to administrators only.
+
+  Verified:
+  - 5 component tests: administrators only (fault-injected); an exact request sent once, the list refreshed, and the password in no cache or page; an empty password not sent, so the server invites; validation before sending and an existing member explained at the email field; the platform role offered only to a platform administrator;
+  - integration: an administrator adds a supervisor with an initial password, and that person signs in with it in another browser; no residue;
+  - component 215, e2e 18, secrets clean.)*
 - [ ] 2.3 Grant and revoke roles with confirmation. Verify that revoking the last tenant administrator shows the server's refusal in plain words, and that the platform-administrator role is offered only to a platform administrator.
 - [ ] 2.4 Disable and enable a membership, and reset a password (generated in the browser, shown once through `OneTimeSecret`). Verify the generated password meets 8–64 code points and never reaches a toast, URL, storage or later read, and that the reset person must change it.
 

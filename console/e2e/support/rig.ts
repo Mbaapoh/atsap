@@ -140,3 +140,13 @@ export function rigLicenceKey(): string {
   if (!key) throw new Error("no ATSAPBX_LICENSE_TOKEN in .env: run make dev-licence");
   return key;
 }
+
+// forgetUser removes a person a spec created through the console (their
+// memberships must already be gone, e.g. with their tenant's cleanup).
+export function forgetUser(email: string): void {
+  psql(`
+DELETE FROM principals WHERE user_id = (SELECT id FROM users WHERE email = '${email}');
+DELETE FROM auth_events WHERE user_id = (SELECT id FROM users WHERE email = '${email}');
+DELETE FROM users WHERE email = '${email}';
+`);
+}

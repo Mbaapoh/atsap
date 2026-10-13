@@ -75,3 +75,99 @@ describe("users list", () => {
     expect(screen.queryByText("not permitted")).not.toBeInTheDocument();
   });
 });
+
+describe("adding a user", () => {
+  const PROVISION = "http://localhost:3000/atsapbx.v1.IdentityService/ProvisionPrincipal";
+
+  it("is offered to administrators only", async () => {
+    const { signedIn } = await import("../../test/session");
+    renderApp(routes, "/users", signedIn({ memberships: [{ ...tenantA, roles: ["AGENT"] }] }));
+    await screen.findByRole("heading", { level: 1, name: "Users" });
+    expect(screen.queryByRole("button", { name: "Add user" })).not.toBeInTheDocument();
+  });
+
+  it("adds a person once, refreshes the list, and keeps no password", async () => {
+    const bodies: unknown[] = [];
+    let lists = 0;
+    server.use(
+      http.post(OVERVIEW_URLS.principals, () => {
+        lists++;
+        return HttpResponse.json({ principals: [ana] });
+      }),
+      http.post(PROVISION, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ principal: { principalId: "p-new" } });
+      }),
+    );
+    const user = userEvent.setup();
+    const { queryClient } = renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Add user" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Add a user" }));
+    expect(dialog.getByLabelText("Initial password (optional)")).toHaveAccessibleDescription(
+      "Leave empty to invite a new person by email. Someone who already has an account keeps their own password.",
+    );
+    await user.type(dialog.getByLabelText("Email"), "cara@example.com");
+    await user.type(dialog.getByLabelText("Name"), "Cara Ndi");
+    await user.selectOptions(dialog.getByLabelText("Role"), "SUPERVISOR");
+    await user.type(dialog.getByLabelText("Initial password (optional)"), "first password 1");
+    await user.click(dialog.getByRole("button", { name: "Add user" }));
+
+    expect(await screen.findByText("Cara Ndi added to this tenant.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(bodies).toEqual([{ tenantId: tenantA.tenantId, email: "cara@example.com", displayName: "Cara Ndi", role: "SUPERVISOR", password: "first password 1" }]);
+    expect(lists).toBeGreaterThan(1);
+    expect(JSON.stringify(queryClient.getMutationCache().getAll().map((m) => m.state.variables))).not.toContain("first password 1");
+    expect(document.body.textContent).not.toContain("first password 1");
+  });
+
+  it("without a password, nothing is sent for it (the server invites by email)", async () => {
+    let body: Record<string, unknown> = {};
+    server.use(http.post(PROVISION, async ({ request }) => {
+      body = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ principal: {} });
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Add user" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByLabelText("Email"), "dan@example.com");
+    await user.type(dialog.getByLabelText("Name"), "Dan");
+    await user.click(dialog.getByRole("button", { name: "Add user" }));
+    await screen.findByText("Dan added to this tenant.");
+    expect(body).not.toHaveProperty("password");
+  });
+
+  it("checks the form before sending, and explains an existing member at the email", async () => {
+    let sent = 0;
+    server.use(http.post(PROVISION, () => {
+      sent++;
+      return HttpResponse.json({ code: "already_exists", message: "already a member of this tenant" }, { status: 409 });
+    }));
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Add user" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.click(dialog.getByRole("button", { name: "Add user" }));
+    expect(dialog.getByLabelText("Email")).toHaveAccessibleDescription(/Enter an email address/);
+    expect(dialog.getByLabelText("Name")).toHaveAccessibleDescription("Enter the person's name.");
+    await user.type(dialog.getByLabelText("Initial password (optional)"), "short");
+    await user.type(dialog.getByLabelText("Email"), "ana@example.com");
+    await user.type(dialog.getByLabelText("Name"), "Ana");
+    await user.click(dialog.getByRole("button", { name: "Add user" }));
+    expect(dialog.getByLabelText(/Initial password/)).toHaveAccessibleDescription(/Use at least 8 characters/);
+    expect(sent).toBe(0);
+
+    await user.clear(dialog.getByLabelText(/Initial password/));
+    await user.click(dialog.getByRole("button", { name: "Add user" }));
+    expect(await dialog.findByText("This person is already a member of this tenant.")).toBeInTheDocument();
+    expect(sent).toBe(1);
+  });
+
+  it("offers the platform-administrator role only to a platform administrator", async () => {
+    const user = userEvent.setup();
+    renderApp(routes, "/users");
+    await user.click(await screen.findByRole("button", { name: "Add user" }));
+    const options = within(screen.getByLabelText("Role")).getAllByRole("option").map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["AGENT", "SUPERVISOR", "TENANT_ADMIN"]);
+  });
+});
