@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -29,14 +30,19 @@ func discardLogger() *slog.Logger {
 // workerRoleURL connects as the atsap_outbox_worker BYPASSRLS role
 // (deploy/postgres/init/02-atsapbx.sql), matching how the worker
 // actually runs in production — never the app's own atsapbx_app
-// connection.
-func workerRoleURL() string {
-	return "postgres://atsap_outbox_worker:devpassword123@localhost:15432/atsapbx?sslmode=disable"
+// connection. It targets the same database as testDatabaseURL, so a run
+// pointed at a scratch database (DATABASE_URL) never reads the rig's.
+func workerRoleURL(t *testing.T) string {
+	t.Helper()
+	u, err := url.Parse(testDatabaseURL(t))
+	require.NoError(t, err)
+	u.User = url.UserPassword("atsap_outbox_worker", "devpassword123")
+	return u.String()
 }
 
 func openWorkerPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	pool, err := pgxpool.New(context.Background(), workerRoleURL())
+	pool, err := pgxpool.New(context.Background(), workerRoleURL(t))
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 	require.NoError(t, pool.Ping(context.Background()))

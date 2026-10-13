@@ -378,7 +378,7 @@ func TestOutboxWorkerRole(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	workerURL := "postgres://atsap_outbox_worker:devpassword123@localhost:15432/atsapbx?sslmode=disable"
+	workerURL := workerRoleURL(t)
 	workerPool, err := postgres.Open(ctx, workerURL)
 	require.NoError(t, err)
 	defer workerPool.Close()
