@@ -56,12 +56,25 @@
   - `TestInitiateCall_PresentsNoCallerID`.
   - The Go unit, integration, e2e and lint tiers pass, and `make console-check` passes (387 / 24 / 24 / 3, audit 0, secrets clean).
   - On the owner's two real baresip phones, a 1001 → 1002 call is now shown on 1002 as `sip:1001@…`, where it was `anonymous@anonymous.invalid`, and is recorded `INTERNAL`, from `1001` to `1002`.)*
-- [ ] 1.4 Real-phone UAT. `scripts/uat-inbound.sh` asserts:
+- [x] 1.4 Real-phone UAT. `scripts/uat-inbound.sh` asserts:
   - the inbound call is INBOUND with the carrier's number as source;
   - the desk-phone call is OUTBOUND with the extension's number as source;
   - a new phone-to-phone step: a second extension's phone, on the carrier's port once the carrier is done, receives a call from the first. The call is recorded INTERNAL with source = the first extension's number, and the ringing phone logs the caller's name and number.
 
   Verify: `make uat-inbound` and `make uat-auto` pass on the rig.
+
+  *(done 2026-10-13: `scripts/uat-inbound.sh` now checks each call's record with `expect_record`.
+  - It has a step 6: a second extension, "UAT desk two", registers its phone on the carrier's port once the carrier is done, because only 5070 and 5071 pass the host firewall. The first phone then calls it.
+  - While the call is Active, a `DURING_CALL` hook reads Asterisk's view of the ringing channel. It must show `Caller ID: <first number>` and `Caller ID Name: UAT phone`.
+  - The second extension is removed in teardown.
+
+  Run on the rig:
+  - inbound: INBOUND from `carrier`;
+  - desk phone: OUTBOUND from `876211`;
+  - phone to phone: shown `'UAT phone' <876211>` and recorded INTERNAL from `876211`;
+  - media flowed both ways on every leg, with no RTP errors.
+
+  `make uat-auto`, `make uat-placement`, the Go unit, integration, e2e and lint tiers, and `make console-check` (387 / 24 / 24 / 3, audit 0, secrets clean) all pass.)*
 
 ## 2. No engine endpoint in `GetCall`
 

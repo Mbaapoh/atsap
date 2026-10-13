@@ -7,6 +7,13 @@
 #      resolves to an extension, and the real phone rings and answers.
 #   2. Desk-phone: the same real phone dials an external number; the dial
 #      plan routes it over the trunk and the carrier answers.
+#   3. Phone-to-phone: the carrier's port is handed to a second extension's
+#      phone, and the first phone calls it (phase-a-hardening task 1.4).
+#
+# Each call's record is checked: its direction, and that its source is the
+# caller (the carrier's number, or the dialling extension's — never the
+# phone's engine endpoint). The phone-to-phone call is checked to present
+# the caller's number and name to the ringing phone.
 #
 # Each call is hung up by ONE party and the script asserts the platform
 # released the OTHER (both phones log the call ending), then that RTP
@@ -58,6 +65,7 @@ PRINCIPAL="$(python3 -c 'import uuid; print(uuid.uuid4())')"
 OP_USER="uati-op-$RANDOM"
 TOKEN=""
 EXT_ID=""
+EXT2_ID=""
 TRUNK_ID=""
 
 fail() { echo "UAT-INBOUND FAIL: $1"; exit 1; }
@@ -131,6 +139,7 @@ cleanup() {
 		# Through the API, so the engine projection is removed with the rows.
 		[ -n "$TRUNK_ID" ] && api PbxService/DeleteTrunk "{\"tenantId\":\"$TENANT\",\"trunkId\":\"$TRUNK_ID\"}" >/dev/null 2>&1
 		[ -n "$EXT_ID" ] && api PbxService/DeleteExtension "{\"tenantId\":\"$TENANT\",\"extensionId\":\"$EXT_ID\"}" >/dev/null 2>&1
+		[ -n "$EXT2_ID" ] && api PbxService/DeleteExtension "{\"tenantId\":\"$TENANT\",\"extensionId\":\"$EXT2_ID\"}" >/dev/null 2>&1
 	fi
 	psql_app >/dev/null 2>&1 <<SQL || true
 BEGIN;
@@ -238,14 +247,23 @@ for p in "$PHONE_CTRL" "$CARRIER_CTRL"; do
 done
 log "phone registered; both phones auto-answer"
 
-# latest_call_state — the tenant's most recent call, read under the tenant.
-latest_call_state() {
+# latest_call <columns> — the tenant's most recent call, read under the
+# tenant, '|'-separated.
+latest_call() {
 	psql_app -tA <<SQL 2>/dev/null | tail -1
 BEGIN;
 SELECT set_config('app.tenant_id', '$TENANT', true) \g /dev/null
-SELECT state FROM calls ORDER BY started_at DESC LIMIT 1;
+SELECT $1 FROM calls ORDER BY started_at DESC LIMIT 1;
 COMMIT;
 SQL
+}
+latest_call_state() { latest_call state; }
+
+# expect_record <label> <direction> <source> — the last call's record.
+expect_record() {
+	got="$(latest_call "direction || '|' || source_number")"
+	[ "$got" = "$2|$3" ] || fail "$1: the call was recorded as '$got', expected '$2|$3'"
+	log "$1: recorded $2 from $3"
 }
 
 # one_call <label> <dialler ctrl port> <uri> <other log> <dialler log>
@@ -264,6 +282,7 @@ one_call() {
 	done
 	[ "$state" = "Active" ] || fail "$label: the call never became Active (last state: $state)"
 	log "$label: call Active — letting media flow for 6 s"
+	[ -n "${DURING_CALL:-}" ] && "$DURING_CALL"
 	sleep 6
 	ctrl_rpc "$ctrl" hangup >/dev/null
 	released=0
@@ -299,9 +318,48 @@ media_check() {
 # --- 4. inbound: carrier → DID → phone; the carrier hangs up -------------
 one_call "inbound" "$CARRIER_CTRL" "sip:$DID@$ENGINE_ADDR:5060" "$PHONE_LOG" "$CARRIER_LOG"
 media_check "inbound"
+expect_record "inbound" INBOUND carrier
 
 # --- 5. desk phone → trunk → carrier; the phone hangs up ----------------
 one_call "desk-phone" "$PHONE_CTRL" "sip:$OUT_DEST@$ENGINE_ADDR:5060" "$CARRIER_LOG" "$PHONE_LOG"
 media_check "desk-phone"
+expect_record "desk-phone" OUTBOUND "$NUMBER"
 
-log "PASS: a carrier's call to a DID and a desk phone's call out both connected real phones with media both ways, and one hang-up released both"
+# --- 6. phone → phone: a second extension on the carrier's port ----------
+# Only 5070/5071 reach this host through the firewall, so the carrier's
+# port is handed to a second extension's phone.
+NUMBER2="86$(printf '%04d' $((RANDOM % 10000)))"
+EXT2_JSON="$(api PbxService/CreateExtension "{\"tenantId\":\"$TENANT\",\"number\":\"$NUMBER2\",\"displayName\":\"UAT desk two\",\"deviceType\":\"DEVICE_TYPE_SIP\"}")" ||
+	fail "CreateExtension (second): $EXT2_JSON"
+EXT2_ID="$(echo "$EXT2_JSON" | field extension.extensionId)"
+AUTH2_USER="$(echo "$EXT2_JSON" | field extension.authUsername)"
+SECRET2="$(echo "$EXT2_JSON" | field secret)"
+kill "$(cat "$CARRIER_PID")" 2>/dev/null
+for _ in $(seq 1 20); do ss -lun | grep -q ":$CARRIER_PORT " || break; sleep 0.5; done
+echo "<sip:$AUTH2_USER@$ENGINE_ADDR:5060;transport=udp>;auth_user=$AUTH2_USER;auth_pass=$SECRET2;regint=300" > "$CARRIER_DIR/accounts"
+: > "$CARRIER_LOG"
+nohup baresip -f "$CARRIER_DIR" >"$CARRIER_LOG" 2>&1 & echo $! >"$CARRIER_PID"
+for _ in $(seq 1 30); do
+	reg="$(api PbxService/GetExtension "{\"tenantId\":\"$TENANT\",\"extensionId\":\"$EXT2_ID\"}" | field extension.registration)"
+	[ "$reg" = "REGISTRATION_STATUS_REGISTERED" ] && break
+	sleep 1
+done
+[ "$reg" = "REGISTRATION_STATUS_REGISTERED" ] || fail "the second phone did not register (last: $reg)"
+reply="$(ctrl_rpc "$CARRIER_CTRL" answermode auto)"
+echo "$reply" | grep -q "changed to: auto" || fail "answermode auto rejected on the second phone: $reply"
+log "second extension $NUMBER2 registered on port $CARRIER_PORT"
+
+# What the ringing phone is presented: the engine's view of its channel.
+presented_caller() {
+	chan="$(docker exec deploy-asterisk-1 asterisk -rx 'core show channels concise' | grep -o "^PJSIP/$AUTH2_USER-[^!]*" | head -1)"
+	[ -n "$chan" ] || fail "phone-to-phone: no engine channel for the second phone"
+	shown="$(docker exec deploy-asterisk-1 asterisk -rx "core show channel $chan" | grep -E '^ *Caller ID( Name)?:' | tr -s ' ')"
+	echo "$shown" | grep -q "Caller ID: $NUMBER$" || fail "phone-to-phone: the ringing phone was not shown $NUMBER: $shown"
+	echo "$shown" | grep -q "Caller ID Name: UAT phone$" || fail "phone-to-phone: the ringing phone was not shown the name 'UAT phone': $shown"
+	log "phone-to-phone: the ringing phone is shown 'UAT phone' <$NUMBER>"
+}
+DURING_CALL=presented_caller one_call "phone-to-phone" "$PHONE_CTRL" "sip:$NUMBER2@$ENGINE_ADDR:5060" "$CARRIER_LOG" "$PHONE_LOG"
+media_check "phone-to-phone"
+expect_record "phone-to-phone" INTERNAL "$NUMBER"
+
+log "PASS: a carrier's call to a DID, a desk phone's call out and a call between two phones all connected real phones with media both ways, were recorded with their direction and caller, and one hang-up released both"
