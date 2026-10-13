@@ -61,6 +61,31 @@
   **Found and fixed:** at phone widths with two memberships, the top bar (tenant, Switch, licence pill) pushed the page 40–133 px sideways. Below 768 px the pill now drops its channel count (still in its accessible name), the tenant name shrinks with an ellipsis through a continuous flex chain, and below 420 px the brand gives way to the tenant name (still in the drawer). Checked by screenshot at 360 and 390 px. The overflow assertion failed at every width before the fix.
 
   Verified: `make console-check`, with 185 component tests, e2e 16, integration 10, UAT 1 and audit 0.)*
-- [ ] 3.3 Add an API-traffic assertion and browser-render scan proving that no
-  credential or Asterisk/engine identifier is exposed.
+- [x] 3.3 Add an API-traffic assertion and browser-render scan proving that no
+  credential or Asterisk/engine identifier is exposed. *(done 2026-10-13 — `e2e/support/exposure.ts` scans for:
+  - engine endpoint ids (`e_`/`t_` + 32 hex);
+  - `PJSIP/…`-style dial strings;
+  - Asterisk channel unique ids;
+  - bridge ids;
+  - `ps_*` realtime tables;
+  - `.conf` filenames;
+  - Stasis contexts;
+  - the session's credentials: password, licence key, refresh-cookie value and every access token sent.
+
+  The rendered surface means visible text plus every attribute and form value. In traffic, a password may go only to SignIn, ChangePassword or CompletePasswordReset, a licence key only to ApplyLicenseKey, and none of them may come back in a response or appear in a URL. Access tokens may appear only in the Authorization header.
+
+  **Design point recorded:** an extension's SIP username *is* its engine endpoint id (Asterisk matches a REGISTER by endpoint id; `pbx/domain/credential.go`), and a person configuring a phone must be given it. It is therefore allowed in exactly one place, the API's `authUsername` field, and nowhere on screen until the extension screens show it, labelled, where a phone is configured.
+
+  `exposure.rig.spec.ts` (real API): a platform administrator, with an extension, a trunk and a route projected into Asterisk, walks every page and is refused a bogus licence key. All traffic and every page scan clean. The scan is shown not to be vacuous: every pattern fires on a sample, and the engine-backed responses did cross the wire.
+
+  `exposure.spec.ts` (mocked, for CI): engine text in server error messages, a termination reason and fields the console does not show never reaches any page.
+
+  Fault-injected, each caught:
+  - the access token in a `data-` attribute (rig);
+  - a real extension's engine id in the page title (rig);
+  - a raw termination-reason column (mocked).
+
+  Verified: `make console-check`, with 185 component tests, e2e 17, integration 12, UAT 1 and audit 0. No fixture residue, and `pbx reconcile` reports no divergence.
+
+  Known and recorded elsewhere: `GetCall` still returns `Participant.endpoint_uri`, and the console does not call it (PROGRESS gap, `phase-a-hardening`).)*
 - [ ] 3.4 Record coverage and any remaining evidence gap in `coverage.md`.
