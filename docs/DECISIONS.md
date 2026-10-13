@@ -2318,6 +2318,14 @@ them.
   minor is a new decision that supersedes this row. A patch update within
   a pinned minor is a reviewed lockfile change.
 
+**Amendment (2026-10-13, D-71):** `@vitest/coverage-v8` 4.1.11 (MIT,
+dev-only, the coverage provider matching Vitest 4.1.11) is added, approved
+by the owner. The approved ESLint packages (eslint, typescript-eslint,
+eslint-plugin-react-hooks, eslint-plugin-jsx-a11y) are **not** installed:
+typescript-eslint supports TypeScript below 6.1 only, and TypeScript 7
+exposes no JavaScript compiler API. A substitute linter needs a further
+approval (D-71, Open).
+
 **Related Decisions:** D-35 (permissive FOSS, supply-chain scanning), D-36
 (React + TypeScript), D-43 (public APIs only), D-60 (mise owns pins)
 **Traceability:** `console/package.json`, `console/package-lock.json`,
@@ -2378,6 +2386,68 @@ PRD AC-10.9 exists to prevent.
 **Related Decisions:** D-11, D-14, D-52 (licensing), D-43
 **Traceability:** PRD §11.2; LLD-08; HLD-19 §6; a licensing change to be
 proposed before `console-foundation` task 2.3
+
+---
+
+**D-71 · Quality and supply-chain gates run headless, from one command,
+for both stacks (2026-10-13).**
+
+**Decision:** Code quality and supply-chain safety are machine-checked by
+command-line tools pinned in `.mise.toml`, run by `make quality` locally
+and by the same targets in Jenkins. No dashboard server is part of any
+gate.
+
+| Need | Tool | Gate |
+|---|---|---|
+| Go static analysis | golangci-lint, expanded (gosec, errorlint, bodyclose, noctx, contextcheck, nilerr, rowserrcheck, sqlclosecheck, gocritic, revive, misspell, gocognit 30, nolintlint) | 0 issues. A suppression names its linter and its reason. |
+| Coverage | Go `-cover` across unit, integration and e2e (the Tilt dev app is instrumented), merged with `go tool covdata`; `@vitest/coverage-v8` for the console | Floors in `quality/coverage-floors.json`, raised only by `make coverage-ratchet`, never lowered |
+| Dependency vulnerabilities and licences | OSV-Scanner 2.6.0 over `api/go.mod` and `console/package-lock.json`, plus govulncheck and `npm audit` | Any known vulnerability, or any licence outside the allowlist, fails |
+| Committed secrets | gitleaks 8.30.1 | Any finding fails; the allowlist names exact synthetic fixture values only |
+| Images and SBOM | Trivy 0.75.0 (was a 2024 image pin) | HIGH/CRITICAL fail; a CycloneDX SBOM per image is archived |
+
+Reports are JUnit, Cobertura/LCOV, SARIF and CycloneDX, which Jenkins
+renders. Every gate fails by its exit code alone.
+
+**Context:** Before this, golangci-lint ran 5 linters, coverage was recorded
+but never gated, the console was not in CI at all, D-35's licence rule was
+enforced by nothing, and nothing scanned for secrets. Applying the gates
+found real defects:
+- misattached doc comments;
+- `os.Exit` skipping deferred cleanup in three programs;
+- int-to-int32 conversions that could wrap;
+- 10 HIGH CVEs in `golang.org/x/crypto` inside the shipped binary,
+  invisible to govulncheck because unreachable;
+- 9 Go 1.25 standard-library advisories, fixed by moving to Go 1.26.9
+  (owner approval, 2026-10-13).
+
+**Alternatives:**
+- *SonarQube.* Rejected as the gate: it needs a server and database, and
+  the free Community Build analyses one branch, not pull requests. It can
+  later read the same reports as a dashboard without changing any gate.
+- *OWASP Dependency-Check.* Rejected: it matches by CPE, noisy and slow for
+  Go and npm, and needs an NVD API key. OSV-Scanner matches exact lockfile
+  versions against the Go, GitHub and npm advisory databases.
+- *Trivy alone for source SCA.* Kept for images; OSV-Scanner is preferred
+  for lockfiles for its licence policy.
+
+**Licences (clarifies D-35; pending owner confirmation):** the allowlist is
+D-35's list plus four other OSI/FSF permissive licences found in the tree:
+PostgreSQL (`pgerrcode`, in the Go binary), MIT-0, BlueOak-1.0.0
+(`lru-cache`) and CC0-1.0 (`mdn-data`). MPL-2.0 `lightningcss` (Vite's CSS
+tool) is a named, reasoned exception in `quality/osv-scanner.toml`: it is
+build-time only and none of it is in the console bundle; D-35 governs what
+ships.
+
+**Open:** the console linter. The approved ESLint set cannot run because
+typescript-eslint needs TypeScript's JavaScript compiler API, which
+TypeScript 7 does not have. Oxlint with oxlint-tsgolint is proposed and
+awaits owner approval.
+
+**Related Decisions:** D-28, D-59 (gates as code), D-35 (licences, scanning),
+D-40 (Go standards), D-60 (mise owns pins), D-68 (console dependencies)
+**Traceability:** `.golangci.yml`, `Makefile` (Quality and supply chain),
+`Jenkinsfile`, `quality/`, `scripts/coverage-go.sh`, `api/cmd/covergate`;
+`openspec/changes/quality-and-supply-chain-gates`
 
 ---
 

@@ -131,6 +131,7 @@ that link.
 |---|---|---|
 | `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2), licence (2.3) done | 6/11 |
 | `identity-refresh-grace` | Implemented and verified on every tier (D-62 amendment: 30-second grace for the previous refresh secret); ready to archive | 7/7 |
+| `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter and Asterisk image scan pending | 11/13 |
 
 ## Open gaps
 

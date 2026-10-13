@@ -1,6 +1,6 @@
 ## 1. Decisions and prerequisites
 
-- [ ] 1.1 Record D-71 (headless quality and supply-chain gates: OSV-Scanner, gitleaks, Trivy upgrade with SBOM, expanded golangci-lint, coverage floors; SonarQube and OWASP Dependency-Check considered and rejected) and the D-68 amendment for the console dev dependencies, both after owner approval. Verify `make docs` passes and both decisions cite their alternatives.
+- [x] 1.1 Record D-71 (headless quality and supply-chain gates: OSV-Scanner, gitleaks, Trivy upgrade with SBOM, expanded golangci-lint, coverage floors; SonarQube and OWASP Dependency-Check considered and rejected) and the D-68 amendment for the console dev dependencies, both after owner approval. Verify `make docs` passes and both decisions cite their alternatives.
 - [x] 1.2 Resolve the existing govulncheck findings: bump `golang.org/x/text` to ≥ v0.41.0 and, on the owner's decision, the Go toolchain to the 1.26 line (`.mise.toml`, `go.mod`, the Dockerfiles). Verify `make vuln` passes and every Go tier still passes (unit, integration, e2e, the three UATs).
 
 ## 2. Go static analysis
@@ -25,6 +25,27 @@
 
 ## 6. CI and docs
 
-- [ ] 6.1 Add `make quality` (lint, coverage, sca, secrets, audit for both stacks). Add Jenkins stages for the console (npm ci, typecheck, unit and coverage, lint, e2e, audit) and the quality stages, publishing JUnit, Cobertura and SARIF, report-only first and then failing. Verify a Jenkins run (or `make quality` locally where Jenkins is unavailable) is green, and that a planted failure in each stage turns it red.
-- [ ] 6.2 Update TOOLSET §1.3 and §3a, TESTING §4 (floors and ratchet) and §5 (CI mapping), and PROGRESS.md. Verify `make docs` passes.
-- [ ] 6.3 Run every tier once more on the finished gate: backend unit, integration, e2e and UATs; console unit, e2e, integration and UAT; `make quality`. Record the results here.
+- [x] 6.1 Add `make quality` (lint, coverage, sca, secrets, audit for both stacks). Add Jenkins stages for the console (npm ci, typecheck, unit and coverage, lint, e2e, audit) and the quality stages, publishing JUnit, Cobertura and SARIF, report-only first and then failing. Verify a Jenkins run (or `make quality` locally where Jenkins is unavailable) is green, and that a planted failure in each stage turns it red.
+- [x] 6.2 Update TOOLSET §1.3 and §3a, TESTING §4 (floors and ratchet) and §5 (CI mapping), and PROGRESS.md. Verify `make docs` passes.
+- [x] 6.3 Run every tier once more on the finished gate: backend unit, integration, e2e and UATs; console unit, e2e, integration and UAT; `make quality`. Record the results here.
+
+**Results (2026-10-13):**
+- **`make quality`: exit 0.**
+  - Go lint: 0 issues.
+  - Go unit coverage: 76.4% (floor 76.3%).
+  - Console coverage: 93.1% statements, 83.8% branches, above its floors.
+  - OSV-Scanner: no vulnerabilities, licences within the allowlist.
+  - govulncheck: none reachable.
+  - gitleaks: no leaks (working tree and all 230 commits).
+  - npm audit: 0.
+- **Planted failures caught:**
+  - a context-less `http.Get`, an unclosed response body and an unexplained `//nolint`;
+  - Go and console floors raised by one point;
+  - a GPL (tinymce 7) and a vulnerable (lodash 4.17.15) dependency;
+  - a fake AWS key.
+- **Jenkins** could not run from this machine; its stages call the same make targets.
+- **Every Go tier under coverage (`make coverage-all`):** unit, integration and e2e all pass. Merged coverage is 82.6% of 6,120 statements, at its floor.
+- **Backend UAT:** `uat-auto`, `uat-placement` and `uat-inbound` PASS; `pbx reconcile` reports no divergence.
+- **Console:** e2e 13, integration 9, UAT 1, all pass.
+- **Images:** the production API image is Trivy-clean at HIGH/CRITICAL after `golang.org/x/crypto` v0.55.0. The Asterisk image scan is still pending; on this network the vulnerability database is reachable only through GHCR, and the 3.3 GB image scans slowly.
+

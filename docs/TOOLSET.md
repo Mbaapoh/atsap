@@ -11,14 +11,15 @@ All human engineers and AI coding agents MUST adhere to this baseline. Agents ar
 To safeguard AtsaPBX against supply-chain attacks, license liabilities, and runtime instability, all software components must comply with the following governance rules:
 
 1. **Permissive Open-Source Licensing Only:**
-   - **Allowed:** Apache 2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC.
+   - **Allowed:** Apache 2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC; and, as clarified by D-71 (pending owner confirmation), PostgreSQL, MIT-0, BlueOak-1.0.0 and CC0-1.0. Enforced by `make sca` (OSV-Scanner); named build-only exceptions live in `quality/osv-scanner.toml`.
    - **Strictly Prohibited:** AGPL, GPL (v2/v3), LGPL, SSPL, or commercial/proprietary licenses. AtsaPBX is designed for flexible enterprise deployment (including self-hosted, on-premises, and white-label distributions); viral or copyleft licenses present severe legal liabilities for our partners.
 2. **Latest Stable Releases & No Transitive Bloat:**
    - Always target the latest GA (Generally Available) stable release of any dependency. Experimental alphas, release candidates (RCs), or abandoned forks are forbidden.
    - Minimal dependency graph: Choose libraries with zero or minimal transitive dependencies to shrink the binary footprint and attack surface.
 3. **Continuous Vulnerability Auditing:**
    - Automated `govulncheck` runs on every pull request and CI build to detect known CVEs in Go dependencies before code merges.
-   - Container images are scanned via Trivy during CI packaging; builds with unmitigated High or Critical CVEs fail automatically.
+   - Container images are scanned via Trivy during CI packaging; builds with unmitigated High or Critical CVEs fail automatically, and each image's CycloneDX SBOM is archived.
+   - OSV-Scanner checks both lockfiles for known vulnerabilities and licences, and gitleaks checks for committed secrets, on every build (D-71). `make quality` runs every hermetic gate locally.
 4. **Standard Library First:**
    - If the Go standard library provides a capability (`net/http`, `log/slog`, `crypto/aes`, `crypto/ed25519`, `sync`, `context`), use it. Do not introduce third-party wrappers (e.g. no `logrus`, `zap`, `zerolog`).
 5. **Strict Version Pinning:**
@@ -185,15 +186,18 @@ All developer environments and CI pipelines execute tools managed strictly by `m
 
 | Tool | Version | Config File | Purpose |
 |---|---|---|---|
-| **Go** | `1.25` | `.mise.toml` | Application compilation, unit testing, benchmark execution |
-| **golangci-lint** | `2.13.1` (pinned) | `.mise.toml`, `.golangci.yml` | Strict static analysis, deadcode detection, dependency boundary linting |
+| **Go** | `1.26` (1.26.9; D-71) | `.mise.toml` | Application compilation, unit testing, benchmark execution |
+| **golangci-lint** | `2.13.1` (pinned) | `.mise.toml`, `.golangci.yml` | Strict static analysis: correctness, security (gosec), error wrapping, contexts, HTTP bodies, SQL rows, style and complexity; dependency boundary linting (D-71) |
 | **govulncheck** | `v1.7.0` (pinned via `GOVULNCHECK_VERSION` in `Jenkinsfile`, mirrored in `mise run vuln`) | CI Pipeline | Continuous scanning for known Go vulnerabilities and CVEs |
 | **buf** | `1.40+` | `api/buf.yaml` | Protocol Buffer compilation, linting, and breaking change detection |
 | **gotestsum** | `1.13.0` (pinned) | `.mise.toml` | JUnit-XML test reporting for CI test history and trends |
 | **Tilt** | `0.37.8` (pinned) | `.mise.toml`, `Tiltfile` | Local orchestration and the dev loop: Go live update, console dev server, proto regeneration; compose owns topology (D-60) |
 | **GNU Make** | host (recipe-only, unpinned by design) | `Makefile` | Workflow entrypoint; `mise run` tasks delegate to `make` targets. Make executes nothing itself — every tool a recipe invokes resolves via the mise pins above (D-60) |
 | **docker** | `24+` | Host / CI | Local dev stack (`docker compose`) and production image builds |
-| **trivy** | `0.52.2` (pinned image in `Jenkinsfile`) | CI Pipeline | Container image security scanning for OS-level and binary CVEs |
+| **trivy** | `0.75.0` (pinned) | `.mise.toml` | Container image scanning for OS-level and binary CVEs, and CycloneDX SBOMs (`make image-scan`, `make sbom`; D-71) |
+| **osv-scanner** | `2.6.0` (pinned) | `.mise.toml`, `quality/osv-scanner.toml` | Dependency vulnerabilities and licence allowlist over `api/go.mod` and `console/package-lock.json` (`make sca`; D-71) |
+| **gitleaks** | `8.30.1` (pinned) | `.mise.toml`, `quality/gitleaks.toml` | Committed-secret scanning, working tree and history (`make secrets`, `make secrets-history`; D-71) |
+| **gocover-cobertura** | `v1.5.0` (pinned, `go run`) | `scripts/coverage-go.sh` | Converts the merged Go coverage profile to Cobertura for CI (MIT) |
 | **SIPp** | `3.7+` | Test harness | SIP load testing, CPS burst benchmarks, and WebRTC simulation |
 | **Mailpit** | `v1.21.8`, pinned by digest (MIT) | `deploy/docker-compose.yml` | **Dev rig only.** Captures the mail the app sends (password resets, invitations) so developers and the identity e2e suite can read it; production names a real SMTP server. Vetted under §6 for `identity-accounts-and-sessions` (design D10) |
 

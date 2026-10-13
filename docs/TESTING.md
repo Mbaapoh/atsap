@@ -74,10 +74,27 @@ Rules:
   (transitions, compliance verdicts, usage accrual), honest everywhere
   else. A coverage number bought with assertion-free tests is a defect in
   the test, not credit.
+- **Floors (D-71).** `quality/coverage-floors.json` holds the minimum
+  coverage for:
+  - Go's unit tier alone (`make coverage`, what CI runs hermetically);
+  - Go's unit, integration and e2e tiers merged (`make coverage-all`,
+    on the Tilt rig, where Tilt's dev app is coverage-instrumented);
+  - the console (Vitest, `make console-test`).
+
+  A drop below a floor fails the build. `make coverage-ratchet` raises
+  floors to what was just measured and never lowers one; raising them is
+  a reviewed commit. Generated protobuf code and dev-only tools are not in
+  the denominator.
+- **Known shortfall:** the domain packages are not all at 100% yet
+  (`pbx/domain` 82.8% and `identity/domain` 95.5% from unit tests alone,
+  96.6% and 97.7% across every tier). The floors hold them where they
+  are until tests close the gap.
 
 ## 5. CI mapping
 
-`mise run ci` runs `docs → lint → vuln → test` (unit). The CI pipeline —
+`mise run ci` runs `docs → lint → vuln → test` (unit). `make quality`
+adds coverage floors, the console's typecheck and component tests with
+coverage, OSV-Scanner, gitleaks and the npm audit (D-71). The CI pipeline —
 whatever provider implements it (`Jenkinsfile` today) — runs the same
 stages in the same order, then builds images and scans them (Trivy). The `integration` and `e2e`
 suites run in their own stages once they exist — the walking skeleton's
