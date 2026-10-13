@@ -49,7 +49,25 @@ a { color: var(--color-info); }
   .top-bar .menu-button, .top-bar .product-compact { display: inline-flex; }
   .top-bar { padding: 0 var(--space-4); }
   .content { padding: var(--space-4); }
+  /* The top bar must fit 360 px: the pill keeps its condition and drops
+     the channel count (still in its accessible name and on the licence
+     page), and a long tenant name truncates rather than pushing the page
+     sideways. */
+  .top-bar .pill .numeric { display: none; }
+  .top-bar > .menu-button, .top-bar > .product { flex: none; }
+  .top-bar-items { gap: var(--space-2); min-width: 0; }
+  .top-bar-tenant { display: flex; min-width: 0; }
+  .tenant-indicator { min-width: 0; }
+  .top-bar-licence, .tenant-indicator a { flex: none; }
+  .tenant-indicator strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* On the narrowest phones the tenant name matters more than the brand,
+   which the navigation drawer still shows (HLD-19 §4: the Tenant is shown
+   at all times). */
+@media (max-width: 419px) {
+  .top-bar .product-compact { display: none; }
 }

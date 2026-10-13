@@ -47,8 +47,20 @@
   - UAT 1.
 
   Console coverage floors ratcheted to 93.8 / 85.1 / 96 / 94.3.)*
-- [ ] 3.2 Add browser E2E for A1, including Setup gate, successful licence
-  application, session recovery, Tenant selection, and responsive navigation.
+- [x] 3.2 Add browser E2E for A1, including Setup gate, successful licence
+  application, session recovery, Tenant selection, and responsive navigation. *(done 2026-10-13 — `e2e/a1.spec.ts`: one continuous HLD-18 A1 journey against a stateful mock of the public API (the rig cannot be put in Setup: the app applies its licence at startup), at 1280, 390 and 360 px, navigating by the rail on desktop and the drawer on phones:
+  - a neutral answer to a wrong password, then sign-in;
+  - choosing between two tenants;
+  - Setup shown by the pill and the checklist, and Extensions gated to the licence page;
+  - a masked key applied after confirmation, with the gate lifting;
+  - a reload restoring the session in the chosen tenant;
+  - no storage, readable cookie or key left in the page, and no sideways scroll on phones.
+
+  The real-API counterpart is `e2e/uat/a1-first-login.uat.spec.ts`.
+
+  **Found and fixed:** at phone widths with two memberships, the top bar (tenant, Switch, licence pill) pushed the page 40–133 px sideways. Below 768 px the pill now drops its channel count (still in its accessible name), the tenant name shrinks with an ellipsis through a continuous flex chain, and below 420 px the brand gives way to the tenant name (still in the drawer). Checked by screenshot at 360 and 390 px. The overflow assertion failed at every width before the fix.
+
+  Verified: `make console-check`, with 185 component tests, e2e 16, integration 10, UAT 1 and audit 0.)*
 - [ ] 3.3 Add an API-traffic assertion and browser-render scan proving that no
   credential or Asterisk/engine identifier is exposed.
 - [ ] 3.4 Record coverage and any remaining evidence gap in `coverage.md`.
