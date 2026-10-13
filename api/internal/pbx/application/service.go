@@ -66,6 +66,7 @@ type Service struct {
 	realm     string
 	placement *Placement
 	inbound   *Inbound
+	registrar ports.SipRegistrar
 	rand      io.Reader
 	now       func() time.Time
 }

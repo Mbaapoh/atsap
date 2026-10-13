@@ -214,6 +214,17 @@ type PlacedCall struct {
 	CallID shareddomain.CallID
 }
 
+// SipRegistrar is the installation's public SIP registrar address: where
+// devices register (pbx-sip-registrar-settings). Configured is false when
+// the installer has not named a public host; the other fields are then
+// empty rather than guessed.
+type SipRegistrar struct {
+	Configured bool
+	Host       string
+	Port       int
+	Transport  string
+}
+
 // ConfigService is pbx-core's inbound port: the configuration API the
 // console drives and a partner may call directly. Every method
 // authorizes before acting and operates only within the caller's tenant.
@@ -224,6 +235,9 @@ type ConfigService interface {
 	ListExtensions(ctx context.Context, tenantID shareddomain.TenantID, page Page) ([]ExtensionView, error)
 	GetExtension(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) (ExtensionView, error)
 	RegenerateSecret(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.ExtensionID) (CreatedExtension, error)
+	// SipRegistrar returns where the tenant's devices register, to a
+	// caller who may read its extensions.
+	SipRegistrar(ctx context.Context, tenantID shareddomain.TenantID) (SipRegistrar, error)
 
 	// Trunk and route operations mirror the extension ones (LLD-03 §4.4).
 	CreateTrunk(ctx context.Context, cmd CreateTrunkCommand) (TrunkView, error)

@@ -21,6 +21,8 @@ import (
 	"context"
 	"errors"
 
+	"atsap-api/internal/shared/wire"
+
 	"connectrpc.com/connect"
 
 	atsapbxv1 "atsap-api/internal/genproto/atsapbx/v1"
@@ -174,6 +176,23 @@ func (h *PbxHandler) RegenerateSecret(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&atsapbxv1.RegenerateSecretResponse{
 		Extension: toProtoExtension(rotated.Extension),
 		Secret:    rotated.Secret,
+	}), nil
+}
+
+func (h *PbxHandler) GetSipRegistrar(ctx context.Context, req *connect.Request[atsapbxv1.GetSipRegistrarRequest]) (*connect.Response[atsapbxv1.GetSipRegistrarResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	r, err := h.svc.SipRegistrar(ctx, tenantID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.GetSipRegistrarResponse{
+		Configured: r.Configured,
+		Host:       r.Host,
+		Port:       wire.Int32(r.Port),
+		Transport:  r.Transport,
 	}), nil
 }
 

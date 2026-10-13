@@ -38,6 +38,12 @@ type fakeService struct {
 	inboundViews   []ports.InboundNumberView
 	profile        ports.EmergencyProfile
 	emergencyViews []ports.EmergencyNumberView
+	registrar      ports.SipRegistrar
+}
+
+func (f *fakeService) SipRegistrar(_ context.Context, tenantID shareddomain.TenantID) (ports.SipRegistrar, error) {
+	f.lastTenID = tenantID
+	return f.registrar, f.err
 }
 
 func (f *fakeService) CreateExtension(_ context.Context, cmd ports.CreateExtensionCommand) (ports.CreatedExtension, error) {
@@ -507,4 +513,42 @@ func TestOnlyMintingResponsesCarryTheSecret(t *testing.T) {
 	} {
 		assert.False(t, carries(m), "%T must not carry a secret: it is shown once, at minting, and never read back", m)
 	}
+}
+
+// --- pbx-sip-registrar-settings 2.2 -----------------------------------
+
+func TestGetSipRegistrar_MapsEveryField(t *testing.T) {
+	e := newEnv(t)
+	e.svc.registrar = ports.SipRegistrar{Configured: true, Host: "pbx.example.com", Port: 5080, Transport: "tls"}
+	resp, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{TenantId: e.tenant.String()}))
+	require.NoError(t, err)
+	assert.True(t, resp.Msg.GetConfigured())
+	assert.Equal(t, "pbx.example.com", resp.Msg.GetHost())
+	assert.EqualValues(t, 5080, resp.Msg.GetPort())
+	assert.Equal(t, "tls", resp.Msg.GetTransport())
+	assert.Equal(t, e.tenant, e.svc.lastTenID)
+}
+
+func TestGetSipRegistrar_NotConfigured(t *testing.T) {
+	e := newEnv(t)
+	resp, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{}))
+	require.NoError(t, err)
+	assert.False(t, resp.Msg.GetConfigured())
+	assert.Empty(t, resp.Msg.GetHost())
+	assert.Equal(t, e.tenant, e.svc.lastTenID, "an omitted tenant is the caller's own")
+}
+
+func TestGetSipRegistrar_RefusesAnotherTenantAndUnauthenticated(t *testing.T) {
+	e := newEnv(t)
+	_, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{TenantId: shareddomain.NewTenantID().String()}))
+	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	_, err = e.h.GetSipRegistrar(context.Background(), connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{}))
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+func TestGetSipRegistrar_PermissionRefusalMaps(t *testing.T) {
+	e := newEnv(t)
+	e.svc.err = identityports.ErrPermissionDenied
+	_, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{}))
+	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
 }
