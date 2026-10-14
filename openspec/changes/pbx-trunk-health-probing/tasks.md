@@ -129,9 +129,16 @@
   - browser (mocked) at 390 and 1280 px, with no page overflow;
   - **rig:** a trunk added in the console to `asterisk` reads "Healthy · Answering · checked …" and one to `no-such-carrier.invalid` reads "Unhealthy · Host not found · checked …", within seconds and without a reload;
   - `make console-check`: component 398, e2e 29, integration 25 (the exposure scan included), UAT 3, audit 0, secrets clean; oxlint clean.)*
-- [ ] 3.2 UAT: in the A3–A5 journey, the carrier trunk the real baresip carrier answers reads "Healthy · Answering".
+- [x] 3.2 UAT: in the A3–A5 journey, the carrier trunk the real baresip carrier answers reads "Healthy · Answering".
 
   Verify: `make console-uat` passes on the rig.
+
+  *(done 2026-10-14: the A3–A5 UAT now starts the carrier phone before adding its trunk, as a real carrier already exists, then waits for the trunk row to read "Healthy · Answering · checked …".
+  - The real baresip carrier answered the platform's OPTIONS check from the app's container, through the host firewall's 5071 rule.
+  - The console showed the result within seconds, without a reload.
+  - The rest of the journey (registration, route, DID, emergency, call, history) is unchanged.
+
+  `make console-uat` passes (3/3), and so does `make console-check`.)*
 
 ## 4. Close-out
 

@@ -90,6 +90,10 @@ test("A3–A5: a phone registers with the console's credentials, and its real ca
 
   // --- A4: a carrier and a route to it --------------------------------------
   const carrierHost = engineReachesHostAt();
+  // The carrier is up before its trunk is added, as a real one is: the
+  // platform checks a new trunk at once (pbx-trunk-health-probing).
+  const carrier = new Phone({ ...CARRIER, account: `<sip:carrier@${carrierHost}:${CARRIER.sipPort};transport=udp>;regint=0;catchall=yes` });
+  phones.push(carrier);
   await page.getByRole("navigation").getByRole("link", { name: "Trunks & routes" }).click();
   await page.getByRole("button", { name: "Add trunk" }).click();
   const trunk = page.getByRole("dialog", { name: "Add a trunk" });
@@ -99,6 +103,9 @@ test("A3–A5: a phone registers with the console's credentials, and its real ca
   await trunk.getByLabel("Channel limit").fill("2");
   await trunk.getByRole("button", { name: "Add trunk" }).click();
   await expect(page.getByText("Trunk UAT carrier added.")).toBeVisible();
+  // Its health is the real carrier answering the platform's check, shown
+  // within seconds without a reload.
+  await expect(page.getByRole("table", { name: "Trunks of this tenant" }).getByRole("row", { name: /UAT carrier/ })).toContainText(/Healthy\s*Answering · checked /, { timeout: 20_000 });
   await page.getByRole("button", { name: "Add route" }).click();
   const route = page.getByRole("dialog", { name: "Add an outbound route" });
   await route.getByLabel("Prefix").fill("+44");
@@ -121,8 +128,6 @@ test("A3–A5: a phone registers with the console's credentials, and its real ca
   await expect(emergency).toContainText("Country: CM.");
   await expect(emergency.getByRole("row", { name: /^117 Built in/ })).toBeVisible();
 
-  const carrier = new Phone({ ...CARRIER, account: `<sip:carrier@${carrierHost}:${CARRIER.sipPort};transport=udp>;regint=0;catchall=yes` });
-  phones.push(carrier);
   await phone.autoAnswer();
   await carrier.autoAnswer();
 
