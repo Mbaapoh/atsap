@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-10-14 | **Trunk health is checked, not assumed** (`pbx-trunk-health-probing`, D-74). A trunk starts `Unknown`, and the platform checks every carrier with SIP OPTIONS, because Asterisk 22 does not qualify realtime AORs (measured). Each observation records a reason and a time. An `Unhealthy` trunk is skipped only while another can carry the call (design D7). |
 | 2026-09-07 | Initial draft. |
 | 2026-10-13 | **§6 gains `GetSipRegistrar`** (`pbx-sip-registrar-settings`): the console can tell an administrator where a phone registers, so flow A3 completes without leaving the console (HLD-18 §7). Configured per installation; read with the extension-read permission. |
 | 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
@@ -122,7 +123,9 @@ type Trunk struct {
     CredentialRef  string        // reference; the secret is fetched, not stored here
     ChannelLimit   int
     Priority       int
-    Health         TrunkHealth   // Healthy | Degraded | Unhealthy — observed, never set by a user
+    Health         TrunkHealth   // Unknown | Healthy | Degraded | Unhealthy — observed, never set by a user
+    HealthReason   HealthReason  // why: answering, slow response, host not found, no response, carrier error
+    HealthObservedAt *time.Time  // when; nil until first observed
 }
 
 type CarrierRoute struct {
@@ -631,9 +634,14 @@ residual risk, recorded rather than argued away.
   extensions list costs one query against engine state per page. Adequate
   for Phase A; a presence cache is Phase B work, alongside AC-03.3's
   3-second presence requirement, which this LLD does not attempt.
-- **Trunk health is a coarse three-state observation**, not the
-  failover-quality signal `09-failure-model.md` describes. Carrier
-  failover across trunks mid-setup is designed but not built here.
+- **Trunk health is a coarse observation**, not the failover-quality
+  signal `09-failure-model.md` describes. Since `pbx-trunk-health-probing`
+  it is the platform's own SIP OPTIONS check of each carrier, every 30 s
+  and at once on create or re-address (D-74), plus the outcomes of calls
+  through the trunk. It carries a reason and an observation time, starts
+  `Unknown`, and an `Unhealthy` trunk is the last resort in selection
+  rather than a dead end. Carrier failover across trunks mid-setup is
+  designed but not built here.
 - **Single-node assumptions carried from LLD-02** apply unchanged:
   capacity counting is per-process, and registration contacts live in
   node-local `astdb` (D-08, D-47).

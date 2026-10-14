@@ -1,21 +1,21 @@
 {
   "go": {
     "all": {
-      "total": 82.8,
+      "total": 83.1,
       "packages": {
         "atsap-api/internal/identity/domain": 97.7,
         "atsap-api/internal/licensing/domain": 99,
-        "atsap-api/internal/pbx/domain": 96.6,
+        "atsap-api/internal/pbx/domain": 97.2,
         "atsap-api/internal/shared/domain": 100,
         "atsap-api/internal/telephony/domain": 100
       }
     },
     "unit": {
-      "total": 76.8,
+      "total": 77.3,
       "packages": {
         "atsap-api/internal/identity/domain": 95.5,
         "atsap-api/internal/licensing/domain": 98,
-        "atsap-api/internal/pbx/domain": 82.8,
+        "atsap-api/internal/pbx/domain": 85,
         "atsap-api/internal/shared/domain": 100,
         "atsap-api/internal/telephony/domain": 100
       }
@@ -23,7 +23,7 @@
   },
   "console": {
     "statements": 96.3,
-    "branches": 88.2,
+    "branches": 88.3,
     "functions": 98.3,
     "lines": 97.5
   }

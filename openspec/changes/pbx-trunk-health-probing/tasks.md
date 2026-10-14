@@ -142,10 +142,16 @@
 
 ## 4. Close-out
 
-- [ ] 4.1 Update:
+- [x] 4.1 Update:
   - LLD-03 (health section and document history);
   - `docs/PROGRESS.md` (the gap "health only from answered calls" closed; the DNS-stall gap kept);
   - every tier: Go unit, integration (on `atsapbx_test`), e2e, `make coverage-all`, console tiers, the real-phone UATs, `make docs`, `make proto`;
   - ratchet the floors.
 
   Verify: all pass, and the measured coverage is recorded.
+
+  *(Done 2026-10-14:
+  - LLD-03 documents the Trunk health fields and the check, with a document history row. PROGRESS closes the "health only from answered calls" gap and keeps the DNS-stall gap.
+  - Lint 0 issues. `make coverage-all` passes: Go all tiers **83.2% of 6402 statements** (floor raised to 83.1%), unit **77.4% of 4052** (floor 77.3%). Integration ran on `atsapbx_test`.
+  - Console: statements 96.3, branches 88.3, functions 98.3, lines 97.5. `make console-check` passes (398 unit tests), and Playwright and the console UATs pass.
+  - The real-phone UATs, `npm audit` (0 vulnerabilities) and the secret scan (no leaks) pass.)*

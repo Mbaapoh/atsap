@@ -7,7 +7,9 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-10-13, after `phase-a-hardening` was completed:
+**Last updated:** 2026-10-14, after `pbx-trunk-health-probing` (trunk
+health from a real check) and the console linter. Before that, 2026-10-13,
+`phase-a-hardening` was completed:
 phone-dialled calls recorded and presented truthfully, a taken-over Stasis
 application noticed, no engine endpoint in `GetCall`, nothing provisioned
 before a licence, and no false error after every hang-up.
@@ -171,7 +173,8 @@ design; *accepted* = no fix planned.
 | No `Retry-After` on the 503 for capacity refusals (Asterisk cannot add it) | inbound G1 | Low |
 | Emergency catalogue is CM and US only (owner decision); other countries are tenant-entered | inbound G2 | Accepted |
 | Toll-fraud outbound classes not enforced | call-placement G4 | Medium — pilot: tenant country now exists to build it on |
-| No `Degraded` trunk health from latency; unanswered calls not attributed (no SIP cause) | call-placement G1, G2 | Low |
+| ~~Trunk health assumed `Healthy` until a call said otherwise~~ | owner, 2026-10-13 (a trunk to `locslhodt` read Healthy) | Closed: `pbx-trunk-health-probing` (checked by SIP OPTIONS, with reason and time; D-74) |
+| Unanswered placed calls are not attributed to the carrier (no SIP cause); a slow OPTIONS response now degrades a trunk, but a slow call answer still needs one | call-placement G1, G2 | Low |
 | Both legs of an API-placed call ring at once | call-placement G6 | Low |
 | ~~ERROR log "participant-left handler failed: call not found" after every hang-up~~ | call-placement G3, inbound G6 | Closed: `phase-a-hardening` task 5.1 |
 | A trunk host that does not resolve (a typo such as `locslhodt`) makes Asterisk block about 5 s on DNS while identifying SIP requests, stalling call setup for **every** tenant; the API accepts any host | phase-a-hardening (found on the dev rig, 2026-10-13) | **High** — pilot: refuse or flag an unresolvable host at creation, and keep DNS off the identify path |
