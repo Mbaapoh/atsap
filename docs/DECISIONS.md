@@ -2509,6 +2509,38 @@ disables a running system)
 
 ---
 
+**D-74 · The platform checks carriers itself, with SIP OPTIONS (2026-10-14).**
+
+**Decision:** Trunk health comes from a check the platform makes: a SIP
+OPTIONS request over UDP to each trunk's host and port, every 30 seconds
+(`ATSAPBX_TRUNK_PROBE_INTERVAL`) and at once when a trunk is created or
+its address changes. Any final response is the carrier answering (a 403
+to an unauthenticated OPTIONS included); a server error, silence, or a
+host that does not resolve is not. A new trunk is `Unknown` until checked,
+and every health carries its reason and the time it was observed. The
+check is written in the platform (`internal/pbx/acl/sipprobe`); no SIP
+library is added.
+
+**Context:** A trunk whose host did not exist was shown Healthy: health
+defaulted to Healthy and changed only on answered calls. Asterisk 22 does
+not qualify realtime AORs — with `qualify_frequency` set, their static
+contacts stay `NonQual` and `pjsip qualify` sends nothing (measured on the
+dev rig, 2026-10-14). Making it do so needs a sorcery memory cache in
+front of every AOR, extensions' included, which risks a new extension not
+registering until the cache refreshes.
+
+**Trade-off accepted:** the OPTIONS leaves from the app's network, not
+Asterisk's. On the single-host deployment both reach a carrier from the
+host's address; a host name can still mean different machines to each (on
+the dev rig, `localhost`). A trunk Asterisk can reach but the app cannot
+reads Unhealthy — visible and explainable, unlike a silent Healthy.
+
+**Related Decisions:** D-47 (engine projection), D-73 (readiness)
+**Traceability:** `openspec/changes/pbx-trunk-health-probing` (design
+D1); spec `pbx-core/trunk-routing`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
