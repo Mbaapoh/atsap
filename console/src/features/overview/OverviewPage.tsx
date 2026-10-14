@@ -5,13 +5,13 @@ import { LicenseCondition } from "../../api/gen/atsapbx/v1/licensing_pb";
 import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
 import { PageHeader } from "../../components/PageHeader";
-import { StatusBadge } from "../../components/StatusBadge";
 import { ToneIcon } from "../../components/icons";
 import { useLicenceStatus, type LicenceSummary } from "../licence/adapter";
 import { licencePresentation } from "../licence/LicenceStatusPill";
 import { RECENT_CALLS, useHasCompletedCall, useHasExtension, useHasRoute, useRecentCalls, useTrunks, useUserCount, type RecentCall, type TrunkHealthRow } from "./adapter";
 import { Checklist, type ChecklistItem, type ItemState } from "./Checklist";
-import { directionLabel, durationLabel, trunkHealth } from "./copy";
+import { directionLabel, durationLabel } from "./copy";
+import { TrunkHealthCell } from "../telephony/TrunkHealthCell";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -62,7 +62,7 @@ const callColumns: Column<RecentCall>[] = [
 
 const trunkColumns: Column<TrunkHealthRow>[] = [
   { key: "name", header: "Trunk", render: (t) => t.name },
-  { key: "health", header: "Observed health", render: (t) => <StatusBadge {...trunkHealth[t.health]} /> },
+  { key: "health", header: "Observed health", render: (t) => <TrunkHealthCell health={t.health} reason={t.healthReason} observedAt={t.healthObservedAt} /> },
 ];
 
 // OverviewPage is a setup and awareness surface, not a monitoring

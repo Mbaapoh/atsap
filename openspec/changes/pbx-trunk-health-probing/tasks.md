@@ -108,13 +108,27 @@
 
 ## 3. The console shows it
 
-- [ ] 3.1 The trunks list and the overview's trunk-health table show "Not checked yet", or the state with its reason and observation time.
+- [x] 3.1 The trunks list and the overview's trunk-health table show "Not checked yet", or the state with its reason and observation time.
 
   Verify:
   - component tests for every state and reason;
   - browser test (mocked);
   - integration on the rig: a trunk added in the console shows its real result, and the exposure scan stays clean;
   - `make console-check`.
+
+  *(done 2026-10-14:
+  - **`TrunkHealthCell`:** the badge, then the reason in words (Answering, Slow to respond, Host not found, No response, Carrier error) and "checked <time>", or the date and time when the check was not today. "Not checked yet" shows neither. It is used on Trunks & routes and in the overview's trunk-health table.
+  - **Adapters:** they carry `healthReason` and `healthObservedAt` as a `Date`.
+  - **Refresh:** both lists re-read health every 2 s while a trunk awaits its first check, otherwise every 30 s (`healthRefreshMs`), so a new trunk's result appears without a reload.
+  - **Copy:** the route dialog's ordering text now says an unhealthy trunk is used only when no other can take the call (design D7).
+
+  **Found:** at 390 px, every admin table with row actions made the whole page scroll sideways (548 px on Trunks & routes). The visually-hidden "Actions" header was absolutely positioned outside the scroll box. `.table-scroll` is now `position: relative`. New 390 px tests for Trunks, Extensions and Users all failed without the fix.
+
+  Verified:
+  - component tests: every state, reason and time; today versus an older day; the refresh rule; the overview's detail;
+  - browser (mocked) at 390 and 1280 px, with no page overflow;
+  - **rig:** a trunk added in the console to `asterisk` reads "Healthy · Answering · checked …" and one to `no-such-carrier.invalid` reads "Unhealthy · Host not found · checked …", within seconds and without a reload;
+  - `make console-check`: component 398, e2e 29, integration 25 (the exposure scan included), UAT 3, audit 0, secrets clean; oxlint clean.)*
 - [ ] 3.2 UAT: in the A3–A5 journey, the carrier trunk the real baresip carrier answers reads "Healthy · Answering".
 
   Verify: `make console-uat` passes on the rig.

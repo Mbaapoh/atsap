@@ -77,6 +77,35 @@ test("A4: add, edit (secret kept) and delete a trunk, with its routes", async ({
   expect(engineAuthFingerprint(endpoint)).toBe("");
 });
 
+// pbx-trunk-health-probing task 3.1: a trunk added in the console shows,
+// within seconds and without a reload, what the platform's check of its
+// carrier found — against real peers: the engine itself (it answers SIP
+// on its compose name) and a name that cannot exist (RFC 6761 .invalid).
+test("A4: a trunk's health is what its carrier says, with why and when", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = ((await (await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email: user.email, password: FIXTURE_PASSWORD } })).json()) as { access: { token: string } }).access.token;
+  teardown = () => cleanTelephony(request, token, tenantId);
+
+  await signIn(page, user.email);
+  await page.goto("/trunks");
+  const add = async (name: string, host: string) => {
+    await page.getByRole("button", { name: "Add trunk" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add a trunk" });
+    await dialog.getByLabel("Name", { exact: true }).fill(name);
+    await dialog.getByLabel("Host").fill(host);
+    await dialog.getByLabel("Channel limit").fill("2");
+    await dialog.getByRole("button", { name: "Add trunk" }).click();
+    await expect(page.getByText(`Trunk ${name} added.`)).toBeVisible();
+  };
+  const table = page.getByRole("table", { name: "Trunks of this tenant" });
+
+  await add("The engine", "asterisk");
+  await add("A typo", "no-such-carrier.invalid");
+  await expect(table.getByRole("row", { name: /The engine/ })).toContainText(/Healthy\s*Answering · checked /, { timeout: 15_000 });
+  await expect(table.getByRole("row", { name: /A typo/ })).toContainText(/Unhealthy\s*Host not found · checked /, { timeout: 15_000 });
+});
+
 test("A4: add, replace and delete outbound routes", async ({ page, request }) => {
   user = seedUser(["Acme"]);
   const tenantId = user.tenants[0]!.id;

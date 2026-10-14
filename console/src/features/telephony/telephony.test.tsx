@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest";
 import { routes } from "../../app/routes";
 import { EMERGENCY_URL, INBOUND_URL, OVERVIEW_URLS, server } from "../../test/msw";
 import { renderApp, signedIn, tenantA } from "../../test/session";
+import { TrunkHealth } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { healthRefreshMs } from "./adapter";
+import { checkedAt } from "./copy";
 
 // console-admin-screens task 4.1: trunks (HLD-18 A4).
 
@@ -13,7 +16,7 @@ export const carrierA = { trunkId: "t1", name: "Carrier A", host: "sip.carrier-a
 export const carrierB = { trunkId: "t2", name: "Carrier B", host: "198.51.100.9", channelLimit: 10, priority: 2, health: "TRUNK_HEALTH_DEGRADED" };
 const TRUNK_SECRET = "carrier-secret-value-1";
 
-function trunks(list = [carrierA, carrierB]) {
+function trunks(list: object[] = [carrierA, carrierB]) {
   return http.post(OVERVIEW_URLS.trunks, () => HttpResponse.json({ trunks: list }));
 }
 
@@ -31,6 +34,44 @@ describe("trunks", () => {
     expect(b).toHaveTextContent("5060"); // port 0 is the SIP default
     expect(b).toHaveTextContent("Degraded");
     expect(table.queryByRole("textbox")).not.toBeInTheDocument(); // health is never an input
+  });
+
+  // pbx-trunk-health-probing task 3.1: health says why and when, and a
+  // trunk nobody has checked says exactly that.
+  it("shows why and when each trunk was last observed; an unchecked trunk says so", async () => {
+    const today = new Date();
+    today.setHours(14, 2, 31, 0);
+    const lastYear = new Date(today.getFullYear() - 1, 0, 15, 9, 0, 0);
+    server.use(
+      trunks([
+        { trunkId: "u", name: "Brand new", host: "sip.new.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_UNKNOWN" },
+        { trunkId: "t", name: "Typo", host: "locslhodt", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_UNHEALTHY", healthReason: "TRUNK_HEALTH_REASON_HOST_NOT_FOUND", healthObservedAt: today.toISOString() },
+        { trunkId: "s", name: "Slow", host: "sip.slow.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_DEGRADED", healthReason: "TRUNK_HEALTH_REASON_SLOW_RESPONSE", healthObservedAt: lastYear.toISOString() },
+        { trunkId: "o", name: "Fine", host: "sip.fine.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_HEALTHY", healthReason: "TRUNK_HEALTH_REASON_ANSWERING", healthObservedAt: today.toISOString() },
+      ]),
+    );
+    renderApp(routes, "/trunks");
+    const table = within(await screen.findByRole("table", { name: "Trunks of this tenant" }));
+
+    const fresh = table.getByRole("row", { name: /Brand new/ });
+    expect(fresh).toHaveTextContent("Not checked yet");
+    expect(fresh).not.toHaveTextContent(/checked \d|Healthy/);
+
+    expect(table.getByRole("row", { name: /Typo/ })).toHaveTextContent(`UnhealthyHost not found · checked ${checkedAt(today)}`);
+    expect(table.getByRole("row", { name: /Slow/ })).toHaveTextContent(`DegradedSlow to respond · checked ${checkedAt(lastYear)}`);
+    expect(table.getByRole("row", { name: /Fine/ })).toHaveTextContent(`HealthyAnswering · checked ${checkedAt(today)}`);
+  });
+
+  it("re-reads health every 2 s while a trunk awaits its first check, then every 30 s", () => {
+    expect(healthRefreshMs(undefined)).toBe(30_000);
+    expect(healthRefreshMs([{ health: TrunkHealth.HEALTHY }, { health: TrunkHealth.UNHEALTHY }])).toBe(30_000);
+    expect(healthRefreshMs([{ health: TrunkHealth.HEALTHY }, { health: TrunkHealth.UNKNOWN }])).toBe(2_000);
+  });
+
+  it("names a check from today by its time and an older one by its date", () => {
+    const now = new Date(2026, 9, 14, 15, 0, 0);
+    expect(checkedAt(new Date(2026, 9, 14, 14, 2, 31), now)).not.toMatch(/2026/);
+    expect(checkedAt(new Date(2026, 9, 13, 14, 2, 31), now)).toMatch(/2026/);
   });
 
   it("adds a trunk with exactly what was entered; the secret needs a username", async () => {
@@ -161,7 +202,7 @@ describe("outbound routes", () => {
     await user.selectOptions(dialog.getByLabelText("Trunk"), "Carrier B");
     await user.clear(dialog.getByLabelText("Priority"));
     await user.type(dialog.getByLabelText("Priority"), "3");
-    expect(dialog.getByText(/overlaps \+237 \(Carrier A\)/)).toHaveTextContent(/healthy trunk are tried before those on a degraded one; then the longest matching prefix comes first, then the lower priority, then the lower stored cost/);
+    expect(dialog.getByText(/overlaps \+237 \(Carrier A\)/)).toHaveTextContent(/healthy trunk are tried before those on a degraded one, and an unhealthy trunk only when no other can take the call; then the longest matching prefix comes first, then the lower priority, then the lower stored cost/);
     await user.click(dialog.getByRole("button", { name: "Add route" }));
     expect(await screen.findByText("Route +23769 added.")).toBeInTheDocument();
     expect(body).toEqual({ tenantId: tenantA.tenantId, prefixPattern: "+23769", trunkId: "t2", costPerMinuteMicros: "20000", priority: 3 });

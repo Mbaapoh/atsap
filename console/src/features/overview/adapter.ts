@@ -2,8 +2,9 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { useQuery } from "@tanstack/react-query";
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
-import { TrunkHealth } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { TrunkHealth, type TrunkHealthReason } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { useSession } from "../auth/adapter";
+import { healthRefreshMs } from "../telephony/adapter";
 
 // The overview feature adapter: the setup checklist's facts and the
 // compact recent-call and trunk-health summaries (CONSOLE-DESIGN
@@ -34,6 +35,8 @@ export interface TrunkHealthRow {
   id: string;
   name: string;
   health: TrunkHealth;
+  healthReason: TrunkHealthReason;
+  healthObservedAt: Date | null;
 }
 
 const overviewKeys = {
@@ -77,9 +80,16 @@ export function useTrunks() {
     queryKey: overviewKeys.fact(tenantId, "trunks"),
     queryFn: () =>
       callApi(async () =>
-        (await pbx.listTrunks({ tenantId, limit: 50 })).trunks.map((t) => ({ id: t.trunkId, name: t.name, health: t.health })),
+        (await pbx.listTrunks({ tenantId, limit: 50 })).trunks.map((t) => ({
+          id: t.trunkId,
+          name: t.name,
+          health: t.health,
+          healthReason: t.healthReason,
+          healthObservedAt: t.healthObservedAt ? timestampDate(t.healthObservedAt) : null,
+        })),
       ),
     enabled: tenantId !== "",
+    refetchInterval: (query) => healthRefreshMs(query.state.data),
   });
 }
 

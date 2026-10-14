@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { routes } from "../../app/routes";
 import { LICENCE_STATUS_URL, OVERVIEW_URLS, server, validLicence } from "../../test/msw";
 import { renderApp, tenantA } from "../../test/session";
+import { checkedAt } from "../telephony/copy";
 import { COMPLETED_WINDOW, RECENT_CALLS } from "./adapter";
 
 // console-foundation task 3.1: the API-backed setup checklist and
@@ -22,6 +23,9 @@ async function item(title: string) {
 async function expectState(title: string, state: string) {
   await expect.poll(async () => (await item(title)).textContent).toContain(state);
 }
+
+// When the overview's trunk was last observed (pbx-trunk-health-probing).
+const observed = new Date();
 
 describe("setup checklist", () => {
   it("a new tenant: licence in force, everything else still to do", async () => {
@@ -43,7 +47,7 @@ describe("setup checklist", () => {
     server.use(
       record("principals", { principals: [{}, {}] }),
       record("extensions", { extensions: [{ extensionId: "e" }] }),
-      record("trunks", { trunks: [{ trunkId: "t1", name: "Carrier A", health: "TRUNK_HEALTH_DEGRADED" }] }),
+      record("trunks", { trunks: [{ trunkId: "t1", name: "Carrier A", health: "TRUNK_HEALTH_DEGRADED", healthReason: "TRUNK_HEALTH_REASON_SLOW_RESPONSE", healthObservedAt: observed.toISOString() }] }),
       record("routes", { routes: [{ routeId: "r" }] }),
       record("calls", {
         calls: [{ callId: "c1", direction: "OUTBOUND", state: "Terminated", sourceNumber: "1001", destNumber: "+15550100", startedAt: at, answeredAt: at, durationSeconds: 125 }],
@@ -69,6 +73,7 @@ describe("setup checklist", () => {
     const trunks = within(await screen.findByRole("region", { name: "Trunk health" }));
     expect(trunks.getByText("Carrier A")).toBeInTheDocument();
     expect(trunks.getByText("Degraded")).toBeInTheDocument();
+    expect(trunks.getByText(`Slow to respond · checked ${checkedAt(observed)}`)).toBeInTheDocument();
   });
 
   it("a call that ended without being answered does not complete the step", async () => {

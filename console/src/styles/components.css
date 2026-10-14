@@ -21,6 +21,10 @@
 }
 .icon-button:hover { background: var(--color-surface-muted); }
 
+/* Trunk health: the badge, then why and when, as quieter text */
+.health-cell { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.health-detail { color: var(--color-text-muted); font-size: 0.8125rem; }
+
 /* Status badge and licence pill: icon + text + colour, never colour alone */
 .badge, .pill { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 0.875rem; font-weight: 600; line-height: 1.2; border-radius: 999px; padding: 2px var(--space-2) 2px 6px; white-space: nowrap; }
 .pill { text-decoration: none; padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2); }
@@ -52,7 +56,10 @@
 .empty-action { margin-top: var(--space-4); }
 
 /* Table: scrolls inside its own region before any column is hidden */
-.table-scroll { overflow-x: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+/* position: relative contains the visually-hidden header text, which is
+   absolutely positioned: without it, it escapes the scroll box and makes
+   the whole page scroll sideways on a phone. */
+.table-scroll { position: relative; overflow-x: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table caption { text-align: left; padding: var(--space-3) var(--space-4); font-weight: 600; }
 .data-table th, .data-table td { text-align: left; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--color-border); vertical-align: middle; white-space: nowrap; }

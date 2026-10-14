@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
-import type { TrunkHealth } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { timestampDate } from "@bufbuild/protobuf/wkt";
+import { TrunkHealth, type TrunkHealthReason } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { PAGE_SIZE } from "../../components/Pager";
 import { useSession } from "../auth/adapter";
 
@@ -20,6 +21,9 @@ export interface TrunkRow {
   channelLimit: number;
   priority: number;
   health: TrunkHealth;
+  // Why and when it was last observed; unset until first observed.
+  healthReason: TrunkHealthReason;
+  healthObservedAt: Date | null;
 }
 
 export interface TrunkInput {
@@ -46,6 +50,14 @@ export const telephonyKeys = {
   emergency: (tenantId: string) => [...telephonyKeys.all(tenantId), "emergency"] as const,
 };
 
+// healthRefreshMs is how often a trunk list re-reads health: every 2 s
+// while a trunk is waiting for its first check, so the result appears
+// within moments of adding a trunk, and otherwise as often as the
+// platform checks (pbx-trunk-health-probing).
+export function healthRefreshMs(rows: readonly { health: TrunkHealth }[] | undefined): number {
+  return rows?.some((t) => t.health === TrunkHealth.UNKNOWN) ? 2_000 : 30_000;
+}
+
 export function useTrunks(page: number) {
   const { pbx } = useApiClients();
   const tenantId = useTenantId();
@@ -63,10 +75,13 @@ export function useTrunks(page: number) {
           channelLimit: t.channelLimit,
           priority: t.priority,
           health: t.health,
+          healthReason: t.healthReason,
+          healthObservedAt: t.healthObservedAt ? timestampDate(t.healthObservedAt) : null,
         })),
       ),
     enabled: tenantId !== "",
     placeholderData: keepPreviousData,
+    refetchInterval: (query) => healthRefreshMs(query.state.data),
   });
 }
 

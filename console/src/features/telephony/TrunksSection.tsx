@@ -4,10 +4,9 @@ import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
 import { Pager } from "../../components/Pager";
 import { RowActions } from "../../components/RowActions";
-import { StatusBadge } from "../../components/StatusBadge";
 import { usePermissions } from "../auth/permissions";
 import { useTrunks, type TrunkRow } from "./adapter";
-import { trunkHealth } from "./copy";
+import { TrunkHealthCell } from "./TrunkHealthCell";
 import { DeleteTrunkDialog, TrunkDialog } from "./TrunkDialogs";
 
 const columns: Column<TrunkRow>[] = [
@@ -17,7 +16,7 @@ const columns: Column<TrunkRow>[] = [
   { key: "limit", header: "Channel limit", render: (t) => String(t.channelLimit), numeric: true },
   { key: "priority", header: "Priority", render: (t) => String(t.priority), numeric: true },
   { key: "auth", header: "Authentication", render: (t) => (t.authUsername ? (t.hasSecret ? "Username and secret" : "Username only") : "By IP address") },
-  { key: "health", header: "Observed health", render: (t) => <StatusBadge {...trunkHealth[t.health]} /> },
+  { key: "health", header: "Observed health", render: (t) => <TrunkHealthCell health={t.health} reason={t.healthReason} observedAt={t.healthObservedAt} /> },
 ];
 
 // TrunksSection lists the tenant's carriers with the health the platform

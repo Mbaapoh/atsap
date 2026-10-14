@@ -121,7 +121,7 @@ function RouteForm({ open, replacing, routes, trunks, onClose }: RouteDialogProp
               <Alert tone="info" title="This prefix overlaps other routes">
                 <p>
                   It overlaps {overlapping.map((r) => `${r.prefix} (${trunkName(r.trunkId)})`).join(", ")}. That is allowed. For each call, routes on a healthy trunk are
-                  tried before those on a degraded one; then the longest matching prefix comes first, then the lower priority, then the lower stored cost.
+                  tried before those on a degraded one, and an unhealthy trunk only when no other can take the call; then the longest matching prefix comes first, then the lower priority, then the lower stored cost.
                 </p>
               </Alert>
             ) : null}
