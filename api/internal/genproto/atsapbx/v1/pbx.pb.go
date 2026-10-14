@@ -9,6 +9,7 @@ package atsapbxv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -124,9 +125,10 @@ func (RegistrationStatus) EnumDescriptor() ([]byte, []int) {
 	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{1}
 }
 
-// TrunkHealth is what the platform has OBSERVED about a carrier from
-// call outcomes. No request carries it: a trunk shown healthy because
-// someone ticked a box would be worse than showing nothing.
+// TrunkHealth is what the platform has OBSERVED about a carrier: its own
+// SIP OPTIONS checks and the outcomes of calls through the trunk. No
+// request carries it: a trunk shown healthy because someone ticked a box
+// would be worse than showing nothing.
 type TrunkHealth int32
 
 const (
@@ -134,8 +136,11 @@ const (
 	TrunkHealth_TRUNK_HEALTH_HEALTHY     TrunkHealth = 1
 	// Still selected, but only after every healthy trunk.
 	TrunkHealth_TRUNK_HEALTH_DEGRADED TrunkHealth = 2
-	// Skipped by route selection until a good outcome is observed.
+	// Skipped by route selection until a good observation.
 	TrunkHealth_TRUNK_HEALTH_UNHEALTHY TrunkHealth = 3
+	// Not checked yet: a new trunk, until its first check. Selected as a
+	// healthy trunk is, so it works at once.
+	TrunkHealth_TRUNK_HEALTH_UNKNOWN TrunkHealth = 4
 )
 
 // Enum value maps for TrunkHealth.
@@ -145,12 +150,14 @@ var (
 		1: "TRUNK_HEALTH_HEALTHY",
 		2: "TRUNK_HEALTH_DEGRADED",
 		3: "TRUNK_HEALTH_UNHEALTHY",
+		4: "TRUNK_HEALTH_UNKNOWN",
 	}
 	TrunkHealth_value = map[string]int32{
 		"TRUNK_HEALTH_UNSPECIFIED": 0,
 		"TRUNK_HEALTH_HEALTHY":     1,
 		"TRUNK_HEALTH_DEGRADED":    2,
 		"TRUNK_HEALTH_UNHEALTHY":   3,
+		"TRUNK_HEALTH_UNKNOWN":     4,
 	}
 )
 
@@ -179,6 +186,70 @@ func (x TrunkHealth) Number() protoreflect.EnumNumber {
 // Deprecated: Use TrunkHealth.Descriptor instead.
 func (TrunkHealth) EnumDescriptor() ([]byte, []int) {
 	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{2}
+}
+
+// TrunkHealthReason says why a trunk has its health.
+type TrunkHealthReason int32
+
+const (
+	TrunkHealthReason_TRUNK_HEALTH_REASON_UNSPECIFIED TrunkHealthReason = 0
+	// The carrier responds promptly.
+	TrunkHealthReason_TRUNK_HEALTH_REASON_ANSWERING TrunkHealthReason = 1
+	// The carrier responds, but slowly.
+	TrunkHealthReason_TRUNK_HEALTH_REASON_SLOW_RESPONSE TrunkHealthReason = 2
+	// The trunk's host name does not resolve.
+	TrunkHealthReason_TRUNK_HEALTH_REASON_HOST_NOT_FOUND TrunkHealthReason = 3
+	// The carrier does not respond in time.
+	TrunkHealthReason_TRUNK_HEALTH_REASON_NO_RESPONSE TrunkHealthReason = 4
+	// The carrier responds with a server error.
+	TrunkHealthReason_TRUNK_HEALTH_REASON_CARRIER_ERROR TrunkHealthReason = 5
+)
+
+// Enum value maps for TrunkHealthReason.
+var (
+	TrunkHealthReason_name = map[int32]string{
+		0: "TRUNK_HEALTH_REASON_UNSPECIFIED",
+		1: "TRUNK_HEALTH_REASON_ANSWERING",
+		2: "TRUNK_HEALTH_REASON_SLOW_RESPONSE",
+		3: "TRUNK_HEALTH_REASON_HOST_NOT_FOUND",
+		4: "TRUNK_HEALTH_REASON_NO_RESPONSE",
+		5: "TRUNK_HEALTH_REASON_CARRIER_ERROR",
+	}
+	TrunkHealthReason_value = map[string]int32{
+		"TRUNK_HEALTH_REASON_UNSPECIFIED":    0,
+		"TRUNK_HEALTH_REASON_ANSWERING":      1,
+		"TRUNK_HEALTH_REASON_SLOW_RESPONSE":  2,
+		"TRUNK_HEALTH_REASON_HOST_NOT_FOUND": 3,
+		"TRUNK_HEALTH_REASON_NO_RESPONSE":    4,
+		"TRUNK_HEALTH_REASON_CARRIER_ERROR":  5,
+	}
+)
+
+func (x TrunkHealthReason) Enum() *TrunkHealthReason {
+	p := new(TrunkHealthReason)
+	*p = x
+	return p
+}
+
+func (x TrunkHealthReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TrunkHealthReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_atsapbx_v1_pbx_proto_enumTypes[3].Descriptor()
+}
+
+func (TrunkHealthReason) Type() protoreflect.EnumType {
+	return &file_atsapbx_v1_pbx_proto_enumTypes[3]
+}
+
+func (x TrunkHealthReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TrunkHealthReason.Descriptor instead.
+func (TrunkHealthReason) EnumDescriptor() ([]byte, []int) {
+	return file_atsapbx_v1_pbx_proto_rawDescGZIP(), []int{3}
 }
 
 // Extension is what a caller sees. It carries no credential digest and
@@ -1032,10 +1103,14 @@ type Trunk struct {
 	HasSecret    bool  `protobuf:"varint,6,opt,name=has_secret,json=hasSecret,proto3" json:"has_secret,omitempty"`
 	ChannelLimit int32 `protobuf:"varint,7,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
 	// Lower is preferred.
-	Priority      int32       `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
-	Health        TrunkHealth `protobuf:"varint,9,opt,name=health,proto3,enum=atsapbx.v1.TrunkHealth" json:"health,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Priority int32       `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	Health   TrunkHealth `protobuf:"varint,9,opt,name=health,proto3,enum=atsapbx.v1.TrunkHealth" json:"health,omitempty"`
+	// Why the trunk has its health, and when it was last observed. Unset
+	// until the trunk is first observed.
+	HealthReason     TrunkHealthReason      `protobuf:"varint,10,opt,name=health_reason,json=healthReason,proto3,enum=atsapbx.v1.TrunkHealthReason" json:"health_reason,omitempty"`
+	HealthObservedAt *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=health_observed_at,json=healthObservedAt,proto3" json:"health_observed_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Trunk) Reset() {
@@ -1129,6 +1204,20 @@ func (x *Trunk) GetHealth() TrunkHealth {
 		return x.Health
 	}
 	return TrunkHealth_TRUNK_HEALTH_UNSPECIFIED
+}
+
+func (x *Trunk) GetHealthReason() TrunkHealthReason {
+	if x != nil {
+		return x.HealthReason
+	}
+	return TrunkHealthReason_TRUNK_HEALTH_REASON_UNSPECIFIED
+}
+
+func (x *Trunk) GetHealthObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.HealthObservedAt
+	}
+	return nil
 }
 
 type CreateTrunkRequest struct {
@@ -3086,7 +3175,7 @@ var File_atsapbx_v1_pbx_proto protoreflect.FileDescriptor
 const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\n" +
 	"\x14atsapbx/v1/pbx.proto\x12\n" +
-	"atsapbx.v1\"\x8b\x02\n" +
+	"atsapbx.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8b\x02\n" +
 	"\tExtension\x12!\n" +
 	"\fextension_id\x18\x01 \x01(\tR\vextensionId\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\tR\x06number\x12!\n" +
@@ -3143,7 +3232,7 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"configured\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1c\n" +
-	"\ttransport\x18\x04 \x01(\tR\ttransport\"\x94\x02\n" +
+	"\ttransport\x18\x04 \x01(\tR\ttransport\"\xa2\x03\n" +
 	"\x05Trunk\x12\x19\n" +
 	"\btrunk_id\x18\x01 \x01(\tR\atrunkId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3154,7 +3243,10 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"has_secret\x18\x06 \x01(\bR\thasSecret\x12#\n" +
 	"\rchannel_limit\x18\a \x01(\x05R\fchannelLimit\x12\x1a\n" +
 	"\bpriority\x18\b \x01(\x05R\bpriority\x12/\n" +
-	"\x06health\x18\t \x01(\x0e2\x17.atsapbx.v1.TrunkHealthR\x06health\"\xeb\x01\n" +
+	"\x06health\x18\t \x01(\x0e2\x17.atsapbx.v1.TrunkHealthR\x06health\x12B\n" +
+	"\rhealth_reason\x18\n" +
+	" \x01(\x0e2\x1d.atsapbx.v1.TrunkHealthReasonR\fhealthReason\x12H\n" +
+	"\x12health_observed_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x10healthObservedAt\"\xeb\x01\n" +
 	"\x12CreateTrunkRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3275,12 +3367,20 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x12RegistrationStatus\x12#\n" +
 	"\x1fREGISTRATION_STATUS_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"REGISTRATION_STATUS_NOT_REGISTERED\x10\x01\x12\"\n" +
-	"\x1eREGISTRATION_STATUS_REGISTERED\x10\x02*|\n" +
+	"\x1eREGISTRATION_STATUS_REGISTERED\x10\x02*\x96\x01\n" +
 	"\vTrunkHealth\x12\x1c\n" +
 	"\x18TRUNK_HEALTH_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14TRUNK_HEALTH_HEALTHY\x10\x01\x12\x19\n" +
 	"\x15TRUNK_HEALTH_DEGRADED\x10\x02\x12\x1a\n" +
-	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x032\x94\x11\n" +
+	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x03\x12\x18\n" +
+	"\x14TRUNK_HEALTH_UNKNOWN\x10\x04*\xf6\x01\n" +
+	"\x11TrunkHealthReason\x12#\n" +
+	"\x1fTRUNK_HEALTH_REASON_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dTRUNK_HEALTH_REASON_ANSWERING\x10\x01\x12%\n" +
+	"!TRUNK_HEALTH_REASON_SLOW_RESPONSE\x10\x02\x12&\n" +
+	"\"TRUNK_HEALTH_REASON_HOST_NOT_FOUND\x10\x03\x12#\n" +
+	"\x1fTRUNK_HEALTH_REASON_NO_RESPONSE\x10\x04\x12%\n" +
+	"!TRUNK_HEALTH_REASON_CARRIER_ERROR\x10\x052\x94\x11\n" +
 	"\n" +
 	"PbxService\x12Z\n" +
 	"\x0fCreateExtension\x12\".atsapbx.v1.CreateExtensionRequest\x1a#.atsapbx.v1.CreateExtensionResponse\x12Q\n" +
@@ -3323,139 +3423,143 @@ func file_atsapbx_v1_pbx_proto_rawDescGZIP() []byte {
 	return file_atsapbx_v1_pbx_proto_rawDescData
 }
 
-var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
 var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(DeviceType)(0),                       // 0: atsapbx.v1.DeviceType
 	(RegistrationStatus)(0),               // 1: atsapbx.v1.RegistrationStatus
 	(TrunkHealth)(0),                      // 2: atsapbx.v1.TrunkHealth
-	(*Extension)(nil),                     // 3: atsapbx.v1.Extension
-	(*CreateExtensionRequest)(nil),        // 4: atsapbx.v1.CreateExtensionRequest
-	(*CreateExtensionResponse)(nil),       // 5: atsapbx.v1.CreateExtensionResponse
-	(*GetExtensionRequest)(nil),           // 6: atsapbx.v1.GetExtensionRequest
-	(*GetExtensionResponse)(nil),          // 7: atsapbx.v1.GetExtensionResponse
-	(*ListExtensionsRequest)(nil),         // 8: atsapbx.v1.ListExtensionsRequest
-	(*ListExtensionsResponse)(nil),        // 9: atsapbx.v1.ListExtensionsResponse
-	(*UpdateExtensionRequest)(nil),        // 10: atsapbx.v1.UpdateExtensionRequest
-	(*UpdateExtensionResponse)(nil),       // 11: atsapbx.v1.UpdateExtensionResponse
-	(*DeleteExtensionRequest)(nil),        // 12: atsapbx.v1.DeleteExtensionRequest
-	(*DeleteExtensionResponse)(nil),       // 13: atsapbx.v1.DeleteExtensionResponse
-	(*RegenerateSecretRequest)(nil),       // 14: atsapbx.v1.RegenerateSecretRequest
-	(*RegenerateSecretResponse)(nil),      // 15: atsapbx.v1.RegenerateSecretResponse
-	(*GetSipRegistrarRequest)(nil),        // 16: atsapbx.v1.GetSipRegistrarRequest
-	(*GetSipRegistrarResponse)(nil),       // 17: atsapbx.v1.GetSipRegistrarResponse
-	(*Trunk)(nil),                         // 18: atsapbx.v1.Trunk
-	(*CreateTrunkRequest)(nil),            // 19: atsapbx.v1.CreateTrunkRequest
-	(*CreateTrunkResponse)(nil),           // 20: atsapbx.v1.CreateTrunkResponse
-	(*ListTrunksRequest)(nil),             // 21: atsapbx.v1.ListTrunksRequest
-	(*ListTrunksResponse)(nil),            // 22: atsapbx.v1.ListTrunksResponse
-	(*UpdateTrunkRequest)(nil),            // 23: atsapbx.v1.UpdateTrunkRequest
-	(*UpdateTrunkResponse)(nil),           // 24: atsapbx.v1.UpdateTrunkResponse
-	(*DeleteTrunkRequest)(nil),            // 25: atsapbx.v1.DeleteTrunkRequest
-	(*DeleteTrunkResponse)(nil),           // 26: atsapbx.v1.DeleteTrunkResponse
-	(*Route)(nil),                         // 27: atsapbx.v1.Route
-	(*CreateRouteRequest)(nil),            // 28: atsapbx.v1.CreateRouteRequest
-	(*CreateRouteResponse)(nil),           // 29: atsapbx.v1.CreateRouteResponse
-	(*ListRoutesRequest)(nil),             // 30: atsapbx.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),            // 31: atsapbx.v1.ListRoutesResponse
-	(*DeleteRouteRequest)(nil),            // 32: atsapbx.v1.DeleteRouteRequest
-	(*DeleteRouteResponse)(nil),           // 33: atsapbx.v1.DeleteRouteResponse
-	(*PlaceCallRequest)(nil),              // 34: atsapbx.v1.PlaceCallRequest
-	(*PlaceCallResponse)(nil),             // 35: atsapbx.v1.PlaceCallResponse
-	(*HangupCallRequest)(nil),             // 36: atsapbx.v1.HangupCallRequest
-	(*HangupCallResponse)(nil),            // 37: atsapbx.v1.HangupCallResponse
-	(*EmergencyNumber)(nil),               // 38: atsapbx.v1.EmergencyNumber
-	(*SetEmergencyProfileRequest)(nil),    // 39: atsapbx.v1.SetEmergencyProfileRequest
-	(*SetEmergencyProfileResponse)(nil),   // 40: atsapbx.v1.SetEmergencyProfileResponse
-	(*GetEmergencyProfileRequest)(nil),    // 41: atsapbx.v1.GetEmergencyProfileRequest
-	(*GetEmergencyProfileResponse)(nil),   // 42: atsapbx.v1.GetEmergencyProfileResponse
-	(*CreateEmergencyNumberRequest)(nil),  // 43: atsapbx.v1.CreateEmergencyNumberRequest
-	(*CreateEmergencyNumberResponse)(nil), // 44: atsapbx.v1.CreateEmergencyNumberResponse
-	(*ListEmergencyNumbersRequest)(nil),   // 45: atsapbx.v1.ListEmergencyNumbersRequest
-	(*ListEmergencyNumbersResponse)(nil),  // 46: atsapbx.v1.ListEmergencyNumbersResponse
-	(*DeleteEmergencyNumberRequest)(nil),  // 47: atsapbx.v1.DeleteEmergencyNumberRequest
-	(*DeleteEmergencyNumberResponse)(nil), // 48: atsapbx.v1.DeleteEmergencyNumberResponse
-	(*InboundNumber)(nil),                 // 49: atsapbx.v1.InboundNumber
-	(*CreateInboundNumberRequest)(nil),    // 50: atsapbx.v1.CreateInboundNumberRequest
-	(*CreateInboundNumberResponse)(nil),   // 51: atsapbx.v1.CreateInboundNumberResponse
-	(*ListInboundNumbersRequest)(nil),     // 52: atsapbx.v1.ListInboundNumbersRequest
-	(*ListInboundNumbersResponse)(nil),    // 53: atsapbx.v1.ListInboundNumbersResponse
-	(*DeleteInboundNumberRequest)(nil),    // 54: atsapbx.v1.DeleteInboundNumberRequest
-	(*DeleteInboundNumberResponse)(nil),   // 55: atsapbx.v1.DeleteInboundNumberResponse
+	(TrunkHealthReason)(0),                // 3: atsapbx.v1.TrunkHealthReason
+	(*Extension)(nil),                     // 4: atsapbx.v1.Extension
+	(*CreateExtensionRequest)(nil),        // 5: atsapbx.v1.CreateExtensionRequest
+	(*CreateExtensionResponse)(nil),       // 6: atsapbx.v1.CreateExtensionResponse
+	(*GetExtensionRequest)(nil),           // 7: atsapbx.v1.GetExtensionRequest
+	(*GetExtensionResponse)(nil),          // 8: atsapbx.v1.GetExtensionResponse
+	(*ListExtensionsRequest)(nil),         // 9: atsapbx.v1.ListExtensionsRequest
+	(*ListExtensionsResponse)(nil),        // 10: atsapbx.v1.ListExtensionsResponse
+	(*UpdateExtensionRequest)(nil),        // 11: atsapbx.v1.UpdateExtensionRequest
+	(*UpdateExtensionResponse)(nil),       // 12: atsapbx.v1.UpdateExtensionResponse
+	(*DeleteExtensionRequest)(nil),        // 13: atsapbx.v1.DeleteExtensionRequest
+	(*DeleteExtensionResponse)(nil),       // 14: atsapbx.v1.DeleteExtensionResponse
+	(*RegenerateSecretRequest)(nil),       // 15: atsapbx.v1.RegenerateSecretRequest
+	(*RegenerateSecretResponse)(nil),      // 16: atsapbx.v1.RegenerateSecretResponse
+	(*GetSipRegistrarRequest)(nil),        // 17: atsapbx.v1.GetSipRegistrarRequest
+	(*GetSipRegistrarResponse)(nil),       // 18: atsapbx.v1.GetSipRegistrarResponse
+	(*Trunk)(nil),                         // 19: atsapbx.v1.Trunk
+	(*CreateTrunkRequest)(nil),            // 20: atsapbx.v1.CreateTrunkRequest
+	(*CreateTrunkResponse)(nil),           // 21: atsapbx.v1.CreateTrunkResponse
+	(*ListTrunksRequest)(nil),             // 22: atsapbx.v1.ListTrunksRequest
+	(*ListTrunksResponse)(nil),            // 23: atsapbx.v1.ListTrunksResponse
+	(*UpdateTrunkRequest)(nil),            // 24: atsapbx.v1.UpdateTrunkRequest
+	(*UpdateTrunkResponse)(nil),           // 25: atsapbx.v1.UpdateTrunkResponse
+	(*DeleteTrunkRequest)(nil),            // 26: atsapbx.v1.DeleteTrunkRequest
+	(*DeleteTrunkResponse)(nil),           // 27: atsapbx.v1.DeleteTrunkResponse
+	(*Route)(nil),                         // 28: atsapbx.v1.Route
+	(*CreateRouteRequest)(nil),            // 29: atsapbx.v1.CreateRouteRequest
+	(*CreateRouteResponse)(nil),           // 30: atsapbx.v1.CreateRouteResponse
+	(*ListRoutesRequest)(nil),             // 31: atsapbx.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),            // 32: atsapbx.v1.ListRoutesResponse
+	(*DeleteRouteRequest)(nil),            // 33: atsapbx.v1.DeleteRouteRequest
+	(*DeleteRouteResponse)(nil),           // 34: atsapbx.v1.DeleteRouteResponse
+	(*PlaceCallRequest)(nil),              // 35: atsapbx.v1.PlaceCallRequest
+	(*PlaceCallResponse)(nil),             // 36: atsapbx.v1.PlaceCallResponse
+	(*HangupCallRequest)(nil),             // 37: atsapbx.v1.HangupCallRequest
+	(*HangupCallResponse)(nil),            // 38: atsapbx.v1.HangupCallResponse
+	(*EmergencyNumber)(nil),               // 39: atsapbx.v1.EmergencyNumber
+	(*SetEmergencyProfileRequest)(nil),    // 40: atsapbx.v1.SetEmergencyProfileRequest
+	(*SetEmergencyProfileResponse)(nil),   // 41: atsapbx.v1.SetEmergencyProfileResponse
+	(*GetEmergencyProfileRequest)(nil),    // 42: atsapbx.v1.GetEmergencyProfileRequest
+	(*GetEmergencyProfileResponse)(nil),   // 43: atsapbx.v1.GetEmergencyProfileResponse
+	(*CreateEmergencyNumberRequest)(nil),  // 44: atsapbx.v1.CreateEmergencyNumberRequest
+	(*CreateEmergencyNumberResponse)(nil), // 45: atsapbx.v1.CreateEmergencyNumberResponse
+	(*ListEmergencyNumbersRequest)(nil),   // 46: atsapbx.v1.ListEmergencyNumbersRequest
+	(*ListEmergencyNumbersResponse)(nil),  // 47: atsapbx.v1.ListEmergencyNumbersResponse
+	(*DeleteEmergencyNumberRequest)(nil),  // 48: atsapbx.v1.DeleteEmergencyNumberRequest
+	(*DeleteEmergencyNumberResponse)(nil), // 49: atsapbx.v1.DeleteEmergencyNumberResponse
+	(*InboundNumber)(nil),                 // 50: atsapbx.v1.InboundNumber
+	(*CreateInboundNumberRequest)(nil),    // 51: atsapbx.v1.CreateInboundNumberRequest
+	(*CreateInboundNumberResponse)(nil),   // 52: atsapbx.v1.CreateInboundNumberResponse
+	(*ListInboundNumbersRequest)(nil),     // 53: atsapbx.v1.ListInboundNumbersRequest
+	(*ListInboundNumbersResponse)(nil),    // 54: atsapbx.v1.ListInboundNumbersResponse
+	(*DeleteInboundNumberRequest)(nil),    // 55: atsapbx.v1.DeleteInboundNumberRequest
+	(*DeleteInboundNumberResponse)(nil),   // 56: atsapbx.v1.DeleteInboundNumberResponse
+	(*timestamppb.Timestamp)(nil),         // 57: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.Extension.device_type:type_name -> atsapbx.v1.DeviceType
 	1,  // 1: atsapbx.v1.Extension.registration:type_name -> atsapbx.v1.RegistrationStatus
 	0,  // 2: atsapbx.v1.CreateExtensionRequest.device_type:type_name -> atsapbx.v1.DeviceType
-	3,  // 3: atsapbx.v1.CreateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	3,  // 4: atsapbx.v1.GetExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	3,  // 5: atsapbx.v1.ListExtensionsResponse.extensions:type_name -> atsapbx.v1.Extension
+	4,  // 3: atsapbx.v1.CreateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	4,  // 4: atsapbx.v1.GetExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	4,  // 5: atsapbx.v1.ListExtensionsResponse.extensions:type_name -> atsapbx.v1.Extension
 	0,  // 6: atsapbx.v1.UpdateExtensionRequest.device_type:type_name -> atsapbx.v1.DeviceType
-	3,  // 7: atsapbx.v1.UpdateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	3,  // 8: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
+	4,  // 7: atsapbx.v1.UpdateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	4,  // 8: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
 	2,  // 9: atsapbx.v1.Trunk.health:type_name -> atsapbx.v1.TrunkHealth
-	18, // 10: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
-	18, // 11: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
-	18, // 12: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
-	27, // 13: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
-	27, // 14: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
-	38, // 15: atsapbx.v1.GetEmergencyProfileResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
-	38, // 16: atsapbx.v1.ListEmergencyNumbersResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
-	49, // 17: atsapbx.v1.CreateInboundNumberResponse.inbound_number:type_name -> atsapbx.v1.InboundNumber
-	49, // 18: atsapbx.v1.ListInboundNumbersResponse.numbers:type_name -> atsapbx.v1.InboundNumber
-	4,  // 19: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
-	6,  // 20: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
-	8,  // 21: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
-	10, // 22: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
-	12, // 23: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
-	14, // 24: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
-	16, // 25: atsapbx.v1.PbxService.GetSipRegistrar:input_type -> atsapbx.v1.GetSipRegistrarRequest
-	19, // 26: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
-	21, // 27: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
-	23, // 28: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
-	25, // 29: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
-	28, // 30: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
-	30, // 31: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
-	32, // 32: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
-	34, // 33: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
-	36, // 34: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
-	39, // 35: atsapbx.v1.PbxService.SetEmergencyProfile:input_type -> atsapbx.v1.SetEmergencyProfileRequest
-	41, // 36: atsapbx.v1.PbxService.GetEmergencyProfile:input_type -> atsapbx.v1.GetEmergencyProfileRequest
-	43, // 37: atsapbx.v1.PbxService.CreateEmergencyNumber:input_type -> atsapbx.v1.CreateEmergencyNumberRequest
-	45, // 38: atsapbx.v1.PbxService.ListEmergencyNumbers:input_type -> atsapbx.v1.ListEmergencyNumbersRequest
-	47, // 39: atsapbx.v1.PbxService.DeleteEmergencyNumber:input_type -> atsapbx.v1.DeleteEmergencyNumberRequest
-	50, // 40: atsapbx.v1.PbxService.CreateInboundNumber:input_type -> atsapbx.v1.CreateInboundNumberRequest
-	52, // 41: atsapbx.v1.PbxService.ListInboundNumbers:input_type -> atsapbx.v1.ListInboundNumbersRequest
-	54, // 42: atsapbx.v1.PbxService.DeleteInboundNumber:input_type -> atsapbx.v1.DeleteInboundNumberRequest
-	5,  // 43: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
-	7,  // 44: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
-	9,  // 45: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
-	11, // 46: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
-	13, // 47: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
-	15, // 48: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
-	17, // 49: atsapbx.v1.PbxService.GetSipRegistrar:output_type -> atsapbx.v1.GetSipRegistrarResponse
-	20, // 50: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
-	22, // 51: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
-	24, // 52: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
-	26, // 53: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
-	29, // 54: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
-	31, // 55: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
-	33, // 56: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
-	35, // 57: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
-	37, // 58: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
-	40, // 59: atsapbx.v1.PbxService.SetEmergencyProfile:output_type -> atsapbx.v1.SetEmergencyProfileResponse
-	42, // 60: atsapbx.v1.PbxService.GetEmergencyProfile:output_type -> atsapbx.v1.GetEmergencyProfileResponse
-	44, // 61: atsapbx.v1.PbxService.CreateEmergencyNumber:output_type -> atsapbx.v1.CreateEmergencyNumberResponse
-	46, // 62: atsapbx.v1.PbxService.ListEmergencyNumbers:output_type -> atsapbx.v1.ListEmergencyNumbersResponse
-	48, // 63: atsapbx.v1.PbxService.DeleteEmergencyNumber:output_type -> atsapbx.v1.DeleteEmergencyNumberResponse
-	51, // 64: atsapbx.v1.PbxService.CreateInboundNumber:output_type -> atsapbx.v1.CreateInboundNumberResponse
-	53, // 65: atsapbx.v1.PbxService.ListInboundNumbers:output_type -> atsapbx.v1.ListInboundNumbersResponse
-	55, // 66: atsapbx.v1.PbxService.DeleteInboundNumber:output_type -> atsapbx.v1.DeleteInboundNumberResponse
-	43, // [43:67] is the sub-list for method output_type
-	19, // [19:43] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	3,  // 10: atsapbx.v1.Trunk.health_reason:type_name -> atsapbx.v1.TrunkHealthReason
+	57, // 11: atsapbx.v1.Trunk.health_observed_at:type_name -> google.protobuf.Timestamp
+	19, // 12: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	19, // 13: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
+	19, // 14: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	28, // 15: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
+	28, // 16: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
+	39, // 17: atsapbx.v1.GetEmergencyProfileResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
+	39, // 18: atsapbx.v1.ListEmergencyNumbersResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
+	50, // 19: atsapbx.v1.CreateInboundNumberResponse.inbound_number:type_name -> atsapbx.v1.InboundNumber
+	50, // 20: atsapbx.v1.ListInboundNumbersResponse.numbers:type_name -> atsapbx.v1.InboundNumber
+	5,  // 21: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
+	7,  // 22: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
+	9,  // 23: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
+	11, // 24: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
+	13, // 25: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
+	15, // 26: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
+	17, // 27: atsapbx.v1.PbxService.GetSipRegistrar:input_type -> atsapbx.v1.GetSipRegistrarRequest
+	20, // 28: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
+	22, // 29: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
+	24, // 30: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
+	26, // 31: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
+	29, // 32: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
+	31, // 33: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
+	33, // 34: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
+	35, // 35: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
+	37, // 36: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
+	40, // 37: atsapbx.v1.PbxService.SetEmergencyProfile:input_type -> atsapbx.v1.SetEmergencyProfileRequest
+	42, // 38: atsapbx.v1.PbxService.GetEmergencyProfile:input_type -> atsapbx.v1.GetEmergencyProfileRequest
+	44, // 39: atsapbx.v1.PbxService.CreateEmergencyNumber:input_type -> atsapbx.v1.CreateEmergencyNumberRequest
+	46, // 40: atsapbx.v1.PbxService.ListEmergencyNumbers:input_type -> atsapbx.v1.ListEmergencyNumbersRequest
+	48, // 41: atsapbx.v1.PbxService.DeleteEmergencyNumber:input_type -> atsapbx.v1.DeleteEmergencyNumberRequest
+	51, // 42: atsapbx.v1.PbxService.CreateInboundNumber:input_type -> atsapbx.v1.CreateInboundNumberRequest
+	53, // 43: atsapbx.v1.PbxService.ListInboundNumbers:input_type -> atsapbx.v1.ListInboundNumbersRequest
+	55, // 44: atsapbx.v1.PbxService.DeleteInboundNumber:input_type -> atsapbx.v1.DeleteInboundNumberRequest
+	6,  // 45: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
+	8,  // 46: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
+	10, // 47: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
+	12, // 48: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
+	14, // 49: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
+	16, // 50: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
+	18, // 51: atsapbx.v1.PbxService.GetSipRegistrar:output_type -> atsapbx.v1.GetSipRegistrarResponse
+	21, // 52: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
+	23, // 53: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
+	25, // 54: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
+	27, // 55: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
+	30, // 56: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
+	32, // 57: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
+	34, // 58: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
+	36, // 59: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
+	38, // 60: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
+	41, // 61: atsapbx.v1.PbxService.SetEmergencyProfile:output_type -> atsapbx.v1.SetEmergencyProfileResponse
+	43, // 62: atsapbx.v1.PbxService.GetEmergencyProfile:output_type -> atsapbx.v1.GetEmergencyProfileResponse
+	45, // 63: atsapbx.v1.PbxService.CreateEmergencyNumber:output_type -> atsapbx.v1.CreateEmergencyNumberResponse
+	47, // 64: atsapbx.v1.PbxService.ListEmergencyNumbers:output_type -> atsapbx.v1.ListEmergencyNumbersResponse
+	49, // 65: atsapbx.v1.PbxService.DeleteEmergencyNumber:output_type -> atsapbx.v1.DeleteEmergencyNumberResponse
+	52, // 66: atsapbx.v1.PbxService.CreateInboundNumber:output_type -> atsapbx.v1.CreateInboundNumberResponse
+	54, // 67: atsapbx.v1.PbxService.ListInboundNumbers:output_type -> atsapbx.v1.ListInboundNumbersResponse
+	56, // 68: atsapbx.v1.PbxService.DeleteInboundNumber:output_type -> atsapbx.v1.DeleteInboundNumberResponse
+	45, // [45:69] is the sub-list for method output_type
+	21, // [21:45] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_pbx_proto_init() }
@@ -3468,7 +3572,7 @@ func file_atsapbx_v1_pbx_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_pbx_proto_rawDesc), len(file_atsapbx_v1_pbx_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      4,
 			NumMessages:   53,
 			NumExtensions: 0,
 			NumServices:   1,

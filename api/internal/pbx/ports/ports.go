@@ -184,6 +184,10 @@ type TrunkView struct {
 	ChannelLimit int
 	Priority     int
 	Health       domain.TrunkHealth
+	// HealthReason and HealthObservedAt say why and when; empty and nil
+	// until the trunk is first observed.
+	HealthReason     domain.HealthReason
+	HealthObservedAt *time.Time
 }
 
 // CreateRouteCommand is what a caller supplies to add an outbound route.
@@ -390,9 +394,14 @@ type TrunkStore interface {
 	Delete(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID) error
 	Get(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID) (domain.Trunk, error)
 	List(ctx context.Context, tx pgx.Tx, page Page) ([]domain.Trunk, error)
-	// SetHealth records an observed health. It is the only writer of
-	// health, and nothing on the configuration path calls it.
-	SetHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, health domain.TrunkHealth) error
+	// SetHealth records an observation from a call through the trunk.
+	// With SetCheckedHealth it is the only writer of health, and nothing
+	// on the configuration path calls either.
+	SetHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, obs domain.HealthObservation) error
+	// SetCheckedHealth records the platform's check of the carrier at
+	// host and port, only while the trunk still has that address; it
+	// reports whether the observation was recorded.
+	SetCheckedHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, port int, obs domain.HealthObservation) (bool, error)
 }
 
 // RouteStore is the outbound storage port for routes.

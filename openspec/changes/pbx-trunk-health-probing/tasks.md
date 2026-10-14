@@ -1,6 +1,6 @@
 ## 1. Health that says what it knows
 
-- [ ] 1.1 Domain and storage:
+- [x] 1.1 Domain and storage:
   - `HealthUnknown` and the five reasons;
   - `ObserveProbe`, and `ObserveHealth` returning a reason too;
   - migration 0012 (UNKNOWN check, default and backfill, `health_reason`, `health_observed_at`);
@@ -11,13 +11,39 @@
   - unit: the mapping table; selection treats `UNKNOWN` as `HEALTHY`;
   - integration: a new trunk is UNKNOWN with no time; a guarded write for a changed address or a deleted trunk is dropped; the migration's down and up round-trip;
   - `make test`, `make lint`.
-- [ ] 1.2 API: `TRUNK_HEALTH_UNKNOWN`, `TrunkHealthReason` and `health_observed_at` on `Trunk`, mapped in the RPC layer.
+- [x] 1.2 API: `TRUNK_HEALTH_UNKNOWN`, `TrunkHealthReason` and `health_observed_at` on `Trunk`, mapped in the RPC layer.
 
   Verify:
   - unit: the RPC mapping for every state and reason;
   - `make proto` (`buf breaking`);
   - the regenerated console clients typecheck;
   - Go tiers and `make console-check`.
+
+  *(1.1 and 1.2 done together on 2026-10-14. They form one commit because the wire test cannot pass on the new domain without the new API value.)*
+
+  *Domain:*
+  - `HealthUnknown`, the five `HealthReason`s and `HealthObservation`;
+  - `ObserveProbe` and `ProbeSlowThreshold` (1 s);
+  - `ObserveHealth` now returns a reason.
+
+  *Store and service:*
+  - Migration 0012 adds `UNKNOWN` (also the default and the backfill), `health_reason` and `health_observed_at`.
+  - `SetHealth` takes an observation. The new `SetCheckedHealth` writes only while the host and port are unchanged.
+  - Both refuse "Unknown", or an observation without a reason or time.
+  - `CreateTrunk` starts `UNKNOWN`.
+  - `TrunkView` carries the reason and time.
+
+  *API:* `TRUNK_HEALTH_UNKNOWN`, `TrunkHealthReason`, `health_reason` and `health_observed_at`, mapped in the RPC layer.
+
+  *Console:* "Not checked yet" was added, which is needed for the console to typecheck.
+
+  Verified:
+  - unit: `TestObserveHealth`, `TestObserveProbe` (nine cases), `TestTrunkHealthAndReasonValues`, `TestSelectRoutes_UncheckedTrunkIsSelectedLikeHealthy`, the property test with Unknown in the mix, and `TestToProtoTrunk_Health` for every state and reason;
+  - integration (`atsapbx_test`): `TestTrunkStore_CheckedHealthIsGuardedByAddress` (a changed host or port and a deleted trunk drop the result), `TestTrunkStore_RefusesWhatIsNotAnObservation`, a new trunk is UNKNOWN with no time, and the tenant's own report records its reason and time;
+  - the wire lifecycle and e2e tests now expect `TRUNK_HEALTH_UNKNOWN`;
+  - `make proto`, lint, the Go unit, integration and e2e tiers, and `make console-check` (395 / 24 / 24 / 3) all pass.
+
+  **Found while testing:** the first migration's backfill ran under FORCE RLS as the app role and changed **0 rows**, silently leaving every existing trunk HEALTHY. Its down migration failed outright on the new check constraint. Both directions now lift RLS for their own transaction, as 0010 does, and both were verified as the app role. The dev rig had already applied the first version, so its one never-observed trunk was corrected by hand. Nothing else had applied it, because it was never pushed.)*
 
 ## 2. The check
 

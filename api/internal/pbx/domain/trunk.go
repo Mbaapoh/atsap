@@ -15,11 +15,15 @@ import (
 )
 
 // TrunkHealth is what the platform has observed about a carrier. It is
-// never set by a caller: it changes only through outcome reports (D8),
-// and a new trunk starts Healthy.
+// never set by a caller: it changes only through observations — the
+// platform's own checks and the outcomes of calls through the trunk — and
+// a new trunk is Unknown until its first one (pbx-trunk-health-probing).
 type TrunkHealth string
 
 const (
+	// HealthUnknown carriers have not been observed yet. They are selected
+	// as healthy ones are, so a trunk works as soon as it is created.
+	HealthUnknown TrunkHealth = "UNKNOWN"
 	// HealthHealthy carriers are selected normally.
 	HealthHealthy TrunkHealth = "HEALTHY"
 	// HealthDegraded carriers are still selected, but only after every
@@ -32,10 +36,43 @@ const (
 // Valid reports whether h is one of the three observed states.
 func (h TrunkHealth) Valid() bool {
 	switch h {
-	case HealthHealthy, HealthDegraded, HealthUnhealthy:
+	case HealthUnknown, HealthHealthy, HealthDegraded, HealthUnhealthy:
 		return true
 	}
 	return false
+}
+
+// HealthReason says why a trunk has the health it has.
+type HealthReason string
+
+const (
+	// ReasonAnswering is the carrier responding promptly.
+	ReasonAnswering HealthReason = "ANSWERING"
+	// ReasonSlowResponse is the carrier responding, but slowly.
+	ReasonSlowResponse HealthReason = "SLOW_RESPONSE"
+	// ReasonHostNotFound is the trunk's host name not resolving.
+	ReasonHostNotFound HealthReason = "HOST_NOT_FOUND"
+	// ReasonNoResponse is the carrier not responding in time.
+	ReasonNoResponse HealthReason = "NO_RESPONSE"
+	// ReasonCarrierError is the carrier responding with a server error.
+	ReasonCarrierError HealthReason = "CARRIER_ERROR"
+)
+
+// Valid reports whether r is one of the defined reasons.
+func (r HealthReason) Valid() bool {
+	switch r {
+	case ReasonAnswering, ReasonSlowResponse, ReasonHostNotFound, ReasonNoResponse, ReasonCarrierError:
+		return true
+	}
+	return false
+}
+
+// HealthObservation is one observation of a carrier: the health it
+// implies, why, and when it was made.
+type HealthObservation struct {
+	Health TrunkHealth
+	Reason HealthReason
+	At     time.Time
 }
 
 // Trunk field bounds. Each matches its column width.
@@ -80,8 +117,12 @@ type Trunk struct {
 	ChannelLimit  int
 	Priority      int
 	Health        TrunkHealth
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// HealthReason and HealthObservedAt are empty and nil until the trunk
+	// is first observed.
+	HealthReason     HealthReason
+	HealthObservedAt *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Validate checks every caller-supplied field. Health and CredentialRef
@@ -180,25 +221,64 @@ func isASCIIAlnum(r rune) bool {
 // trunk's answer is slow (design D8).
 const SlowAnswerThreshold = 2 * time.Second
 
-// ObserveHealth maps one observed call outcome onto a trunk health, and
-// reports false when the outcome says nothing about the carrier.
+// ObserveHealth maps one observed call outcome onto a trunk health and
+// its reason, and reports false when the outcome says nothing about the
+// carrier.
 //
 // A 2xx is the carrier working: Healthy, or Degraded when it took longer
-// than SlowAnswerThreshold. No response (0), 408 and any 5xx are the
-// carrier failing: Unhealthy. Every other code — 404, 480, 486 and the
-// like — describes the callee, and blaming the carrier for a busy line
-// would take a working trunk out of service.
-func ObserveHealth(statusCode int, latency time.Duration) (TrunkHealth, bool) {
+// than SlowAnswerThreshold. No response (0) and 408 are the carrier not
+// answering, and any 5xx is the carrier failing: Unhealthy. Every other
+// code — 404, 480, 486 and the like — describes the callee, and blaming
+// the carrier for a busy line would take a working trunk out of service.
+func ObserveHealth(statusCode int, latency time.Duration) (TrunkHealth, HealthReason, bool) {
 	switch {
 	case statusCode >= 200 && statusCode < 300:
 		if latency > SlowAnswerThreshold {
-			return HealthDegraded, true
+			return HealthDegraded, ReasonSlowResponse, true
 		}
-		return HealthHealthy, true
-	case statusCode == 0, statusCode == 408, statusCode >= 500 && statusCode < 600:
-		return HealthUnhealthy, true
+		return HealthHealthy, ReasonAnswering, true
+	case statusCode == 0, statusCode == 408:
+		return HealthUnhealthy, ReasonNoResponse, true
+	case statusCode >= 500 && statusCode < 600:
+		return HealthUnhealthy, ReasonCarrierError, true
 	default:
-		return "", false
+		return "", "", false
+	}
+}
+
+// ProbeOutcome is what the platform's check of a carrier found.
+type ProbeOutcome int
+
+const (
+	// ProbeAnswered is a final SIP response received.
+	ProbeAnswered ProbeOutcome = iota
+	// ProbeNoResponse is no final response within the check's budget.
+	ProbeNoResponse
+	// ProbeHostNotFound is the trunk's host not resolving.
+	ProbeHostNotFound
+)
+
+// ProbeSlowThreshold is the response time above which a carrier that
+// answers the platform's check is Degraded. An OPTIONS round trip to a
+// working carrier takes tens of milliseconds; a second is trouble.
+const ProbeSlowThreshold = time.Second
+
+// ObserveProbe maps one check of a carrier onto a trunk health and its
+// reason (pbx-trunk-health-probing design D2). Any final response below
+// 500 is the carrier answering — including a 403 or 404 to an
+// unauthenticated OPTIONS, which a carrier that is up commonly sends.
+func ObserveProbe(outcome ProbeOutcome, statusCode int, rtt time.Duration) (TrunkHealth, HealthReason) {
+	switch {
+	case outcome == ProbeHostNotFound:
+		return HealthUnhealthy, ReasonHostNotFound
+	case outcome == ProbeNoResponse:
+		return HealthUnhealthy, ReasonNoResponse
+	case statusCode >= 500:
+		return HealthUnhealthy, ReasonCarrierError
+	case rtt > ProbeSlowThreshold:
+		return HealthDegraded, ReasonSlowResponse
+	default:
+		return HealthHealthy, ReasonAnswering
 	}
 }
 

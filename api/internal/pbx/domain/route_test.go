@@ -94,6 +94,18 @@ func TestSelectRoutes_SkipsUnhealthyAndDemotesDegraded(t *testing.T) {
 	assert.Equal(t, viaDegraded.ID, got[1].Route.ID, "degraded stays available as a fallback")
 }
 
+// A trunk not yet checked is selected exactly as a healthy one, so a new
+// trunk works at once (pbx-trunk-health-probing, trunk-routing spec).
+func TestSelectRoutes_UncheckedTrunkIsSelectedLikeHealthy(t *testing.T) {
+	unchecked, healthy := trunk(domain.HealthUnknown), trunk(domain.HealthHealthy)
+	viaUnchecked := route("447", unchecked, 0, 0)
+	viaHealthy := route("44", healthy, 0, 0)
+
+	got := domain.SelectRoutes("447700", []domain.CarrierRoute{viaHealthy, viaUnchecked}, []domain.Trunk{healthy, unchecked})
+	require.Len(t, got, 2)
+	assert.Equal(t, viaUnchecked.ID, got[0].Route.ID, "longest prefix wins as for any healthy trunk")
+}
+
 func TestSelectRoutes_IgnoresRoutesToUnknownTrunks(t *testing.T) {
 	known := trunk(domain.HealthHealthy)
 	orphan := route("44", trunk(domain.HealthHealthy), 0, 0)
@@ -108,7 +120,7 @@ func TestSelectRoutes_IgnoresRoutesToUnknownTrunks(t *testing.T) {
 // equal lengths, equal priorities and equal costs, which is exactly where
 // a tie-break bug would hide.
 func genCase(r *rand.Rand) (string, []domain.CarrierRoute, []domain.Trunk) {
-	healths := []domain.TrunkHealth{domain.HealthHealthy, domain.HealthDegraded, domain.HealthUnhealthy}
+	healths := []domain.TrunkHealth{domain.HealthUnknown, domain.HealthHealthy, domain.HealthDegraded, domain.HealthUnhealthy}
 	trunks := make([]domain.Trunk, 1+r.IntN(4))
 	for i := range trunks {
 		trunks[i] = trunk(healths[r.IntN(len(healths))])

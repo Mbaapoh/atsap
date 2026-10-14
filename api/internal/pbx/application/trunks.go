@@ -48,7 +48,7 @@ func (s *Service) CreateTrunk(ctx context.Context, cmd ports.CreateTrunkCommand)
 		ID: shareddomain.NewTrunkID(), TenantID: cmd.TenantID,
 		Name: cmd.Name, Host: cmd.Host, Port: cmd.Port, AuthUsername: cmd.AuthUsername,
 		ChannelLimit: cmd.ChannelLimit, Priority: cmd.Priority,
-		Health: domain.HealthHealthy, CreatedAt: now, UpdatedAt: now,
+		Health: domain.HealthUnknown, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := validateTrunk(t, cmd.Secret); err != nil {
 		return ports.TrunkView{}, err
@@ -292,12 +292,13 @@ func (s *Service) ReportRouteHealth(ctx context.Context, trunkID shareddomain.Tr
 	if !ok || tc == nil {
 		return fmt.Errorf("%w: no tenant in context for a health report", identityports.ErrPermissionDenied)
 	}
-	health, ok := domain.ObserveHealth(statusCode, latency)
+	health, reason, ok := domain.ObserveHealth(statusCode, latency)
 	if !ok {
 		return nil
 	}
+	obs := domain.HealthObservation{Health: health, Reason: reason, At: s.now().UTC()}
 	return s.pool.WithTenant(ctx, tc.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		return s.trunks.SetHealth(ctx, tx, trunkID, health)
+		return s.trunks.SetHealth(ctx, tx, trunkID, obs)
 	})
 }
 
@@ -369,6 +370,7 @@ func trunkView(t domain.Trunk) ports.TrunkView {
 	return ports.TrunkView{
 		ID: t.ID, Name: t.Name, Host: t.Host, Port: t.Port, AuthUsername: t.AuthUsername,
 		HasSecret: t.CredentialRef != "", ChannelLimit: t.ChannelLimit, Priority: t.Priority, Health: t.Health,
+		HealthReason: t.HealthReason, HealthObservedAt: t.HealthObservedAt,
 	}
 }
 

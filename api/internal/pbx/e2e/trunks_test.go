@@ -71,7 +71,7 @@ func TestTrunks_ProjectionIsLiveAndDeletionIsImmediate(t *testing.T) {
 		"authUsername": "e2e-acct", "secret": "e2e-carrier-secret", "channelLimit": 4,
 	}, &created, http.StatusOK)
 	require.True(t, created.Trunk.HasSecret)
-	assert.Equal(t, "TRUNK_HEALTH_HEALTHY", created.Trunk.Health)
+	assert.Equal(t, "TRUNK_HEALTH_UNKNOWN", created.Trunk.Health, "not checked yet, never healthy by default")
 
 	r.call(t, "PbxService/CreateRoute", r.token, map[string]any{
 		"tenantId": r.tenant.String(), "prefixPattern": "+44", "trunkId": created.Trunk.TrunkID,

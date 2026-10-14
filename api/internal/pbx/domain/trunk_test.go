@@ -80,23 +80,67 @@ func TestObserveHealth(t *testing.T) {
 		code    int
 		latency time.Duration
 		want    domain.TrunkHealth
+		reason  domain.HealthReason
 		ok      bool
 	}{
-		{200, 300 * time.Millisecond, domain.HealthHealthy, true},
-		{200, domain.SlowAnswerThreshold, domain.HealthHealthy, true},
-		{200, domain.SlowAnswerThreshold + time.Millisecond, domain.HealthDegraded, true},
-		{0, 0, domain.HealthUnhealthy, true},
-		{408, 0, domain.HealthUnhealthy, true},
-		{503, 0, domain.HealthUnhealthy, true},
-		{500, 0, domain.HealthUnhealthy, true},
-		{486, 0, "", false}, // busy callee: not the carrier's fault
-		{404, 0, "", false},
-		{480, 0, "", false},
+		{200, 300 * time.Millisecond, domain.HealthHealthy, domain.ReasonAnswering, true},
+		{200, domain.SlowAnswerThreshold, domain.HealthHealthy, domain.ReasonAnswering, true},
+		{200, domain.SlowAnswerThreshold + time.Millisecond, domain.HealthDegraded, domain.ReasonSlowResponse, true},
+		{0, 0, domain.HealthUnhealthy, domain.ReasonNoResponse, true},
+		{408, 0, domain.HealthUnhealthy, domain.ReasonNoResponse, true},
+		{503, 0, domain.HealthUnhealthy, domain.ReasonCarrierError, true},
+		{500, 0, domain.HealthUnhealthy, domain.ReasonCarrierError, true},
+		{486, 0, "", "", false}, // busy callee: not the carrier's fault
+		{404, 0, "", "", false},
+		{480, 0, "", "", false},
 	} {
-		got, ok := domain.ObserveHealth(tc.code, tc.latency)
+		got, reason, ok := domain.ObserveHealth(tc.code, tc.latency)
 		assert.Equal(t, tc.ok, ok, "code %d", tc.code)
 		assert.Equal(t, tc.want, got, "code %d", tc.code)
+		assert.Equal(t, tc.reason, reason, "code %d", tc.code)
 	}
+}
+
+// TestObserveProbe is pbx-trunk-health-probing design D2: any SIP
+// response is the carrier answering — a 403 to an unauthenticated
+// OPTIONS included — a server error or silence is not, and a host that
+// does not resolve says so.
+func TestObserveProbe(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		outcome domain.ProbeOutcome
+		code    int
+		rtt     time.Duration
+		want    domain.TrunkHealth
+		reason  domain.HealthReason
+	}{
+		{"200 promptly", domain.ProbeAnswered, 200, 40 * time.Millisecond, domain.HealthHealthy, domain.ReasonAnswering},
+		{"403 is still answering", domain.ProbeAnswered, 403, 40 * time.Millisecond, domain.HealthHealthy, domain.ReasonAnswering},
+		{"404 is still answering", domain.ProbeAnswered, 404, 40 * time.Millisecond, domain.HealthHealthy, domain.ReasonAnswering},
+		{"at the threshold", domain.ProbeAnswered, 200, domain.ProbeSlowThreshold, domain.HealthHealthy, domain.ReasonAnswering},
+		{"slow", domain.ProbeAnswered, 200, domain.ProbeSlowThreshold + time.Millisecond, domain.HealthDegraded, domain.ReasonSlowResponse},
+		{"503", domain.ProbeAnswered, 503, 40 * time.Millisecond, domain.HealthUnhealthy, domain.ReasonCarrierError},
+		{"603", domain.ProbeAnswered, 603, 40 * time.Millisecond, domain.HealthUnhealthy, domain.ReasonCarrierError},
+		{"silence", domain.ProbeNoResponse, 0, 0, domain.HealthUnhealthy, domain.ReasonNoResponse},
+		{"no such host", domain.ProbeHostNotFound, 0, 0, domain.HealthUnhealthy, domain.ReasonHostNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reason := domain.ObserveProbe(tc.outcome, tc.code, tc.rtt)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.reason, reason)
+		})
+	}
+}
+
+func TestTrunkHealthAndReasonValues(t *testing.T) {
+	for _, h := range []domain.TrunkHealth{domain.HealthUnknown, domain.HealthHealthy, domain.HealthDegraded, domain.HealthUnhealthy} {
+		assert.True(t, h.Valid(), h)
+	}
+	assert.False(t, domain.TrunkHealth("GREAT").Valid())
+	for _, r := range []domain.HealthReason{domain.ReasonAnswering, domain.ReasonSlowResponse, domain.ReasonHostNotFound, domain.ReasonNoResponse, domain.ReasonCarrierError} {
+		assert.True(t, r.Valid(), r)
+	}
+	assert.False(t, domain.HealthReason("FINE").Valid())
 }
 
 func TestTrunkEndpointIdentifier(t *testing.T) {

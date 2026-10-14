@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -26,16 +27,17 @@ var _ ports.TrunkStore = TrunkStore{}
 func NewTrunkStore() TrunkStore { return TrunkStore{} }
 
 const trunkColumns = `id, tenant_id, name, host, port, auth_username, credentials_ref,
-	channel_limit, priority, health_status, created_at, updated_at`
+	channel_limit, priority, health_status, health_reason, health_observed_at, created_at, updated_at`
 
 // Insert writes a new trunk. Health is written as given, which on the
-// configuration path is always the Healthy default.
+// configuration path is always Unknown with no observation.
 func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO carrier_trunks (`+trunkColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`, t.ID.String(), t.TenantID.String(), t.Name, t.Host, t.Port, nullable(t.AuthUsername),
-		nullable(t.CredentialRef), t.ChannelLimit, t.Priority, string(t.Health), t.CreatedAt, t.UpdatedAt)
+		nullable(t.CredentialRef), t.ChannelLimit, t.Priority, string(t.Health), nullable(string(t.HealthReason)),
+		t.HealthObservedAt, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert trunk: %w", err)
 	}
@@ -108,12 +110,15 @@ func (TrunkStore) List(ctx context.Context, tx pgx.Tx, page ports.Page) ([]domai
 	return trunks, nil
 }
 
-// SetHealth records an observed health, and is the only writer of it.
-func (TrunkStore) SetHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, health domain.TrunkHealth) error {
-	if !health.Valid() {
-		return fmt.Errorf("%w: health %q", ports.ErrInvalidInput, health)
+// SetHealth records an observation from a call through the trunk. With
+// SetCheckedHealth it is the only writer of health.
+func (TrunkStore) SetHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, obs domain.HealthObservation) error {
+	if err := validObservation(obs); err != nil {
+		return err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE carrier_trunks SET health_status = $2 WHERE id = $1`, id.String(), string(health))
+	tag, err := tx.Exec(ctx, `
+		UPDATE carrier_trunks SET health_status = $2, health_reason = $3, health_observed_at = $4 WHERE id = $1
+	`, id.String(), string(obs.Health), string(obs.Reason), obs.At)
 	if err != nil {
 		return fmt.Errorf("set trunk health: %w", err)
 	}
@@ -123,14 +128,42 @@ func (TrunkStore) SetHealth(ctx context.Context, tx pgx.Tx, id shareddomain.Trun
 	return nil
 }
 
+// SetCheckedHealth records the platform's check of the carrier at host
+// and port, only while the trunk still has that address: a result for an
+// address since changed, or for a trunk since deleted, is dropped and
+// reported false (pbx-trunk-health-probing design D3).
+func (TrunkStore) SetCheckedHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, port int, obs domain.HealthObservation) (bool, error) {
+	if err := validObservation(obs); err != nil {
+		return false, err
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE carrier_trunks SET health_status = $4, health_reason = $5, health_observed_at = $6
+		WHERE id = $1 AND host = $2 AND port = $3
+	`, id.String(), host, port, string(obs.Health), string(obs.Reason), obs.At)
+	if err != nil {
+		return false, fmt.Errorf("set checked trunk health: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// validObservation refuses an observation that is not one: Unknown is
+// where a trunk starts, never something observed.
+func validObservation(obs domain.HealthObservation) error {
+	if !obs.Health.Valid() || obs.Health == domain.HealthUnknown || !obs.Reason.Valid() || obs.At.IsZero() {
+		return fmt.Errorf("%w: health observation %+v", ports.ErrInvalidInput, obs)
+	}
+	return nil
+}
+
 func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 	var (
 		t                      domain.Trunk
 		rawID, rawTenant, hlth string
-		username, ref          *string
+		username, ref, reason  *string
+		observedAt             *time.Time
 	)
 	if err := row.Scan(&rawID, &rawTenant, &t.Name, &t.Host, &t.Port, &username, &ref,
-		&t.ChannelLimit, &t.Priority, &hlth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		&t.ChannelLimit, &t.Priority, &hlth, &reason, &observedAt, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Trunk{}, err
 		}
@@ -145,6 +178,11 @@ func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 	}
 	t.CreatedAt, t.UpdatedAt = t.CreatedAt.UTC(), t.UpdatedAt.UTC()
 	t.Health = domain.TrunkHealth(hlth)
+	t.HealthReason = domain.HealthReason(deref(reason))
+	if observedAt != nil {
+		at := observedAt.UTC()
+		t.HealthObservedAt = &at
+	}
 	t.AuthUsername = deref(username)
 	t.CredentialRef = deref(ref)
 	return t, nil

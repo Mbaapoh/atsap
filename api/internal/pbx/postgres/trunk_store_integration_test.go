@@ -22,13 +22,18 @@ var (
 	routes = pbxpostgres.NewRouteStore()
 )
 
+// noResponse is an observation of a carrier that did not answer.
+func noResponse() pbxdomain.HealthObservation {
+	return pbxdomain.HealthObservation{Health: pbxdomain.HealthUnhealthy, Reason: pbxdomain.ReasonNoResponse, At: time.Now().UTC().Truncate(time.Microsecond)}
+}
+
 func newTrunk(tenantID shareddomain.TenantID) pbxdomain.Trunk {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	id := shareddomain.NewTrunkID()
 	return pbxdomain.Trunk{
 		ID: id, TenantID: tenantID, Name: "carrier", Host: "sip.carrier.example", Port: 5060,
 		AuthUsername: "acct", CredentialRef: pbxdomain.TrunkCredentialRef(id),
-		ChannelLimit: 30, Priority: 1, Health: pbxdomain.HealthHealthy, CreatedAt: now, UpdatedAt: now,
+		ChannelLimit: 30, Priority: 1, Health: pbxdomain.HealthUnknown, CreatedAt: now, UpdatedAt: now,
 	}
 }
 
@@ -107,7 +112,7 @@ func TestTrunkStore_CrossTenantIsIndistinguishableFromNonexistent(t *testing.T) 
 			assert.ErrorIs(t, h.run(h.tenantB, func(ctx context.Context, tx pgx.Tx) error { return trunks.Update(ctx, tx, u) }), ports.ErrNotFound)
 			assert.ErrorIs(t, h.run(h.tenantB, func(ctx context.Context, tx pgx.Tx) error { return trunks.Delete(ctx, tx, id) }), ports.ErrNotFound)
 			assert.ErrorIs(t, h.run(h.tenantB, func(ctx context.Context, tx pgx.Tx) error {
-				return trunks.SetHealth(ctx, tx, id, pbxdomain.HealthUnhealthy)
+				return trunks.SetHealth(ctx, tx, id, noResponse())
 			}), ports.ErrNotFound)
 		})
 	}
@@ -122,7 +127,7 @@ func TestTrunkStore_CrossTenantIsIndistinguishableFromNonexistent(t *testing.T) 
 
 	got, err := h.getTrunk(h.tenantA, tr.ID)
 	require.NoError(t, err)
-	assert.Equal(t, pbxdomain.HealthHealthy, got.Health, "tenant B's attempts changed nothing")
+	assert.Equal(t, pbxdomain.HealthUnknown, got.Health, "tenant B's attempts changed nothing")
 }
 
 // Configuration and observation have separate writers: Update cannot
@@ -133,7 +138,7 @@ func TestTrunkStore_UpdateNeverWritesHealth(t *testing.T) {
 	h.insertTrunk(t, tr)
 
 	require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error {
-		return trunks.SetHealth(ctx, tx, tr.ID, pbxdomain.HealthUnhealthy)
+		return trunks.SetHealth(ctx, tx, tr.ID, noResponse())
 	}))
 	tr.Health = pbxdomain.HealthHealthy // a caller "setting" health through configuration
 	require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error { return trunks.Update(ctx, tx, tr) }))
@@ -194,4 +199,65 @@ func TestRouteStore_LifecycleAndTenancy(t *testing.T) {
 		return err
 	}))
 	assert.Empty(t, listed)
+}
+
+// A check's result is recorded only while the trunk still has the address
+// that was checked; a result for an address since changed, or for a trunk
+// since deleted, is dropped (pbx-trunk-health-probing design D3).
+func TestTrunkStore_CheckedHealthIsGuardedByAddress(t *testing.T) {
+	h := newStore(t)
+	tr := newTrunk(h.tenantA)
+	h.insertTrunk(t, tr)
+
+	got, err := h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, pbxdomain.HealthUnknown, got.Health)
+	assert.Empty(t, got.HealthReason)
+	assert.Nil(t, got.HealthObservedAt, "never observed")
+
+	set := func(host string, port int, obs pbxdomain.HealthObservation) bool {
+		var written bool
+		require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error {
+			var err error
+			written, err = trunks.SetCheckedHealth(ctx, tx, tr.ID, host, port, obs)
+			return err
+		}))
+		return written
+	}
+	answering := pbxdomain.HealthObservation{Health: pbxdomain.HealthHealthy, Reason: pbxdomain.ReasonAnswering, At: time.Now().UTC().Truncate(time.Microsecond)}
+	assert.True(t, set(tr.Host, tr.Port, answering))
+	got, err = h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, pbxdomain.HealthHealthy, got.Health)
+	assert.Equal(t, pbxdomain.ReasonAnswering, got.HealthReason)
+	require.NotNil(t, got.HealthObservedAt)
+	assert.True(t, answering.At.Equal(*got.HealthObservedAt))
+
+	assert.False(t, set("old.carrier.example", tr.Port, noResponse()), "the address changed since the check")
+	assert.False(t, set(tr.Host, 5080, noResponse()), "the port changed since the check")
+	got, err = h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, pbxdomain.HealthHealthy, got.Health, "a stale result changed nothing")
+
+	require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error { return trunks.Delete(ctx, tx, tr.ID) }))
+	assert.False(t, set(tr.Host, tr.Port, noResponse()), "a deleted trunk takes no result")
+}
+
+// Unknown is where a trunk starts, never an observation; an observation
+// needs a reason and a time.
+func TestTrunkStore_RefusesWhatIsNotAnObservation(t *testing.T) {
+	h := newStore(t)
+	tr := newTrunk(h.tenantA)
+	h.insertTrunk(t, tr)
+	now := time.Now().UTC()
+	for name, obs := range map[string]pbxdomain.HealthObservation{
+		"unknown":   {Health: pbxdomain.HealthUnknown, Reason: pbxdomain.ReasonAnswering, At: now},
+		"no reason": {Health: pbxdomain.HealthHealthy, At: now},
+		"no time":   {Health: pbxdomain.HealthHealthy, Reason: pbxdomain.ReasonAnswering},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error { return trunks.SetHealth(ctx, tx, tr.ID, obs) })
+			assert.ErrorIs(t, err, ports.ErrInvalidInput)
+		})
+	}
 }

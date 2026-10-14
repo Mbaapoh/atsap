@@ -34,7 +34,8 @@ func TestTrunkRPCs_LifecycleThroughTheWire(t *testing.T) {
 	tr := created.Msg.GetTrunk()
 	assert.Equal(t, int32(5060), tr.GetPort(), "an unset port is the SIP default")
 	assert.True(t, tr.GetHasSecret())
-	assert.Equal(t, atsapbxv1.TrunkHealth_TRUNK_HEALTH_HEALTHY, tr.GetHealth())
+	assert.Equal(t, atsapbxv1.TrunkHealth_TRUNK_HEALTH_UNKNOWN, tr.GetHealth(), "not checked yet, never healthy by default")
+	assert.Nil(t, tr.GetHealthObservedAt())
 
 	route, err := api.CreateRoute(h.ctx, connect.NewRequest(&atsapbxv1.CreateRouteRequest{
 		PrefixPattern: "+44", TrunkId: tr.GetTrunkId(), CostPerMinuteMicros: 12000,

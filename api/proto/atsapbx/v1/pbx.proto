@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package atsapbx.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
 
 // PbxService is pbx-core's public contract: the configuration a customer
@@ -249,16 +251,35 @@ message GetSipRegistrarResponse {
   string transport = 4;
 }
 
-// TrunkHealth is what the platform has OBSERVED about a carrier from
-// call outcomes. No request carries it: a trunk shown healthy because
-// someone ticked a box would be worse than showing nothing.
+// TrunkHealth is what the platform has OBSERVED about a carrier: its own
+// SIP OPTIONS checks and the outcomes of calls through the trunk. No
+// request carries it: a trunk shown healthy because someone ticked a box
+// would be worse than showing nothing.
 enum TrunkHealth {
   TRUNK_HEALTH_UNSPECIFIED = 0;
   TRUNK_HEALTH_HEALTHY = 1;
   // Still selected, but only after every healthy trunk.
   TRUNK_HEALTH_DEGRADED = 2;
-  // Skipped by route selection until a good outcome is observed.
+  // Skipped by route selection until a good observation.
   TRUNK_HEALTH_UNHEALTHY = 3;
+  // Not checked yet: a new trunk, until its first check. Selected as a
+  // healthy trunk is, so it works at once.
+  TRUNK_HEALTH_UNKNOWN = 4;
+}
+
+// TrunkHealthReason says why a trunk has its health.
+enum TrunkHealthReason {
+  TRUNK_HEALTH_REASON_UNSPECIFIED = 0;
+  // The carrier responds promptly.
+  TRUNK_HEALTH_REASON_ANSWERING = 1;
+  // The carrier responds, but slowly.
+  TRUNK_HEALTH_REASON_SLOW_RESPONSE = 2;
+  // The trunk's host name does not resolve.
+  TRUNK_HEALTH_REASON_HOST_NOT_FOUND = 3;
+  // The carrier does not respond in time.
+  TRUNK_HEALTH_REASON_NO_RESPONSE = 4;
+  // The carrier responds with a server error.
+  TRUNK_HEALTH_REASON_CARRIER_ERROR = 5;
 }
 
 // Trunk is what a caller sees of a carrier connection. It carries no
@@ -279,6 +300,10 @@ message Trunk {
   // Lower is preferred.
   int32 priority = 8;
   TrunkHealth health = 9;
+  // Why the trunk has its health, and when it was last observed. Unset
+  // until the trunk is first observed.
+  TrunkHealthReason health_reason = 10;
+  google.protobuf.Timestamp health_observed_at = 11;
 }
 
 message CreateTrunkRequest {

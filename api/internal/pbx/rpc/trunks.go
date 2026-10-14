@@ -8,6 +8,7 @@ import (
 	"atsap-api/internal/shared/wire"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	atsapbxv1 "atsap-api/internal/genproto/atsapbx/v1"
 	"atsap-api/internal/pbx/domain"
@@ -172,11 +173,16 @@ func portOrDefault(p int32) int {
 }
 
 func toProtoTrunk(v ports.TrunkView) *atsapbxv1.Trunk {
-	return &atsapbxv1.Trunk{
+	t := &atsapbxv1.Trunk{
 		TrunkId: v.ID.String(), Name: v.Name, Host: v.Host, Port: wire.Int32(v.Port),
 		AuthUsername: v.AuthUsername, HasSecret: v.HasSecret,
 		ChannelLimit: wire.Int32(v.ChannelLimit), Priority: wire.Int32(v.Priority), Health: healthToProto(v.Health),
+		HealthReason: reasonToProto(v.HealthReason),
 	}
+	if v.HealthObservedAt != nil {
+		t.HealthObservedAt = timestamppb.New(*v.HealthObservedAt)
+	}
+	return t
 }
 
 func toProtoRoute(v ports.RouteView) *atsapbxv1.Route {
@@ -194,7 +200,26 @@ func healthToProto(h domain.TrunkHealth) atsapbxv1.TrunkHealth {
 		return atsapbxv1.TrunkHealth_TRUNK_HEALTH_DEGRADED
 	case domain.HealthUnhealthy:
 		return atsapbxv1.TrunkHealth_TRUNK_HEALTH_UNHEALTHY
+	case domain.HealthUnknown:
+		return atsapbxv1.TrunkHealth_TRUNK_HEALTH_UNKNOWN
 	default:
 		return atsapbxv1.TrunkHealth_TRUNK_HEALTH_UNSPECIFIED
+	}
+}
+
+func reasonToProto(r domain.HealthReason) atsapbxv1.TrunkHealthReason {
+	switch r {
+	case domain.ReasonAnswering:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_ANSWERING
+	case domain.ReasonSlowResponse:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_SLOW_RESPONSE
+	case domain.ReasonHostNotFound:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_HOST_NOT_FOUND
+	case domain.ReasonNoResponse:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_NO_RESPONSE
+	case domain.ReasonCarrierError:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_CARRIER_ERROR
+	default:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_UNSPECIFIED
 	}
 }

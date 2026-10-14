@@ -83,7 +83,8 @@ func TestCreateTrunk_WritesDomainProjectionAndAudit(t *testing.T) {
 	h := newHarness(t)
 	v := h.createTrunk(t, "Primary")
 
-	assert.Equal(t, domain.HealthHealthy, v.Health, "a new trunk starts healthy")
+	assert.Equal(t, domain.HealthUnknown, v.Health, "a new trunk is not yet checked, never healthy by default")
+	assert.Nil(t, v.HealthObservedAt)
 	assert.True(t, v.HasSecret)
 	assert.Equal(t, 1, h.countTenantRow(t, `SELECT count(*) FROM carrier_trunks WHERE id = $1`, v.ID.String()))
 	assert.Equal(t, 3, h.engineRows(t, v.ID), "endpoint, aor and auth projected")
@@ -306,7 +307,15 @@ func TestReportRouteHealth_RequiresATenantAndStaysInIt(t *testing.T) {
 	require.ErrorIs(t, err, ports.ErrNotFound, "another tenant cannot mark this trunk unhealthy")
 	listed, err := h.svc.ListTrunks(h.ctx, h.tenant, ports.Page{Limit: 1})
 	require.NoError(t, err)
-	assert.Equal(t, domain.HealthHealthy, listed[0].Health)
+	assert.Equal(t, domain.HealthUnknown, listed[0].Health, "refused reports changed nothing")
+
+	// The tenant's own report is recorded with its reason and time.
+	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, v.ID, 503, 0))
+	listed, err = h.svc.ListTrunks(h.ctx, h.tenant, ports.Page{Limit: 1})
+	require.NoError(t, err)
+	assert.Equal(t, domain.HealthUnhealthy, listed[0].Health)
+	assert.Equal(t, domain.ReasonCarrierError, listed[0].HealthReason)
+	assert.NotNil(t, listed[0].HealthObservedAt)
 }
 
 // --- 2.5: reconcile covers trunks ----------------------------------------

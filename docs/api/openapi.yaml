@@ -2807,10 +2807,23 @@ components:
         - TRUNK_HEALTH_HEALTHY
         - TRUNK_HEALTH_DEGRADED
         - TRUNK_HEALTH_UNHEALTHY
+        - TRUNK_HEALTH_UNKNOWN
       description: |-
-        TrunkHealth is what the platform has OBSERVED about a carrier from
-         call outcomes. No request carries it: a trunk shown healthy because
-         someone ticked a box would be worse than showing nothing.
+        TrunkHealth is what the platform has OBSERVED about a carrier: its own
+         SIP OPTIONS checks and the outcomes of calls through the trunk. No
+         request carries it: a trunk shown healthy because someone ticked a box
+         would be worse than showing nothing.
+    atsapbx.v1.TrunkHealthReason:
+      type: string
+      title: TrunkHealthReason
+      enum:
+        - TRUNK_HEALTH_REASON_UNSPECIFIED
+        - TRUNK_HEALTH_REASON_ANSWERING
+        - TRUNK_HEALTH_REASON_SLOW_RESPONSE
+        - TRUNK_HEALTH_REASON_HOST_NOT_FOUND
+        - TRUNK_HEALTH_REASON_NO_RESPONSE
+        - TRUNK_HEALTH_REASON_CARRIER_ERROR
+      description: TrunkHealthReason says why a trunk has its health.
     atsapbx.v1.CreateEmergencyNumberRequest:
       type: object
       properties:
@@ -3449,6 +3462,15 @@ components:
         health:
           title: health
           $ref: '#/components/schemas/atsapbx.v1.TrunkHealth'
+        healthReason:
+          title: health_reason
+          description: |-
+            Why the trunk has its health, and when it was last observed. Unset
+             until the trunk is first observed.
+          $ref: '#/components/schemas/atsapbx.v1.TrunkHealthReason'
+        healthObservedAt:
+          title: health_observed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
       title: Trunk
       additionalProperties: false
       description: |-
