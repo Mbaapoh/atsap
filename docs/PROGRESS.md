@@ -30,7 +30,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 14 changes archived, every console slice A endpoint exists | **A2–A5 screens done** (`console-admin-screens`); A1 screens done in `console-foundation` (ready to archive) | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 14 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`) | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -45,7 +45,7 @@ configuration file, and without being told what Asterisk is.
 
 | Flow | Backend | Proven | Console screen |
 |---|---|---|---|
-| A1 First run: install to first login, licence | Licence RPCs ✅ (`console-apis-phase-a`). Console session, sign-in by email, tenant choice, throttling, password change and recovery ✅ (`identity-accounts-and-sessions`) | U I W E | ☐ Sign in · ☐ Licence status and activation · ☐ Account (change or reset password) |
+| A1 First run: install to first login, licence | Licence RPCs ✅ (`console-apis-phase-a`). Console session, sign-in by email, tenant choice, throttling, password change and recovery ✅ (`identity-accounts-and-sessions`) | U I W E | ✅ Sign in, Licence status and activation, Account (change or reset password) (`console-foundation`; browser, rig, UAT) |
 | A2 Add a user and give them a role | Add by email (one person, many tenants), invite, disable, grant, list, revoke, administrator reset ✅ | U I W E | ✅ Users, roles, permissions (`console-admin-screens`; browser, rig, UAT) |
 | A3 Add an extension a phone can register to | ✅ | U I W E A | ✅ Extensions with registration status, credentials shown once (`console-admin-screens`; UAT: a real phone registers with them) |
 | A4 Connect a SIP trunk and route outbound calls | ✅ (plus DIDs and emergency profile) | U I W E A | ✅ Trunks and routes with health, inbound numbers, emergency (`console-admin-screens`; browser, rig, UAT) |
@@ -55,7 +55,7 @@ configuration file, and without being told what Asterisk is.
 
 1. **Console design input** (owner): the console design document, from
    the shared design input form. The console changes start from it.
-2. **`console-foundation`** (all tasks done; ready to archive): React + TypeScript ([D-36](DECISIONS.md)),
+2. ~~`console-foundation`~~ **archived** 2026-10-14: React + TypeScript ([D-36](DECISIONS.md)),
    TypeScript clients generated from the same protos, session handling
    (in-memory token, silent refresh, tenant picker), layout, Sign in and
    Licence screens; browser e2e (Playwright) walking A1.
@@ -135,12 +135,12 @@ that link.
 | 2026-10-12 | `licensing-status-conditions` | 7/7 | U W E |
 | 2026-10-13 | `pbx-sip-registrar-settings` | 5/5 | U I W E (A as regression) |
 | 2026-10-13 | `console-admin-screens` | 20/20 | Console: component, browser (mocked), browser on the real API (×3, no residue), UAT with real phones |
+| 2026-10-14 | `console-foundation` | 11/11 | Console: component, browser (mocked), browser on the real API, A1 UAT |
 
 ## Active changes
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-foundation` | Scaffold (0.1), shared components (1.2), adapter boundary (1.3), session and sign-in (2.1), account and session end (2.2), licence (2.3), overview (3.1), A1 browser journey (3.2), exposure scans (3.3), coverage (3.4) done; ready to archive | 11/11 |
 | `identity-refresh-grace` | Implemented and verified on every tier (D-62 amendment: 30-second grace for the previous refresh secret); ready to archive | 7/7 |
 | `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter and Asterisk image scan pending | 11/13 |
 
