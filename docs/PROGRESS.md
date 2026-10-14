@@ -140,6 +140,7 @@ that link.
 | 2026-10-14 | `console-foundation` | 11/11 | Console: component, browser (mocked), browser on the real API, A1 UAT |
 | 2026-10-14 | `identity-refresh-grace` | 7/7 | U I W E (D-62 amendment: 30-second grace for the previous refresh secret) |
 | 2026-10-14 | `phase-a-hardening` | 10/10 | U I W E A (live takeover on the rig; phone-to-phone UAT) |
+| 2026-10-14 | `pbx-trunk-health-probing` | 7/7 | U I W E, console browser on the real API, A3–A5 UAT against a real carrier (D-74) |
 
 ## Active changes
 
