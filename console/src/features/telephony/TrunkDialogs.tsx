@@ -1,9 +1,10 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { TextField } from "../../components/TextField";
+import { codePoints } from "../../components/text";
 import { useToast } from "../../components/Toast";
 import { useTrunkChanges, type TrunkInput, type TrunkRow } from "./adapter";
 
@@ -28,7 +29,7 @@ function validate(d: Draft): { errors: Partial<Record<keyof Draft, string>>; inp
   const errors: Partial<Record<keyof Draft, string>> = {};
   const name = d.name.trim();
   if (!name) errors.name = "Enter a name, like Carrier A.";
-  else if ([...name].length > 100) errors.name = "Use at most 100 characters.";
+  else if (codePoints(name) > 100) errors.name = "Use at most 100 characters.";
   if (!HOST.test(d.host.trim())) errors.host = "Enter a hostname or IP address only, like sip.carrier.example — no sip:, port or user.";
   const port = d.port.trim() === "" ? 0 : Number(d.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) errors.port = "Use a port from 1 to 65535, or leave empty for 5060.";
@@ -38,7 +39,7 @@ function validate(d: Draft): { errors: Partial<Record<keyof Draft, string>>; inp
   if (!Number.isInteger(priority) || priority < 0) errors.priority = "Use 0 or more; lower is preferred.";
   if (!USERNAME.test(d.authUsername.trim())) errors.authUsername = "Use letters, digits and - _ . + only.";
   if (d.secret && !d.authUsername.trim()) errors.secret = "A secret needs a username.";
-  if ([...d.secret].length > 255) errors.secret = "Use at most 255 characters.";
+  if (codePoints(d.secret) > 255) errors.secret = "Use at most 255 characters.";
   if (Object.keys(errors).length) return { errors };
   return {
     errors,
@@ -48,26 +49,31 @@ function validate(d: Draft): { errors: Partial<Record<keyof Draft, string>>; inp
 
 // TrunkDialog creates a trunk, or edits one. The carrier secret is
 // write-only: it is never shown, and on edit an empty field keeps it.
-export function TrunkDialog({ trunk, open, onClose }: { trunk: TrunkRow | null; open: boolean; onClose: () => void }) {
+type TrunkDialogProps = { trunk: TrunkRow | null; open: boolean; onClose: () => void };
+
+// The form is mounted only while open, and anew for each trunk edited, so
+// every opening starts from its own values with no reset effect.
+export function TrunkDialog(props: TrunkDialogProps) {
+  if (!props.open) return null;
+  return <TrunkForm key={props.trunk?.id ?? "new"} {...props} />;
+}
+
+function draftOf(trunk: TrunkRow | null): Draft {
+  return trunk
+    ? { name: trunk.name, host: trunk.host, port: trunk.port ? String(trunk.port) : "", authUsername: trunk.authUsername, secret: "", channelLimit: String(trunk.channelLimit), priority: String(trunk.priority) }
+    : empty;
+}
+
+function TrunkForm({ trunk, open, onClose }: TrunkDialogProps) {
   const titleId = useId();
   const { create, update } = useTrunkChanges();
   const toast = useToast();
-  const [draft, setDraft] = useState<Draft>(empty);
+  const [draft, setDraft] = useState<Draft>(() => draftOf(trunk));
   const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const editing = trunk !== null;
 
-  useEffect(() => {
-    if (!open) return;
-    setDraft(
-      trunk
-        ? { name: trunk.name, host: trunk.host, port: trunk.port ? String(trunk.port) : "", authUsername: trunk.authUsername, secret: "", channelLimit: String(trunk.channelLimit), priority: String(trunk.priority) }
-        : empty,
-    );
-    setErrors({});
-    setFailure(null);
-  }, [open, trunk]);
 
   const set = (k: keyof Draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
@@ -105,7 +111,7 @@ export function TrunkDialog({ trunk, open, onClose }: { trunk: TrunkRow | null; 
       <h2 id={titleId} className="modal-title">
         {editing ? `Edit trunk ${trunk?.name}` : "Add a trunk"}
       </h2>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <div className="modal-body">
           {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
           <TextField label="Name" autoComplete="off" value={draft.name} onChange={set("name")} error={errors.name} required />

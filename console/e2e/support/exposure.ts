@@ -117,8 +117,8 @@ export interface Credentials {
   licenceKey?: string;
   refreshSecret?: string;
   // writeOnly are secrets the console sends and must never get back or
-  // show: a carrier's trunk secret travels only in the request that sets
-  // it (sentTo), never in a response, a URL or on screen.
+  // show: a carrier's trunk secret travels only in the requests listed in
+  // sentTo — never in a response, a URL or on screen.
   writeOnly?: { name: string; value: string; sentTo: string[] }[];
 }
 

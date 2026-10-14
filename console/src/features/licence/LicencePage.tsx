@@ -6,6 +6,7 @@ import { useLicenceStatus, type LicenceSummary } from "./adapter";
 import { ApplyLicenceForm } from "./ApplyLicenceForm";
 import { capacityLabel, conditionExplanation, reasonText, stateLabel, tierLabel } from "./copy";
 import { licencePresentation } from "./LicenceStatusPill";
+import { stateString } from "../auth/routerState";
 import { useCanApplyLicence } from "./permissions";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -42,7 +43,7 @@ function Facts({ s }: { s: LicenceSummary }) {
 export function LicencePage() {
   const status = useLicenceStatus();
   const canApply = useCanApplyLicence();
-  const blocked = (useLocation().state as { blocked?: string } | null)?.blocked;
+  const blocked = stateString(useLocation().state, "blocked");
 
   return (
     <section className="page" aria-labelledby="page-title">

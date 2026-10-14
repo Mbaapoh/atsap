@@ -1,0 +1,55 @@
+// Console static analysis (D-71; Oxlint by D-68 amendment, 2026-10-14).
+// `make console-lint` runs it type-aware with --deny-warnings: every
+// finding fails. A rule is turned off here only with its reason.
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "jsx-a11y", "unicorn", "oxc", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    // What the linter was chosen for (D-71): hook rules tsc cannot
+    // check, accessibility, and promises the type system lets through.
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "jsx-a11y/alt-text": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    // The overview tests assert through their expectState helper.
+    "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "expect.*", "expectState"] }],
+
+    // React 19's automatic JSX runtime: React is never in scope by design.
+    "react/react-in-jsx-scope": "off",
+    // Its fixes would change behaviour the accessibility tests pin:
+    // <output> is a form-result element, not a live status message;
+    // the modal is a managed role="dialog" (focus trap, inert page,
+    // focus return) that a native <dialog> would replace; a <section>
+    // is only a region when named, which DataTable's wrapper already is.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // DataTable passes render functions (render(row), rowActions(row))
+    // that are called, never mounted as components — the case the rule
+    // guards against does not occur.
+    "react/no-unstable-nested-components": "off",
+    // Contradicts react/exhaustive-deps on the adapters' async callbacks
+    // (try { await mutateAsync() } finally { reset() }): it reports an
+    // "extra" dependency whichever of the two is listed, while
+    // exhaustive-deps requires both. exhaustive-deps is the rule kept.
+    "react/memo-dependencies": "off"
+  },
+  "overrides": [
+    {
+      // Tests read API bodies (`res.json()` is `any`) into the shape the
+      // test asserts, and declare small helpers next to the case that
+      // uses them; both are what makes a test readable, and neither ships.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "e2e/**", "src/test/**"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["src/api/gen/**", "dist/**", "coverage/**", "playwright-report/**", "test-results/**"]
+}

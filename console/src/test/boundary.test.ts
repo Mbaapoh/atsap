@@ -65,7 +65,7 @@ describe("adapter boundary", () => {
   ];
 
   it("has a broken case for every rule", () => {
-    expect(broken.map((b) => b.rule).sort()).toEqual([...RULE_NAMES].sort());
+    expect(broken.map((b) => b.rule).toSorted()).toEqual([...RULE_NAMES].toSorted());
   });
 
   it.each(broken)("catches: $rule", ({ rule, file }) => {

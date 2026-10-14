@@ -73,8 +73,8 @@ describe("role catalogue against the server's permission table", () => {
     const source = readFileSync(resolve(process.cwd(), "../api/internal/identity/application/service.go"), "utf8");
     const table = /var DefaultPermissions = map\[string\]\[\]string\{([\s\S]*?)\n\}/.exec(source)?.[1];
     expect(table, "DefaultPermissions not found in identity's service.go").toBeDefined();
-    const serverRoles = [...table!.matchAll(/^\s*"([A-Z_]+)":/gm)].map((m) => m[1]).sort();
+    const serverRoles = [...table!.matchAll(/^\s*"([A-Z_]+)":/gm)].map((m) => m[1] ?? "").toSorted();
     expect(serverRoles.length).toBeGreaterThan(0);
-    expect(ROLE_CATALOGUE.map((r) => r.role).sort()).toEqual(serverRoles);
+    expect(ROLE_CATALOGUE.map((r) => r.role).toSorted()).toEqual(serverRoles);
   });
 });

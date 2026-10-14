@@ -69,7 +69,7 @@ export function ChangePasswordForm() {
     <section aria-labelledby="change-password-title" className="account-section">
       <h2 id="change-password-title">{mustChange ? "Choose your own password" : "Change password"}</h2>
       {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <TextField
           label={mustChange ? "Temporary password" : "Current password"}
           type="password"

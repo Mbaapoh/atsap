@@ -58,7 +58,7 @@ describe("generated ConnectRPC clients", () => {
 
   it("expose every Phase A service the console consumes", () => {
     const clients = createApiClients(createApiTransport({ baseUrl: base }));
-    expect(Object.keys(clients).sort()).toEqual(["auth", "identity", "licensing", "pbx", "telephony"]);
+    expect(Object.keys(clients).toSorted()).toEqual(["auth", "identity", "licensing", "pbx", "telephony"]);
     expect(typeof clients.pbx.listExtensions).toBe("function");
     expect(typeof clients.telephony.listCalls).toBe("function");
     expect(typeof clients.identity.listPrincipals).toBe("function");

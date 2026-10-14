@@ -7,16 +7,11 @@ import { useSession, useSessionController, type SignInMethodView } from "./adapt
 import { AuthLayout } from "./AuthLayout";
 import { throttleMessage, WRONG_CREDENTIALS } from "./copy";
 import { NoAccess } from "./NoAccess";
+import { returnPath } from "./routerState";
 import { useThrottle } from "./useThrottle";
 
 type Step = { kind: "email" } | { kind: "password" } | { kind: "sso"; providerName: string };
 
-// returnPath is where to go after signing in: the page the guard sent the
-// person away from, kept in router memory only.
-function returnPath(state: unknown): string {
-  const from = (state as { from?: unknown } | null)?.from;
-  return typeof from === "string" && from.startsWith("/") && !from.startsWith("//") ? from : "/";
-}
 
 // SignInPage asks for an email, discovers how it signs in, then asks for
 // the password (CONSOLE-DESIGN "Sign in"). The password lives in this
@@ -130,7 +125,7 @@ export function SignInPage() {
     return (
       <AuthLayout title="Enter your password" stepKey="password">
         {failureAlert}
-        <form onSubmit={onPassword} noValidate>
+        <form onSubmit={(e) => void onPassword(e)} noValidate>
           <TextField label="Email" type="email" name="username" autoComplete="username" value={email} readOnly />
           <TextField
             label="Password"
@@ -162,7 +157,7 @@ export function SignInPage() {
     <AuthLayout title="Sign in" stepKey="email">
       {ended}
       {failureAlert}
-      <form onSubmit={onEmail} noValidate>
+      <form onSubmit={(e) => void onEmail(e)} noValidate>
         <TextField
           label="Email"
           type="email"

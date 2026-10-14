@@ -25,7 +25,7 @@ export function ApplyLicenceForm() {
   const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!revealed) return;
+    if (!revealed) return undefined;
     const timer = window.setTimeout(() => setRevealed(false), REVEAL_MS);
     return () => window.clearTimeout(timer);
   }, [revealed]);

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 import { Alert } from "../../components/Alert";
 import { DataTable, type Column } from "../../components/DataTable";
@@ -36,11 +36,16 @@ export function CallsPage() {
   const stateId = useId();
   const key = params.toString();
 
-  // Back, Forward and reload change the address: the form follows it.
-  useEffect(() => {
-    setDraft(readFilters(new URLSearchParams(key)));
+  // Back, Forward and reload change the address: the form follows it,
+  // adjusted while rendering (React's pattern for state derived from a
+  // changed input) rather than in an effect or by remounting the form,
+  // which would take focus from the Apply button.
+  const [draftFor, setDraftFor] = useState(key);
+  if (draftFor !== key) {
+    setDraftFor(key);
+    setDraft(applied);
     setRangeError(undefined);
-  }, [key]);
+  }
 
   function onApply(ev: FormEvent) {
     ev.preventDefault();

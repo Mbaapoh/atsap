@@ -63,7 +63,7 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
       <h2 id={titleId} className="modal-title">
         Add an extension
       </h2>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <div className="modal-body">
           {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
           <TextField label="Number" inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value.trim())} error={errors.number} required />
@@ -72,7 +72,7 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
             <label className="field-label" htmlFor={deviceId}>
               Device
             </label>
-            <select id={deviceId} className="input" value={device} onChange={(e) => setDevice(Number(e.target.value) as DeviceType)}>
+            <select id={deviceId} className="input" value={device} onChange={(e) => setDevice(Number(e.target.value))}>
               <option value={DeviceType.SIP}>{deviceLabel[DeviceType.SIP]}</option>
               <option value={DeviceType.WEBRTC}>{deviceLabel[DeviceType.WEBRTC]}</option>
             </select>

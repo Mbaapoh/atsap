@@ -6,13 +6,9 @@ import type { ApiError } from "../../api/errors";
 export function useThrottle() {
   const [until, setUntil] = useState<number | null>(null);
   useEffect(() => {
-    if (until === null) return;
-    const left = until - Date.now();
-    if (left <= 0) {
-      setUntil(null);
-      return;
-    }
-    const timer = setTimeout(() => setUntil(null), left);
+    if (until === null) return undefined;
+    // A wait already over releases on the next tick, through the same path.
+    const timer = setTimeout(() => setUntil(null), Math.max(0, until - Date.now()));
     return () => clearTimeout(timer);
   }, [until]);
   return {

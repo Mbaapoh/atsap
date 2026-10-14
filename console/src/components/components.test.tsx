@@ -101,7 +101,7 @@ describe("ConfirmDialog", () => {
 
   it("cancels on Escape and returns focus to what opened it", async () => {
     const user = userEvent.setup();
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn<() => void>();
     render(<DeleteRoute onConfirm={onConfirm} />);
     const opener = screen.getByRole("button", { name: "Delete route +44" });
     await user.click(opener);
@@ -113,7 +113,7 @@ describe("ConfirmDialog", () => {
 
   it("confirms with its explicit verb", async () => {
     const user = userEvent.setup();
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn<() => void>();
     render(<DeleteRoute onConfirm={onConfirm} />);
     await user.click(screen.getByRole("button", { name: "Delete route +44" }));
     await user.click(screen.getByRole("button", { name: "Delete route" }));

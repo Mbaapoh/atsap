@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
 import { DeviceType } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { Alert } from "../../components/Alert";
@@ -19,25 +19,24 @@ function failureText(err: unknown, action: string): string {
 // EditExtensionDialog changes the name and device type. The number is the
 // extension's identity in this tenant and is not edited (UpdateExtension
 // carries no number).
+// The form is mounted only while an extension is being edited, and anew
+// for each, so it starts from that extension with no reset effect.
 export function EditExtensionDialog({ extension, onClose }: { extension: ExtensionRow | null; onClose: () => void }) {
+  if (extension === null) return null;
+  return <EditExtensionForm key={extension.id} extension={extension} onClose={onClose} />;
+}
+
+function EditExtensionForm({ extension, onClose }: { extension: ExtensionRow; onClose: () => void }) {
   const titleId = useId();
   const deviceId = useId();
   const { update } = useExtensionChanges();
   const toast = useToast();
-  const [name, setName] = useState("");
-  const [device, setDevice] = useState<DeviceType>(DeviceType.SIP);
+  const [name, setName] = useState(extension.name);
+  const [device, setDevice] = useState<DeviceType>(extension.device === DeviceType.UNSPECIFIED ? DeviceType.SIP : extension.device);
   const [nameError, setNameError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (extension) {
-      setName(extension.name);
-      setDevice(extension.device === DeviceType.UNSPECIFIED ? DeviceType.SIP : extension.device);
-      setNameError(null);
-      setFailure(null);
-    }
-  }, [extension]);
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
@@ -65,7 +64,7 @@ export function EditExtensionDialog({ extension, onClose }: { extension: Extensi
       <h2 id={titleId} className="modal-title">
         Edit extension {extension?.number}
       </h2>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <div className="modal-body">
           {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
           <TextField label="Name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} error={nameError} required />
@@ -73,7 +72,7 @@ export function EditExtensionDialog({ extension, onClose }: { extension: Extensi
             <label className="field-label" htmlFor={deviceId}>
               Device
             </label>
-            <select id={deviceId} className="input" value={device} onChange={(e) => setDevice(Number(e.target.value) as DeviceType)}>
+            <select id={deviceId} className="input" value={device} onChange={(e) => setDevice(Number(e.target.value))}>
               <option value={DeviceType.SIP}>{deviceLabel[DeviceType.SIP]}</option>
               <option value={DeviceType.WEBRTC}>{deviceLabel[DeviceType.WEBRTC]}</option>
             </select>

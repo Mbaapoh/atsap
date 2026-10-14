@@ -9,7 +9,38 @@
 
 ## 3. Console static analysis
 
-- [ ] 3.1 Add ESLint 9 with typescript-eslint (type-aware), react-hooks and jsx-a11y (exact versions, dev-only), `console/eslint.config.js`, and `npm run lint`, plus `make console-lint` in `console-check`. Fix all findings. Verify `make console-lint` is clean, that a planted conditional hook call and an `<img>` without alt text each fail it, and that `npm audit --omit=dev` stays at 0.
+- [x] 3.1 Add ESLint 9 with typescript-eslint (type-aware), react-hooks and jsx-a11y (exact versions, dev-only), `console/eslint.config.js`, and `npm run lint`, plus `make console-lint` in `console-check`. Fix all findings. Verify `make console-lint` is clean, that a planted conditional hook call and an `<img>` without alt text each fail it, and that `npm audit --omit=dev` stays at 0.
+
+  *(done 2026-10-14, as **Oxlint**, approved by the owner (D-68 amendment, D-71 resolved): the ESLint set cannot run on TypeScript 7.
+  - `oxlint` 1.86.0 and `oxlint-tsgolint` 7.0.2003 are installed exact and dev-only, the newest releases at least two weeks old. Both are MIT.
+  - `console/.oxlintrc.json` makes the correctness and suspicious categories errors, plus named rules: rules-of-hooks, exhaustive-deps, alt-text, no-floating-promises, no-misused-promises, await-thenable and switch-exhaustiveness.
+  - Four rules are off, each with its reason in the config: react-in-jsx-scope, prefer-tag-over-role, no-unstable-nested-components and memo-dependencies. Two are off in tests only.
+  - `npm run lint` and `make console-lint` exist, and the lint runs in `console-check`, `make quality` and the Jenkins console stage.
+
+  All 843 first findings were resolved:
+  - 682 came from the React-19-irrelevant rule;
+  - the rest were fixed in code.
+
+  The code fixes:
+  - **Async handlers:** eleven async form handlers are now explicitly voided.
+  - **Effects:** effects return their cleanups consistently.
+  - **Dialogs:** five dialogs mount their form only while open, instead of resetting state in an effect. This also fixes the inbound dialog wiping a typed number when the extension list refetched.
+  - **Navigation drawer:** it closes by path, without an effect.
+  - **Call filters:** they follow the address during render, keeping focus on Apply.
+  - **Modal:** its ref is no longer written during render.
+  - **Unchecked casts:** they are replaced with real checks.
+  - **Real defects found:**
+    - `SelectTenantPage` followed an unvalidated return path. It now uses `returnPath`, which refuses `//elsewhere`, with a new test.
+    - It also showed a raw error message. It now shows console copy via `toApiError`.
+  - **Switches:** they name every case.
+  - **String lengths:** they are measured in code points, matching the server's `utf8.RuneCountInString`, through one `codePoints` helper.
+
+  Verified:
+  - `make console-lint` is clean.
+  - Planted defects each fail it: a conditional `useState`, an `<img>` without alt, and a floating promise.
+  - `make console-check` passes (component 395, e2e 24, integration 24, UAT 3, audit 0, secrets clean).
+  - `make sca` passes.
+  - The console floors were ratcheted to 96.3 / 88.2 / 98.3 / 97.5.)*
 
 ## 4. Coverage
 

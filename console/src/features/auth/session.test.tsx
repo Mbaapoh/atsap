@@ -268,7 +268,7 @@ describe("refresh once after expiry", () => {
     );
     const { clients } = wired();
 
-    await expect(clients.licensing.getLicenseStatus({})).rejects.toThrow();
+    await expect(clients.licensing.getLicenseStatus({})).rejects.toThrow(/unauthenticated/);
     expect(refreshes).toBe(1);
   });
 
@@ -297,7 +297,7 @@ describe("refresh once after expiry", () => {
     );
     const { clients } = wired(signedOut);
 
-    await expect(clients.auth.signIn({ email: "a@example.com", password: "x" })).rejects.toThrow();
+    await expect(clients.auth.signIn({ email: "a@example.com", password: "x" })).rejects.toThrow(/unauthenticated/);
     expect(refreshes).toBe(0);
   });
 });

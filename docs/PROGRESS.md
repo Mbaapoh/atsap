@@ -143,7 +143,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter and Asterisk image scan pending | 11/13 |
+| `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps
 

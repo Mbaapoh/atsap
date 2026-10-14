@@ -77,7 +77,7 @@ export function AddUserDialog({ open, onClose }: { open: boolean; onClose: () =>
       <h2 id={titleId} className="modal-title">
         Add a user
       </h2>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <div className="modal-body">
           {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
           <TextField label="Email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} required />

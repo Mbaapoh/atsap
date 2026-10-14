@@ -49,7 +49,7 @@ describe("OneTimeSecret", () => {
   it("shows the values, marks only the SIP username, and copies each", async () => {
     // After setup: user-event installs its own clipboard stub.
     const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     renderPanel();
 

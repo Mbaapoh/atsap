@@ -12,7 +12,7 @@ const base = "http://localhost:3000";
 
 describe("public API only", () => {
   it("lists every procedure of every public service, from the descriptors", () => {
-    expect(PUBLIC_SERVICES.map((s) => s.typeName).sort()).toEqual([
+    expect(PUBLIC_SERVICES.map((s) => s.typeName).toSorted()).toEqual([
       "atsapbx.v1.AuthService",
       "atsapbx.v1.IdentityService",
       "atsapbx.v1.LicensingService",
@@ -49,7 +49,7 @@ describe("public API only", () => {
     const transport = createApiTransport({ baseUrl: base });
     const method = rogue.methods[0]!;
     const err = await transport
-      .unary(method as never, undefined, undefined, undefined, {} as never)
+      .unary(method as never, undefined, undefined, undefined, {})
       .catch((e: unknown) => e);
 
     expect(sent).toBe(false);

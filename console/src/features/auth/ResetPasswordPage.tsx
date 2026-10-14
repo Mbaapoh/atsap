@@ -104,7 +104,7 @@ export function ResetPasswordPage({ purpose }: { purpose: "reset" | "invite" }) 
           ) : null}
         </Alert>
       ) : null}
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <TextField
           label="New password"
           type="password"

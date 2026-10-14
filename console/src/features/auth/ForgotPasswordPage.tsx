@@ -56,7 +56,7 @@ export function ForgotPasswordPage() {
     <AuthLayout title="Reset your password">
       {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
       <p>Enter your email and we will send you a link to choose a new password.</p>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <TextField label="Email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} error={emailError} required />
         <div className="form-actions">
           <button type="submit" className="button button-primary" disabled={busy || throttle.blocked}>

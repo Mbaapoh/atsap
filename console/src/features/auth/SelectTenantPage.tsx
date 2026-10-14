@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
-import { ApiError } from "../../api/errors";
+import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { useSession, useSessionController } from "./adapter";
 import { AuthLayout } from "./AuthLayout";
 import { roleLabel } from "./permissions";
+import { returnPath } from "./routerState";
 
 // SelectTenantPage chooses the Tenant to act in: after signing in with
 // several memberships, and whenever the person switches. The server
@@ -28,7 +29,6 @@ export function SelectTenantPage() {
   if (session.status === "signed-out" || session.status === "no-access") return <Navigate to="/sign-in" replace />;
 
   const current = session.access?.tenantId;
-  const from = (location.state as { from?: string } | null)?.from;
 
   async function choose(tenantId: string) {
     setFailure(null);
@@ -37,9 +37,10 @@ export function SelectTenantPage() {
       await controller.chooseTenant(tenantId);
       // A switch lands on the overview: the page left behind belonged to
       // the other Tenant.
-      await navigate(tenantId === current && from ? from : "/", { replace: true });
+      await navigate(tenantId === current ? returnPath(location.state) : "/", { replace: true });
     } catch (err) {
-      setFailure(err instanceof ApiError && err.kind === "forbidden" ? "You can no longer act in that tenant." : (err as Error).message);
+      const e = toApiError(err);
+      setFailure(e.kind === "forbidden" ? "You can no longer act in that tenant." : e.message);
       setBusy(null);
     }
   }

@@ -13,18 +13,23 @@ export interface RowAction {
 // Down opens the menu on its first item; arrows move, Home/End jump,
 // Escape closes and returns focus to the button, and choosing an item or
 // clicking elsewhere closes it.
+// enabledItems is the menu's focusable items, in order.
+function enabledItems(menu: HTMLUListElement | null): HTMLButtonElement[] {
+  return Array.from(menu?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []);
+}
+
 export function RowActions({ label, actions }: { label: string; actions: RowAction[] }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLUListElement>(null);
   const id = useId();
-  const items = () => Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []);
 
   useEffect(() => {
-    if (!open) return;
-    items()[0]?.focus();
+    if (!open) return undefined;
+    enabledItems(menu.current)[0]?.focus();
     const onDown = (e: MouseEvent) => {
-      if (!menu.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target instanceof Node ? e.target : null;
+      if (!menu.current?.contains(target) && !button.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -36,8 +41,8 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
   }
 
   function onMenuKey(e: KeyboardEvent) {
-    const list = items();
-    const at = list.indexOf(document.activeElement as HTMLButtonElement);
+    const list = enabledItems(menu.current);
+    const at = list.findIndex((item) => item === document.activeElement);
     const move = (to: number) => {
       e.preventDefault();
       list[(to + list.length) % list.length]?.focus();

@@ -130,7 +130,9 @@ The following libraries represent the **complete, approved, and frozen dependenc
 The Phase A console's complete, exact baseline is **[D-68](DECISIONS.md)**:
 React 19.2, React Router 8 (Data Mode), TanStack Query 5, Connect 2 with
 `@bufbuild/protobuf` and `protoc-gen-es` 2, TypeScript 7, Vite 8, Vitest 4
-with jsdom, Testing Library, MSW 3, and Playwright. All MIT or Apache-2.0.
+with jsdom, Testing Library, MSW 3, and Playwright, and — dev-only, by the
+D-68 amendment of 2026-10-14 — Oxlint with oxlint-tsgolint as the linter.
+All MIT or Apache-2.0.
 Pinned with `npm install --save-exact`, locked by the committed
 `package-lock.json`, installed in CI with `npm ci`, and audited with
 `npm audit --omit=dev --audit-level=high`. Node 24 and npm 11 are pinned by
@@ -145,6 +147,7 @@ done (`make console-check` runs them in order):
 
 | Tier | Command | What it proves |
 |---|---|---|
+| Lint | `make console-lint` | Oxlint, type-aware (`.oxlintrc.json`): hook rules, accessibility, promises, exhaustive switches; every finding fails, and a rule is turned off only with its reason in the config |
 | Unit and component | `make console-test` | Typecheck, then Vitest with jsdom and MSW: adapters, components, routes, the adapter-boundary scan |
 | e2e | `make console-e2e` | Playwright in Chromium with the API mocked (`e2e/*.spec.ts`): keyboard use, focus, layout at 1280 px and 390 px |
 | Integration | `make console-integration` | Playwright against the real API on the Tilt rig (`e2e/*.rig.spec.ts`): sessions, cookies, server errors, Mailpit email |

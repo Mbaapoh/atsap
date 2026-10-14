@@ -23,7 +23,11 @@ export function AppShell({ tenant, licence, notice }: AppShellProps) {
   const mainRef = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const [announcement, setAnnouncement] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // The drawer is open on the page it was opened on: navigating anywhere
+  // closes it, by the path changing rather than by an effect.
+  const [drawerOpenAt, setDrawerOpenAt] = useState<string | null>(null);
+  const drawerOpen = drawerOpenAt === location.pathname;
+  const setDrawerOpen = (isOpen: boolean) => setDrawerOpenAt(isOpen ? location.pathname : null);
   // lastPath is the page focus was last settled for. Comparing paths,
   // rather than counting renders, keeps a repeated effect (React runs
   // effects twice in development) from treating the first page as a
@@ -31,9 +35,8 @@ export function AppShell({ tenant, licence, notice }: AppShellProps) {
   const lastPath = useRef(location.pathname);
 
   useEffect(() => {
-    setDrawerOpen(false);
     if (lastPath.current === location.pathname) {
-      return;
+      return undefined;
     }
     lastPath.current = location.pathname;
     // After the drawer closes, its focus restoration runs first; the

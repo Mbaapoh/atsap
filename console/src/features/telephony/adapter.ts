@@ -70,6 +70,18 @@ export function useTrunks(page: number) {
   });
 }
 
+// forget wraps a mutation so it is reset as soon as it settles: a trunk
+// secret sent with it is not kept in the mutation's state afterwards.
+function forget<T>(fn: (v: T) => Promise<void>, reset: () => void) {
+  return async (v: T) => {
+    try {
+      await fn(v);
+    } finally {
+      reset();
+    }
+  };
+}
+
 // useTrunkChanges creates, edits and deletes trunks. The trunk secret is
 // sent and never kept: the mutations hold no cache (gcTime 0), and every
 // change refetches everything telephony, since deleting a trunk also
@@ -102,13 +114,6 @@ export function useTrunkChanges() {
       }),
     onSuccess: refetch,
   });
-  const forget = <T,>(fn: (v: T) => Promise<void>, reset: () => void) => async (v: T) => {
-    try {
-      await fn(v);
-    } finally {
-      reset();
-    }
-  };
   return {
     create: forget(create.mutateAsync, create.reset),
     update: forget(update.mutateAsync, update.reset),

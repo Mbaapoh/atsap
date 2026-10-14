@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 // FOCUSABLE lists what Tab can land on inside a modal.
@@ -29,11 +29,15 @@ interface ModalProps {
 //  - and returns focus to whatever opened it when it closes.
 export function Modal({ open, onClose, labelledBy, describedBy, initialFocus, className, children }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
+  // The latest onClose, for the key and backdrop handlers: refreshed after
+  // each render (before any event can reach it), never written during one.
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const app = document.getElementById("root");
     app?.setAttribute("inert", "");

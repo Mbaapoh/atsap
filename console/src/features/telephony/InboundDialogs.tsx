@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -28,24 +28,27 @@ function failureText(err: unknown): string {
 // AssignNumberDialog points one of the tenant's carrier numbers (a DID) at
 // an extension. The carrier must already deliver the number to a trunk;
 // this only says which extension rings.
-export function AssignNumberDialog({ open, extensions, onClose }: { open: boolean; extensions: ExtensionEntry[]; onClose: () => void }) {
+type AssignNumberDialogProps = { open: boolean; extensions: ExtensionEntry[]; onClose: () => void };
+
+// The form is mounted only while open, so each opening starts empty with
+// the first extension chosen — and a refetch of the extension list while
+// someone types no longer resets what they typed.
+export function AssignNumberDialog(props: AssignNumberDialogProps) {
+  if (!props.open) return null;
+  return <AssignNumberForm {...props} />;
+}
+
+function AssignNumberForm({ open, extensions, onClose }: AssignNumberDialogProps) {
   const titleId = useId();
   const selectId = useId();
   const { create } = useInboundChanges();
   const toast = useToast();
   const [number, setNumber] = useState("");
-  const [extensionId, setExtensionId] = useState("");
+  const [extensionId, setExtensionId] = useState(extensions[0]?.id ?? "");
   const [error, setError] = useState<string | undefined>();
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    setNumber("");
-    setExtensionId(extensions[0]?.id ?? "");
-    setError(undefined);
-    setFailure(null);
-  }, [open, extensions]);
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
@@ -74,7 +77,7 @@ export function AssignNumberDialog({ open, extensions, onClose }: { open: boolea
       <h2 id={titleId} className="modal-title">
         Assign an inbound number
       </h2>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <div className="modal-body">
           {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
           <TextField

@@ -8,6 +8,9 @@ export function AuthLayout({ title, children, stepKey }: { title: string; childr
   useEffect(() => {
     document.title = `${title} · AtsaPBX`;
     heading.current?.focus();
+    // stepKey is not read here on purpose: a new step under the same title
+    // must still move focus to the heading, which is what listing it does.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [title, stepKey]);
   return (
     <main className="auth-layout">

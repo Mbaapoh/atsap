@@ -13,6 +13,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware --deny-warnings src e2e",
     "gen": "buf generate ../api --template buf.gen.yaml",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
@@ -45,6 +46,8 @@
     "@vitest/coverage-v8": "4.1.11",
     "jsdom": "29.1.1",
     "msw": "3.0.3",
+    "oxlint": "1.86.0",
+    "oxlint-tsgolint": "7.0.2003",
     "typescript": "7.0.2",
     "vite": "8.3.4",
     "vitest": "4.1.11"

@@ -31,7 +31,11 @@ export function DataTable<Row>({ caption, captionHidden = false, columns, rows, 
   if (rows.length === 0 && empty) {
     return <>{empty}</>;
   }
+  // The wrapper scrolls a wide table sideways; a named, focusable region
+  // is how keyboard users scroll it (WCAG 2.1.1, axe scrollable-region-
+  // focusable), so tabIndex on a non-interactive element is deliberate.
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
     <div className="table-scroll" role="region" aria-label={caption} tabIndex={0}>
       <table className="data-table">
         <caption className={captionHidden ? "visually-hidden" : undefined}>{caption}</caption>

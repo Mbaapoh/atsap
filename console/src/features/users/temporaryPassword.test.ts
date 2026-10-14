@@ -7,7 +7,7 @@ describe("temporaryPassword", () => {
     for (let i = 0; i < 200; i++) {
       const p = temporaryPassword();
       expect(p).toHaveLength(TEMPORARY_LENGTH);
-      expect([...p].every((c) => TEMPORARY_ALPHABET.includes(c))).toBe(true);
+      expect(Array.from(p).every((c) => TEMPORARY_ALPHABET.includes(c))).toBe(true);
       expect(passwordProblem(p)).toBeNull();
       expect(p).not.toMatch(/[0O1lI]/);
     }

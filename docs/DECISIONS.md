@@ -2326,6 +2326,15 @@ typescript-eslint supports TypeScript below 6.1 only, and TypeScript 7
 exposes no JavaScript compiler API. A substitute linter needs a further
 approval (D-71, Open).
 
+**Amendment (2026-10-14, D-71):** the console linter is **Oxlint 1.86.0**
+with **oxlint-tsgolint 7.0.2003**, both MIT and dev-only, approved by the
+owner. Oxlint carries the rules the ESLint set was chosen for — its
+typescript, react (including the hook rules) and jsx-a11y plugins — and
+oxlint-tsgolint runs its type-aware rules on TypeScript 7's own compiler,
+which is why it works where typescript-eslint cannot. Exact versions, the
+newest at least two weeks old; `npm audit --omit=dev` is unaffected
+because neither ships in the bundle.
+
 **Related Decisions:** D-35 (permissive FOSS, supply-chain scanning), D-36
 (React + TypeScript), D-43 (public APIs only), D-60 (mise owns pins)
 **Traceability:** `console/package.json`, `console/package-lock.json`,
@@ -2438,10 +2447,11 @@ tool) is a named, reasoned exception in `quality/osv-scanner.toml`: it is
 build-time only and none of it is in the console bundle; D-35 governs what
 ships.
 
-**Open:** the console linter. The approved ESLint set cannot run because
-typescript-eslint needs TypeScript's JavaScript compiler API, which
-TypeScript 7 does not have. Oxlint with oxlint-tsgolint is proposed and
-awaits owner approval.
+**Console linter (resolved 2026-10-14):** the approved ESLint set cannot
+run because typescript-eslint needs TypeScript's JavaScript compiler API,
+which TypeScript 7 does not have. The owner approved Oxlint with
+oxlint-tsgolint instead (D-68 amendment of the same date); `make
+console-lint` runs it in `console-check` and `make quality`.
 
 **Related Decisions:** D-28, D-59 (gates as code), D-35 (licences, scanning),
 D-40 (Go standards), D-60 (mise owns pins), D-68 (console dependencies)

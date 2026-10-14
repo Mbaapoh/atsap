@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -19,29 +19,28 @@ function failureText(err: unknown): string {
 // RouteDialog creates a route, or prepares a replacement for one. Overlap
 // with an existing route is allowed — it is how least-cost preference is
 // expressed — so it is explained, never blocked (CONSOLE-DESIGN).
-export function RouteDialog({ open, replacing, routes, trunks, onClose }: { open: boolean; replacing: RouteRow | null; routes: RouteRow[]; trunks: TrunkRow[]; onClose: () => void }) {
+type RouteDialogProps = { open: boolean; replacing: RouteRow | null; routes: RouteRow[]; trunks: TrunkRow[]; onClose: () => void };
+
+// The form is mounted only while open, and anew for each route replaced,
+// so every opening starts from its own values with no reset effect.
+export function RouteDialog(props: RouteDialogProps) {
+  if (!props.open) return null;
+  return <RouteForm key={props.replacing?.id ?? "new"} {...props} />;
+}
+
+function RouteForm({ open, replacing, routes, trunks, onClose }: RouteDialogProps) {
   const titleId = useId();
   const trunkId = useId();
   const { create, remove } = useRouteChanges();
   const toast = useToast();
-  const [prefix, setPrefix] = useState("");
-  const [trunk, setTrunk] = useState("");
-  const [cost, setCost] = useState("");
-  const [priority, setPriority] = useState("0");
+  const [prefix, setPrefix] = useState(replacing?.prefix ?? "");
+  const [trunk, setTrunk] = useState(replacing?.trunkId ?? trunks[0]?.id ?? "");
+  const [cost, setCost] = useState(replacing ? formatCost(replacing.costMicros) : "");
+  const [priority, setPriority] = useState(replacing ? String(replacing.priority) : "0");
   const [errors, setErrors] = useState<{ prefix?: string; trunk?: string; cost?: string; priority?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<RouteInput | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setPrefix(replacing?.prefix ?? "");
-    setTrunk(replacing?.trunkId ?? trunks[0]?.id ?? "");
-    setCost(replacing ? formatCost(replacing.costMicros) : "");
-    setPriority(replacing ? String(replacing.priority) : "0");
-    setErrors({});
-    setFailure(null);
-  }, [open, replacing, trunks]);
 
   const trunkName = (id: string) => trunks.find((t) => t.id === id)?.name ?? "another trunk";
   const overlapping = PREFIX.test(prefix.trim()) ? routes.filter((r) => r.id !== replacing?.id && overlaps(r.prefix, prefix.trim())) : [];

@@ -34,15 +34,15 @@ describe("Pager", () => {
 
 describe("RowActions", () => {
   function setup() {
-    const edit = vi.fn();
-    const remove = vi.fn();
+    const edit = vi.fn<() => void>();
+    const remove = vi.fn<() => void>();
     render(
       <RowActions
         label="1001"
         actions={[
           { label: "Delete extension", onSelect: remove, destructive: true },
           { label: "Edit", onSelect: edit },
-          { label: "Rotate secret", onSelect: vi.fn(), disabled: true },
+          { label: "Rotate secret", onSelect: vi.fn<() => void>(), disabled: true },
         ]}
       />,
     );

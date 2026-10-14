@@ -167,7 +167,7 @@ tidy: ## Tidy go modules
 
 # Node and npm are pinned in console/mise.toml, which mise only reads from
 # inside console/, so every recipe runs npm through `mise exec` there.
-.PHONY: console-install console-gen console-test console-build console-e2e console-integration console-soak console-uat console-check console-audit
+.PHONY: console-install console-gen console-test console-lint console-build console-e2e console-integration console-soak console-uat console-check console-audit
 console-install: ## Install the console's locked dependencies (npm ci)
 	cd console && mise exec -- npm ci
 
@@ -176,6 +176,9 @@ console-gen: ## Regenerate the console's TypeScript API clients from api/proto
 
 console-test: ## Typecheck and run the console's component tests with coverage (floors: quality/coverage-floors.json)
 	cd console && mise exec -- npm run typecheck && mise exec -- npm run coverage
+
+console-lint: ## Lint the console: Oxlint, type-aware, every finding fails (.oxlintrc.json; D-68 amendment)
+	cd console && mise exec -- npm run lint
 
 console-build: ## Build the console for production into console/dist
 	cd console && mise exec -- npm run build
@@ -192,7 +195,7 @@ console-soak: ## Console integration tier RUNS times (default 3) on the rig; fai
 console-uat: ## Console UAT: the HLD-18 user journeys end to end on the Tilt rig
 	cd console && mise exec -- npm run uat
 
-console-check: console-test console-e2e console-integration console-uat console-audit secrets ## Every console tier, in order, plus the secret scan
+console-check: console-lint console-test console-e2e console-integration console-uat console-audit secrets ## Every console tier, in order, plus lint and the secret scan
 
 console-audit: ## Audit the console's production dependencies (high and above)
 	cd console && mise exec -- npm run audit:prod
@@ -262,10 +265,7 @@ sbom: docker-build ## CycloneDX SBOM per production image
 	$(TOOL) trivy image --quiet --timeout 20m --format cyclonedx --output $(REPORTS)/sbom-atsap-api.cdx.json atsap-api:local
 	$(TOOL) trivy image --quiet --timeout 20m --format cyclonedx --output $(REPORTS)/sbom-atsap-core.cdx.json atsap-core:local
 
-# console-lint joins this gate once the console linter is decided: the
-# approved ESLint set cannot parse TypeScript 7 (see quality-and-supply-
-# chain-gates task 3.1).
-quality: lint coverage console-test sca secrets console-audit ## The hermetic quality gate: lint, coverage, SCA, secrets, audit (both stacks)
+quality: lint console-lint coverage console-test sca secrets console-audit ## The hermetic quality gate: lint, coverage, SCA, secrets, audit (both stacks)
 
 ##@ Images, UAT and deploy
 

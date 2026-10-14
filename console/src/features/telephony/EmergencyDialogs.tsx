@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -20,19 +20,7 @@ function failureText(err: unknown): string {
 
 // One small form shared by "set country" and "add number": a single field,
 // checked here, then sent as typed (trimmed).
-function SingleFieldDialog({
-  open,
-  title,
-  label,
-  hint,
-  submitLabel,
-  initial,
-  normalize,
-  check,
-  send,
-  explain,
-  onClose,
-}: {
+type SingleFieldDialogProps = {
   open: boolean;
   title: string;
   label: string;
@@ -44,20 +32,35 @@ function SingleFieldDialog({
   send: (v: string) => Promise<string>;
   explain: (err: unknown) => { field?: string; failure?: string };
   onClose: () => void;
-}) {
+};
+
+// The form is mounted only while open, so each opening starts from its
+// initial value with no reset effect.
+function SingleFieldDialog(props: SingleFieldDialogProps) {
+  if (!props.open) return null;
+  return <SingleFieldForm {...props} />;
+}
+
+function SingleFieldForm({
+  open,
+  title,
+  label,
+  hint,
+  submitLabel,
+  initial,
+  normalize,
+  check,
+  send,
+  explain,
+  onClose,
+}: SingleFieldDialogProps) {
   const titleId = useId();
   const toast = useToast();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | undefined>();
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    setValue(initial);
-    setError(undefined);
-    setFailure(null);
-  }, [open, initial]);
 
   async function onSubmit(ev: FormEvent) {
     ev.preventDefault();
@@ -84,7 +87,7 @@ function SingleFieldDialog({
       <h2 id={titleId} className="modal-title">
         {title}
       </h2>
-      <form onSubmit={onSubmit} noValidate>
+      <form onSubmit={(e) => void onSubmit(e)} noValidate>
         <div className="modal-body">
           {failure ? <Alert tone="danger" title={failure} focusOnMount /> : null}
           <TextField label={label} autoComplete="off" spellCheck={false} hint={hint} value={value} onChange={(e) => setValue(e.target.value)} error={error} required />

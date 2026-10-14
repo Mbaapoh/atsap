@@ -47,6 +47,7 @@ export function ToneIcon({ tone }: { tone: Tone }) {
           <path d="M8 7.2v4M8 4.8v.1" />
         </svg>
       );
+    case "neutral":
     default:
       return (
         <svg {...common} className="icon">

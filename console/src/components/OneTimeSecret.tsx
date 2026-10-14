@@ -44,7 +44,7 @@ export function OneTimeSecret({ open, title, intro, fields, onDone }: OneTimeSec
 
   // Ask before the browser leaves or reloads the page while open.
   useEffect(() => {
-    if (!holding) return;
+    if (!holding) return undefined;
     const onUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
@@ -53,12 +53,13 @@ export function OneTimeSecret({ open, title, intro, fields, onDone }: OneTimeSec
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [holding]);
 
-  useEffect(() => {
-    if (!open) {
-      setSaved(false);
-      setCopied(null);
-    }
-  }, [open]);
+  // Done is the only way out, so it is where the next showing starts
+  // unacknowledged — not an effect watching `open`.
+  function finish() {
+    setSaved(false);
+    setCopied(null);
+    onDone();
+  }
 
   async function copy(field: SecretField) {
     try {
@@ -101,7 +102,7 @@ export function OneTimeSecret({ open, title, intro, fields, onDone }: OneTimeSec
         </label>
       </div>
       <div className="modal-actions">
-        <button type="button" className="button button-primary" disabled={!saved} onClick={onDone}>
+        <button type="button" className="button button-primary" disabled={!saved} onClick={finish}>
           Done
         </button>
       </div>

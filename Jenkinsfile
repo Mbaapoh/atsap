@@ -86,13 +86,14 @@ pipeline {
         stage('Console') {
             steps {
                 // The console's hermetic tiers (docs/TOOLSET.md §3a):
-                // typecheck, component tests with coverage floors, browser
+                // lint, typecheck, component tests with coverage floors, browser
                 // e2e with the API mocked, and the production dependency
                 // audit. Its integration and UAT tiers need the dev rig and
                 // run beside the Go e2e suites, not here.
                 sh '''
                     set -eu
                     "$MISE_BIN" x -- make console-install
+                    "$MISE_BIN" x -- make console-lint
                     "$MISE_BIN" x -- make console-test
                     (cd console && "$MISE_BIN" x -- npx playwright install chromium)
                     "$MISE_BIN" x -- make console-e2e

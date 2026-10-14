@@ -20,6 +20,7 @@ export function conditionExplanation(s: LicenceSummary): string {
       return `The Free Community licence is in force, with ${s.channels} channels.`;
     case LicenseCondition.VALID:
       return "The licence is in force.";
+    case LicenseCondition.UNSPECIFIED:
     default:
       return "The licence state could not be read.";
   }

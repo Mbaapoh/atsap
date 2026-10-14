@@ -47,7 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
   const [paused, setPaused] = useState(false);
   useEffect(() => {
-    if (paused) return;
+    if (paused) return undefined;
     const timer = setTimeout(() => onDismiss(item.id), TOAST_MS);
     return () => clearTimeout(timer);
   }, [paused, item.id, onDismiss]);

@@ -89,7 +89,7 @@ test("A4: add, replace and delete outbound routes", async ({ page, request }) =>
   const listed = async () =>
     (((await api(request, token, "ListRoutes", { tenantId })).body.routes ?? []) as Record<string, unknown>[])
       .map((r) => ({ prefix: r.prefixPattern, trunk: r.trunkId, cost: r.costPerMinuteMicros ?? "0", priority: r.priority ?? 0 }))
-      .sort((a, b) => String(a.prefix).localeCompare(String(b.prefix)));
+      .toSorted((a, b) => String(a.prefix).localeCompare(String(b.prefix)));
 
   await signIn(page, user.email);
   await page.goto("/trunks");
@@ -183,7 +183,7 @@ test("A4: emergency — no country is told, a country's numbers are built in, ow
   const effective = async () =>
     (((await api(request, token, "GetEmergencyProfile", { tenantId })).body.numbers ?? []) as { number: string; builtIn?: boolean }[])
       .map((n) => `${n.number}${n.builtIn ? "*" : ""}`)
-      .sort();
+      .toSorted();
 
   await signIn(page, user.email);
   await page.goto("/trunks");

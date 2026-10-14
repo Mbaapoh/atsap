@@ -22,7 +22,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 // over into a later month, so the parts must come back unchanged.
 function validDay(v: string | null): string {
   if (!v || !DAY.test(v)) return "";
-  const [y, m, d] = v.split("-").map(Number) as [number, number, number];
+  const [y = 0, m = 0, d = 0] = v.split("-").map(Number);
   const date = localMidnight(v);
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d ? v : "";
 }
@@ -53,7 +53,7 @@ export function writeFilters(f: CallFilters): URLSearchParams {
 }
 
 export function localMidnight(day: string): Date {
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
+  const [y = 0, m = 1, d = 1] = day.split("-").map(Number);
   return new Date(y, m - 1, d);
 }
 

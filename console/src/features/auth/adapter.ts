@@ -2,6 +2,7 @@ import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
 import { createContext, useContext, useSyncExternalStore } from "react";
 import type { ApiClients } from "../../api/ApiProvider";
 import { ApiError, callApi } from "../../api/errors";
+import { codePoints } from "../../components/text";
 import {
   SignInMethod,
   type AccessToken,
@@ -25,7 +26,7 @@ export const PASSWORD_MAX = 64;
 
 // passwordProblem returns why a new password would be refused, or null.
 export function passwordProblem(password: string): string | null {
-  const n = [...password].length;
+  const n = codePoints(password);
   if (n < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters.`;
   if (n > PASSWORD_MAX) return `Use no more than ${PASSWORD_MAX} characters.`;
   return null;

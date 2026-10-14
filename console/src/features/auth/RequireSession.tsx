@@ -30,5 +30,9 @@ export function RequireSession({ children }: { children: ReactNode }) {
         return <Navigate to="/account" replace />;
       }
       return <>{children}</>;
+    default:
+      // Unreachable: every session state is handled above, which the
+      // switch-exhaustiveness lint rule keeps true as states are added.
+      return null;
   }
 }

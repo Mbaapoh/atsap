@@ -66,6 +66,13 @@ function kindOf(code: Code): ApiErrorKind {
     case Code.Unavailable:
     case Code.DeadlineExceeded:
       return "unavailable";
+    // Named, so a code added to Connect fails the lint rather than
+    // falling into "unknown" unseen.
+    case Code.Canceled:
+    case Code.Unknown:
+    case Code.Unimplemented:
+    case Code.Internal:
+    case Code.DataLoss:
     default:
       return "unknown";
   }
