@@ -178,14 +178,22 @@ func TestProbe_HostThatDoesNotResolve(t *testing.T) {
 	assert.Equal(t, domain.ProbeHostNotFound, p.Probe(context.Background(), "locslhodt", 5060).Outcome)
 }
 
-// A resolver that is down says nothing about the host: no response, not
-// "host not found".
-func TestProbe_ResolverFailureIsNoResponse(t *testing.T) {
+// Any failure to resolve the name is "host not found": a mistyped name
+// often fails as a temporary error, not a clean NXDOMAIN (Docker's DNS
+// does this for a single-label name such as "localhosts2"), and "no
+// response" would send someone looking for a dead carrier when the name
+// is the problem. A resolver outage reads the same, and is as true: the
+// host could not be found.
+func TestProbe_AnyResolutionFailureIsHostNotFound(t *testing.T) {
 	p := fast()
-	p.Resolver = fakeResolver{err: &net.DNSError{Err: "i/o timeout", Name: "carrier.example", IsTimeout: true}}
-	assert.Equal(t, domain.ProbeNoResponse, p.Probe(context.Background(), "carrier.example", 5060).Outcome)
-	p.Resolver = fakeResolver{err: errors.New("boom")}
-	assert.Equal(t, domain.ProbeNoResponse, p.Probe(context.Background(), "carrier.example", 5060).Outcome)
+	for _, err := range []error{
+		&net.DNSError{Err: "server misbehaving", Name: "localhosts2", IsTemporary: true},
+		&net.DNSError{Err: "i/o timeout", Name: "carrier.example", IsTimeout: true},
+		errors.New("boom"),
+	} {
+		p.Resolver = fakeResolver{err: err}
+		assert.Equal(t, domain.ProbeHostNotFound, p.Probe(context.Background(), "carrier.example", 5060).Outcome, err.Error())
+	}
 }
 
 // A cancelled check stops at once.

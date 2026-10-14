@@ -30,7 +30,9 @@ So health means "no answered call has said otherwise". A trunk whose host does n
 
 `internal/pbx/acl/sipprobe` sends one OPTIONS request over UDP. It is RFC 3261 §11 shaped, with a fresh branch, tag and Call-ID, and `rport`.
 
-- **Resolve:** the host is resolved with a 2-second limit. "Not found" is `HostNotFound`; any other DNS failure is `NoResponse`.
+- **Resolve:** the host is resolved with a 2-second limit. Any failure to resolve is `HostNotFound`.
+  - A mistyped name often fails as a temporary error, not a clean NXDOMAIN. Docker's DNS does this for a single-label name such as `localhosts2`, found on the rig.
+  - "No response" would send someone looking for a dead carrier when the name is the problem.
 - **Send:** to the first resolved address, IPv4 preferred. Retransmit at 500 ms, doubling, until a 4-second budget is spent.
 - **Read:** 1xx responses and packets whose Call-ID is not ours are ignored. The first final response gives the status and the round-trip time.
 
@@ -92,6 +94,18 @@ Additive only:
 - Otherwise the badge is followed by the reason and the local time of the observation, for example "Unhealthy · Host not found · checked 14:02:31".
 - This applies on the Trunks & routes page and in the overview's trunk-health table.
 - The words are console copy keyed by enum, never server text.
+
+### D7. An unhealthy trunk is the last resort, not a dead end
+
+Active checks can be wrong:
+- some carriers ignore OPTIONS from an address they do not know;
+- a carrier that was down when checked stays marked until the next round.
+
+Before this change only a failed call could take a trunk out of service. Now a check can, so selection skips an `Unhealthy` trunk only while another matching trunk can carry the call. When every match is `Unhealthy`, they are tried in the usual order.
+
+A wrong observation then costs preference, never service, and a call that succeeds marks the trunk healthy again.
+
+This was found by the A3–A5 UAT on the rig. Its carrier phone starts after the trunk is created, so the first check found nobody, and the next call was refused as unroutable.
 
 ## Risks / Trade-offs
 

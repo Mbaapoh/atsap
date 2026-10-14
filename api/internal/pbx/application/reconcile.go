@@ -131,7 +131,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Report, error) {
 		projected[id] = struct{}{}
 	}
 
-	tenants, err := r.listTenants(ctx)
+	tenants, err := listTenants(ctx, r.pool)
 	if err != nil {
 		return Report{}, err
 	}
@@ -315,11 +315,13 @@ func (r *Reconciler) Repair(ctx context.Context, report Report) (repaired int, e
 	return repaired, nil
 }
 
-// listTenants reads every tenant id. `tenants` is the root of tenancy: it
-// has no tenant_id and no RLS policy, so this needs no tenant context and
-// no privileged role.
-func (r *Reconciler) listTenants(ctx context.Context) ([]shareddomain.TenantID, error) {
-	rows, err := r.pool.Unwrap().Query(ctx, `SELECT id FROM tenants ORDER BY id`)
+// listTenants reads every tenant id, for the jobs that act across tenants
+// (reconcile, trunk checks), each then working inside one tenant's RLS
+// scope at a time. `tenants` is the root of tenancy: it has no tenant_id
+// and no RLS policy, so this needs no tenant context and no privileged
+// role.
+func listTenants(ctx context.Context, pool *corepostgres.Pool) ([]shareddomain.TenantID, error) {
+	rows, err := pool.Unwrap().Query(ctx, `SELECT id FROM tenants ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list tenants: %w", err)
 	}

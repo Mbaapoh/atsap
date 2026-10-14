@@ -67,6 +67,7 @@ type Service struct {
 	placement *Placement
 	inbound   *Inbound
 	registrar ports.SipRegistrar
+	checker   ports.TrunkChecker
 	rand      io.Reader
 	now       func() time.Time
 }

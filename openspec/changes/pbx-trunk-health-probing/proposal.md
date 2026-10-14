@@ -15,7 +15,7 @@ On 2026-10-13 a tenant administrator created a trunk with the host `locslhodt`, 
   - **a reason:** host not found, no response, carrier error, slow response, or answering;
   - **when it was last observed.**
 - **The console shows both,** for example "Unhealthy · Host not found · checked 14:02:31", instead of a bare badge.
-- **Route selection is unchanged in kind.** `Unhealthy` is skipped and `Degraded` is deprioritised, as before. A trunk not yet checked is selectable like a healthy one, so a new trunk works at once.
+- **Route selection:** `Degraded` is deprioritised as before. `Unhealthy` is skipped while another trunk can carry the call, and tried as the last resort when none can, because a check can be wrong. A trunk not yet checked is selectable like a healthy one, so a new trunk works at once.
 - **Call outcomes still count.** An answered or failed call through the trunk updates its health between checks, as today, now with its reason and time.
 - **BREAKING (console wording only):** a newly created trunk no longer reads "Healthy". The API's existing values keep their meaning; `UNKNOWN` is added.
 

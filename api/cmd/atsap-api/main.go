@@ -30,6 +30,7 @@ import (
 	"atsap-api/internal/logging"
 	atsapnats "atsap-api/internal/nats"
 	pbxasterisk "atsap-api/internal/pbx/acl/asterisk"
+	"atsap-api/internal/pbx/acl/sipprobe"
 	pbxapp "atsap-api/internal/pbx/application"
 	pbxpostgres "atsap-api/internal/pbx/postgres"
 	pbxrpc "atsap-api/internal/pbx/rpc"
@@ -283,6 +284,11 @@ func run() int {
 				return pbxSvc.ReportRouteHealth(ctx, id, code, latency)
 			},
 		})
+	// Trunk health is the platform's own observation (D-74): every trunk
+	// is checked on a schedule, and at once when created or re-addressed.
+	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger)
+	pbxSvc = pbxSvc.WithTrunkChecker(trunkProber)
+	go trunkProber.Run(ctx)
 	callService.SetInboundRouter(pbxSvc)
 	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
 		connectrpc.WithInterceptors(authInterceptor))

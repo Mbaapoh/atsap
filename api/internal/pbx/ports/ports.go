@@ -190,6 +190,26 @@ type TrunkView struct {
 	HealthObservedAt *time.Time
 }
 
+// CarrierCheck is one check of a carrier: what it found, and for an
+// answer its final SIP status and round trip (pbx-trunk-health-probing).
+type CarrierCheck struct {
+	Outcome domain.ProbeOutcome
+	Status  int
+	RTT     time.Duration
+}
+
+// CarrierProbe checks the carrier at host:port. It never fails: every
+// failure is an outcome to record.
+type CarrierProbe interface {
+	Probe(ctx context.Context, host string, port int) CarrierCheck
+}
+
+// TrunkChecker checks one trunk's carrier now, in the background — after
+// a trunk is created or its address changes — and records the result.
+type TrunkChecker interface {
+	CheckTrunk(tenantID shareddomain.TenantID, trunkID shareddomain.TrunkID)
+}
+
 // CreateRouteCommand is what a caller supplies to add an outbound route.
 type CreateRouteCommand struct {
 	TenantID      shareddomain.TenantID

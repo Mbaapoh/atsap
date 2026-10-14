@@ -100,11 +100,13 @@ type TrunkRoute struct {
 // SelectRoutes returns every usable candidate for dialled, best first.
 //
 // A candidate is a route whose pattern matches and whose trunk exists
-// and is not Unhealthy. The order is total, so the same input set always
-// yields the same order whatever order it arrived in (LLD-03 DoD 14):
+// and is not Unhealthy — unless every matching trunk is Unhealthy, when
+// they are the candidates, as the last resort. The order is total, so the
+// same input set always yields the same order whatever order it arrived
+// in (LLD-03 DoD 14):
 //
-//  1. Healthy trunks before Degraded ones — degraded carriers are a
-//     fallback, not a peer (design D8).
+//  1. Healthy (and not-yet-checked) trunks before Degraded ones —
+//     degraded carriers are a fallback, not a peer (design D8).
 //  2. Longer pattern before shorter — the more specific rule wins
 //     regardless of priority.
 //  3. Lower priority, then lower stored cost.
@@ -116,13 +118,25 @@ func SelectRoutes(dialled string, routes []CarrierRoute, trunks []Trunk) []Trunk
 		byID[t.ID] = t
 	}
 
-	var out []TrunkRoute
+	var out, lastResort []TrunkRoute
 	for _, r := range routes {
 		t, ok := byID[r.TrunkID]
-		if !ok || t.Health == HealthUnhealthy || !MatchesPrefix(r.PrefixPattern, dialled) {
+		if !ok || !MatchesPrefix(r.PrefixPattern, dialled) {
+			continue
+		}
+		if t.Health == HealthUnhealthy {
+			lastResort = append(lastResort, TrunkRoute{Route: r, Trunk: t})
 			continue
 		}
 		out = append(out, TrunkRoute{Route: r, Trunk: t})
+	}
+	// An unhealthy trunk is skipped while another can carry the call, and
+	// tried when none can: health is the platform's observation, and an
+	// observation can be wrong (a carrier that ignores OPTIONS from the
+	// platform's address, or was down when checked). Wrong, it costs
+	// preference, never service (pbx-trunk-health-probing D7).
+	if len(out) == 0 {
+		out = lastResort
 	}
 
 	slices.SortFunc(out, compareCandidates)

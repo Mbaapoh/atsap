@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // setRequired sets every env var Load() requires to a valid non-empty
@@ -57,6 +58,8 @@ func TestLoad_Defaults(t *testing.T) {
 		// server is named (identity-accounts-and-sessions D10).
 		ConsoleURL: "http://localhost:8080",
 		SMTPFrom:   "AtsaPBX <no-reply@localhost>",
+		// Every trunk is checked twice a minute (D-74).
+		TrunkProbeInterval: 30 * time.Second,
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
@@ -179,6 +182,38 @@ func TestLoad_SIPPublicRegistrarRejectsBadValues(t *testing.T) {
 			t.Setenv(tc.key, tc.value)
 			if _, err := Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("Load() error = %v, want one naming %s", err, tc.want)
+			}
+		})
+	}
+}
+
+// pbx-trunk-health-probing: the check interval is a duration of at least
+// 5 s, or 0 to turn scheduled checks off.
+func TestLoad_TrunkProbeInterval(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+		ok    bool
+	}{
+		{"1m", time.Minute, true},
+		{"5s", 5 * time.Second, true},
+		{"0", 0, true},
+		{"1s", 0, false},
+		{"-30s", 0, false},
+		{"often", 0, false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv("ATSAPBX_TRUNK_PROBE_INTERVAL", tc.value)
+			cfg, err := Load()
+			if !tc.ok {
+				if err == nil || !strings.Contains(err.Error(), "ATSAPBX_TRUNK_PROBE_INTERVAL") {
+					t.Errorf("Load() error = %v, want one naming ATSAPBX_TRUNK_PROBE_INTERVAL", err)
+				}
+				return
+			}
+			if err != nil || cfg.TrunkProbeInterval != tc.want {
+				t.Errorf("Load() = %v, %v; want %v", cfg.TrunkProbeInterval, err, tc.want)
 			}
 		})
 	}

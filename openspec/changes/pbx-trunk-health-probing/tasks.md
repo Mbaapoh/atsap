@@ -73,7 +73,7 @@
   - **Fault injection:** accepting any Call-ID fails `IgnoresAnotherCallsResponse`; disabling retransmission fails the silence and the retransmission tests.
   - **Integration `TestProbe_RealPeers`:** the rig's real Asterisk answered **401 in 311 ms**; `no-such-carrier.invalid` gave HostNotFound through the real resolver; `192.0.2.1` gave NoResponse after exactly the 4 s budget.
   - Lint, Go unit and integration pass. The package is not wired yet (task 2.2), so e2e and the console are unaffected.)*
-- [ ] 2.2 `TrunkProber`: a scheduled round over every tenant's trunks, bounded to 8, with rounds that never overlap; `CheckTrunk` after create and after a host or port change; `ATSAPBX_TRUNK_PROBE_INTERVAL`; wiring in `cmd`; D-74 in `docs/DECISIONS.md`.
+- [x] 2.2 `TrunkProber`: a scheduled round over every tenant's trunks, bounded to 8, with rounds that never overlap; `CheckTrunk` after create and after a host or port change; `ATSAPBX_TRUNK_PROBE_INTERVAL`; wiring in `cmd`; D-74 in `docs/DECISIONS.md`.
 
   Verify:
   - integration with a fake probe:
@@ -87,6 +87,24 @@
     - `192.0.2.1` (TEST-NET) becomes Unhealthy · No response;
     - changing the host re-checks at once;
   - Go tiers.
+
+  *(done 2026-10-14: `TrunkProber` runs a scheduled round over every tenant's trunks, at most 8 at a time, with rounds that never overlap. `CheckTrunk` runs in the background after create, and after an update only when the host or port changed. Checked health is written through the address-guarded `SetCheckedHealth`.
+  - The store's `Update` returns a re-addressed trunk to UNKNOWN, because its old observation was of another address. The RPC response says so too.
+  - `listTenants` is shared with the reconciler.
+  - `ATSAPBX_TRUNK_PROBE_INTERVAL` defaults to 30 s: at least 5 s, or 0 for off, validated at start.
+  - Wired in `main`, with `*sipprobe.Prober` as the `CarrierProbe` (its `Result` is `ports.CarrierCheck`).
+  - D-74 was recorded in `f07893c`.
+
+  **Two findings on the rig, both fixed:**
+  - **The A3–A5 UAT failed: the call was refused as "unroutable".** Its carrier phone starts after the trunk is created, so the first check found nobody, the trunk read Unhealthy, and selection skipped it. A check can be wrong, for example with a carrier that ignores OPTIONS from the platform's address. So an Unhealthy trunk is now **the last resort**: skipped while another can carry the call, and tried when none can (design D7). The spec, the selection doc, the example test and the property invariant (2,000 random cases) were updated, and the property test was split into helpers to stay under gocognit 30.
+  - **A mistyped single-label host (`localhosts2`) read "No response".** Docker's DNS returns a temporary failure, not NXDOMAIN, for such names. Any resolution failure is now "Host not found".
+
+  Verified:
+  - config unit tests;
+  - integration with a fake carrier (under `-race`): a created trunk is checked at once and the RPC does not wait; a new name is not re-checked but a new address is, going UNKNOWN then the new result; a stale check is dropped; a round covers two tenants. Removing the address guard fails the stale-check test.
+  - **e2e on the rig** (`TestTrunkHealth_IsWhatTheCarrierSays`): `asterisk:5060` became Healthy · Answering; `no-such-carrier.invalid` became Unhealthy · Host not found; `192.0.2.1` became Unhealthy · No response; fixing the host became UNKNOWN in the response, then Healthy. All in 4.4 s.
+  - The owner's trunk (`localhosts2`) now reads Unhealthy · Host not found.
+  - The Go unit, integration, e2e and lint tiers pass, `make console-check` passes (395 / 24 / 24 / 3), and `uat-inbound`, `uat-placement`, `uat-auto` and `make docs` pass.)*
 
 ## 3. The console shows it
 

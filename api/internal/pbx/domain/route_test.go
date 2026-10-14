@@ -89,7 +89,7 @@ func TestSelectRoutes_SkipsUnhealthyAndDemotesDegraded(t *testing.T) {
 
 	got := domain.SelectRoutes("447700", []domain.CarrierRoute{viaDegraded, viaHealthy, viaUnhealthy},
 		[]domain.Trunk{healthy, degraded, unhealthy})
-	require.Len(t, got, 2, "an unhealthy trunk is never a candidate")
+	require.Len(t, got, 2, "an unhealthy trunk is not a candidate while another can carry the call")
 	assert.Equal(t, viaHealthy.ID, got[0].Route.ID, "healthy before degraded, even against a longer prefix")
 	assert.Equal(t, viaDegraded.ID, got[1].Route.ID, "degraded stays available as a fallback")
 }
@@ -104,6 +104,20 @@ func TestSelectRoutes_UncheckedTrunkIsSelectedLikeHealthy(t *testing.T) {
 	got := domain.SelectRoutes("447700", []domain.CarrierRoute{viaHealthy, viaUnchecked}, []domain.Trunk{healthy, unchecked})
 	require.Len(t, got, 2)
 	assert.Equal(t, viaUnchecked.ID, got[0].Route.ID, "longest prefix wins as for any healthy trunk")
+}
+
+// An unhealthy trunk is the last resort, not a dead end: when it is the
+// only one that can carry a call, it is tried. A wrong observation — a
+// carrier that ignores the platform's OPTIONS, or was down when checked —
+// then costs preference, never service (pbx-trunk-health-probing D7).
+func TestSelectRoutes_UnhealthyIsTheLastResort(t *testing.T) {
+	a, b := trunk(domain.HealthUnhealthy), trunk(domain.HealthUnhealthy)
+	viaA := route("44", a, 2, 0)
+	viaB := route("447", b, 0, 0)
+
+	got := domain.SelectRoutes("447700", []domain.CarrierRoute{viaA, viaB}, []domain.Trunk{a, b})
+	require.Len(t, got, 2, "with nothing else, the unhealthy trunks are tried")
+	assert.Equal(t, viaB.ID, got[0].Route.ID, "in the usual order: longest prefix first")
 }
 
 func TestSelectRoutes_IgnoresRoutesToUnknownTrunks(t *testing.T) {
@@ -163,37 +177,62 @@ func TestSelectRoutes_Properties(t *testing.T) {
 		r.Shuffle(len(shuffledTrunks), func(a, b int) { shuffledTrunks[a], shuffledTrunks[b] = shuffledTrunks[b], shuffledTrunks[a] })
 		require.Equal(t, ids(got), ids(domain.SelectRoutes(dialled, shuffled, shuffledTrunks)), label)
 
-		health := map[shareddomain.TrunkID]domain.TrunkHealth{}
-		for _, tr := range trunks {
-			health[tr.ID] = tr.Health
+		usable, lastResort := matchingCandidates(dialled, routes, trunks)
+		if usable > 0 {
+			require.Len(t, got, usable, "every usable match is a candidate, nothing else is: %s", label)
+		} else {
+			require.Len(t, got, lastResort, "with no usable match, the unhealthy ones are the last resort: %s", label)
 		}
-		want := 0
-		for _, rt := range routes {
-			if domain.MatchesPrefix(rt.PrefixPattern, dialled) && health[rt.TrunkID] != domain.HealthUnhealthy {
-				want++
-			}
-		}
-		require.Len(t, got, want, "every usable match is a candidate, nothing else is: %s", label)
-
-		for j, c := range got {
+		for _, c := range got {
 			require.True(t, domain.MatchesPrefix(c.Route.PrefixPattern, dialled), label)
-			require.NotEqual(t, domain.HealthUnhealthy, c.Trunk.Health, label)
 			require.Equal(t, c.Route.TrunkID, c.Trunk.ID, "the trunk named is the route's own: %s", label)
-			if j == 0 {
-				continue
+			if usable > 0 {
+				require.NotEqual(t, domain.HealthUnhealthy, c.Trunk.Health, label)
 			}
-			prev := got[j-1]
-			pd, cd := prev.Trunk.Health == domain.HealthDegraded, c.Trunk.Health == domain.HealthDegraded
-			require.False(t, pd && !cd, "healthy never follows degraded: %s", label)
-			if pd == cd {
-				pl, cl := len(prev.Route.PrefixPattern), len(c.Route.PrefixPattern)
-				require.GreaterOrEqual(t, pl, cl, "longer prefix first within a health class: %s", label)
-				if pl == cl && prev.Route.Priority == c.Route.Priority {
-					require.LessOrEqual(t, prev.Route.CostPerMinute, c.Route.CostPerMinute, label)
-				} else if pl == cl {
-					require.Less(t, prev.Route.Priority, c.Route.Priority, label)
-				}
-			}
+		}
+		requireOrdered(t, got, label)
+	}
+}
+
+// matchingCandidates counts the routes matching dialled on a known trunk:
+// those on a trunk that is not Unhealthy, and those on one that is.
+func matchingCandidates(dialled string, routes []domain.CarrierRoute, trunks []domain.Trunk) (usable, lastResort int) {
+	health := map[shareddomain.TrunkID]domain.TrunkHealth{}
+	for _, tr := range trunks {
+		health[tr.ID] = tr.Health
+	}
+	for _, rt := range routes {
+		h, known := health[rt.TrunkID]
+		switch {
+		case !known || !domain.MatchesPrefix(rt.PrefixPattern, dialled):
+		case h == domain.HealthUnhealthy:
+			lastResort++
+		default:
+			usable++
+		}
+	}
+	return usable, lastResort
+}
+
+// requireOrdered checks the selection order: healthy before degraded,
+// then longer prefix, lower priority, lower cost.
+func requireOrdered(t *testing.T, got []domain.TrunkRoute, label string) {
+	t.Helper()
+	for j := 1; j < len(got); j++ {
+		prev, c := got[j-1], got[j]
+		pd, cd := prev.Trunk.Health == domain.HealthDegraded, c.Trunk.Health == domain.HealthDegraded
+		require.False(t, pd && !cd, "healthy never follows degraded: %s", label)
+		if pd != cd {
+			continue
+		}
+		pl, cl := len(prev.Route.PrefixPattern), len(c.Route.PrefixPattern)
+		require.GreaterOrEqual(t, pl, cl, "longer prefix first within a health class: %s", label)
+		switch {
+		case pl != cl:
+		case prev.Route.Priority == c.Route.Priority:
+			require.LessOrEqual(t, prev.Route.CostPerMinute, c.Route.CostPerMinute, label)
+		default:
+			require.Less(t, prev.Route.Priority, c.Route.Priority, label)
 		}
 	}
 }

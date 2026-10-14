@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"atsap-api/internal/pbx/domain"
+	"atsap-api/internal/pbx/ports"
 )
 
 // Resolver resolves a carrier's host name; *net.Resolver satisfies it.
@@ -26,12 +27,11 @@ type Resolver interface {
 }
 
 // Result is what one check found: the outcome, and for an answer its
-// final status code and the round trip from the first request sent.
-type Result struct {
-	Outcome domain.ProbeOutcome
-	Status  int
-	RTT     time.Duration
-}
+// final status code and the round trip from the first request sent. It is
+// pbx-core's CarrierCheck, so a *Prober is a ports.CarrierProbe.
+type Result = ports.CarrierCheck
+
+var _ ports.CarrierProbe = (*Prober)(nil)
 
 // Defaults for a check.
 const (
@@ -80,9 +80,10 @@ func (p *Prober) Probe(ctx context.Context, host string, port int) Result {
 	return exchange(ctx, conn, req, callID, t1)
 }
 
-// resolve returns the address to check, preferring IPv4, or the outcome
-// that ends the check: a host that does not exist, or a lookup that
-// failed for another reason — which says nothing about the host.
+// resolve returns the address to check, preferring IPv4, or HostNotFound
+// when the name cannot be resolved — whether DNS says it does not exist
+// or the lookup fails: a mistyped name often fails as a temporary error
+// rather than a clean NXDOMAIN, and the useful report is the same.
 func (p *Prober) resolve(ctx context.Context, host string) (net.IP, domain.ProbeOutcome) {
 	if ip := net.ParseIP(host); ip != nil {
 		return ip, domain.ProbeAnswered
@@ -94,13 +95,7 @@ func (p *Prober) resolve(ctx context.Context, host string) (net.IP, domain.Probe
 	lookupCtx, cancel := context.WithTimeout(ctx, resolveTimeout)
 	defer cancel()
 	addrs, err := resolver.LookupIPAddr(lookupCtx, host)
-	var dnsErr *net.DNSError
-	switch {
-	case errors.As(err, &dnsErr) && dnsErr.IsNotFound:
-		return nil, domain.ProbeHostNotFound
-	case err != nil:
-		return nil, domain.ProbeNoResponse
-	case len(addrs) == 0:
+	if err != nil || len(addrs) == 0 {
 		return nil, domain.ProbeHostNotFound
 	}
 	for _, a := range addrs {

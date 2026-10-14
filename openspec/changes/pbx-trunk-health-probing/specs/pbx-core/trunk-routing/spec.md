@@ -42,14 +42,14 @@ The system SHALL report each trunk as `Unknown`, `Healthy`, `Degraded` or `Unhea
 #### Scenario: Reported failure degrades future selection only
 
 - **WHEN** an observation marks a trunk `Unhealthy`
-- **THEN** subsequent route selections skip it
+- **THEN** subsequent route selections skip it while another trunk can carry the call
 - **AND** no call already in progress is affected
 
 ## MODIFIED Requirements
 
 ### Requirement: Route selection is deterministic and explainable
 
-The system SHALL select outbound routes by longest prefix match, breaking ties by priority then by stored cost, skipping `Unhealthy` trunks and deprioritizing `Degraded` ones. A trunk whose health is `Unknown` SHALL be selected exactly as a `Healthy` one, so a trunk is usable as soon as it is created. The same configured set SHALL always yield the same order. Each selection SHALL identify the matched rule so the call record can show which rule matched and why.
+The system SHALL select outbound routes by longest prefix match, breaking ties by priority then by stored cost, skipping `Unhealthy` trunks while any other matching trunk can carry the call and deprioritizing `Degraded` ones. When every matching trunk is `Unhealthy`, they SHALL be tried in the same order as the last resort, so a wrong observation costs preference, never service. A trunk whose health is `Unknown` SHALL be selected exactly as a `Healthy` one, so a trunk is usable as soon as it is created. The same configured set SHALL always yield the same order. Each selection SHALL identify the matched rule so the call record can show which rule matched and why.
 
 #### Scenario: Longest prefix wins
 
@@ -60,6 +60,11 @@ The system SHALL select outbound routes by longest prefix match, breaking ties b
 
 - **WHEN** routes overlap on prefix, priority and cost
 - **THEN** repeated selections over the same configured set return the same winner every time
+
+#### Scenario: An unhealthy trunk is the last resort
+
+- **WHEN** every trunk whose routes match a destination is `Unhealthy`
+- **THEN** those trunks are tried, in the usual order, rather than the call being refused as unroutable
 
 #### Scenario: A trunk not yet checked is selectable
 

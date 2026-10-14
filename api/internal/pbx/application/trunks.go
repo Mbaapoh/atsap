@@ -35,8 +35,8 @@ const allRoutes = 100000
 var _ ports.RoutePlanner = (*Service)(nil)
 
 // CreateTrunk connects a carrier: domain row, engine projection and audit
-// record in one transaction (LLD-03 §7.2). Health starts Healthy and is
-// not a caller input.
+// record in one transaction (LLD-03 §7.2). Health starts Unknown, is not
+// a caller input, and the carrier is checked as soon as the trunk exists.
 func (s *Service) CreateTrunk(ctx context.Context, cmd ports.CreateTrunkCommand) (ports.TrunkView, error) {
 	actor, err := s.authorize(ctx, actionCreateTrunk, cmd.TenantID)
 	if err != nil {
@@ -70,6 +70,7 @@ func (s *Service) CreateTrunk(ctx context.Context, cmd ports.CreateTrunkCommand)
 	if err != nil {
 		return ports.TrunkView{}, err
 	}
+	s.checkTrunk(t.TenantID, t.ID)
 	return trunkView(t), nil
 }
 
@@ -77,14 +78,18 @@ func (s *Service) CreateTrunk(ctx context.Context, cmd ports.CreateTrunkCommand)
 //
 // An empty secret keeps the stored one; an empty username makes the
 // trunk IP-authenticated and drops its secret (UpdateTrunkCommand). The
-// observed health is carried over untouched.
+// observed health is carried over while the address is unchanged; a new
+// host or port returns it to Unknown and checks the new address at once.
 func (s *Service) UpdateTrunk(ctx context.Context, cmd ports.UpdateTrunkCommand) (ports.TrunkView, error) {
 	actor, err := s.authorize(ctx, actionUpdateTrunk, cmd.TenantID)
 	if err != nil {
 		return ports.TrunkView{}, err
 	}
 
-	var after domain.Trunk
+	var (
+		after       domain.Trunk
+		readdressed bool
+	)
 	err = s.pool.WithTenant(ctx, cmd.TenantID, func(ctx context.Context, tx pgx.Tx) error {
 		before, err := s.trunks.Get(ctx, tx, cmd.ID)
 		if err != nil {
@@ -95,6 +100,9 @@ func (s *Service) UpdateTrunk(ctx context.Context, cmd ports.UpdateTrunkCommand)
 		after.AuthUsername = cmd.AuthUsername
 		after.ChannelLimit, after.Priority = cmd.ChannelLimit, cmd.Priority
 		after.UpdatedAt = s.now()
+		if readdressed = after.Host != before.Host || after.Port != before.Port; readdressed {
+			after.Health, after.HealthReason, after.HealthObservedAt = domain.HealthUnknown, "", nil
+		}
 		switch {
 		case cmd.AuthUsername == "":
 			after.CredentialRef = ""
@@ -116,6 +124,9 @@ func (s *Service) UpdateTrunk(ctx context.Context, cmd ports.UpdateTrunkCommand)
 	})
 	if err != nil {
 		return ports.TrunkView{}, err
+	}
+	if readdressed {
+		s.checkTrunk(after.TenantID, after.ID)
 	}
 	return trunkView(after), nil
 }

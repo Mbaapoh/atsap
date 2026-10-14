@@ -2,10 +2,10 @@
 package config
 
 import (
-	"strconv"
-
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 
 	pbxdomain "atsap-api/internal/pbx/domain"
 )
@@ -97,6 +97,11 @@ type Config struct {
 	SIPPublicPort      int
 	SIPPublicTransport string
 
+	// TrunkProbeInterval is how often every trunk's carrier is checked
+	// with SIP OPTIONS (pbx-trunk-health-probing, D-74). Zero turns the
+	// schedule off; a trunk is still checked when created or re-addressed.
+	TrunkProbeInterval time.Duration
+
 	// LicenseToken is a signed licence in the compact form
 	// domain.SplitToken decodes, supplied so a compose stack, a Helm
 	// chart or a CI job can activate an installation without a portal
@@ -175,6 +180,11 @@ func Load() (Config, error) {
 	if err := cfg.loadSIPPublic(); err != nil {
 		return cfg, err
 	}
+	interval, err := time.ParseDuration(getEnv("ATSAPBX_TRUNK_PROBE_INTERVAL", "30s"))
+	if err != nil || interval < 0 || (interval > 0 && interval < 5*time.Second) {
+		return cfg, fmt.Errorf("ATSAPBX_TRUNK_PROBE_INTERVAL must be a duration of 5s or more, or 0 to turn scheduled checks off")
+	}
+	cfg.TrunkProbeInterval = interval
 
 	return cfg, nil
 }

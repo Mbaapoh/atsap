@@ -47,10 +47,15 @@ func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 // Update rewrites a trunk's configuration. It does NOT write health:
 // configuration and observation have separate writers, so an update can
 // never smuggle a health value in (spec: "Health cannot be set by
-// configuration").
+// configuration"). A new host or port does make the old observation
+// stale — it was of another address — so the trunk returns to Unknown
+// until the new address is checked (pbx-trunk-health-probing).
 func (TrunkStore) Update(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	tag, err := tx.Exec(ctx, `
 		UPDATE carrier_trunks SET
+			health_status      = CASE WHEN host = $3 AND port = $4 THEN health_status      ELSE 'UNKNOWN' END,
+			health_reason      = CASE WHEN host = $3 AND port = $4 THEN health_reason      ELSE NULL END,
+			health_observed_at = CASE WHEN host = $3 AND port = $4 THEN health_observed_at ELSE NULL END,
 			name = $2, host = $3, port = $4, auth_username = $5, credentials_ref = $6,
 			channel_limit = $7, priority = $8, updated_at = $9
 		WHERE id = $1
