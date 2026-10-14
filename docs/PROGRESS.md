@@ -136,12 +136,12 @@ that link.
 | 2026-10-13 | `pbx-sip-registrar-settings` | 5/5 | U I W E (A as regression) |
 | 2026-10-13 | `console-admin-screens` | 20/20 | Console: component, browser (mocked), browser on the real API (×3, no residue), UAT with real phones |
 | 2026-10-14 | `console-foundation` | 11/11 | Console: component, browser (mocked), browser on the real API, A1 UAT |
+| 2026-10-14 | `identity-refresh-grace` | 7/7 | U I W E (D-62 amendment: 30-second grace for the previous refresh secret) |
 
 ## Active changes
 
 | Change | State | Tasks |
 |---|---|---|
-| `identity-refresh-grace` | Implemented and verified on every tier (D-62 amendment: 30-second grace for the previous refresh secret); ready to archive | 7/7 |
 | `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter and Asterisk image scan pending | 11/13 |
 
 ## Open gaps
