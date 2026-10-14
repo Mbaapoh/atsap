@@ -47,7 +47,7 @@
 
 ## 2. The check
 
-- [ ] 2.1 `internal/pbx/acl/sipprobe`: OPTIONS over UDP with resolve, retransmit, Call-ID matching and RTT.
+- [x] 2.1 `internal/pbx/acl/sipprobe`: OPTIONS over UDP with resolve, retransmit, Call-ID matching and RTT.
 
   Verify with unit tests against a local UDP responder:
   - 200;
@@ -60,6 +60,19 @@
   - a host that does not resolve (`.invalid`).
 
   Lint clean.
+
+  *(done 2026-10-14: `sipprobe.Prober.Probe(ctx, host, port)` returns a `Result` (outcome, status, RTT) and never an error.
+  - **Resolve:** IP literals are used as given. Names are resolved with a 2 s limit and IPv4 preferred. DNS "not found" gives HostNotFound; any other resolver failure gives NoResponse, because it says nothing about the host.
+  - **Request:** an RFC 3261 OPTIONS with a fresh branch, tag and Call-ID, `rport`, and Content-Length 0.
+  - **Retransmit:** at T1 = 500 ms, doubling, within a 4 s budget.
+  - **Read:** provisional responses and other calls' packets are ignored. An ICMP refusal ends the check at once.
+  - It uses the standard library only.
+
+  Verified:
+  - 11 unit tests against a loopback responder: 200, 403, 404 and 503 are answers; a well-formed request; 100 then 200; a stray Call-ID ignored; silence after at least 3 sends; an answer to a retransmission; a refused port; NXDOMAIN; a resolver failure is not "host not found"; cancellation. All pass with `-race`.
+  - **Fault injection:** accepting any Call-ID fails `IgnoresAnotherCallsResponse`; disabling retransmission fails the silence and the retransmission tests.
+  - **Integration `TestProbe_RealPeers`:** the rig's real Asterisk answered **401 in 311 ms**; `no-such-carrier.invalid` gave HostNotFound through the real resolver; `192.0.2.1` gave NoResponse after exactly the 4 s budget.
+  - Lint, Go unit and integration pass. The package is not wired yet (task 2.2), so e2e and the console are unaffected.)*
 - [ ] 2.2 `TrunkProber`: a scheduled round over every tenant's trunks, bounded to 8, with rounds that never overlap; `CheckTrunk` after create and after a host or port change; `ATSAPBX_TRUNK_PROBE_INTERVAL`; wiring in `cmd`; D-74 in `docs/DECISIONS.md`.
 
   Verify:
