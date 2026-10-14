@@ -65,7 +65,7 @@ configuration file, and without being told what Asterisk is.
 3. ~~`console-admin-screens`~~ **archived** 2026-10-13: Users, Extensions,
    Trunks & routes (with inbound numbers and emergency), Call history;
    browser tests on the real API and UAT with real phones walking A2–A5.
-4. **`phase-a-hardening`** done 2026-10-13 (ready to archive):
+4. ~~`phase-a-hardening`~~ **archived** 2026-10-14:
    - a call dialled on a phone is recorded with its real direction (INTERNAL or OUTBOUND) and from the dialling extension's number, and the ringing phone is shown who is calling;
    - a Stasis application taken over by another process is logged and fails readiness (D-73);
    - `GetCall` returns no engine endpoint;
@@ -137,6 +137,7 @@ that link.
 | 2026-10-13 | `console-admin-screens` | 20/20 | Console: component, browser (mocked), browser on the real API (×3, no residue), UAT with real phones |
 | 2026-10-14 | `console-foundation` | 11/11 | Console: component, browser (mocked), browser on the real API, A1 UAT |
 | 2026-10-14 | `identity-refresh-grace` | 7/7 | U I W E (D-62 amendment: 30-second grace for the previous refresh secret) |
+| 2026-10-14 | `phase-a-hardening` | 10/10 | U I W E A (live takeover on the rig; phone-to-phone UAT) |
 
 ## Active changes
 
