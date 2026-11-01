@@ -35,9 +35,23 @@
   - **Instead:** migration 0016 adds a SELECT-only policy per table that applies only while `app.ingress_lookup` is `on`. `carrier_ingress_match`, in plpgsql with a pinned `search_path` and `EXECUTE` revoked from `PUBLIC`, sets the flag for its single query and clears it before returning, within the caller's transaction. It returns only (tenant_id, trunk_id). The trust model equals the existing one, in which the app sets `app.tenant_id`.
   - **Test:** `TestCarrierIngressMatch` covers A's address and number; the same address in B's range with B's number; a range match; a number whose tenant's trunk does not recognise the source (none); an unknown address (none); a number in two tenants (both returned, for the caller to refuse). In the same transaction afterwards, `carrier_trunks` reads zero rows; outside it, `inbound_numbers` reads zero.
   - **Verified:** the `internal/postgres` integration package passes, including full down and up; `make lint` 0.)*
-- [ ] 2.2 In pbx-core, add the `InboundAttributor` port and its implementation over the function: exactly one routes; none or several refuse, with an operator-only warning on several.
+- [x] 2.2 In pbx-core, add the `InboundAttributor` port and its implementation over the function: exactly one routes; none or several refuse, with an operator-only warning on several.
 
   Unit tests for the rule; integration tests across two tenants. Verify `make test` and the integration tier pass.
+
+  *(done 2026-11-01.
+  - **Telephony:** owns the port, `ports.InboundAttributor` (`AttributionRequest`, `Attribution`). It answers `Applies=false` for any endpoint but the ingress, so a configured endpoint still names its own tenant.
+  - **pbx-core:**
+    - `domain.CarrierIngressEndpoint`, `ParseRemoteAddr` (port dropped, IPv6 bracketed, zones refused) and `AttributeIngress` (exactly one routes);
+    - `postgres.IngressStore` over `carrier_ingress_match`, in its own transaction;
+    - `application.IngressAttributor`, which returns the matched trunk's own endpoint (`t_…`), so telephony's router treats the call as one that arrived on it.
+
+    Several matches log the trunk ids, operator-only, never the tenants and never on the wire.
+  - **Tests:**
+    - unit `TestIngressAttributor`: another endpoint; exactly one; none (quiet); several (logged); an unreadable address; a lookup error is an error;
+    - unit `TestParseRemoteAddr`, `TestAttributeIngress`;
+    - integration `TestIngressStore_AttributesAcrossTenants`: two tenants on one address, each number to its own trunk, the shared number refused.
+  - **Verified:** `make test`, `make lint` 0, and every `pbx` integration package plus `archtest`.)*
 
 ## 3. Projection and the arriving-call path
 

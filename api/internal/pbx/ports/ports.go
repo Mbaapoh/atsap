@@ -444,6 +444,13 @@ type TrunkStore interface {
 	SetResolvedAddresses(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, addrs []netip.Addr, at time.Time) (bool, error)
 }
 
+// IngressMatcher finds the trunks, in any tenant, that recognise a
+// carrier call's source address and whose tenant has the dialled number
+// (D-77). It is the platform's only cross-tenant read.
+type IngressMatcher interface {
+	Match(ctx context.Context, source netip.Addr, number string) ([]domain.IngressMatch, error)
+}
+
 // TrunkIdentifyProjector rewrites the engine row that recognises a
 // trunk's carrier, from the trunk's addresses alone (D-75).
 type TrunkIdentifyProjector interface {

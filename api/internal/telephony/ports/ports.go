@@ -126,6 +126,38 @@ type InboundRouter interface {
 	ResolveInbound(ctx context.Context, req InboundRequest) (InboundDecision, error)
 }
 
+// InboundAttributor is telephony-core's outbound port for attributing a
+// carrier call that arrived on a shared, tenantless ingress (D-77): from
+// the channel's transport source address and the dialled number, pbx-core
+// says which tenant the call belongs to and which trunk it arrived on.
+// The composition root wires it; without one, nothing is attributed and
+// tenantless channels are refused as before.
+type InboundAttributor interface {
+	Attribute(ctx context.Context, req AttributionRequest) (Attribution, error)
+}
+
+// AttributionRequest is what the engine knows of an arriving channel that
+// no endpoint configuration names a tenant for.
+type AttributionRequest struct {
+	SourceEndpoint string
+	// SourceAddress is the transport's remote address ("ip:port" or
+	// "[ip]:port"), never anything the caller sent in a header.
+	SourceAddress string
+	Dialled       string
+}
+
+// Attribution is the attributor's answer. Applies is false when the
+// endpoint is not the ingress: its own configuration names the tenant.
+// Refused is true when no trunk, or more than one, matches.
+type Attribution struct {
+	Applies  bool
+	Refused  bool
+	TenantID shareddomain.TenantID
+	// SourceEndpoint is the attributed trunk's own endpoint, so the
+	// router treats the call exactly as one that arrived on it.
+	SourceEndpoint string
+}
+
 // NoInboundRouter is telephony-core's default router: every arriving
 // call is refused as not found. It is what lets telephony run with no
 // pbx-core in the binary (LLD-03 DoD 15) — the walking skeleton and the
