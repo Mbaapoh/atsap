@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -121,8 +122,14 @@ type Trunk struct {
 	// is first observed.
 	HealthReason     HealthReason
 	HealthObservedAt *time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// ResolvedAddresses are what the carrier is recognised by (D-75): the
+	// host itself when it is an IP address, otherwise what the platform
+	// last resolved the name to. ResolvedAt is when a name last resolved;
+	// nil for an IP host or a name not resolved yet.
+	ResolvedAddresses []netip.Addr
+	ResolvedAt        *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // Validate checks every caller-supplied field. Health and CredentialRef

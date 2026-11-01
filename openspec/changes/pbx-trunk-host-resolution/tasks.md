@@ -19,13 +19,15 @@
 
 ## 2. Domain and probe
 
-- [ ] 2.1 Add `ResolvedAddresses` and `ResolvedAt` to `domain.Trunk`, and the pure rule `ObserveAddresses`, plus `IdentifyMatch(addresses)` (the joined literals, or none), per design D2. Unit tests cover:
+- [x] 2.1 Add `ResolvedAddresses` and `ResolvedAt` to `domain.Trunk`, and the pure rule `ObserveAddresses`, plus `IdentifyMatch(addresses)` (the joined literals, or none), per design D2. Unit tests cover:
   - an IP host, IPv4 and IPv6;
   - a name resolved to a new set (sorted, deduplicated, replacing the old one);
   - a failed name keeping its current set;
   - an empty set giving no match.
 
   Verify `make test` passes, with `internal/pbx/domain` at 100%.
+
+  *(done 2026-11-01: `domain/trunk_addresses.go` — `AddressesForHost`, `ObserveAddresses`, `NormaliseAddresses`, `SameAddresses`, `IdentifyMatch` — at 100% statement coverage. IPv4-mapped addresses are unmapped and zoned ones refused, so equal sets compare equal and a link-local zone never reaches the engine. A lookup that "succeeds" with no address counts as a failure. `make test` and `make lint` pass. The package as a whole is at 86.5%, above its unit floor of 85%; the uncovered lines are pre-existing and covered by the integration tier.)*
 - [ ] 2.2 Make `sipprobe.Prober` return every resolved address in `Result.Addresses`, alongside the one it probes (still IPv4 first). Unit tests use a fake `Resolver`: a mixed A/AAAA answer, duplicates, and a failure giving no addresses with `HostNotFound`. Verify `make test` passes.
 
 ## 3. Store, projection, check
