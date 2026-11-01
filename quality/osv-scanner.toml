@@ -80,3 +80,12 @@ name = "lightningcss-win32-x64-msvc"
 ecosystem = "npm"
 license.ignore = true
 reason = "build-time only (Vite CSS transform), not distributed; MPL-2.0 file-level copyleft does not reach the bundle"
+
+# golang.org/x/crypto/openpgp is deprecated and unmaintained; the advisory
+# has no fixed version and never will. Nothing here imports openpgp:
+# govulncheck (2026-11-01, x/crypto v0.56.0) finds no call into it. The
+# expiry forces a fresh look rather than a permanent pass.
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+ignoreUntil = 2026-12-01T00:00:00Z
+reason = "x/crypto/openpgp is not imported (govulncheck: not reachable); the advisory has no fix"

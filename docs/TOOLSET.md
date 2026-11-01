@@ -189,7 +189,7 @@ All developer environments and CI pipelines execute tools managed strictly by `m
 
 | Tool | Version | Config File | Purpose |
 |---|---|---|---|
-| **Go** | `1.26` (1.26.9; D-71) | `.mise.toml` | Application compilation, unit testing, benchmark execution |
+| **Go** | `1.26` (1.26.10; D-71) | `.mise.toml` | Application compilation, unit testing, benchmark execution |
 | **golangci-lint** | `2.13.1` (pinned) | `.mise.toml`, `.golangci.yml` | Strict static analysis: correctness, security (gosec), error wrapping, contexts, HTTP bodies, SQL rows, style and complexity; dependency boundary linting (D-71) |
 | **govulncheck** | `v1.7.0` (pinned via `GOVULNCHECK_VERSION` in `Jenkinsfile`, mirrored in `mise run vuln`) | CI Pipeline | Continuous scanning for known Go vulnerabilities and CVEs |
 | **buf** | `1.40+` | `api/buf.yaml` | Protocol Buffer compilation, linting, and breaking change detection |
