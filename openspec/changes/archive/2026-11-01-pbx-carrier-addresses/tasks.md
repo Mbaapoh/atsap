@@ -149,7 +149,7 @@
     - `docs/uat/trunk-host-resolution.md` gains steps 9–12, executed as a scripted walk in Chromium: PASS (refusals at their fields; "Also from …"; identify `198.51.100.9,203.0.113.0/28`; the owner's `localhost` trunks read "Address not allowed");
     - PROGRESS (Done row, pre-pilot list, the overlap gap kept and widened to ranges);
     - `coverage.md`.
-  - **Floors ratcheted:** Go unit 77.4 → 78.4.
+  - **Floors ratcheted:** Go unit 77.4 → 78.3 and `pbx/domain` 86.4 → 89.4; console statements 96.3 → 96.4, branches 88.3 → 88.8.
   - **Verified:**
     - `make docs` passes;
     - `make quality` exit 0 on the first run (lint 0; unit 78.4%; console 408/408; no vulnerabilities, 0 reachable; no leaks; audit 0);
