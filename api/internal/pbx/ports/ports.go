@@ -10,6 +10,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -196,6 +197,12 @@ type CarrierCheck struct {
 	Outcome domain.ProbeOutcome
 	Status  int
 	RTT     time.Duration
+	// Resolved is whether the host gave addresses: always for an IP host,
+	// and for a name that resolved, whatever the carrier then answered.
+	// Addresses are every address it gave (A and AAAA), not only the one
+	// checked: the carrier is recognised by all of them (D-75).
+	Resolved  bool
+	Addresses []netip.Addr
 }
 
 // CarrierProbe checks the carrier at host:port. It never fails: every

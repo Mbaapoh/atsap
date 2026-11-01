@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -168,9 +169,65 @@ func TestProbe_RefusedPortIsNoResponse(t *testing.T) {
 	assert.Equal(t, domain.ProbeNoResponse, got.Outcome)
 }
 
-type fakeResolver struct{ err error }
+type fakeResolver struct {
+	addrs []net.IPAddr
+	err   error
+}
 
-func (f fakeResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) { return nil, f.err }
+func (f fakeResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) {
+	return f.addrs, f.err
+}
+
+// A name is recognised by every address it gives (D-75), not only the one
+// checked: A and AAAA, sorted, IPv4 first, without duplicates. The check
+// itself goes to IPv4.
+func TestProbe_ReturnsEveryResolvedAddress(t *testing.T) {
+	r := newResponder(t, func(req string, _ int) []string { return []string{response(req, "200 OK", header(req, "Call-ID"))} })
+	p := fast()
+	p.Resolver = fakeResolver{addrs: []net.IPAddr{
+		{IP: net.ParseIP("::1")}, {IP: net.ParseIP("127.0.0.1")}, {IP: net.ParseIP("127.0.0.1")},
+		{IP: net.IPv4(127, 0, 0, 1)}, // the same address as a 16-byte slice
+	}}
+
+	got := p.Probe(context.Background(), "carrier.example", r.port())
+	assert.Equal(t, domain.ProbeAnswered, got.Outcome, "the check went to the IPv4 responder")
+	assert.True(t, got.Resolved)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("::1")}, got.Addresses)
+}
+
+// The addresses are reported whatever the carrier then did: a name that
+// resolves to a silent carrier still says where the carrier is.
+func TestProbe_ReportsAddressesOfASilentCarrier(t *testing.T) {
+	p := fast()
+	p.Resolver = fakeResolver{addrs: []net.IPAddr{{IP: net.ParseIP("192.0.2.1")}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	got := p.Probe(ctx, "carrier.example", 5060)
+	assert.Equal(t, domain.ProbeNoResponse, got.Outcome)
+	assert.True(t, got.Resolved)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("192.0.2.1")}, got.Addresses)
+}
+
+// An IP host is its own address and is never looked up.
+func TestProbe_AnIPHostIsNotLookedUp(t *testing.T) {
+	p := fast()
+	p.Resolver = fakeResolver{err: errors.New("the resolver must not be asked")}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	got := p.Probe(ctx, "192.0.2.1", 5060)
+	assert.True(t, got.Resolved)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("192.0.2.1")}, got.Addresses)
+}
+
+// A lookup that answers with no address is a name that did not resolve.
+func TestProbe_AnEmptyAnswerIsHostNotFound(t *testing.T) {
+	p := fast()
+	p.Resolver = fakeResolver{addrs: []net.IPAddr{}}
+	got := p.Probe(context.Background(), "carrier.example", 5060)
+	assert.Equal(t, domain.ProbeHostNotFound, got.Outcome)
+	assert.False(t, got.Resolved)
+	assert.Empty(t, got.Addresses)
+}
 
 func TestProbe_HostThatDoesNotResolve(t *testing.T) {
 	p := fast()
@@ -192,7 +249,10 @@ func TestProbe_AnyResolutionFailureIsHostNotFound(t *testing.T) {
 		errors.New("boom"),
 	} {
 		p.Resolver = fakeResolver{err: err}
-		assert.Equal(t, domain.ProbeHostNotFound, p.Probe(context.Background(), "carrier.example", 5060).Outcome, err.Error())
+		got := p.Probe(context.Background(), "carrier.example", 5060)
+		assert.Equal(t, domain.ProbeHostNotFound, got.Outcome, err.Error())
+		assert.False(t, got.Resolved, "a failed lookup gives no addresses: %s", err)
+		assert.Empty(t, got.Addresses)
 	}
 }
 

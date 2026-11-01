@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -65,28 +66,35 @@ func (p *Prober) Probe(ctx context.Context, host string, port int) Result {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	ip, outcome := p.resolve(ctx, host)
-	if outcome != domain.ProbeAnswered {
-		return Result{Outcome: outcome}
+	addrs, ok := p.resolve(ctx, host)
+	if !ok {
+		return Result{Outcome: domain.ProbeHostNotFound}
 	}
-	conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: ip, Port: port})
-	if err != nil {
-		return Result{Outcome: domain.ProbeNoResponse}
-	}
-	defer func() { _ = conn.Close() }()
+	// The check goes to the first address: addrs is normalised, so that
+	// is IPv4 when the host has one.
+	result := func() Result {
+		conn, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(netip.AddrPortFrom(addrs[0], uint16(port)))) // #nosec G115 -- port is validated 1–65535 by domain.Trunk
+		if err != nil {
+			return Result{Outcome: domain.ProbeNoResponse}
+		}
+		defer func() { _ = conn.Close() }()
 
-	callID := randomHex(16) + "@atsapbx"
-	req := optionsRequest(host, port, conn.LocalAddr().(*net.UDPAddr), callID)
-	return exchange(ctx, conn, req, callID, t1)
+		callID := randomHex(16) + "@atsapbx"
+		req := optionsRequest(host, port, conn.LocalAddr().(*net.UDPAddr), callID)
+		return exchange(ctx, conn, req, callID, t1)
+	}()
+	result.Resolved, result.Addresses = true, addrs
+	return result
 }
 
-// resolve returns the address to check, preferring IPv4, or HostNotFound
-// when the name cannot be resolved — whether DNS says it does not exist
-// or the lookup fails: a mistyped name often fails as a temporary error
-// rather than a clean NXDOMAIN, and the useful report is the same.
-func (p *Prober) resolve(ctx context.Context, host string) (net.IP, domain.ProbeOutcome) {
-	if ip := net.ParseIP(host); ip != nil {
-		return ip, domain.ProbeAnswered
+// resolve returns every address host gives, sorted and deduplicated, or
+// false when the name cannot be resolved — whether DNS says it does not
+// exist or the lookup fails: a mistyped name often fails as a temporary
+// error rather than a clean NXDOMAIN, and the useful report is the same.
+// An IP host is its own address, with no lookup.
+func (p *Prober) resolve(ctx context.Context, host string) ([]netip.Addr, bool) {
+	if fixed := domain.AddressesForHost(host); fixed != nil {
+		return fixed, true
 	}
 	resolver := p.Resolver
 	if resolver == nil {
@@ -94,16 +102,18 @@ func (p *Prober) resolve(ctx context.Context, host string) (net.IP, domain.Probe
 	}
 	lookupCtx, cancel := context.WithTimeout(ctx, resolveTimeout)
 	defer cancel()
-	addrs, err := resolver.LookupIPAddr(lookupCtx, host)
-	if err != nil || len(addrs) == 0 {
-		return nil, domain.ProbeHostNotFound
+	found, err := resolver.LookupIPAddr(lookupCtx, host)
+	if err != nil {
+		return nil, false
 	}
-	for _, a := range addrs {
-		if v4 := a.IP.To4(); v4 != nil {
-			return v4, domain.ProbeAnswered
+	addrs := make([]netip.Addr, 0, len(found))
+	for _, a := range found {
+		if addr, ok := netip.AddrFromSlice(a.IP); ok {
+			addrs = append(addrs, addr)
 		}
 	}
-	return addrs[0].IP, domain.ProbeAnswered
+	addrs = domain.NormaliseAddresses(addrs)
+	return addrs, len(addrs) > 0
 }
 
 // exchange sends req, retransmitting on RFC 3261's schedule, until a

@@ -28,7 +28,9 @@
   Verify `make test` passes, with `internal/pbx/domain` at 100%.
 
   *(done 2026-11-01: `domain/trunk_addresses.go` — `AddressesForHost`, `ObserveAddresses`, `NormaliseAddresses`, `SameAddresses`, `IdentifyMatch` — at 100% statement coverage. IPv4-mapped addresses are unmapped and zoned ones refused, so equal sets compare equal and a link-local zone never reaches the engine. A lookup that "succeeds" with no address counts as a failure. `make test` and `make lint` pass. The package as a whole is at 86.5%, above its unit floor of 85%; the uncovered lines are pre-existing and covered by the integration tier.)*
-- [ ] 2.2 Make `sipprobe.Prober` return every resolved address in `Result.Addresses`, alongside the one it probes (still IPv4 first). Unit tests use a fake `Resolver`: a mixed A/AAAA answer, duplicates, and a failure giving no addresses with `HostNotFound`. Verify `make test` passes.
+- [x] 2.2 Make `sipprobe.Prober` return every resolved address in `Result.Addresses`, alongside the one it probes (still IPv4 first). Unit tests use a fake `Resolver`: a mixed A/AAAA answer, duplicates, and a failure giving no addresses with `HostNotFound`. Verify `make test` passes.
+
+  *(done 2026-11-01: `ports.CarrierCheck` gains `Resolved` and `Addresses`. The probe normalises with the domain's `NormaliseAddresses`, so IPv4 sorts first and the check goes there. An IP host is never looked up. The addresses are reported whatever the carrier then did: a silent carrier still says where it is. An empty answer counts as a failure. Five new or extended unit tests; `sipprobe` coverage 85.1% → 89.9%. `make test` and `make lint` pass.)*
 
 ## 3. Store, projection, check
 
