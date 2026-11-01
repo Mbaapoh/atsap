@@ -111,12 +111,25 @@
     - e2e 29;
     - rig integration 26 (on the rebuilt rig app, migration 14);
     - UAT 2 of 3, plus audit 0. The A3–A5 phone UAT could not run: the owner's own phones (`~/atsap-phones/1001` and `1002`, registered) hold UDP 5070/5071. It runs in 4.2 once the ports are free.)*
-- [ ] 4.2 Live, Go e2e on the rig:
+- [x] 4.2 Live, Go e2e on the rig:
   - a container carrier whose trunk host is a different name, recognised only through an inbound range (404 for an unassigned DID, 401 before the range is added and after it is removed);
   - `localhost` and `127.0.0.1` refused with the field named;
   - a name resolving to loopback reads `Unhealthy · Address not allowed`.
 
   Verify the full Go e2e tier, the three phone UATs and the console UAT pass after `make rig-restore`.
+
+  *(done 2026-11-01, on the rig app rebuilt with this change (migration 14).
+  - **New, all pass** (`e2e/carrier_addresses_test.go`):
+    - `RecognisedFromAPublishedRange`: a container carrier gets 401, then 404 once its `/32` is a range of a trunk whose host never resolves (the identify row is `<carrier>,203.0.113.0/28`), then 401 again after removal, with no row.
+    - `ANonCarrierHostIsRefused`: `localhost`, `127.0.0.1`, `::1` and `pbx.localhost` get 400 `invalid_argument` "trunk host cannot be a carrier"; `10.0.0.0/8` gets "broader than /16"; nothing is created.
+    - `ANameResolvingToLoopbackIsNotChecked`: `ip6-localhost` reads Unhealthy · Address not allowed, with no row.
+  - **Then, after `make rig-restore`:**
+    - the full Go e2e tier, every package (`pbx/e2e` 51 s, `telephony/e2e`, `identity/e2e`);
+    - `uat-auto`, `uat-placement` and `uat-inbound` PASS;
+    - console UAT 3/3.
+  - **Found on the way:** the app would not start on the rig (`SIP_PUBLIC_HOST=localhost` refused by the new host rule). Fixed in its own commit: the registrar is checked for syntax only, with a regression test.
+  - **The owner's phones:** they held 5070/5071, so with the owner's approval they were stopped for the run and restarted after. Both re-registered.
+  - **Rig state afterwards:** the owner's two `localhost` trunks read "Address not allowed"; `testwithsteriskhost` stays Healthy.)*
 
 ## 5. Docs and close
 
