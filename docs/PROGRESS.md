@@ -7,7 +7,9 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-11-01, after `pbx-carrier-ingress`: tenants that
+**Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
+
+**Last updated:** 2026-11-01 (end of week), after `pbx-carrier-ingress`: tenants that
 share a carrier each receive their own numbers' calls, attributed by the
 platform (D-77). Before that, the same day, `pbx-carrier-addresses`: a carrier
 is recognised from its published signalling ranges, and hosts that cannot
@@ -86,6 +88,17 @@ configuration file, and without being told what Asterisk is.
    **done** 2026-11-01 (`pbx-carrier-addresses`, D-76).
 7. ~~Shared carrier address~~ **done** 2026-11-01
    (`pbx-carrier-ingress`, D-77).
+
+**Owner decision, 2026-11-01:** the following close **in this phase**,
+in this order (details and open questions: [HANDOFF.md](HANDOFF.md) §1
+and §5):
+
+- **Click-to-call** (`console-click-to-call`, planned).
+- **Trunk health per HLD T-6, implemented as written** (10 s checks,
+  thresholds, 5-minute recovery), with the **BR-08 carrier-failure
+  alert**.
+- **Browser calling** (FBR-R1-01), pending the WebRTC decisions listed in
+  the handoff.
 8. **Toll-fraud protection**: enforce outbound destination classes.
 9. **`identity-oidc-google`**: Sign in with Google, Gmail and Workspace
    ([D-67](DECISIONS.md)).
@@ -155,6 +168,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
+| `console-click-to-call` | Planned 2026-11-01: ring the caller first, then the destination (closes call-placement G6); Place a call and Hang up on Call history | 0/6 |
 | `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps

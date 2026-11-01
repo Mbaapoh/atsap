@@ -1,5 +1,7 @@
 # atsap
 
+> **Continuing the work?** Start with [AGENTS.md](AGENTS.md) and [docs/HANDOFF.md](docs/HANDOFF.md).
+
 A Go control-plane service on top of Asterisk. The Go app drives calls via
 the **Asterisk REST Interface (ARI)** — answering, playing media,
 originating calls, bridging — and observes system/call events via the
