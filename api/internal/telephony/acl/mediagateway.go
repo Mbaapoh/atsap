@@ -97,7 +97,8 @@ func (a *MediaGatewayAdapter) AnswerChannel(ctx context.Context, channelRef port
 
 // RejectChannel refuses an arriving channel at the SIP edge. The cause
 // maps to the ARI hangup reason that produces the standard response
-// (PRD §12.4): unallocated → 404, congestion → 503, rejected → 403. A
+// (PRD §12.4): unallocated → 404, congestion → 503, rejected → 403,
+// no_answer → 480 (a destination that could not be reached). A
 // plain 503 ships for congestion: Asterisk 22.11.0 cannot emit
 // Retry-After on an unanswered inbound channel (recorded gap, design
 // D8). Refusing with RefusalNone is a programming error, not silence.
@@ -106,6 +107,7 @@ func (a *MediaGatewayAdapter) RejectChannel(ctx context.Context, channelRef port
 		ports.RefusalNotFound:    "unallocated",
 		ports.RefusalUnavailable: "congestion",
 		ports.RefusalForbidden:   "rejected",
+		ports.RefusalUnreachable: "no_answer",
 	}[cause]
 	if !ok {
 		return fmt.Errorf("acl: reject channel: refusing with cause %q refuses nothing", cause)

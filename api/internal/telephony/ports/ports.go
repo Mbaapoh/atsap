@@ -82,6 +82,10 @@ const (
 	// RefusalForbidden is a compliance refusal: the engine answers SIP
 	// 403 (ARI hangup reason "rejected").
 	RefusalForbidden RefusalCause = "forbidden"
+	// RefusalUnreachable is a destination the platform could not reach —
+	// an extension with no device registered: the engine answers SIP 480
+	// Temporarily Unavailable (ARI hangup reason "no_answer").
+	RefusalUnreachable RefusalCause = "unreachable"
 )
 
 // InboundRequest describes a channel that arrived at the engine without

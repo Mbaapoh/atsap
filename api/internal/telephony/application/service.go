@@ -262,6 +262,42 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	return callID, nil
 }
 
+// connectArrived adds the routed destination to an arriving call and
+// originates its leg. A destination that cannot be reached refuses the
+// caller 480 rather than leaving it ringing.
+func (s *Service) connectArrived(ctx context.Context, call *domain.Call, decision ports.InboundDecision, callerRef ports.ChannelRef, now time.Time) error {
+	tenantID, callID := call.TenantID, call.ID
+	destination := &domain.CallParticipant{
+		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: tenantID,
+		Role: domain.RoleAgent, EndpointURI: decision.DestinationURI, JoinedAt: now,
+	}
+	if err := call.AddParticipant(destination); err != nil {
+		return fmt.Errorf("add arrived destination participant: %w", err)
+	}
+	// The destination must be persisted before origination: the channel
+	// history row originateParticipant writes references it, and the
+	// database refuses orphans.
+	if err := s.saveCall(ctx, call); err != nil {
+		return err
+	}
+	// The destination is shown who is calling: the dialling extension,
+	// or the carrier's caller (phase-a-hardening D2).
+	callerID := presentedCallerID(call.SourceNumber, decision.CallerName)
+	if err := s.originateParticipant(ctx, tenantID, callID, destination, callerID); err != nil {
+		// The caller must hear why, never silence (spec inbound-routing:
+		// "No arriving call is left silent"): a destination that cannot be
+		// reached — an extension with no device registered — is 480.
+		s.logger.Warn("arriving call's destination could not be reached; refusing",
+			"error", err, "call_id", callID, "tenant_id", tenantID)
+		if rerr := s.refuseArrived(ctx, callID, callerRef, ports.RefusalUnreachable, inboundRefusalReason(ports.RefusalUnreachable)); rerr != nil {
+			return fmt.Errorf("originate arrived destination %s: %w (and refusing the caller: %v)", destination.ID, err, rerr)
+		}
+		return nil
+	}
+
+	return nil
+}
+
 // attribute asks the inbound attributor which tenant and trunk a
 // tenantless channel belongs to. Not found when there is no attributor,
 // the endpoint is not the ingress, or no single trunk matches;
@@ -437,27 +473,7 @@ func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, 
 		return fmt.Errorf("ring arriving caller: %w", err)
 	}
 
-	destination := &domain.CallParticipant{
-		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: tenantID,
-		Role: domain.RoleAgent, EndpointURI: decision.DestinationURI, JoinedAt: now,
-	}
-	if err := call.AddParticipant(destination); err != nil {
-		return fmt.Errorf("add arrived destination participant: %w", err)
-	}
-	// The destination must be persisted before origination: the channel
-	// history row originateParticipant writes references it, and the
-	// database refuses orphans.
-	if err := s.saveCall(ctx, call); err != nil {
-		return err
-	}
-	// The destination is shown who is calling: the dialling extension,
-	// or the carrier's caller (phase-a-hardening D2).
-	callerID := presentedCallerID(call.SourceNumber, decision.CallerName)
-	if err := s.originateParticipant(ctx, tenantID, callID, destination, callerID); err != nil {
-		return fmt.Errorf("originate arrived destination %s: %w", destination.ID, err)
-	}
-
-	return nil
+	return s.connectArrived(ctx, call, decision, callerRef, now)
 }
 
 // refuseArrived rejects an arriving channel at the SIP edge and records
@@ -494,6 +510,8 @@ func inboundRefusalReason(cause ports.RefusalCause) string {
 		return "inbound call refused: no capacity"
 	case ports.RefusalForbidden:
 		return "inbound call refused: compliance rejected the call"
+	case ports.RefusalUnreachable:
+		return "inbound call refused: destination unreachable"
 	default:
 		return "inbound call refused"
 	}

@@ -1373,3 +1373,20 @@ func TestCallArrived_TheCarrierIngressIsAttributedFirst(t *testing.T) {
 		})
 	}
 }
+
+// Spec inbound-routing, "No arriving call is left silent": when the
+// destination cannot be reached — originating its leg fails, as for an
+// extension with no device registered — the caller is refused 480 and the
+// call ends, instead of ringing until the carrier gives up. (Found by the
+// pbx-carrier-ingress e2e: the carrier heard 180 Ringing, then nothing.)
+func TestCallArrived_AnUnreachableDestinationIsRefusedNotLeftRinging(t *testing.T) {
+	h := arrivedHarness(&fakeInboundRouter{decision: connectDecision()})
+	h.mediaGW.failOriginate = errors.New("ari: allocation failed")
+	require.NoError(t, h.svc.CallArrived(context.Background(), shareddomain.NewTenantID().String(), "t_0123", "", "+442071234599", "+15550001", "chan-arriving"))
+
+	require.Len(t, h.mediaGW.rejectedChans, 1)
+	assert.Equal(t, ports.RefusalUnreachable, h.mediaGW.rejectedChans[0].cause)
+	call := lastSavedCall(t, h)
+	assert.Equal(t, domain.CallTerminated, call.State)
+	assert.Equal(t, "inbound call refused: destination unreachable", call.TerminationReason)
+}

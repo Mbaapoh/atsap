@@ -163,6 +163,7 @@ func TestMediaGatewayAdapter_RejectChannel_MapsCause(t *testing.T) {
 	}{
 		{ports.RefusalNotFound, "unallocated"},
 		{ports.RefusalUnavailable, "congestion"},
+		{ports.RefusalUnreachable, "no_answer"}, // SIP 480: an unreachable destination
 		{ports.RefusalForbidden, "rejected"},
 	} {
 		t.Run(string(tc.cause), func(t *testing.T) {
