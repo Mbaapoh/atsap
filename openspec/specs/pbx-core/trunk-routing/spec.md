@@ -188,6 +188,12 @@ The system SHALL recognise a call presented by a carrier as arriving on a trunk 
 - **WHEN** a trunk is updated without an inbound signalling address it had
 - **THEN** calls from that address are no longer attributed to the trunk, unless it is also an address of the trunk's host
 
+#### Scenario: Two trunks on one carrier address both receive calls
+
+- **WHEN** trunks in two tenants recognise the same carrier address
+- **THEN** a call from that address is attributed to the trunk whose tenant owns the dialled number
+- **AND** neither tenant's configuration is changed or refused because of the other
+
 ### Requirement: Trunk health is checked, never set
 
 The system SHALL report each trunk as `Unknown`, `Healthy`, `Degraded` or `Unhealthy`, together with the reason for that state and the time it was last observed. A new trunk SHALL be `Unknown` until it is first observed. The system SHALL observe each trunk actively by sending its carrier a SIP OPTIONS request from the platform at a configured interval, and as soon as a trunk is created or its host or port changes. Any SIP response SHALL count as the carrier answering: `Healthy`, or `Degraded` when the response is slow; a server error response SHALL count as `Unhealthy`; a host that does not resolve, a host name that resolves only to addresses that cannot be a carrier (loopback, link-local, unspecified or multicast), or no response within the timeout, SHALL count as `Unhealthy` with that reason. The platform SHALL NOT send a check to an address that cannot be a carrier. Outcomes of calls through the trunk SHALL also update its health. Health changes only through these observations, never through a caller-supplied value.
