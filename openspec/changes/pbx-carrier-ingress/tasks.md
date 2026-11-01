@@ -12,7 +12,9 @@
   - **(b)** ARI `GET /channels/{id}/variable?variable=CHANNEL(pjsip,remote_addr)` returned `172.18.0.8:60217`: the carrier container's address and source port. It needs host-and-port parsing (an IPv6 address would be bracketed). The channel was held in the engine's echo test (`ael-demo` 600), because one the app refuses lives for milliseconds.
   - **(c)** With a 500-entry identify row (499 × /24 plus the carrier), the worst of five INVITEs took 3.127 s against a 3.131 s baseline for an unknown source. The harness reads replies for a fixed 3 s window; the difference is nil.
   - **Found:** `ps_endpoint_id_ips.match` was `VARCHAR(80)` (migration 0009), so a trunk with several D-76 ranges failed to create with an internal error. Fixed in its own commit: migration 0015 makes it `TEXT`, with a regression test of 20 IPv6 ranges. The attribution function therefore becomes migration 0016.)*
-- [ ] 1.2 Record D-77 (carrier traffic enters through one ingress and is attributed by source address and number; it amends D-75 and D-76's per-trunk recognition). Cite the OR-ed identify evidence and INV-10. Verify `make docs` passes.
+- [x] 1.2 Record D-77 (carrier traffic enters through one ingress and is attributed by source address and number; it amends D-75 and D-76's per-trunk recognition). Cite the OR-ed identify evidence and INV-10. Verify `make docs` passes.
+
+  *(done 2026-11-01: D-77 recorded with five rejected alternatives and the spike evidence; `make docs` passes.)*
 
 ## 2. Attribution
 

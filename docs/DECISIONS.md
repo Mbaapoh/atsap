@@ -2640,6 +2640,56 @@ D-75 (names resolved by the platform)
 
 ---
 
+**D-77 · Carrier traffic enters through one ingress and is attributed by the platform (2026-11-01).**
+
+**Decision:** The engine has one platform-owned endpoint for all carrier
+traffic, `carrier-ingress`. It carries no tenant, and its identify row is
+the union of every trunk's carrier addresses and inbound ranges, across
+tenants. Per-trunk identify rows are removed; trunk endpoints still send
+calls out.
+
+The platform attributes each carrier call from the transport source
+address (`CHANNEL(pjsip,remote_addr)`) and the dialled number:
+- **exactly one** trunk whose addresses contain the source, and whose
+  tenant owns the number, routes the call as that tenant's trunk;
+- **none or several** are refused `404`, with an operator-only log entry,
+  and the carrier learns of no tenant.
+
+The only cross-tenant read is one `SECURITY DEFINER` function returning
+(tenant, trunk) for an (address, number) pair. This amends D-75 and D-76:
+their addresses are recognised by the ingress, not per trunk.
+
+**Context:** Tenants that buy from the same carrier receive its calls from
+the same addresses, and with per-trunk rows the engine attributed them to
+whichever row it found first, so one tenant's calls could reach another's
+plan (INV-10). Asterisk 22's identify matches address, header or
+Request-URI, but OR-ed: "this address **and** this number" cannot be
+configured (verified on the rig, 2026-11-01). A spike proved that one
+ingress takes a carrier's calls, that ARI reads the transport source
+address, and that 500 ranges add no measurable time
+(`pbx-carrier-ingress` task 1.1).
+
+**Alternatives rejected:**
+- Per-trunk rows with `match_request_uri`: the criteria are OR-ed.
+- A carrier-specific header per tenant: only some carriers send one.
+- Refusing a second trunk on a shared address: it blocks real
+  multi-tenant setups, and the refusal reveals another tenant (INV-10).
+- An SBC (Kamailio or OpenSIPS) in front now: a new moving part. The
+  attribution rule is the same, and can move into one later.
+- Making numbers unique across tenants at configuration time: it reveals
+  another tenant's number. Ambiguity is refused at call time instead.
+
+**Trade-off accepted:** a number configured in two tenants that share a
+carrier rings in neither until the operator resolves it. Behind NAT, the
+platform must see carriers' real addresses, as identify already requires.
+
+**Related Decisions:** D-47, D-73, D-75, D-76
+**Traceability:** BRD FBR-R1-04, BR-15; PRD INV-10, AC-01.1;
+`openspec/changes/pbx-carrier-ingress` (design D1–D4); specs
+`pbx-core/inbound-routing`, `pbx-core/trunk-routing`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
