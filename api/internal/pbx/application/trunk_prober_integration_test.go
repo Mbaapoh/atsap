@@ -344,3 +344,29 @@ func TestTrunkProber_AStaleCheckRecordsNoAddresses(t *testing.T) {
 	assert.Equal(t, "198.51.100.7", match, "the late lookup of the old name changed nothing")
 	assert.Equal(t, []netip.Addr{netip.MustParseAddr("198.51.100.7")}, h.storedTrunk(t, created.ID).ResolvedAddresses)
 }
+
+// D-76: a check that finds only addresses that cannot be a carrier sends
+// nothing, reads "Address not allowed", and leaves the carrier recognised
+// from its inbound ranges only — never from loopback recorded before the
+// rule.
+func TestTrunkProber_AddressNotAllowedKeepsOnlyTheRanges(t *testing.T) {
+	h := newHarness(t)
+	notAllowed := ports.CarrierCheck{Outcome: domain.ProbeAddressNotAllowed}
+	carriers := newFakeCarriers(map[string]ports.CarrierCheck{"loop.carrier.example": notAllowed})
+	prober, _ := withProber(h, carriers)
+
+	cmd := h.trunkCmd("Loops back")
+	cmd.Host, cmd.InboundAddresses = "loop.carrier.example", []string{"203.0.113.0/28"}
+	tr, err := h.svc.CreateTrunk(h.ctx, cmd)
+	require.NoError(t, err)
+	// As D-75 recorded it before the rule existed.
+	_, err = h.pool.Unwrap().Exec(context.Background(), `UPDATE ps_endpoint_id_ips SET "match" = '127.0.0.1,::1,203.0.113.0/28' WHERE id = $1`,
+		domain.TrunkEndpointIdentifier(tr.ID))
+	require.NoError(t, err)
+
+	require.NoError(t, prober.Round(context.Background()))
+	v := trunkHealth(h.ctx, t, h.svc, h.tenant, tr.ID)
+	assert.Equal(t, domain.HealthUnhealthy, v.Health)
+	assert.Equal(t, domain.ReasonAddressNotAllowed, v.HealthReason)
+	assert.Equal(t, "203.0.113.0/28", h.identifyMatchOf(t, tr.ID), "the ranges stay; loopback is gone")
+}

@@ -65,7 +65,7 @@
     - an empty list was written as NULL;
     - `TestProbe_RealPeers` reached the rig's Asterisk on host loopback; it now widens `Permit` for that peer and asserts the default refuses it.
   - **Verified:** unit tests, `make lint` 0, all 35 integration packages on `atsapbx_test`, console typecheck.)*
-- [ ] 3.2 Identify is the union: `ProjectTrunk`, `ProjectTrunkIdentify` and `DiffTrunk` use `IdentifyMatch(resolved, inbound)`. The prober passes inbound ranges when it reprojects, and clears the host part for `AddressNotAllowed`.
+- [x] 3.2 Identify is the union: `ProjectTrunk`, `ProjectTrunkIdentify` and `DiffTrunk` use `IdentifyMatch(resolved, inbound)`. The prober passes inbound ranges when it reprojects, and clears the host part for `AddressNotAllowed`.
 
   Integration tests:
   - ranges are projected at create;
@@ -75,6 +75,15 @@
   - reconcile reports and repairs each case.
 
   Verify the `pbx` integration tiers pass.
+
+  *(done 2026-11-01.
+  - **Projector:** builds identify from `IdentifyMatch(resolved, inbound)` (wired in 3.1, tested here).
+  - **Prober:** an IP host that cannot be a carrier (one created on `127.0.0.1` before D-76) now falls through to the reprojection that drops the host's part while its ranges stay.
+  - **Tests:**
+    - `TestTrunkInboundAddresses_AreProjectedAtOnce`: ranges only for an unresolved name; host plus ranges for an IP; a removed range gone at once; no row with neither.
+    - `TestTrunkProber_AddressNotAllowedKeepsOnlyTheRanges`: a pre-D-76 row of `127.0.0.1,::1,203.0.113.0/28` becomes `203.0.113.0/28`, with the reason `ADDRESS_NOT_ALLOWED`.
+    - `TestProjectTrunk_IdentifyIsTheUnionOfAddressesAndRanges`: loopback never projected; a missing range is drift; repair restores the union; a loopback-only trunk has no row.
+  - **Verified:** all `pbx` integration packages pass on `atsapbx_test`; `make lint` 0.)*
 
 ## 4. Console and live proof
 

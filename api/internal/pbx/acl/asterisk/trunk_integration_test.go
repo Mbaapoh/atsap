@@ -269,3 +269,38 @@ func TestDiffTrunk(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, inv.Unattributable, "trunk rows are attributable, not unknown")
 }
+
+// D-76: the identify row is the union of the host's carrier addresses and
+// the inbound ranges; loopback recorded before the rule is never
+// projected; reconcile compares against the union and repairs it.
+func TestProjectTrunk_IdentifyIsTheUnionOfAddressesAndRanges(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	tr := sampleTrunk()
+	tr.ResolvedAddresses = append(tr.ResolvedAddresses, netip.MustParseAddr("127.0.0.1"))
+	tr.InboundAddresses = []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
+	h.projectTrunk(t, tr, []byte(carrierSecret))
+	match, ok := h.identifyMatch(t, tr.ID)
+	require.True(t, ok)
+	assert.Equal(t, "198.51.100.0/24,203.0.113.10,2001:db8::10", match, "loopback never reaches the engine")
+
+	drift, err := h.projector.DiffTrunk(ctx, tr)
+	require.NoError(t, err)
+	assert.Empty(t, drift)
+
+	_, err = h.pool.Unwrap().Exec(ctx, `UPDATE ps_endpoint_id_ips SET "match" = '203.0.113.10,2001:db8::10' WHERE id = $1`, domain.TrunkEndpointIdentifier(tr.ID))
+	require.NoError(t, err)
+	drift, err = h.projector.DiffTrunk(ctx, tr)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"identify"}, drift, "a missing range is drift")
+	h.projectTrunk(t, tr, nil)
+	drift, err = h.projector.DiffTrunk(ctx, tr)
+	require.NoError(t, err)
+	assert.Empty(t, drift, "repair restores the union")
+
+	onlyLoop := sampleTrunk()
+	onlyLoop.ResolvedAddresses = []netip.Addr{netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("::1")}
+	h.projectTrunk(t, onlyLoop, []byte(carrierSecret))
+	_, ok = h.identifyMatch(t, onlyLoop.ID)
+	assert.False(t, ok, "a localhost trunk recorded before D-76 recognises nothing")
+}

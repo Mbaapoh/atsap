@@ -166,14 +166,16 @@ func (p *TrunkProber) check(ctx context.Context, t domain.Trunk) {
 // recordAddresses brings the trunk's addresses, and the engine row that
 // recognises its carrier, up to what the check found (D-75), inside the
 // check's transaction. An IP host's address is set by configuration and
-// needs nothing. A resolved name records its addresses, and the row is
+// needs nothing — unless it cannot be a carrier (D-76: a trunk created
+// on 127.0.0.1 before the rule), which falls through to clearing the
+// host's part of the row while its inbound ranges stay. A resolved name records its addresses, and the row is
 // rewritten only when they changed. A name that failed keeps its current
 // addresses (domain.ObserveAddresses); when it has none — never resolved,
 // or a row written by an older version still holding the name — the row
 // is cleared, which is a no-op when there is none.
 func (p *TrunkProber) recordAddresses(ctx context.Context, tx pgx.Tx, t domain.Trunk, result ports.CarrierCheck, at time.Time) error {
-	if domain.AddressesForHost(t.Host) != nil {
-		return nil
+	if fixed := domain.AddressesForHost(t.Host); len(fixed) > 0 {
+		return nil // an IP host that can be a carrier is set by configuration
 	}
 	next := domain.ObserveAddresses(t.ResolvedAddresses, t.Host, result.Addresses, result.Resolved)
 	if !result.Resolved {

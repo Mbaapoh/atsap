@@ -437,3 +437,45 @@ func TestTrunkInboundAddresses_AreConfiguration(t *testing.T) {
 	require.ErrorIs(t, err, ports.ErrInvalidInput, "an edit cannot move a trunk onto localhost")
 	assert.ErrorContains(t, err, "cannot be a carrier")
 }
+
+// identifyMatchOf reads the engine row recognising a trunk's carrier;
+// "" when there is none.
+func (h *harness) identifyMatchOf(t *testing.T, id shareddomain.TrunkID) string {
+	t.Helper()
+	var match string
+	err := h.pool.Unwrap().QueryRow(context.Background(), `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`,
+		domain.TrunkEndpointIdentifier(id)).Scan(&match)
+	if err != nil {
+		return ""
+	}
+	return match
+}
+
+// D-76: a carrier is recognised from its inbound ranges the moment they
+// are configured, alongside its host's addresses, and stops being
+// recognised from one the moment it is removed. A name not resolved yet
+// is recognised from its ranges alone.
+func TestTrunkInboundAddresses_AreProjectedAtOnce(t *testing.T) {
+	h := newHarness(t)
+	cmd := h.trunkCmd("By name, with ranges")
+	cmd.InboundAddresses = []string{"203.0.113.0/28", "198.51.100.9"}
+	byName, err := h.svc.CreateTrunk(h.ctx, cmd)
+	require.NoError(t, err)
+	assert.Equal(t, "198.51.100.9,203.0.113.0/28", h.identifyMatchOf(t, byName.ID), "ranges only: the name is not resolved yet")
+
+	ipCmd := h.trunkCmd("By IP, with ranges")
+	ipCmd.Host, ipCmd.InboundAddresses = "192.0.2.10", []string{"203.0.113.64/28"}
+	byIP, err := h.svc.CreateTrunk(h.ctx, ipCmd)
+	require.NoError(t, err)
+	assert.Equal(t, "192.0.2.10,203.0.113.64/28", h.identifyMatchOf(t, byIP.ID), "the host's address and the ranges")
+
+	_, err = h.svc.UpdateTrunk(h.ctx, ports.UpdateTrunkCommand{TenantID: h.tenant, ID: byIP.ID, Name: "By IP", Host: "192.0.2.10",
+		Port: 5060, AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1})
+	require.NoError(t, err)
+	assert.Equal(t, "192.0.2.10", h.identifyMatchOf(t, byIP.ID), "a removed range stops being recognised at once")
+
+	_, err = h.svc.UpdateTrunk(h.ctx, ports.UpdateTrunkCommand{TenantID: h.tenant, ID: byName.ID, Name: "By name", Host: "sip.carrier.example",
+		Port: 5060, AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1})
+	require.NoError(t, err)
+	assert.Empty(t, h.identifyMatchOf(t, byName.ID), "no address and no range: no row")
+}
