@@ -996,7 +996,7 @@ func lastSavedCall(t *testing.T, h *harness) *domain.Call {
 
 func arriveTestCall(t *testing.T, h *harness, tenant string) {
 	t.Helper()
-	err := h.svc.CallArrived(context.Background(), tenant, "e_caller", "2000", "+1555000111", "chan-arriving")
+	err := h.svc.CallArrived(context.Background(), tenant, "e_caller", "", "2000", "+1555000111", "chan-arriving")
 	require.NoError(t, err)
 }
 
@@ -1237,8 +1237,8 @@ func TestCallArrived_NoTenantVariableRefusesWithoutRouter(t *testing.T) {
 	router := &fakeInboundRouter{decision: connectDecision()}
 	h := arrivedHarness(router)
 
-	require.NoError(t, h.svc.CallArrived(context.Background(), "", "e_caller", "2000", "+1555000111", "chan-unknown"))
-	require.NoError(t, h.svc.CallArrived(context.Background(), "not-a-uuid", "e_caller", "2000", "+1555000111", "chan-garbage"))
+	require.NoError(t, h.svc.CallArrived(context.Background(), "", "e_caller", "", "2000", "+1555000111", "chan-unknown"))
+	require.NoError(t, h.svc.CallArrived(context.Background(), "not-a-uuid", "e_caller", "", "2000", "+1555000111", "chan-garbage"))
 
 	assert.Empty(t, router.calls, "no tenant means no routing decision to make")
 	require.Len(t, h.mediaGW.rejectedChans, 2)
@@ -1255,7 +1255,7 @@ func TestCallArrived_NoTenantVariableRefusesWithoutRouter(t *testing.T) {
 func TestCallArrived_DefaultRouterRefusesNotFound(t *testing.T) {
 	h := newHarness()
 	require.NoError(t, h.svc.CallArrived(context.Background(),
-		shareddomain.NewTenantID().String(), "e_caller", "2000", "+1555000111", "chan-arriving"))
+		shareddomain.NewTenantID().String(), "e_caller", "", "2000", "+1555000111", "chan-arriving"))
 
 	require.Len(t, h.mediaGW.rejectedChans, 1)
 	assert.Equal(t, ports.RefusalNotFound, h.mediaGW.rejectedChans[0].cause)
@@ -1315,4 +1315,61 @@ func TestParticipantLeft_ArrivedCallerLeavingReleasesDestination(t *testing.T) {
 	require.NoError(t, h.svc.ParticipantLeft(context.Background(), corr.TenantID, corr.CallID, caller.String()))
 	assert.Equal(t, []ports.ChannelRef{ports.ChannelRef(h.mediaGW.originateCalls[0].ChannelID)}, h.mediaGW.destroyedChans)
 	assert.Equal(t, domain.CallTerminated, h.callStore.get(call.ID).State)
+}
+
+type fakeAttributor struct {
+	got ports.AttributionRequest
+	out ports.Attribution
+	err error
+}
+
+func (f *fakeAttributor) Attribute(_ context.Context, req ports.AttributionRequest) (ports.Attribution, error) {
+	f.got = req
+	return f.out, f.err
+}
+
+// D-77: a channel on the shared carrier ingress names no tenant. It is
+// attributed before anything is recorded — and recorded only once it is,
+// under the attributed tenant, with the router treating it as arriving on
+// the attributed trunk. A refusal or a failed lookup writes nothing.
+func TestCallArrived_TheCarrierIngressIsAttributedFirst(t *testing.T) {
+	tenant := shareddomain.NewTenantID()
+
+	t.Run("attributed", func(t *testing.T) {
+		router := &fakeInboundRouter{decision: connectDecision()}
+		h := arrivedHarness(router)
+		attributor := &fakeAttributor{out: ports.Attribution{Applies: true, TenantID: tenant, SourceEndpoint: "t_0123"}}
+		h.svc.SetInboundAttributor(attributor)
+		require.NoError(t, h.svc.CallArrived(context.Background(), "", "carrier-ingress", "203.0.113.9:5060", "+442071234599", "+15550001", "chan-ingress"))
+
+		assert.Equal(t, ports.AttributionRequest{SourceEndpoint: "carrier-ingress", SourceAddress: "203.0.113.9:5060", Dialled: "+442071234599"}, attributor.got)
+		call := lastSavedCall(t, h)
+		assert.Equal(t, tenant, call.TenantID, "recorded under the attributed tenant")
+		require.Len(t, router.calls, 1)
+		assert.Equal(t, tenant, router.calls[0].TenantID)
+		assert.Equal(t, "t_0123", router.calls[0].SourceEndpoint, "routed as the attributed trunk's call")
+		assert.Empty(t, h.mediaGW.rejectedChans)
+	})
+
+	for name, tc := range map[string]struct {
+		attributor *fakeAttributor
+		want       ports.RefusalCause
+	}{
+		"refused":      {&fakeAttributor{out: ports.Attribution{Applies: true, Refused: true}}, ports.RefusalNotFound},
+		"not ingress":  {&fakeAttributor{out: ports.Attribution{}}, ports.RefusalNotFound},
+		"lookup fails": {&fakeAttributor{err: errors.New("db down")}, ports.RefusalUnavailable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			router := &fakeInboundRouter{decision: connectDecision()}
+			h := arrivedHarness(router)
+			h.svc.SetInboundAttributor(tc.attributor)
+			require.NoError(t, h.svc.CallArrived(context.Background(), "", "carrier-ingress", "203.0.113.9:5060", "+442071234599", "+15550001", "chan-ingress"))
+			require.Len(t, h.mediaGW.rejectedChans, 1)
+			assert.Equal(t, tc.want, h.mediaGW.rejectedChans[0].cause)
+			assert.Empty(t, router.calls, "never routed")
+			h.callStore.mu.Lock()
+			assert.Empty(t, h.callStore.calls, "nothing recorded: there is no tenant to record it under")
+			h.callStore.mu.Unlock()
+		})
+	}
 }

@@ -58,6 +58,7 @@ type Service struct {
 	// no pbx-core in the binary (LLD-03 DoD 15); the composition root
 	// overrides it via SetInboundRouter where pbx-core is present.
 	inboundRouter ports.InboundRouter
+	attributor    ports.InboundAttributor
 	// timeoutSeconds is the alerting timeout passed to MediaGateway.Originate
 	// (PRD §11.1 Presenting; docs/hld/03-domain-model.md §2.1 default 20s).
 	timeoutSeconds int
@@ -116,6 +117,21 @@ func (s *Service) SetInboundRouter(router ports.InboundRouter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.inboundRouter = router
+}
+
+// SetInboundAttributor wires the attributor that names the tenant of a
+// call on the shared carrier ingress (D-77). Without one, a channel with
+// no endpoint-configured tenant is refused, as before.
+func (s *Service) SetInboundAttributor(a ports.InboundAttributor) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attributor = a
+}
+
+func (s *Service) inboundAttributor() ports.InboundAttributor {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attributor
 }
 
 func (s *Service) router() ports.InboundRouter {
@@ -246,6 +262,46 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	return callID, nil
 }
 
+// attribute asks the inbound attributor which tenant and trunk a
+// tenantless channel belongs to. Not found when there is no attributor,
+// the endpoint is not the ingress, or no single trunk matches;
+// unavailable when the lookup itself failed — never a guess.
+func (s *Service) attribute(ctx context.Context, sourceEndpoint, sourceAddress, dialled string) (ports.Attribution, ports.RefusalCause) {
+	a := s.inboundAttributor()
+	if a == nil {
+		return ports.Attribution{}, ports.RefusalNotFound
+	}
+	got, err := a.Attribute(ctx, ports.AttributionRequest{SourceEndpoint: sourceEndpoint, SourceAddress: sourceAddress, Dialled: dialled})
+	switch {
+	case err != nil:
+		s.logger.Error("inbound attribution failed; refusing rather than guessing", "error", err, "source_endpoint", sourceEndpoint)
+		return ports.Attribution{}, ports.RefusalUnavailable
+	case !got.Applies, got.Refused:
+		return ports.Attribution{}, ports.RefusalNotFound
+	}
+	return got, ports.RefusalNone
+}
+
+// arrivalTenant is the tenant an arriving channel belongs to, and the
+// endpoint to treat it as arriving on. The endpoint's own configuration
+// names it; failing that — the shared carrier ingress (D-77) — it is
+// attributed before anything is recorded, because there is no tenant to
+// record a refusal under. ok is false when the channel was refused here.
+func (s *Service) arrivalTenant(ctx context.Context, tenantIDStr, sourceEndpoint, sourceAddress, dialled, channelID string) (shareddomain.TenantID, string, bool, error) {
+	if tenantID, err := shareddomain.ParseTenantID(tenantIDStr); err == nil {
+		return tenantID, sourceEndpoint, true, nil
+	}
+	attributed, refusal := s.attribute(ctx, sourceEndpoint, sourceAddress, dialled)
+	if refusal == ports.RefusalNone {
+		return attributed.TenantID, attributed.SourceEndpoint, true, nil
+	}
+	s.logger.Warn("arriving call without a tenant; refusing", "channel_id", channelID, "source_endpoint", sourceEndpoint)
+	if err := s.mediaGateway.RejectChannel(ctx, ports.ChannelRef(channelID), refusal); err != nil {
+		return shareddomain.TenantID{}, "", false, fmt.Errorf("reject tenantless arriving channel: %w", err)
+	}
+	return shareddomain.TenantID{}, "", false, nil
+}
+
 // CallArrived handles a channel that arrived at the engine without
 // having been originated by the platform (pbx-inbound-and-emergency
 // design D3). It implements the shape acl.EventSink declares for
@@ -263,15 +319,10 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 // A channel with no tenant variable is rejected NotFound without the
 // router ever being consulted (design D1): without a tenant there is
 // nothing to resolve and no scope to persist a call in.
-func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, dialled, callerNumber, channelID string) error {
-	tenantID, err := shareddomain.ParseTenantID(tenantIDStr)
-	if err != nil {
-		s.logger.Warn("arriving call without a tenant variable; refusing",
-			"channel_id", channelID, "source_endpoint", sourceEndpoint)
-		if rerr := s.mediaGateway.RejectChannel(ctx, ports.ChannelRef(channelID), ports.RefusalNotFound); rerr != nil {
-			return fmt.Errorf("reject tenantless arriving channel: %w", rerr)
-		}
-		return nil
+func (s *Service) CallArrived(ctx context.Context, tenantIDStr, sourceEndpoint, sourceAddress, dialled, callerNumber, channelID string) error {
+	tenantID, sourceEndpoint, ok, err := s.arrivalTenant(ctx, tenantIDStr, sourceEndpoint, sourceAddress, dialled, channelID)
+	if err != nil || !ok {
+		return err
 	}
 
 	now := time.Now().UTC()

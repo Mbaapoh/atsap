@@ -30,9 +30,11 @@ type EventSink interface {
 	// correlation — a call the platform did not originate (a carrier
 	// INVITE, or a registered phone dialling). tenantID is the
 	// endpoint-configured ATSA_TENANT_ID, empty when the channel
-	// carries none; the orchestrator refuses a tenantless channel
-	// without consulting its router.
-	CallArrived(ctx context.Context, tenantID, sourceEndpoint, dialled, callerNumber, channelID string) error
+	// carries none — the shared carrier ingress (D-77) — in which case
+	// sourceAddress is the channel's transport source
+	// (CHANNEL(pjsip,remote_addr)) for the orchestrator to attribute it
+	// by; it never consults its router for a channel it cannot attribute.
+	CallArrived(ctx context.Context, tenantID, sourceEndpoint, sourceAddress, dialled, callerNumber, channelID string) error
 }
 
 // ChannelVariableReader reads a variable off a live engine channel. It
@@ -140,18 +142,27 @@ func (l *EventLoop) handleStasisStart(ctx context.Context, ev ari.Event) {
 // from the channel name; the dialled number from the dialplan extension;
 // the caller number from the caller ID.
 func (l *EventLoop) handleArrivingChannel(ctx context.Context, channelID, channelName, dialled, callerNumber string) {
-	tenantID := ""
+	tenantID, sourceAddress := "", ""
 	if l.vars != nil {
-		v, err := l.vars.GetChannelVariable(ctx, channelID, "ATSA_TENANT_ID")
-		if err != nil {
-			l.logger.Warn("acl: cannot read tenant of arriving channel; refusing without routing",
-				"error", err, "channel_id", channelID)
-		} else {
+		// A channel on the carrier ingress names no tenant (D-77): the
+		// variable is absent, which is not an error worth a warning.
+		if v, err := l.vars.GetChannelVariable(ctx, channelID, "ATSA_TENANT_ID"); err == nil {
 			tenantID = v
+		}
+		if tenantID == "" {
+			// The transport's source address — what the platform
+			// attributes a carrier call by, never a header (D-77).
+			v, err := l.vars.GetChannelVariable(ctx, channelID, "CHANNEL(pjsip,remote_addr)")
+			if err != nil {
+				l.logger.Warn("acl: cannot read the source address of a tenantless arriving channel",
+					"error", err, "channel_id", channelID)
+			} else {
+				sourceAddress = v
+			}
 		}
 	}
 	source := sourceEndpointFromChannelName(channelName)
-	if err := l.sink.CallArrived(ctx, tenantID, source, dialled, callerNumber, channelID); err != nil {
+	if err := l.sink.CallArrived(ctx, tenantID, source, sourceAddress, dialled, callerNumber, channelID); err != nil {
 		l.logger.Error("acl: arrived-call handler failed", "error", err, "channel_id", channelID)
 	}
 }

@@ -298,6 +298,9 @@ func run() int {
 	pbxSvc = pbxSvc.WithTrunkChecker(trunkProber)
 	go trunkProber.Run(ctx)
 	callService.SetInboundRouter(pbxSvc)
+	// Calls on the shared carrier ingress name no tenant: pbx-core
+	// attributes each by its source address and the number dialled (D-77).
+	callService.SetInboundAttributor(pbxapp.NewIngressAttributor(pbxpostgres.NewIngressStore(appPool), logger))
 	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
 		connectrpc.WithInterceptors(authInterceptor))
 	handlers[pbxPath] = pbxRPC

@@ -48,7 +48,7 @@ func (s *domainSink) ParticipantLeft(_ context.Context, _, _, participantID stri
 	return err
 }
 
-func (s *domainSink) CallArrived(context.Context, string, string, string, string, string) error {
+func (s *domainSink) CallArrived(context.Context, string, string, string, string, string, string) error {
 	return errors.New("domainSink: arriving calls are not part of the originated happy path")
 }
 
@@ -300,6 +300,7 @@ type recordingSink struct {
 	leftCalls        int
 	lastAnsweredChan string
 	arrivedCalls     []arrivedCall
+	sourceAddresses  []string
 	err              error
 }
 
@@ -322,8 +323,9 @@ func (s *recordingSink) ParticipantLeft(_ context.Context, _, _, _ string) error
 	return s.err
 }
 
-func (s *recordingSink) CallArrived(_ context.Context, tenantID, sourceEndpoint, dialled, callerNumber, channelID string) error {
+func (s *recordingSink) CallArrived(_ context.Context, tenantID, sourceEndpoint, sourceAddress, dialled, callerNumber, channelID string) error {
 	s.arrivedCalls = append(s.arrivedCalls, arrivedCall{tenantID, sourceEndpoint, dialled, callerNumber, channelID})
+	s.sourceAddresses = append(s.sourceAddresses, sourceAddress)
 	return s.err
 }
 
@@ -347,4 +349,45 @@ func arrivingStasisStart(channelID, channelName, dialled, callerNumber string) a
 	raw := fmt.Sprintf(`{"type":"StasisStart","channel":{"id":%q,"name":%q,"state":"Ring","dialplan":{"context":"stasis-in","exten":%q,"priority":1},"caller":{"number":%q,"name":%q}}}`,
 		channelID, channelName, dialled, callerNumber, callerNumber)
 	return ari.Event{Type: "StasisStart", Raw: []byte(raw)}
+}
+
+// namedVarReader answers per variable name, as ARI does: a variable the
+// channel does not carry is an error (404), not an empty string. It
+// records what was asked.
+type namedVarReader struct {
+	vars  map[string]string
+	asked []string
+}
+
+func (r *namedVarReader) GetChannelVariable(_ context.Context, _, name string) (string, error) {
+	r.asked = append(r.asked, name)
+	v, ok := r.vars[name]
+	if !ok {
+		return "", errors.New("ari: 404 Provided variable was not found")
+	}
+	return v, nil
+}
+
+// D-77: a channel on the shared carrier ingress carries no tenant, so the
+// loop reads its transport source address and hands both on; a channel
+// whose endpoint names its tenant is never asked for its address.
+func TestEventLoop_ATenantlessChannelCarriesItsSourceAddress(t *testing.T) {
+	sink := &recordingSink{}
+	loop := acl.NewEventLoop(acl.NewCorrelationRegistry(), sink, discardLogger())
+	reader := &namedVarReader{vars: map[string]string{"CHANNEL(pjsip,remote_addr)": "172.18.0.8:60217"}}
+	loop.SetChannelVariableReader(reader)
+	loop.Handle(context.Background(), arrivingStasisStart("chan-ingress", "PJSIP/carrier-ingress-0000000e", "+442071234599", "+15550001"))
+	require.Len(t, sink.arrivedCalls, 1)
+	assert.Empty(t, sink.arrivedCalls[0].tenantID, "a missing variable is no tenant, not a failure")
+	assert.Equal(t, "carrier-ingress", sink.arrivedCalls[0].sourceEndpoint)
+	assert.Equal(t, []string{"172.18.0.8:60217"}, sink.sourceAddresses)
+
+	sink = &recordingSink{}
+	loop = acl.NewEventLoop(acl.NewCorrelationRegistry(), sink, discardLogger())
+	reader = &namedVarReader{vars: map[string]string{"ATSA_TENANT_ID": "11111111-2222-3333-4444-555555555555", "CHANNEL(pjsip,remote_addr)": "198.51.100.1:5060"}}
+	loop.SetChannelVariableReader(reader)
+	loop.Handle(context.Background(), arrivingStasisStart("chan-ext", "PJSIP/e_6f8b2c1a-00000001", "2000", "1000"))
+	require.Len(t, sink.arrivedCalls, 1)
+	assert.Equal(t, []string{""}, sink.sourceAddresses, "a configured tenant needs no address")
+	assert.Equal(t, []string{"ATSA_TENANT_ID"}, reader.asked)
 }

@@ -78,12 +78,24 @@
     - application: the identify helpers now read the ingress and assert no per-trunk row, with expectations updated to unions; `TestReconcile_CarrierIngressDriftIsReportedAndRepaired`;
     - endpoint-count assertions exclude the ingress, which is platform infrastructure, not configuration.
   - **Verified:** `make test`, `make lint` 0, and every Go integration package on `atsapbx_test`.)*
-- [ ] 3.2 Telephony:
+- [x] 3.2 Telephony:
   - `handleArrivingChannel` reads `CHANNEL(pjsip,remote_addr)` for the ingress endpoint;
   - `CallArrived` attributes before recording, rejecting `404` with no call row when refused;
   - the router receives the attributed trunk.
 
   Unit tests with fakes; integration as needed. Verify every Go tier passes.
+
+  *(done 2026-11-01.
+  - **The event loop:** reads `ATSA_TENANT_ID`. A missing variable means no tenant, which is no longer a warning; the ingress carries none. When there is no tenant it reads `CHANNEL(pjsip,remote_addr)` and passes it on, through a new `sourceAddress` parameter on the sink's `CallArrived`.
+  - **The service:** `arrivalTenant`, extracted to keep `CallArrived` under the complexity limit, attributes before anything is recorded.
+    - Refused, or not the ingress: rejected `404`, with no call row.
+    - Attribution itself failed: rejected `503`.
+    - Otherwise the call is recorded under the attributed tenant, and the router receives the attributed trunk's endpoint.
+  - **Wiring:** `main` gives the call service `pbxapp.NewIngressAttributor(pbxpostgres.NewIngressStore(appPool), logger)`.
+  - **Tests:**
+    - `TestEventLoop_ATenantlessChannelCarriesItsSourceAddress`: the address is read only when there is no tenant;
+    - `TestCallArrived_TheCarrierIngressIsAttributedFirst`: attributed (recorded under the tenant, routed as `t_…`); refused, not-ingress and lookup failure (rejected, nothing recorded, never routed).
+  - **Verified:** `make test`; `make lint` 0; every Go integration package passes.)*
 
 ## 4. Live proof
 
