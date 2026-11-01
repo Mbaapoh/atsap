@@ -495,6 +495,13 @@ func (s *Service) refuseArrived(ctx context.Context, callID shareddomain.CallID,
 	if err := s.saveCall(ctx, call, terminateEvents...); err != nil {
 		return err
 	}
+	// A refusal after screening granted capacity — a compliance refusal,
+	// or a destination that could not be reached — must give the channel
+	// back. Releasing a call that holds nothing is a no-op (D-58), so
+	// every refusal releases.
+	if err := s.license.ReleaseCapacity(ctx, callID.String()); err != nil {
+		s.logger.Error("release capacity on refusal", "error", err, "call_id", callID)
+	}
 	s.removeCall(callID)
 	return nil
 }

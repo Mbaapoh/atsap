@@ -1389,4 +1389,7 @@ func TestCallArrived_AnUnreachableDestinationIsRefusedNotLeftRinging(t *testing.
 	call := lastSavedCall(t, h)
 	assert.Equal(t, domain.CallTerminated, call.State)
 	assert.Equal(t, "inbound call refused: destination unreachable", call.TerminationReason)
+	reserved, released := h.license.counts(call.ID.String())
+	assert.Equal(t, 1, reserved, "screening granted a channel")
+	assert.Equal(t, reserved, released, "and the refusal gave it back")
 }
