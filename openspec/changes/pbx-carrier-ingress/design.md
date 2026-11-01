@@ -41,7 +41,7 @@ It is rewritten whenever a trunk is created, changed or deleted, or a check chan
 
 ### D2. Attribution: source address plus number, exactly one
 
-`carrier_ingress_match(source inet, number text)` is a `SECURITY DEFINER` function, owned by the migration role and executable by `atsapbx_app` only. It returns the (tenant_id, trunk_id) pairs where:
+`carrier_ingress_match(source inet, number text)` runs the one cross-tenant query. *(Implemented without `SECURITY DEFINER`: a SELECT-only RLS policy per table applies only while `app.ingress_lookup` is `on`, and the function alone sets it for its query and clears it; see tasks 2.1.)* It returns the (tenant_id, trunk_id) pairs where:
 - the trunk's resolved addresses or inbound ranges contain `source`, through `inet <<=`;
 - the trunk's tenant has an inbound number equal to `number`, normalised as `NormalizeDialled` does.
 

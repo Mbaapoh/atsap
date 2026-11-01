@@ -18,7 +18,7 @@
 
 ## 2. Attribution
 
-- [ ] 2.1 Migration 0016 adds `carrier_ingress_match(source inet, number text)` (`SECURITY DEFINER`, `search_path` pinned, executable by the app role only), with a down migration.
+- [x] 2.1 Migration 0016 adds `carrier_ingress_match(source inet, number text)` (`SECURITY DEFINER`, `search_path` pinned, executable by the app role only), with a down migration.
 
   Integration tests:
   - one match;
@@ -29,6 +29,12 @@
   - no other column or tenant is readable through it.
 
   Verify the integration tier passes.
+
+  *(done 2026-11-01, with a design change from D2: **no `SECURITY DEFINER` and no new role.**
+  - **Why:** the tables are FORCE RLS and owned by the app, which has no BYPASSRLS. A BYPASSRLS role can only be created by the superuser at bootstrap (the outbox-worker pattern), which existing installations, this rig included, have already passed.
+  - **Instead:** migration 0016 adds a SELECT-only policy per table that applies only while `app.ingress_lookup` is `on`. `carrier_ingress_match`, in plpgsql with a pinned `search_path` and `EXECUTE` revoked from `PUBLIC`, sets the flag for its single query and clears it before returning, within the caller's transaction. It returns only (tenant_id, trunk_id). The trust model equals the existing one, in which the app sets `app.tenant_id`.
+  - **Test:** `TestCarrierIngressMatch` covers A's address and number; the same address in B's range with B's number; a range match; a number whose tenant's trunk does not recognise the source (none); an unknown address (none); a number in two tenants (both returned, for the caller to refuse). In the same transaction afterwards, `carrier_trunks` reads zero rows; outside it, `inbound_numbers` reads zero.
+  - **Verified:** the `internal/postgres` integration package passes, including full down and up; `make lint` 0.)*
 - [ ] 2.2 In pbx-core, add the `InboundAttributor` port and its implementation over the function: exactly one routes; none or several refuse, with an operator-only warning on several.
 
   Unit tests for the rule; integration tests across two tenants. Verify `make test` and the integration tier pass.
