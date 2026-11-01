@@ -58,6 +58,9 @@ test("the scanner recognises what it must reject", () => {
 });
 
 test("no credential or engine identifier crosses the wire or reaches the screen", async ({ page, request, context }) => {
+  // Configures a whole tenant through the API, then walks every page with
+  // full reloads; on a busy machine that runs past the default 30 s.
+  test.slow();
   user = seedUser(["Acme"], { platformAdmin: true });
   const tenantId = user.tenants[0]!.id;
 

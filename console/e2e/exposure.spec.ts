@@ -13,6 +13,9 @@ const ENGINE = "e_0123456789abcdef0123456789abcdef";
 const PAGES = ["/", "/licence", "/users", "/extensions", "/trunks", "/calls", "/account"];
 
 test("engine detail in API responses and errors never reaches the screen", async ({ page }) => {
+  // Walks every page with a full reload each; on a busy machine the dev
+  // server serves each in ~3.5 s, past the default 30 s for the walk.
+  test.slow();
   await mockSession(page, ["PLATFORM_ADMIN"]);
   const hostileError = (status: number, code: string) => ({
     status,

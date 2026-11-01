@@ -9,6 +9,9 @@ import { mockSession } from "./support/session";
 const pages = ["/sign-in", "/", "/licence", "/users", "/extensions", "/trunks", "/calls", "/account", "/no-such-page"];
 
 test("every request stays on the console's origin and inside the public API", async ({ page, baseURL }) => {
+  // Walks every page with a full reload each; on a busy machine the dev
+  // server serves each in ~3.5 s, past the default 30 s for the walk.
+  test.slow();
   const origin = new URL(baseURL!).origin;
   const seen: string[] = [];
   page.on("request", (req) => seen.push(req.url()));

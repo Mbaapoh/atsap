@@ -35,6 +35,9 @@ export default defineConfig({
     setupFiles: ["src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     restoreMocks: true,
+    // Typing whole forms with user-event under coverage is slow on a busy
+    // machine; 5 s made the gate flaky. 20 s still catches a real hang.
+    testTimeout: 20_000,
     // The contrast gate reads the real token file (src/styles/
     // contrast.test.ts); Vitest otherwise empties CSS imports.
     css: { include: [/tokens\.css/] },
