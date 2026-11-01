@@ -55,7 +55,7 @@ func TestTrunkValidate(t *testing.T) {
 		})
 	}
 
-	for _, host := range []string{"203.0.113.10", "2001:db8::1", "sip-1.carrier.example", "localhost"} {
+	for _, host := range []string{"203.0.113.10", "2001:db8::1", "sip-1.carrier.example", "10.20.0.5"} { // localhost is refused since D-76
 		tr := validTrunk()
 		tr.Host = host
 		assert.NoError(t, tr.Validate(), host)

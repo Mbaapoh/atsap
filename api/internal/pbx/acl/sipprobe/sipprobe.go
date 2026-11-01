@@ -48,7 +48,12 @@ const (
 // Prober sends checks. The zero value uses the system resolver and the
 // defaults above.
 type Prober struct {
-	Resolver        Resolver
+	Resolver Resolver
+	// Permit says which addresses may be checked. Nil means
+	// domain.CarrierAddress (D-76): never the platform's own loopback,
+	// link-local, unspecified or multicast addresses. Only tests against
+	// a local responder widen it.
+	Permit          func(netip.Addr) bool
 	Timeout         time.Duration
 	FirstRetransmit time.Duration
 }
@@ -66,9 +71,14 @@ func (p *Prober) Probe(ctx context.Context, host string, port int) Result {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	addrs, ok := p.resolve(ctx, host)
+	found, ok := p.resolve(ctx, host)
 	if !ok {
 		return Result{Outcome: domain.ProbeHostNotFound}
+	}
+	addrs := p.permitted(found)
+	if len(addrs) == 0 {
+		// Found, but nothing a carrier can be: nothing is sent (D-76).
+		return Result{Outcome: domain.ProbeAddressNotAllowed}
 	}
 	// The check goes to the first address: addrs is normalised, so that
 	// is IPv4 when the host has one.
@@ -93,8 +103,8 @@ func (p *Prober) Probe(ctx context.Context, host string, port int) Result {
 // error rather than a clean NXDOMAIN, and the useful report is the same.
 // An IP host is its own address, with no lookup.
 func (p *Prober) resolve(ctx context.Context, host string) ([]netip.Addr, bool) {
-	if fixed := domain.AddressesForHost(host); fixed != nil {
-		return fixed, true
+	if a, err := netip.ParseAddr(host); err == nil {
+		return []netip.Addr{a.Unmap()}, true
 	}
 	resolver := p.Resolver
 	if resolver == nil {
@@ -114,6 +124,21 @@ func (p *Prober) resolve(ctx context.Context, host string) ([]netip.Addr, bool) 
 	}
 	addrs = domain.NormaliseAddresses(addrs)
 	return addrs, len(addrs) > 0
+}
+
+// permitted is addrs without those Permit refuses, keeping their order.
+func (p *Prober) permitted(addrs []netip.Addr) []netip.Addr {
+	permit := p.Permit
+	if permit == nil {
+		permit = domain.CarrierAddress
+	}
+	var out []netip.Addr
+	for _, a := range addrs {
+		if permit(a) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // exchange sends req, retransmitting on RFC 3261's schedule, until a

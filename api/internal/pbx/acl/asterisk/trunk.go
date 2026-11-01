@@ -116,7 +116,7 @@ func (p *Projector) ProjectTrunk(ctx context.Context, tx pgx.Tx, t domain.Trunk,
 // and recognises nothing.
 func (p *Projector) projectIdentify(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	id := domain.TrunkEndpointIdentifier(t.ID)
-	match, ok := domain.IdentifyMatch(t.ResolvedAddresses)
+	match, ok := domain.IdentifyMatch(t.ResolvedAddresses, t.InboundAddresses)
 	if !ok {
 		if _, err := tx.Exec(ctx, `DELETE FROM ps_endpoint_id_ips WHERE id = $1`, id); err != nil {
 			return fmt.Errorf("deproject trunk identify: %w", err)
@@ -212,7 +212,7 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 	// with a fresh lookup: the configuration is the sole source of truth
 	// (D-75). A name in the row is drift by construction.
 	var identifyMatch *string
-	wantMatch, wantRow := domain.IdentifyMatch(t.ResolvedAddresses)
+	wantMatch, wantRow := domain.IdentifyMatch(t.ResolvedAddresses, t.InboundAddresses)
 	err = p.pool.Unwrap().QueryRow(ctx, `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&identifyMatch)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

@@ -80,7 +80,9 @@ func header(msg, name string) string {
 }
 
 func fast() *Prober {
-	return &Prober{Timeout: 600 * time.Millisecond, FirstRetransmit: 100 * time.Millisecond}
+	// The responders here listen on loopback, which production never
+	// checks (D-76): these tests widen Permit to reach them.
+	return &Prober{Timeout: 600 * time.Millisecond, FirstRetransmit: 100 * time.Millisecond, Permit: func(netip.Addr) bool { return true }}
 }
 
 func TestProbe_AnswersAreAnswered(t *testing.T) {
@@ -262,7 +264,39 @@ func TestProbe_StopsWhenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Now()
-	got := (&Prober{Timeout: 5 * time.Second, FirstRetransmit: 500 * time.Millisecond}).Probe(ctx, "127.0.0.1", r.port())
+	got := (&Prober{Timeout: 5 * time.Second, FirstRetransmit: 500 * time.Millisecond, Permit: func(netip.Addr) bool { return true }}).Probe(ctx, "127.0.0.1", r.port())
 	assert.Equal(t, domain.ProbeNoResponse, got.Outcome)
 	assert.Less(t, time.Since(start), time.Second)
+}
+
+// D-76: the platform never checks an address that cannot be a carrier —
+// not its own loopback, link-local, unspecified or multicast addresses.
+// Nothing is sent; the outcome says why.
+func TestProbe_NeverChecksAnAddressThatCannotBeACarrier(t *testing.T) {
+	sent := newResponder(t, func(req string, _ int) []string { return []string{response(req, "200 OK", "")} })
+	strict := &Prober{Timeout: 600 * time.Millisecond, FirstRetransmit: 100 * time.Millisecond}
+
+	for _, host := range []string{"127.0.0.1", "::1", "169.254.1.1", "0.0.0.0", "224.0.0.1"} {
+		got := strict.Probe(context.Background(), host, sent.port())
+		assert.Equal(t, domain.ProbeAddressNotAllowed, got.Outcome, host)
+		assert.False(t, got.Resolved, host)
+		assert.Empty(t, got.Addresses, host)
+	}
+
+	strict.Resolver = fakeResolver{addrs: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}, {IP: net.ParseIP("::1")}}}
+	got := strict.Probe(context.Background(), "localhost.carrier.example", sent.port())
+	assert.Equal(t, domain.ProbeAddressNotAllowed, got.Outcome, "a name resolving only to loopback is not a carrier")
+	assert.Empty(t, got.Addresses)
+	assert.Zero(t, sent.requests.Load(), "no check was ever sent to loopback")
+}
+
+// A name giving both kinds keeps only the carrier addresses, and checks one
+// of those.
+func TestProbe_KeepsOnlyCarrierAddresses(t *testing.T) {
+	strict := &Prober{Timeout: 300 * time.Millisecond, FirstRetransmit: 100 * time.Millisecond}
+	strict.Resolver = fakeResolver{addrs: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}, {IP: net.ParseIP("192.0.2.1")}, {IP: net.ParseIP("fe80::1")}}}
+	got := strict.Probe(context.Background(), "mixed.carrier.example", 5060)
+	assert.Equal(t, domain.ProbeNoResponse, got.Outcome, "the carrier address was checked (nothing answers at TEST-NET-1)")
+	assert.True(t, got.Resolved)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("192.0.2.1")}, got.Addresses)
 }

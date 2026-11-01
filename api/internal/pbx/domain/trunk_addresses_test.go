@@ -60,14 +60,14 @@ func TestSameAddresses(t *testing.T) {
 }
 
 func TestIdentifyMatch(t *testing.T) {
-	match, ok := domain.IdentifyMatch(addrs("2001:db8::2", "203.0.113.10"))
+	match, ok := domain.IdentifyMatch(addrs("2001:db8::2", "203.0.113.10"), nil)
 	assert.True(t, ok)
 	assert.Equal(t, "203.0.113.10,2001:db8::2", match, "literals only, IPv4 first, comma-separated")
 
-	match, ok = domain.IdentifyMatch([]netip.Addr{{}, netip.MustParseAddr("203.0.113.10")})
+	match, ok = domain.IdentifyMatch([]netip.Addr{{}, netip.MustParseAddr("203.0.113.10")}, nil)
 	assert.True(t, ok)
 	assert.Equal(t, "203.0.113.10", match, "an invalid address is never projected")
 
-	_, ok = domain.IdentifyMatch(nil)
+	_, ok = domain.IdentifyMatch(nil, nil)
 	assert.False(t, ok, "no address means no identify row at all")
 }

@@ -57,12 +57,15 @@ const (
 	ReasonNoResponse HealthReason = "NO_RESPONSE"
 	// ReasonCarrierError is the carrier responding with a server error.
 	ReasonCarrierError HealthReason = "CARRIER_ERROR"
+	// ReasonAddressNotAllowed is the trunk's host name resolving only to
+	// addresses that cannot be a carrier (D-76): nothing was sent.
+	ReasonAddressNotAllowed HealthReason = "ADDRESS_NOT_ALLOWED"
 )
 
 // Valid reports whether r is one of the defined reasons.
 func (r HealthReason) Valid() bool {
 	switch r {
-	case ReasonAnswering, ReasonSlowResponse, ReasonHostNotFound, ReasonNoResponse, ReasonCarrierError:
+	case ReasonAnswering, ReasonSlowResponse, ReasonHostNotFound, ReasonNoResponse, ReasonCarrierError, ReasonAddressNotAllowed:
 		return true
 	}
 	return false
@@ -91,6 +94,7 @@ var (
 	ErrTrunkNameEmpty        = errors.New("trunk name is required")
 	ErrTrunkNameTooLong      = errors.New("trunk name is longer than the maximum length")
 	ErrTrunkHostInvalid      = errors.New("trunk host is not a valid hostname or IP address")
+	ErrTrunkHostNotCarrier   = errors.New("trunk host cannot be a carrier: localhost, or a loopback, link-local, unspecified or multicast address")
 	ErrTrunkPortInvalid      = errors.New("trunk port must be between 1 and 65535")
 	ErrChannelLimitInvalid   = errors.New("trunk channel limit must be positive")
 	ErrPriorityInvalid       = errors.New("priority must not be negative")
@@ -128,8 +132,12 @@ type Trunk struct {
 	// nil for an IP host or a name not resolved yet.
 	ResolvedAddresses []netip.Addr
 	ResolvedAt        *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// InboundAddresses are the carrier's published signalling addresses
+	// and ranges (D-76): configuration, recognised alongside the host's
+	// addresses. Normalised by ParseInboundAddresses.
+	InboundAddresses []netip.Prefix
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Validate checks every caller-supplied field. Health and CredentialRef
@@ -144,6 +152,9 @@ func (t Trunk) Validate() error {
 	if err := ValidateHost(t.Host); err != nil {
 		return err
 	}
+	if err := ValidateInboundAddresses(t.InboundAddresses); err != nil {
+		return err
+	}
 	if t.Port < 1 || t.Port > 65535 {
 		return fmt.Errorf("%w: %d", ErrTrunkPortInvalid, t.Port)
 	}
@@ -156,7 +167,8 @@ func (t Trunk) Validate() error {
 	return ValidateAuthUsername(t.AuthUsername)
 }
 
-// ValidateHost accepts an IP literal or a DNS hostname and nothing else.
+// ValidateHost accepts an IP literal or a DNS hostname and nothing else,
+// and refuses a host that cannot be a carrier (D-76).
 //
 // Allowlisted by construction, not by expression: the host ends up in
 // engine configuration (a contact URI and a From domain), so anything
@@ -167,7 +179,13 @@ func ValidateHost(host string) error {
 		return fmt.Errorf("%w: %q", ErrTrunkHostInvalid, host)
 	}
 	if net.ParseIP(host) != nil {
+		if a, err := netip.ParseAddr(host); err != nil || !CarrierAddress(a) {
+			return fmt.Errorf("%w: %q", ErrTrunkHostNotCarrier, host)
+		}
 		return nil
+	}
+	if name := strings.ToLower(strings.TrimSuffix(host, ".")); name == "localhost" || strings.HasSuffix(name, ".localhost") {
+		return fmt.Errorf("%w: %q", ErrTrunkHostNotCarrier, host) // RFC 6761 §6.3
 	}
 	for _, label := range strings.Split(host, ".") {
 		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
@@ -263,6 +281,9 @@ const (
 	ProbeNoResponse
 	// ProbeHostNotFound is the trunk's host not resolving.
 	ProbeHostNotFound
+	// ProbeAddressNotAllowed is the trunk's host giving only addresses
+	// that cannot be a carrier (D-76); no check was sent.
+	ProbeAddressNotAllowed
 )
 
 // ProbeSlowThreshold is the response time above which a carrier that
@@ -278,6 +299,8 @@ func ObserveProbe(outcome ProbeOutcome, statusCode int, rtt time.Duration) (Trun
 	switch {
 	case outcome == ProbeHostNotFound:
 		return HealthUnhealthy, ReasonHostNotFound
+	case outcome == ProbeAddressNotAllowed:
+		return HealthUnhealthy, ReasonAddressNotAllowed
 	case outcome == ProbeNoResponse:
 		return HealthUnhealthy, ReasonNoResponse
 	case statusCode >= 500:

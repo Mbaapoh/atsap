@@ -6,7 +6,7 @@
 
 ## 2. Domain and probe
 
-- [ ] 2.1 In `internal/pbx/domain`, add:
+- [x] 2.1 In `internal/pbx/domain`, add:
   - `CarrierAddress`;
   - `ValidateHost` refusing `localhost`, `*.localhost` and non-carrier literals;
   - `ValidateInboundAddresses` (parse, mask, at most 20, the /16 and /32 floors, non-carrier refused, the entry's position in the error);
@@ -16,7 +16,19 @@
   - the `ADDRESS_NOT_ALLOWED` reason with its probe mapping.
 
   Unit tests cover every spec example (`localhost`, `pbx.localhost`, `127.0.0.1`, `::1`, `169.254.1.1`, `0.0.0.0`, `224.0.0.1` refused; `10.20.0.5` and `192.168.10.0/24` accepted), the floors, 21 entries, and the union. Verify `make test` passes with `pbx/domain`'s new code at 100%.
-- [ ] 2.2 Make `sipprobe` drop non-carrier addresses from a lookup, and return `ProbeAddressNotAllowed` with no packet sent when none remain. Unit tests: a name resolving to `127.0.0.1` and `::1` only; mixed addresses, keeping only the carrier ones; an IP literal refused before sending. Verify `make test` passes.
+- [x] 2.2 Make `sipprobe` drop non-carrier addresses from a lookup, and return `ProbeAddressNotAllowed` with no packet sent when none remain. Unit tests: a name resolving to `127.0.0.1` and `::1` only; mixed addresses, keeping only the carrier ones; an IP literal refused before sending. Verify `make test` passes.
+
+  *(2.1 and 2.2 done 2026-11-01, one commit: the domain rule makes a loopback IP host give no address, so the probe must filter in the same step or it panics.
+  - **Domain:**
+    - `CarrierAddress`, `ValidateHost` (with `localhost`, `*.localhost` and a trailing dot refused), `ParseInboundAddresses` and `ValidateInboundAddresses`, `InboundStrings`;
+    - `IdentifyMatch(addrs, ranges)` as a normalised union;
+    - `ObserveAddresses` and `CarrierAddresses`, which drop non-carrier addresses wherever they are read;
+    - `ReasonAddressNotAllowed` and `ProbeAddressNotAllowed`.
+
+    Every new function is at 100%; the package is at 89.3% (`TrunkCredentialRef` was already uncovered).
+  - **Probe:** gains `Permit` (nil means `domain.CarrierAddress`). An IP literal is no longer special-cased through the domain. A name or literal with no permitted address returns `ProbeAddressNotAllowed` with nothing sent: a responder on loopback receives zero requests.
+  - **Tests:** the probe tests that use loopback responders widen `Permit`, with a comment saying so. The old test that accepted `localhost` as a host now uses `10.20.0.5`.
+  - **Verified:** `make test` and `make lint` pass.)*
 
 ## 3. API, storage, projection
 
