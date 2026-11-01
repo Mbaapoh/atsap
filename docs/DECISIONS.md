@@ -2578,8 +2578,10 @@ D-74 probe is. A carrier that moves to a new address is refused for up to
 one check interval.
 
 **Related Decisions:** D-47 (engine projection), D-74 (carrier checks)
-**Traceability:** `openspec/changes/pbx-trunk-host-resolution` (design
-D1–D5); specs `pbx-core/trunk-routing`, `pbx-core/endpoint-projection`
+**Traceability:** BRD FBR-R1-03 (any carrier, a failing one detected),
+FBR-R1-04 and BR-08; PRD INV-10 (one tenant cannot affect another),
+US-10.10; `openspec/changes/pbx-trunk-host-resolution` (design D1–D5);
+specs `pbx-core/trunk-routing`, `pbx-core/endpoint-projection`
 
 ---
 

@@ -198,3 +198,9 @@ make uat-auto         # walking skeleton, real phones
 make uat-placement    # PlaceCall over a trunk, real phones
 make uat-inbound      # carrier → DID → phone, and phone → trunk, real phones
 ```
+
+**In the browser:** sign in at http://localhost:5173 as `dev@example.test`
+(`make dev-user` prints the password; mail lands in Mailpit,
+http://localhost:8025). Step-by-step human passes with their executed
+records live in `docs/uat/`: [walking skeleton](uat/walking-skeleton.md),
+[trunk host resolution](uat/trunk-host-resolution.md).
