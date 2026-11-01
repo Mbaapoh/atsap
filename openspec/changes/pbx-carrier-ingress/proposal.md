@@ -38,7 +38,7 @@ None.
   - `internal/pbx/postgres`: the lookup function;
   - `internal/telephony`: the arriving-call path reads the source address and, for the ingress, asks pbx-core for the tenant **before** recording the call;
   - `internal/telephony/acl`: reads `CHANNEL(pjsip,remote_addr)`.
-- **Schema:** migration 0015, a `SECURITY DEFINER` function `carrier_ingress_match(source inet, number text)` returning at most the matching (tenant, trunk) pairs, executable by the app role only.
+- **Schema:** migration 0016, a `SECURITY DEFINER` function `carrier_ingress_match(source inet, number text)` returning at most the matching (tenant, trunk) pairs, executable by the app role only.
 - **Engine:** one new realtime endpoint, AOR and identify row (`carrier-ingress`). Per-trunk `ps_endpoint_id_ips` rows are removed on upgrade, and reconcile reports any left.
 - **Decisions:** D-77 (carrier traffic enters through one ingress and is attributed by the platform). It amends D-75 and D-76: addresses are recognised by the ingress, no longer per trunk.
 - **Docs:** LLD-03 §4.2, §7.5–7.6 and §11.1 (sequence); PROGRESS closes the High gap.

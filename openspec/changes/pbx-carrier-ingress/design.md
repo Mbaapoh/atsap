@@ -70,6 +70,6 @@ Phones and the other endpoints are unchanged.
 
 ## Migration Plan
 
-1. Migration 0015 adds the function.
+1. Migration 0016 adds the function.
 2. The app version that projects the ingress deploys. On startup the projector writes the ingress row and deletes per-trunk identify rows; reconcile confirms.
 3. Rollback: the previous version re-projects per-trunk identify rows on the next trunk write, or `pbx reconcile --fix`. Run the down migration to drop the function.
