@@ -106,6 +106,39 @@ test("A4: a trunk's health is what its carrier says, with why and when", async (
   await expect(table.getByRole("row", { name: /A typo/ })).toContainText(/Unhealthy\s*Host not found · checked /, { timeout: 15_000 });
 });
 
+// pbx-carrier-addresses (D-76), against the real API: a carrier's
+// published ranges are stored and shown; localhost is refused at its field
+// before anything is sent, and by the server if sent anyway.
+test("A4: a carrier's inbound signalling ranges; a host that cannot be a carrier", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = ((await (await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email: user.email, password: FIXTURE_PASSWORD } })).json()) as { access: { token: string } }).access.token;
+  teardown = () => cleanTelephony(request, token, tenantId);
+
+  await signIn(page, user.email);
+  await page.goto("/trunks");
+  await page.getByRole("button", { name: "Add trunk" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a trunk" });
+  await dialog.getByLabel("Name", { exact: true }).fill("Published ranges");
+  await dialog.getByLabel("Host").fill("localhost");
+  await dialog.getByLabel("Channel limit").fill("2");
+  await dialog.getByLabel("Inbound signalling addresses (optional)").fill("203.0.113.0/28\n198.51.100.9");
+  await dialog.getByRole("button", { name: "Add trunk" }).click();
+  await expect(dialog.getByLabel("Host")).toHaveAccessibleDescription(/cannot be a carrier/);
+
+  await dialog.getByLabel("Host").fill("sip.ranges.example");
+  await dialog.getByRole("button", { name: "Add trunk" }).click();
+  await expect(page.getByText("Trunk Published ranges added.")).toBeVisible();
+  const row = page.getByRole("table", { name: "Trunks of this tenant" }).getByRole("row", { name: /Published ranges/ });
+  await expect(row).toContainText("Also from 198.51.100.9, 203.0.113.0/28");
+
+  const listed = await api(request, token, "ListTrunks", { tenantId });
+  expect(listed.body.trunks[0].inboundAddresses).toEqual(["198.51.100.9", "203.0.113.0/28"]);
+  const refused = await api(request, token, "CreateTrunk", { tenantId, name: "Loop", host: "127.0.0.1", channelLimit: 1 });
+  expect(refused.status).toBe(400);
+  expect(JSON.stringify(refused.body)).toContain("cannot be a carrier");
+});
+
 test("A4: add, replace and delete outbound routes", async ({ page, request }) => {
   user = seedUser(["Acme"]);
   const tenantId = user.tenants[0]!.id;

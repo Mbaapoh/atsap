@@ -242,7 +242,7 @@ const expected: [string, string, string | RegExp][] = [
   ["rotate extension", "internal", /Something went wrong/],
   ["delete extension", "permission_denied", "Your role cannot delete extensions."],
   ["delete extension", "internal", /Something went wrong/],
-  ["add trunk", "invalid_argument", "Some details are not valid. Check the host, port and username."],
+  ["add trunk", "invalid_argument", "Some details are not valid. Check the host, port, username and inbound signalling addresses."],
   ["add trunk", "already_exists", "A trunk with that name already exists."],
   ["add trunk", "permission_denied", "Your role cannot change trunks."],
   ["edit trunk", "internal", /Something went wrong/],

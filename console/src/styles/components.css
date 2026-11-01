@@ -24,6 +24,7 @@
 /* Trunk health: the badge, then why and when, as quieter text */
 .health-cell { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .health-detail { color: var(--color-text-muted); font-size: 0.8125rem; }
+.cell-detail { display: block; color: var(--color-text-muted); font-size: 0.8125rem; }
 
 /* Status badge and licence pill: icon + text + colour, never colour alone */
 .badge, .pill { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 0.875rem; font-weight: 600; line-height: 1.2; border-radius: 999px; padding: 2px var(--space-2) 2px 6px; white-space: nowrap; }
@@ -107,6 +108,7 @@
 }
 .input[aria-invalid="true"] { border-color: var(--color-danger); }
 .input[readonly] { background: var(--color-surface-muted); }
+.input-multiline { min-height: 6rem; padding-block: var(--space-2); resize: vertical; font-family: var(--font-mono, ui-monospace, monospace); }
 .form-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-block-start: var(--space-2); }
 .link-button { background: none; border: 0; padding: 0; color: var(--color-action-primary); font: inherit; text-decoration: underline; cursor: pointer; }
 

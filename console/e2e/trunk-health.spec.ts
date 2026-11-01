@@ -8,6 +8,13 @@ const observed = new Date();
 const trunks = [
   { trunkId: "u", name: "Brand new", host: "sip.new.example", channelLimit: 2, health: "TRUNK_HEALTH_UNKNOWN" },
   { trunkId: "t", name: "Typo", host: "locslhodt", channelLimit: 2, health: "TRUNK_HEALTH_UNHEALTHY", healthReason: "TRUNK_HEALTH_REASON_HOST_NOT_FOUND", healthObservedAt: observed.toISOString() },
+  // pbx-carrier-addresses (D-76): a carrier's published ranges, and one
+  // whose host resolves only to loopback. Long lists must still fit a phone.
+  {
+    trunkId: "r", name: "Published ranges", host: "sip.ranges.example", channelLimit: 2, health: "TRUNK_HEALTH_HEALTHY",
+    inboundAddresses: ["54.172.60.0/30", "54.244.51.0/30", "54.171.127.192/30", "35.156.191.128/30", "2600:1f18:7a5:4d00::/56"],
+  },
+  { trunkId: "l", name: "Loops back", host: "loop.example", channelLimit: 2, health: "TRUNK_HEALTH_UNHEALTHY", healthReason: "TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED", healthObservedAt: observed.toISOString() },
 ];
 
 for (const width of [390, 1280]) {
@@ -21,6 +28,8 @@ for (const width of [390, 1280]) {
     await expect(table.getByRole("row", { name: /Brand new/ })).toContainText("Not checked yet");
     await expect(table.getByRole("row", { name: /Brand new/ })).not.toContainText(/checked \d/);
     await expect(table.getByRole("row", { name: /Typo/ })).toContainText(/Unhealthy\s*Host not found · checked \d/);
+    await expect(table.getByRole("row", { name: /Published ranges/ })).toContainText("Also from 54.172.60.0/30, 54.244.51.0/30");
+    await expect(table.getByRole("row", { name: /Loops back/ })).toContainText(/Unhealthy\s*Address not allowed · checked \d/);
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBe(0);

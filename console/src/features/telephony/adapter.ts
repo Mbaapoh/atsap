@@ -24,6 +24,8 @@ export interface TrunkRow {
   // Why and when it was last observed; unset until first observed.
   healthReason: TrunkHealthReason;
   healthObservedAt: Date | null;
+  // The carrier's published signalling addresses and ranges (D-76).
+  inboundAddresses: string[];
 }
 
 export interface TrunkInput {
@@ -36,6 +38,8 @@ export interface TrunkInput {
   secret: string;
   channelLimit: number;
   priority: number;
+  // Replaces the trunk's list; none means none.
+  inboundAddresses: string[];
 }
 
 export function useTenantId(): string {
@@ -77,6 +81,7 @@ export function useTrunks(page: number) {
           health: t.health,
           healthReason: t.healthReason,
           healthObservedAt: t.healthObservedAt ? timestampDate(t.healthObservedAt) : null,
+          inboundAddresses: [...t.inboundAddresses],
         })),
       ),
     enabled: tenantId !== "",

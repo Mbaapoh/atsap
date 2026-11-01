@@ -3,10 +3,12 @@ import { toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
+import { TextAreaField } from "../../components/TextAreaField";
 import { TextField } from "../../components/TextField";
 import { codePoints } from "../../components/text";
 import { useToast } from "../../components/Toast";
 import { useTrunkChanges, type TrunkInput, type TrunkRow } from "./adapter";
+import { carrierHost, checkInbound, inboundLines } from "./carrierAddress";
 
 // Field rules mirror the server's (pbx/domain/trunk.go); the server still
 // decides. A host is a bare hostname or IP: no scheme, port or user part.
@@ -21,9 +23,10 @@ interface Draft {
   secret: string;
   channelLimit: string;
   priority: string;
+  inbound: string;
 }
 
-const empty: Draft = { name: "", host: "", port: "", authUsername: "", secret: "", channelLimit: "", priority: "0" };
+const empty: Draft = { name: "", host: "", port: "", authUsername: "", secret: "", channelLimit: "", priority: "0", inbound: "" };
 
 function validate(d: Draft): { errors: Partial<Record<keyof Draft, string>>; input?: TrunkInput } {
   const errors: Partial<Record<keyof Draft, string>> = {};
@@ -31,6 +34,11 @@ function validate(d: Draft): { errors: Partial<Record<keyof Draft, string>>; inp
   if (!name) errors.name = "Enter a name, like Carrier A.";
   else if (codePoints(name) > 100) errors.name = "Use at most 100 characters.";
   if (!HOST.test(d.host.trim())) errors.host = "Enter a hostname or IP address only, like sip.carrier.example — no sip:, port or user.";
+  else if (carrierHost(d.host.trim()) === "not-carrier")
+    errors.host = "This cannot be a carrier: localhost and loopback, link-local or multicast addresses are this server itself or no one. Enter the carrier's own hostname or IP address.";
+  const inbound = inboundLines(d.inbound);
+  const inboundProblem = checkInbound(inbound);
+  if (inboundProblem) errors.inbound = inboundProblem;
   const port = d.port.trim() === "" ? 0 : Number(d.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) errors.port = "Use a port from 1 to 65535, or leave empty for 5060.";
   const limit = Number(d.channelLimit);
@@ -43,7 +51,7 @@ function validate(d: Draft): { errors: Partial<Record<keyof Draft, string>>; inp
   if (Object.keys(errors).length) return { errors };
   return {
     errors,
-    input: { name, host: d.host.trim(), port, authUsername: d.authUsername.trim(), secret: d.secret, channelLimit: limit, priority },
+    input: { name, host: d.host.trim(), port, authUsername: d.authUsername.trim(), secret: d.secret, channelLimit: limit, priority, inboundAddresses: inbound },
   };
 }
 
@@ -60,7 +68,16 @@ export function TrunkDialog(props: TrunkDialogProps) {
 
 function draftOf(trunk: TrunkRow | null): Draft {
   return trunk
-    ? { name: trunk.name, host: trunk.host, port: trunk.port ? String(trunk.port) : "", authUsername: trunk.authUsername, secret: "", channelLimit: String(trunk.channelLimit), priority: String(trunk.priority) }
+    ? {
+        name: trunk.name,
+        host: trunk.host,
+        port: trunk.port ? String(trunk.port) : "",
+        authUsername: trunk.authUsername,
+        secret: "",
+        channelLimit: String(trunk.channelLimit),
+        priority: String(trunk.priority),
+        inbound: trunk.inboundAddresses.join("\n"),
+      }
     : empty;
 }
 
@@ -93,7 +110,7 @@ function TrunkForm({ trunk, open, onClose }: TrunkDialogProps) {
       const e = toApiError(err);
       setFailure(
         e.kind === "invalid"
-          ? "Some details are not valid. Check the host, port and username."
+          ? "Some details are not valid. Check the host, port, username and inbound signalling addresses."
           : e.kind === "exists"
             ? "A trunk with that name already exists."
             : e.kind === "forbidden"
@@ -119,6 +136,15 @@ function TrunkForm({ trunk, open, onClose }: TrunkDialogProps) {
           <TextField label="Port (optional)" inputMode="numeric" autoComplete="off" hint="Leave empty for the SIP default, 5060." value={draft.port} onChange={set("port")} error={errors.port} />
           <TextField label="Channel limit" inputMode="numeric" autoComplete="off" hint="Calls this trunk may carry at once." value={draft.channelLimit} onChange={set("channelLimit")} error={errors.channelLimit} required />
           <TextField label="Priority" inputMode="numeric" autoComplete="off" hint="Lower is preferred when routes tie." value={draft.priority} onChange={set("priority")} error={errors.priority} required />
+          <TextAreaField
+            label="Inbound signalling addresses (optional)"
+            spellCheck={false}
+            rows={3}
+            hint="The addresses your carrier sends calls from, if they differ from the host: one IP address or range per line, like 203.0.113.0/28. Your carrier publishes these."
+            value={draft.inbound}
+            onChange={set("inbound")}
+            error={errors.inbound}
+          />
           <TextField label="Username (optional)" autoComplete="off" spellCheck={false} hint="Leave empty for a carrier that recognises you by IP address." value={draft.authUsername} onChange={set("authUsername")} error={errors.authUsername} />
           <TextField
             label="Secret (optional)"

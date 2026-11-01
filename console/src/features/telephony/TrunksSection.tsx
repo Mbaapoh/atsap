@@ -11,7 +11,16 @@ import { DeleteTrunkDialog, TrunkDialog } from "./TrunkDialogs";
 
 const columns: Column<TrunkRow>[] = [
   { key: "name", header: "Name", render: (t) => t.name },
-  { key: "host", header: "Host", render: (t) => t.host },
+  {
+    key: "host",
+    header: "Host",
+    render: (t) => (
+      <>
+        {t.host}
+        {t.inboundAddresses.length ? <span className="cell-detail">Also from {t.inboundAddresses.join(", ")}</span> : null}
+      </>
+    ),
+  },
   { key: "port", header: "Port", render: (t) => (t.port ? String(t.port) : "5060"), numeric: true },
   { key: "limit", header: "Channel limit", render: (t) => String(t.channelLimit), numeric: true },
   { key: "priority", header: "Priority", render: (t) => String(t.priority), numeric: true },

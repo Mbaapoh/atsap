@@ -87,13 +87,30 @@
 
 ## 4. Console and live proof
 
-- [ ] 4.1 Console:
+- [x] 4.1 Console:
   - the trunk dialog's *Inbound signalling addresses (optional)* field, one per line, with hint and server error at the field;
   - the trunks list shows the addresses;
   - "Address not allowed" health copy;
   - regenerated clients.
 
   Tests: component tests (create and edit send exactly the lines entered; blank lines dropped; refusal shown at the field), a mocked browser e2e, and a rig spec creating a trunk with a range. Verify the full `make console-check` passes and the floors hold.
+
+  *(done 2026-11-01.
+  - **New:**
+    - a `TextAreaField` component, wired like `TextField`;
+    - `carrierAddress.ts`, which mirrors the server's rules (IPv6 parsed by the platform's own URL parser);
+    - the dialog field, the list's "Also from …" line, and the "Address not allowed" copy.
+  - **Errors at the field:** the console never shows the server's message (rule 10), so a host or line refusal comes from the mirrored rules, as the host field's already did. A server refusal shows the generic alert, which now names the inbound addresses.
+  - **Tests:**
+    - `carrierAddress.test.ts` and `carrierAddressDialog.test.tsx`: shown in the list; refused at the field with nothing sent; sent exactly as entered; an edit starts from and replaces the list; clearing sends none; the new reason shown.
+    - The mocked browser spec has a trunk with five published ranges at 390 px (no sideways scroll) and an "Address not allowed" trunk.
+    - The rig spec: `localhost` refused at the field; ranges stored and shown; the API refuses `127.0.0.1` with "cannot be a carrier".
+  - **Found and fixed:** the generic alert's copy changed, so `admin-dialogs.test.tsx` was updated.
+  - **Verified:**
+    - component 408/408 (coverage floors held);
+    - e2e 29;
+    - rig integration 26 (on the rebuilt rig app, migration 14);
+    - UAT 2 of 3, plus audit 0. The A3–A5 phone UAT could not run: the owner's own phones (`~/atsap-phones/1001` and `1002`, registered) hold UDP 5070/5071. It runs in 4.2 once the ports are free.)*
 - [ ] 4.2 Live, Go e2e on the rig:
   - a container carrier whose trunk host is a different name, recognised only through an inbound range (404 for an unassigned DID, 401 before the range is added and after it is removed);
   - `localhost` and `127.0.0.1` refused with the field named;
