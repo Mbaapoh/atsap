@@ -32,7 +32,7 @@
 
 ## 3. API, storage, projection
 
-- [ ] 3.1 Proto:
+- [x] 3.1 Proto:
   - `Trunk.inbound_addresses`, `CreateTrunkRequest.inbound_addresses`, `UpdateTrunkRequest.inbound_addresses`;
   - `TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED`.
 
@@ -46,6 +46,25 @@
   - an application integration test: create with ranges, update to none, `localhost` refused.
 
   Verify unit and integration tiers pass on `atsapbx_test`, and `make lint` is clean.
+
+  *(done 2026-11-01.
+  - **Proto:** three fields and the enum value, additive; `buf lint` and `buf breaking` against develop pass. The Go, TypeScript and OpenAPI outputs are regenerated.
+  - **Migration 0014:**
+    - adds `inbound_addresses CIDR[]`;
+    - extends the `health_reason` check with `ADDRESS_NOT_ALLOWED`;
+    - strips loopback, link-local, unspecified, "this network" and multicast addresses from `resolved_addresses`;
+    - its down migration maps `ADDRESS_NOT_ALLOWED` to `NO_RESPONSE`.
+  - **Application:** commands carry the lines as entered; the application parses them through the domain, so errors name the entry. Views return them in canonical form.
+  - **Console:** the exhaustive health-copy map would not typecheck against the new client, so "Address not allowed" lands here.
+  - **Tests:**
+    - **Wire:** `TestTrunkInboundAddresses_OnTheWire`, `TestToProtoTrunk_AddressNotAllowed`.
+    - **Store:** round trip and replace, and the new reason.
+    - **Migration:** `TestTrunkInboundMigration_StripsNonCarrierAddresses`.
+    - **Application:** five new refusals in `TestCreateTrunk_RefusesInvalidInputAndWritesNothing`, and `TestTrunkInboundAddresses_AreConfiguration`.
+  - **Found and fixed:**
+    - an empty list was written as NULL;
+    - `TestProbe_RealPeers` reached the rig's Asterisk on host loopback; it now widens `Permit` for that peer and asserts the default refuses it.
+  - **Verified:** unit tests, `make lint` 0, all 35 integration packages on `atsapbx_test`, console typecheck.)*
 - [ ] 3.2 Identify is the union: `ProjectTrunk`, `ProjectTrunkIdentify` and `DiffTrunk` use `IdentifyMatch(resolved, inbound)`. The prober passes inbound ranges when it reprojects, and clears the host part for `AddressNotAllowed`.
 
   Integration tests:

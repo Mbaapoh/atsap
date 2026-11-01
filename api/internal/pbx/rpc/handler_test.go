@@ -39,6 +39,10 @@ type fakeService struct {
 	profile        ports.EmergencyProfile
 	emergencyViews []ports.EmergencyNumberView
 	registrar      ports.SipRegistrar
+	// Trunks (pbx-carrier-addresses wire tests).
+	trunkView       ports.TrunkView
+	lastCreateTrunk ports.CreateTrunkCommand
+	lastUpdateTrunk ports.UpdateTrunkCommand
 }
 
 func (f *fakeService) SipRegistrar(_ context.Context, tenantID shareddomain.TenantID) (ports.SipRegistrar, error) {
@@ -78,12 +82,14 @@ func (f *fakeService) RegenerateSecret(_ context.Context, tenantID shareddomain.
 
 // Trunk and route operations are exercised in trunks_test.go through
 // their own fake; these satisfy the interface for the extension tests.
-func (f *fakeService) CreateTrunk(context.Context, ports.CreateTrunkCommand) (ports.TrunkView, error) {
-	return ports.TrunkView{}, f.err
+func (f *fakeService) CreateTrunk(_ context.Context, cmd ports.CreateTrunkCommand) (ports.TrunkView, error) {
+	f.lastCreateTrunk = cmd
+	return f.trunkView, f.err
 }
 
-func (f *fakeService) UpdateTrunk(context.Context, ports.UpdateTrunkCommand) (ports.TrunkView, error) {
-	return ports.TrunkView{}, f.err
+func (f *fakeService) UpdateTrunk(_ context.Context, cmd ports.UpdateTrunkCommand) (ports.TrunkView, error) {
+	f.lastUpdateTrunk = cmd
+	return f.trunkView, f.err
 }
 
 func (f *fakeService) DeleteTrunk(context.Context, shareddomain.TenantID, shareddomain.TrunkID) error {

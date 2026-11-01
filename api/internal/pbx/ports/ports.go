@@ -152,6 +152,9 @@ type CreateTrunkCommand struct {
 	Secret       string
 	ChannelLimit int
 	Priority     int
+	// InboundAddresses are the carrier's signalling addresses and ranges
+	// as entered (D-76); the domain parses and checks them.
+	InboundAddresses []string
 }
 
 // UpdateTrunkCommand replaces a trunk's configuration.
@@ -170,6 +173,8 @@ type UpdateTrunkCommand struct {
 	Secret       string
 	ChannelLimit int
 	Priority     int
+	// InboundAddresses replaces the trunk's list: none supplied means none.
+	InboundAddresses []string
 }
 
 // TrunkView is what a caller sees: never the secret, never an engine
@@ -189,6 +194,9 @@ type TrunkView struct {
 	// until the trunk is first observed.
 	HealthReason     domain.HealthReason
 	HealthObservedAt *time.Time
+	// InboundAddresses are the carrier's signalling addresses and ranges,
+	// a single address without its prefix length.
+	InboundAddresses []string
 }
 
 // CarrierCheck is one check of a carrier: what it found, and for an

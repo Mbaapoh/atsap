@@ -352,3 +352,44 @@ func TestTrunkStore_ResolvedAddressesAreGuardedByHost(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []netip.Addr{netip.MustParseAddr("203.0.113.10"), netip.MustParseAddr("203.0.113.20")}, got.ResolvedAddresses)
 }
+
+// D-76: inbound signalling ranges round-trip normalised, and an update
+// replaces them — with none when it supplies none.
+func TestTrunkStore_InboundAddressesRoundTripAndAreReplaced(t *testing.T) {
+	h := newStore(t)
+	tr := newTrunk(h.tenantA)
+	tr.InboundAddresses = []netip.Prefix{netip.MustParsePrefix("203.0.113.9/32"), netip.MustParsePrefix("198.51.100.7/24"), netip.MustParsePrefix("2001:db8::/48")}
+	h.insertTrunk(t, tr)
+
+	got, err := h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24"), netip.MustParsePrefix("203.0.113.9/32"), netip.MustParsePrefix("2001:db8::/48")},
+		got.InboundAddresses, "masked and sorted")
+
+	got.InboundAddresses = []netip.Prefix{netip.MustParsePrefix("192.0.2.0/28")}
+	require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error { return trunks.Update(ctx, tx, got) }))
+	got, err = h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Prefix{netip.MustParsePrefix("192.0.2.0/28")}, got.InboundAddresses, "an update replaces the list")
+
+	got.InboundAddresses = nil
+	require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error { return trunks.Update(ctx, tx, got) }))
+	got, err = h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.InboundAddresses, "none supplied means none")
+}
+
+// The new health reason is storable.
+func TestTrunkStore_AddressNotAllowedIsAnObservation(t *testing.T) {
+	h := newStore(t)
+	tr := newTrunk(h.tenantA)
+	h.insertTrunk(t, tr)
+	obs := pbxdomain.HealthObservation{Health: pbxdomain.HealthUnhealthy, Reason: pbxdomain.ReasonAddressNotAllowed, At: time.Now().UTC().Truncate(time.Microsecond)}
+	require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := trunks.SetCheckedHealth(ctx, tx, tr.ID, tr.Host, tr.Port, obs)
+		return err
+	}))
+	got, err := h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, pbxdomain.ReasonAddressNotAllowed, got.HealthReason)
+}

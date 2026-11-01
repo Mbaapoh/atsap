@@ -203,6 +203,10 @@ const (
 	TrunkHealthReason_TRUNK_HEALTH_REASON_NO_RESPONSE TrunkHealthReason = 4
 	// The carrier responds with a server error.
 	TrunkHealthReason_TRUNK_HEALTH_REASON_CARRIER_ERROR TrunkHealthReason = 5
+	// The trunk's host name resolves only to addresses that cannot be a
+	// carrier (loopback, link-local, unspecified or multicast); nothing was
+	// sent to them.
+	TrunkHealthReason_TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED TrunkHealthReason = 6
 )
 
 // Enum value maps for TrunkHealthReason.
@@ -214,14 +218,16 @@ var (
 		3: "TRUNK_HEALTH_REASON_HOST_NOT_FOUND",
 		4: "TRUNK_HEALTH_REASON_NO_RESPONSE",
 		5: "TRUNK_HEALTH_REASON_CARRIER_ERROR",
+		6: "TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED",
 	}
 	TrunkHealthReason_value = map[string]int32{
-		"TRUNK_HEALTH_REASON_UNSPECIFIED":    0,
-		"TRUNK_HEALTH_REASON_ANSWERING":      1,
-		"TRUNK_HEALTH_REASON_SLOW_RESPONSE":  2,
-		"TRUNK_HEALTH_REASON_HOST_NOT_FOUND": 3,
-		"TRUNK_HEALTH_REASON_NO_RESPONSE":    4,
-		"TRUNK_HEALTH_REASON_CARRIER_ERROR":  5,
+		"TRUNK_HEALTH_REASON_UNSPECIFIED":         0,
+		"TRUNK_HEALTH_REASON_ANSWERING":           1,
+		"TRUNK_HEALTH_REASON_SLOW_RESPONSE":       2,
+		"TRUNK_HEALTH_REASON_HOST_NOT_FOUND":      3,
+		"TRUNK_HEALTH_REASON_NO_RESPONSE":         4,
+		"TRUNK_HEALTH_REASON_CARRIER_ERROR":       5,
+		"TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED": 6,
 	}
 )
 
@@ -1109,6 +1115,10 @@ type Trunk struct {
 	// until the trunk is first observed.
 	HealthReason     TrunkHealthReason      `protobuf:"varint,10,opt,name=health_reason,json=healthReason,proto3,enum=atsapbx.v1.TrunkHealthReason" json:"health_reason,omitempty"`
 	HealthObservedAt *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=health_observed_at,json=healthObservedAt,proto3" json:"health_observed_at,omitempty"`
+	// The carrier's published signalling addresses and CIDR ranges, which
+	// its calls are also recognised from (besides the host's own
+	// addresses). A single address is shown without a prefix length.
+	InboundAddresses []string `protobuf:"bytes,12,rep,name=inbound_addresses,json=inboundAddresses,proto3" json:"inbound_addresses,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1220,6 +1230,13 @@ func (x *Trunk) GetHealthObservedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Trunk) GetInboundAddresses() []string {
+	if x != nil {
+		return x.InboundAddresses
+	}
+	return nil
+}
+
 type CreateTrunkRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
@@ -1232,10 +1249,15 @@ type CreateTrunkRequest struct {
 	AuthUsername string `protobuf:"bytes,5,opt,name=auth_username,json=authUsername,proto3" json:"auth_username,omitempty"`
 	Secret       string `protobuf:"bytes,6,opt,name=secret,proto3" json:"secret,omitempty"`
 	// Concurrent-call cap on this trunk; must be positive.
-	ChannelLimit  int32 `protobuf:"varint,7,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
-	Priority      int32 `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ChannelLimit int32 `protobuf:"varint,7,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
+	Priority     int32 `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	// Optional: up to 20 IP addresses or CIDR ranges (no broader than /16
+	// for IPv4, /32 for IPv6) the carrier sends calls from, when they
+	// differ from the host. Loopback, link-local, unspecified and
+	// multicast addresses are refused.
+	InboundAddresses []string `protobuf:"bytes,9,rep,name=inbound_addresses,json=inboundAddresses,proto3" json:"inbound_addresses,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateTrunkRequest) Reset() {
@@ -1322,6 +1344,13 @@ func (x *CreateTrunkRequest) GetPriority() int32 {
 		return x.Priority
 	}
 	return 0
+}
+
+func (x *CreateTrunkRequest) GetInboundAddresses() []string {
+	if x != nil {
+		return x.InboundAddresses
+	}
+	return nil
 }
 
 type CreateTrunkResponse struct {
@@ -1482,11 +1511,14 @@ type UpdateTrunkRequest struct {
 	Port         int32  `protobuf:"varint,5,opt,name=port,proto3" json:"port,omitempty"`
 	AuthUsername string `protobuf:"bytes,6,opt,name=auth_username,json=authUsername,proto3" json:"auth_username,omitempty"`
 	// Empty keeps the stored secret; non-empty replaces it.
-	Secret        string `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"`
-	ChannelLimit  int32  `protobuf:"varint,8,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
-	Priority      int32  `protobuf:"varint,9,opt,name=priority,proto3" json:"priority,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Secret       string `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"`
+	ChannelLimit int32  `protobuf:"varint,8,opt,name=channel_limit,json=channelLimit,proto3" json:"channel_limit,omitempty"`
+	Priority     int32  `protobuf:"varint,9,opt,name=priority,proto3" json:"priority,omitempty"`
+	// Replaces the trunk's inbound signalling addresses, as every other
+	// field is replaced: none supplied means none.
+	InboundAddresses []string `protobuf:"bytes,10,rep,name=inbound_addresses,json=inboundAddresses,proto3" json:"inbound_addresses,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UpdateTrunkRequest) Reset() {
@@ -1580,6 +1612,13 @@ func (x *UpdateTrunkRequest) GetPriority() int32 {
 		return x.Priority
 	}
 	return 0
+}
+
+func (x *UpdateTrunkRequest) GetInboundAddresses() []string {
+	if x != nil {
+		return x.InboundAddresses
+	}
+	return nil
 }
 
 type UpdateTrunkResponse struct {
@@ -3232,7 +3271,7 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"configured\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1c\n" +
-	"\ttransport\x18\x04 \x01(\tR\ttransport\"\xa2\x03\n" +
+	"\ttransport\x18\x04 \x01(\tR\ttransport\"\xcf\x03\n" +
 	"\x05Trunk\x12\x19\n" +
 	"\btrunk_id\x18\x01 \x01(\tR\atrunkId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3246,7 +3285,8 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x06health\x18\t \x01(\x0e2\x17.atsapbx.v1.TrunkHealthR\x06health\x12B\n" +
 	"\rhealth_reason\x18\n" +
 	" \x01(\x0e2\x1d.atsapbx.v1.TrunkHealthReasonR\fhealthReason\x12H\n" +
-	"\x12health_observed_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x10healthObservedAt\"\xeb\x01\n" +
+	"\x12health_observed_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x10healthObservedAt\x12+\n" +
+	"\x11inbound_addresses\x18\f \x03(\tR\x10inboundAddresses\"\x98\x02\n" +
 	"\x12CreateTrunkRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3255,7 +3295,8 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\rauth_username\x18\x05 \x01(\tR\fauthUsername\x12\x16\n" +
 	"\x06secret\x18\x06 \x01(\tR\x06secret\x12#\n" +
 	"\rchannel_limit\x18\a \x01(\x05R\fchannelLimit\x12\x1a\n" +
-	"\bpriority\x18\b \x01(\x05R\bpriority\">\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\x12+\n" +
+	"\x11inbound_addresses\x18\t \x03(\tR\x10inboundAddresses\">\n" +
 	"\x13CreateTrunkResponse\x12'\n" +
 	"\x05trunk\x18\x01 \x01(\v2\x11.atsapbx.v1.TrunkR\x05trunk\"^\n" +
 	"\x11ListTrunksRequest\x12\x1b\n" +
@@ -3263,7 +3304,7 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x05R\x06offset\"?\n" +
 	"\x12ListTrunksResponse\x12)\n" +
-	"\x06trunks\x18\x01 \x03(\v2\x11.atsapbx.v1.TrunkR\x06trunks\"\x86\x02\n" +
+	"\x06trunks\x18\x01 \x03(\v2\x11.atsapbx.v1.TrunkR\x06trunks\"\xb3\x02\n" +
 	"\x12UpdateTrunkRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
 	"\btrunk_id\x18\x02 \x01(\tR\atrunkId\x12\x12\n" +
@@ -3273,7 +3314,9 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\rauth_username\x18\x06 \x01(\tR\fauthUsername\x12\x16\n" +
 	"\x06secret\x18\a \x01(\tR\x06secret\x12#\n" +
 	"\rchannel_limit\x18\b \x01(\x05R\fchannelLimit\x12\x1a\n" +
-	"\bpriority\x18\t \x01(\x05R\bpriority\">\n" +
+	"\bpriority\x18\t \x01(\x05R\bpriority\x12+\n" +
+	"\x11inbound_addresses\x18\n" +
+	" \x03(\tR\x10inboundAddresses\">\n" +
 	"\x13UpdateTrunkResponse\x12'\n" +
 	"\x05trunk\x18\x01 \x01(\v2\x11.atsapbx.v1.TrunkR\x05trunk\"L\n" +
 	"\x12DeleteTrunkRequest\x12\x1b\n" +
@@ -3373,14 +3416,15 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x14TRUNK_HEALTH_HEALTHY\x10\x01\x12\x19\n" +
 	"\x15TRUNK_HEALTH_DEGRADED\x10\x02\x12\x1a\n" +
 	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x03\x12\x18\n" +
-	"\x14TRUNK_HEALTH_UNKNOWN\x10\x04*\xf6\x01\n" +
+	"\x14TRUNK_HEALTH_UNKNOWN\x10\x04*\xa3\x02\n" +
 	"\x11TrunkHealthReason\x12#\n" +
 	"\x1fTRUNK_HEALTH_REASON_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dTRUNK_HEALTH_REASON_ANSWERING\x10\x01\x12%\n" +
 	"!TRUNK_HEALTH_REASON_SLOW_RESPONSE\x10\x02\x12&\n" +
 	"\"TRUNK_HEALTH_REASON_HOST_NOT_FOUND\x10\x03\x12#\n" +
 	"\x1fTRUNK_HEALTH_REASON_NO_RESPONSE\x10\x04\x12%\n" +
-	"!TRUNK_HEALTH_REASON_CARRIER_ERROR\x10\x052\x94\x11\n" +
+	"!TRUNK_HEALTH_REASON_CARRIER_ERROR\x10\x05\x12+\n" +
+	"'TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED\x10\x062\x94\x11\n" +
 	"\n" +
 	"PbxService\x12Z\n" +
 	"\x0fCreateExtension\x12\".atsapbx.v1.CreateExtensionRequest\x1a#.atsapbx.v1.CreateExtensionResponse\x12Q\n" +

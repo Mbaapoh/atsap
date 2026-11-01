@@ -26,6 +26,7 @@ func (h *PbxHandler) CreateTrunk(ctx context.Context, req *connect.Request[atsap
 		TenantID: tenantID, Name: m.GetName(), Host: m.GetHost(), Port: portOrDefault(m.GetPort()),
 		AuthUsername: m.GetAuthUsername(), Secret: m.GetSecret(),
 		ChannelLimit: int(m.GetChannelLimit()), Priority: int(m.GetPriority()),
+		InboundAddresses: m.GetInboundAddresses(),
 	})
 	if err != nil {
 		return nil, mapConfigErr(err)
@@ -65,6 +66,7 @@ func (h *PbxHandler) UpdateTrunk(ctx context.Context, req *connect.Request[atsap
 		TenantID: tenantID, ID: id, Name: m.GetName(), Host: m.GetHost(), Port: portOrDefault(m.GetPort()),
 		AuthUsername: m.GetAuthUsername(), Secret: m.GetSecret(),
 		ChannelLimit: int(m.GetChannelLimit()), Priority: int(m.GetPriority()),
+		InboundAddresses: m.GetInboundAddresses(),
 	})
 	if err != nil {
 		return nil, mapConfigErr(err)
@@ -177,7 +179,7 @@ func toProtoTrunk(v ports.TrunkView) *atsapbxv1.Trunk {
 		TrunkId: v.ID.String(), Name: v.Name, Host: v.Host, Port: wire.Int32(v.Port),
 		AuthUsername: v.AuthUsername, HasSecret: v.HasSecret,
 		ChannelLimit: wire.Int32(v.ChannelLimit), Priority: wire.Int32(v.Priority), Health: healthToProto(v.Health),
-		HealthReason: reasonToProto(v.HealthReason),
+		HealthReason: reasonToProto(v.HealthReason), InboundAddresses: v.InboundAddresses,
 	}
 	if v.HealthObservedAt != nil {
 		t.HealthObservedAt = timestamppb.New(*v.HealthObservedAt)
@@ -219,6 +221,8 @@ func reasonToProto(r domain.HealthReason) atsapbxv1.TrunkHealthReason {
 		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_NO_RESPONSE
 	case domain.ReasonCarrierError:
 		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_CARRIER_ERROR
+	case domain.ReasonAddressNotAllowed:
+		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED
 	default:
 		return atsapbxv1.TrunkHealthReason_TRUNK_HEALTH_REASON_UNSPECIFIED
 	}

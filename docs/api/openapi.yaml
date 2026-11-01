@@ -2823,6 +2823,7 @@ components:
         - TRUNK_HEALTH_REASON_HOST_NOT_FOUND
         - TRUNK_HEALTH_REASON_NO_RESPONSE
         - TRUNK_HEALTH_REASON_CARRIER_ERROR
+        - TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED
       description: TrunkHealthReason says why a trunk has its health.
     atsapbx.v1.CreateEmergencyNumberRequest:
       type: object
@@ -2964,6 +2965,16 @@ components:
           type: integer
           title: priority
           format: int32
+        inboundAddresses:
+          type: array
+          items:
+            type: string
+          title: inbound_addresses
+          description: |-
+            Optional: up to 20 IP addresses or CIDR ranges (no broader than /16
+             for IPv4, /32 for IPv6) the carrier sends calls from, when they
+             differ from the host. Loopback, link-local, unspecified and
+             multicast addresses are refused.
       title: CreateTrunkRequest
       additionalProperties: false
     atsapbx.v1.CreateTrunkResponse:
@@ -3471,6 +3482,15 @@ components:
         healthObservedAt:
           title: health_observed_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        inboundAddresses:
+          type: array
+          items:
+            type: string
+          title: inbound_addresses
+          description: |-
+            The carrier's published signalling addresses and CIDR ranges, which
+             its calls are also recognised from (besides the host's own
+             addresses). A single address is shown without a prefix length.
       title: Trunk
       additionalProperties: false
       description: |-
@@ -3536,6 +3556,14 @@ components:
           type: integer
           title: priority
           format: int32
+        inboundAddresses:
+          type: array
+          items:
+            type: string
+          title: inbound_addresses
+          description: |-
+            Replaces the trunk's inbound signalling addresses, as every other
+             field is replaced: none supplied means none.
       title: UpdateTrunkRequest
       additionalProperties: false
     atsapbx.v1.UpdateTrunkResponse:

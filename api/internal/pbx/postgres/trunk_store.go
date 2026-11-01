@@ -29,7 +29,7 @@ func NewTrunkStore() TrunkStore { return TrunkStore{} }
 
 const trunkColumns = `id, tenant_id, name, host, port, auth_username, credentials_ref,
 	channel_limit, priority, health_status, health_reason, health_observed_at,
-	resolved_addresses, resolved_at, created_at, updated_at`
+	resolved_addresses, resolved_at, inbound_addresses, created_at, updated_at`
 
 // Insert writes a new trunk. Health and addresses are written as given,
 // which on the configuration path is always Unknown with no observation,
@@ -37,17 +37,20 @@ const trunkColumns = `id, tenant_id, name, host, port, auth_username, credential
 func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO carrier_trunks (`+trunkColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	`, t.ID.String(), t.TenantID.String(), t.Name, t.Host, t.Port, nullable(t.AuthUsername),
 		nullable(t.CredentialRef), t.ChannelLimit, t.Priority, string(t.Health), nullable(string(t.HealthReason)),
-		t.HealthObservedAt, addressArray(t.ResolvedAddresses), t.ResolvedAt, t.CreatedAt, t.UpdatedAt)
+		t.HealthObservedAt, addressArray(t.ResolvedAddresses), t.ResolvedAt, rangeArray(t.InboundAddresses),
+		t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert trunk: %w", err)
 	}
 	return nil
 }
 
-// Update rewrites a trunk's configuration. It does NOT write health:
+// Update rewrites a trunk's configuration, its inbound signalling
+// addresses included (replaced, as every field is; D-76). It does NOT
+// write health:
 // configuration and observation have separate writers, so an update can
 // never smuggle a health value in (spec: "Health cannot be set by
 // configuration"). A new host or port does make the old observation
@@ -70,10 +73,11 @@ func (TrunkStore) Update(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 			resolved_addresses = CASE WHEN host = $3 THEN resolved_addresses ELSE $10 END,
 			resolved_at        = CASE WHEN host = $3 THEN resolved_at        ELSE NULL END,
 			name = $2, host = $3, port = $4, auth_username = $5, credentials_ref = $6,
-			channel_limit = $7, priority = $8, updated_at = $9
+			channel_limit = $7, priority = $8, updated_at = $9, inbound_addresses = $11
 		WHERE id = $1
 	`, t.ID.String(), t.Name, t.Host, t.Port, nullable(t.AuthUsername), nullable(t.CredentialRef),
-		t.ChannelLimit, t.Priority, t.UpdatedAt, addressArray(domain.AddressesForHost(t.Host)))
+		t.ChannelLimit, t.Priority, t.UpdatedAt, addressArray(domain.AddressesForHost(t.Host)),
+		rangeArray(t.InboundAddresses))
 	if err != nil {
 		return fmt.Errorf("update trunk: %w", err)
 	}
@@ -205,10 +209,11 @@ func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 		username, ref, reason  *string
 		observedAt, resolvedAt *time.Time
 		addresses              []netip.Addr
+		inbound                []netip.Prefix
 	)
 	if err := row.Scan(&rawID, &rawTenant, &t.Name, &t.Host, &t.Port, &username, &ref,
 		&t.ChannelLimit, &t.Priority, &hlth, &reason, &observedAt, &addresses, &resolvedAt,
-		&t.CreatedAt, &t.UpdatedAt); err != nil {
+		&inbound, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Trunk{}, err
 		}
@@ -237,7 +242,16 @@ func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 		at := resolvedAt.UTC()
 		t.ResolvedAt = &at
 	}
+	t.InboundAddresses = domain.NormaliseInboundAddresses(inbound)
 	return t, nil
+}
+
+// rangeArray is ranges for a CIDR[] column: never NULL, normalised.
+func rangeArray(ranges []netip.Prefix) []netip.Prefix {
+	if out := domain.NormaliseInboundAddresses(ranges); out != nil {
+		return out
+	}
+	return []netip.Prefix{}
 }
 
 // addressArray is addrs for an INET[] column: never NULL, which the

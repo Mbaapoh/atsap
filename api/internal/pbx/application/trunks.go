@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -53,6 +54,9 @@ func (s *Service) CreateTrunk(ctx context.Context, cmd ports.CreateTrunkCommand)
 		// follows creation has resolved it (D-75).
 		ResolvedAddresses: domain.AddressesForHost(cmd.Host),
 	}
+	if t.InboundAddresses, err = parseInbound(cmd.InboundAddresses); err != nil {
+		return ports.TrunkView{}, err
+	}
 	if err := validateTrunk(t, cmd.Secret); err != nil {
 		return ports.TrunkView{}, err
 	}
@@ -102,6 +106,9 @@ func (s *Service) UpdateTrunk(ctx context.Context, cmd ports.UpdateTrunkCommand)
 		after.Name, after.Host, after.Port = cmd.Name, cmd.Host, cmd.Port
 		after.AuthUsername = cmd.AuthUsername
 		after.ChannelLimit, after.Priority = cmd.ChannelLimit, cmd.Priority
+		if after.InboundAddresses, err = parseInbound(cmd.InboundAddresses); err != nil {
+			return err
+		}
 		after.UpdatedAt = s.now()
 		if readdressed = after.Host != before.Host || after.Port != before.Port; readdressed {
 			after.Health, after.HealthReason, after.HealthObservedAt = domain.HealthUnknown, "", nil
@@ -345,6 +352,16 @@ func validateTrunk(t domain.Trunk, secret string) error {
 	return nil
 }
 
+// parseInbound turns the addresses a caller entered into ranges, refusing
+// unparseable ones as invalid input that names the entry (D-76).
+func parseInbound(entries []string) ([]netip.Prefix, error) {
+	ranges, err := domain.ParseInboundAddresses(entries)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ports.ErrInvalidInput, err)
+	}
+	return ranges, nil
+}
+
 func secretBytes(secret string) []byte {
 	if secret == "" {
 		return nil
@@ -390,6 +407,7 @@ func trunkView(t domain.Trunk) ports.TrunkView {
 		ID: t.ID, Name: t.Name, Host: t.Host, Port: t.Port, AuthUsername: t.AuthUsername,
 		HasSecret: t.CredentialRef != "", ChannelLimit: t.ChannelLimit, Priority: t.Priority, Health: t.Health,
 		HealthReason: t.HealthReason, HealthObservedAt: t.HealthObservedAt,
+		InboundAddresses: domain.InboundStrings(t.InboundAddresses),
 	}
 }
 

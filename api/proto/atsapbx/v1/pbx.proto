@@ -280,6 +280,10 @@ enum TrunkHealthReason {
   TRUNK_HEALTH_REASON_NO_RESPONSE = 4;
   // The carrier responds with a server error.
   TRUNK_HEALTH_REASON_CARRIER_ERROR = 5;
+  // The trunk's host name resolves only to addresses that cannot be a
+  // carrier (loopback, link-local, unspecified or multicast); nothing was
+  // sent to them.
+  TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED = 6;
 }
 
 // Trunk is what a caller sees of a carrier connection. It carries no
@@ -304,6 +308,10 @@ message Trunk {
   // until the trunk is first observed.
   TrunkHealthReason health_reason = 10;
   google.protobuf.Timestamp health_observed_at = 11;
+  // The carrier's published signalling addresses and CIDR ranges, which
+  // its calls are also recognised from (besides the host's own
+  // addresses). A single address is shown without a prefix length.
+  repeated string inbound_addresses = 12;
 }
 
 message CreateTrunkRequest {
@@ -319,6 +327,11 @@ message CreateTrunkRequest {
   // Concurrent-call cap on this trunk; must be positive.
   int32 channel_limit = 7;
   int32 priority = 8;
+  // Optional: up to 20 IP addresses or CIDR ranges (no broader than /16
+  // for IPv4, /32 for IPv6) the carrier sends calls from, when they
+  // differ from the host. Loopback, link-local, unspecified and
+  // multicast addresses are refused.
+  repeated string inbound_addresses = 9;
 }
 
 message CreateTrunkResponse {
@@ -347,6 +360,9 @@ message UpdateTrunkRequest {
   string secret = 7;
   int32 channel_limit = 8;
   int32 priority = 9;
+  // Replaces the trunk's inbound signalling addresses, as every other
+  // field is replaced: none supplied means none.
+  repeated string inbound_addresses = 10;
 }
 
 message UpdateTrunkResponse {

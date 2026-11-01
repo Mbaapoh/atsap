@@ -130,6 +130,12 @@ func TestCreateTrunk_RefusesInvalidInputAndWritesNothing(t *testing.T) {
 		"bad host":                func(c *ports.CreateTrunkCommand) { c.Host = "sip:carrier.example" },
 		"port out of range":       func(c *ports.CreateTrunkCommand) { c.Port = 70000 },
 		"zero channel limit":      func(c *ports.CreateTrunkCommand) { c.ChannelLimit = 0 },
+		// D-76: what cannot be a carrier is refused, as host or inbound.
+		"localhost host":      func(c *ports.CreateTrunkCommand) { c.Host = "localhost" },
+		"loopback host":       func(c *ports.CreateTrunkCommand) { c.Host = "127.0.0.1" },
+		"loopback inbound":    func(c *ports.CreateTrunkCommand) { c.InboundAddresses = []string{"203.0.113.9", "127.0.0.1"} },
+		"unparseable inbound": func(c *ports.CreateTrunkCommand) { c.InboundAddresses = []string{"sip.carrier.example"} },
+		"too broad inbound":   func(c *ports.CreateTrunkCommand) { c.InboundAddresses = []string{"10.0.0.0/8"} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			cmd := h.trunkCmd("Bad")
@@ -395,4 +401,39 @@ func TestReconcile_LostSecretIsReportedNotRepaired(t *testing.T) {
 	after, err := h.reconciler(t).Reconcile(ctx)
 	require.NoError(t, err)
 	assert.True(t, after.Clean(), "%+v", after)
+}
+
+// D-76: a trunk carries the carrier's inbound signalling addresses as
+// configuration — normalised on create, returned on reads, replaced on
+// update (none supplied means none) — and a private-network carrier is
+// accepted.
+func TestTrunkInboundAddresses_AreConfiguration(t *testing.T) {
+	h := newHarness(t)
+	cmd := h.trunkCmd("Published ranges")
+	cmd.Host = "10.20.0.5"
+	cmd.InboundAddresses = []string{" 203.0.113.9 ", "", "198.51.100.7/24", "192.168.10.0/24"}
+	created, err := h.svc.CreateTrunk(h.ctx, cmd)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"192.168.10.0/24", "198.51.100.0/24", "203.0.113.9"}, created.InboundAddresses)
+
+	listed, err := h.svc.ListTrunks(h.ctx, h.tenant, ports.Page{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, created.InboundAddresses, listed[0].InboundAddresses, "every read returns them")
+
+	update := ports.UpdateTrunkCommand{TenantID: h.tenant, ID: created.ID, Name: "Published ranges", Host: "10.20.0.5", Port: 5060,
+		AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1, InboundAddresses: []string{"192.0.2.0/28"}}
+	updated, err := h.svc.UpdateTrunk(h.ctx, update)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"192.0.2.0/28"}, updated.InboundAddresses, "an update replaces them")
+
+	update.InboundAddresses = nil
+	updated, err = h.svc.UpdateTrunk(h.ctx, update)
+	require.NoError(t, err)
+	assert.Empty(t, updated.InboundAddresses, "none supplied means none")
+
+	update.Host = "localhost"
+	_, err = h.svc.UpdateTrunk(h.ctx, update)
+	require.ErrorIs(t, err, ports.ErrInvalidInput, "an edit cannot move a trunk onto localhost")
+	assert.ErrorContains(t, err, "cannot be a carrier")
 }

@@ -4,6 +4,7 @@ package sipprobe
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -18,8 +19,13 @@ import (
 // and an address nothing answers from (TEST-NET-1, RFC 5737).
 func TestProbe_RealPeers(t *testing.T) {
 	p := &Prober{}
+	assert.Equal(t, domain.ProbeAddressNotAllowed, p.Probe(context.Background(), "127.0.0.1", 5060).Outcome,
+		"by default the platform never checks loopback (D-76)")
 
-	got := p.Probe(context.Background(), "127.0.0.1", 5060)
+	// The rig publishes Asterisk on this host's loopback; only this test
+	// widens Permit to reach it there.
+	loop := &Prober{Permit: func(netip.Addr) bool { return true }}
+	got := loop.Probe(context.Background(), "127.0.0.1", 5060)
 	assert.Equal(t, domain.ProbeAnswered, got.Outcome, "Asterisk answers OPTIONS")
 	assert.GreaterOrEqual(t, got.Status, 200)
 	assert.Less(t, got.RTT, time.Second)

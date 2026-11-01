@@ -22,6 +22,8 @@ export const healthReason: Record<TrunkHealthReason, string | null> = {
   [TrunkHealthReason.HOST_NOT_FOUND]: "Host not found",
   [TrunkHealthReason.NO_RESPONSE]: "No response",
   [TrunkHealthReason.CARRIER_ERROR]: "Carrier error",
+  // D-76: the host resolves only to addresses that cannot be a carrier.
+  [TrunkHealthReason.ADDRESS_NOT_ALLOWED]: "Address not allowed",
 };
 
 const timeOnly = new Intl.DateTimeFormat(undefined, { timeStyle: "medium" });
