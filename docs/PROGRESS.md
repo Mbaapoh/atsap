@@ -7,7 +7,9 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-11-01, after `pbx-carrier-addresses`: a carrier
+**Last updated:** 2026-11-01, after `pbx-carrier-ingress`: tenants that
+share a carrier each receive their own numbers' calls, attributed by the
+platform (D-77). Before that, the same day, `pbx-carrier-addresses`: a carrier
 is recognised from its published signalling ranges, and hosts that cannot
 be a carrier (localhost, loopback) are refused (D-76). Before that, the
 same day, `pbx-trunk-host-resolution`: one tenant's unresolvable trunk
@@ -82,9 +84,8 @@ configuration file, and without being told what Asterisk is.
    (`pbx-trunk-host-resolution`, D-75).
 6. ~~Carriers with published signalling ranges, and non-carrier hosts~~
    **done** 2026-11-01 (`pbx-carrier-addresses`, D-76).
-7. **Shared carrier address**: two trunks on one carrier IP (or
-   overlapping ranges) cannot be told apart for inbound calls. Needs a
-   spike first (D-25).
+7. ~~Shared carrier address~~ **done** 2026-11-01
+   (`pbx-carrier-ingress`, D-77).
 8. **Toll-fraud protection**: enforce outbound destination classes.
 9. **`identity-oidc-google`**: Sign in with Google, Gmail and Workspace
    ([D-67](DECISIONS.md)).
@@ -148,6 +149,7 @@ that link.
 | 2026-10-14 | `pbx-trunk-health-probing` | 7/7 | U I W E, console browser on the real API, A3–A5 UAT against a real carrier (D-74) |
 | 2026-11-01 | `pbx-trunk-host-resolution` | 9/9 | U I E, UAT as regression; a container carrier recognised by DNS name (D-75) |
 | 2026-11-01 | `pbx-carrier-addresses` | 9/9 | U I E A; a container carrier recognised from its published range; console field, browser and rig; phone UATs as regression (D-76) |
+| 2026-11-01 | `pbx-carrier-ingress` | 7/7 | U I E A; spike (one ingress, `remote_addr` through ARI, 500 ranges); two tenants on one container carrier each receive their own numbers (D-77) |
 
 ## Active changes
 
@@ -167,7 +169,7 @@ design; *accepted* = no fix planned.
 | The Asterisk image is single-stage and ships its build toolchain: Trivy finds 20 fixable HIGH (Python 3.11) and 440 HIGH/CRITICAL that Debian has not fixed yet, so the image gate cannot pass | quality-and-supply-chain-gates 5.3 | **High** — pilot: multi-stage runtime image; owner decision on `--ignore-unfixed` |
 | Trunk health does not follow HLD T-6: checks every 30 s and one observation decides (T-6: every 10 s, 3 consecutive failures or > 20 % call-setup failures over 60 s, 5 min of health to recover). D-74 did not reconcile with T-6 | Found 2026-11-01, auditing `pbx-trunk-host-resolution` against the BRD/HLD | Medium — pilot: amend T-6 by decision or implement it (owner) |
 | BR-08: a failing carrier is not alerted to the operator; health is only shown in the console | BRD BR-08, found 2026-11-01 | Medium — pilot: needs an alerting channel (email via the existing mailer, or a webhook, LLD-05) |
-| Two trunks on one carrier address (or overlapping inbound ranges, D-76) are indistinguishable for inbound calls | inbound G3 | **High** — pilot: wrong-tenant attribution once two tenants share a carrier |
+| ~~Two trunks on one carrier address (or overlapping inbound ranges, D-76) are indistinguishable for inbound calls~~ | inbound G3 | Closed: `pbx-carrier-ingress` (D-77): one ingress, attributed by source address and number; a number configured in two tenants that share a carrier is refused and logged |
 | ~~Before activation (Setup), tenant and extension caps read 0 = unlimited~~ | license-provisioning-enforcement | Closed: `phase-a-hardening` task 3.1 (D-72) |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |
 | ~~`GetCall` returns `Participant.endpoint_uri` (`PJSIP/e_…`), an engine identifier~~ | console-apis-phase-a G3 | Closed: `phase-a-hardening` task 2.1 (deprecated, never filled); person-aware participant fields come with `pbx-extension-assignment` (D-65) |

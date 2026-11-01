@@ -46,6 +46,16 @@ If the console is not running, start it with `make tilt-up` (preferred). Without
 | 11 | Look at the trunks you made on `localhost` before this change | They read **Unhealthy · Address not allowed** (the platform never checks its own loopback). Edit one: it cannot be saved until the host is a real carrier |
 | 12 | Delete `UAT ranges` | It is gone |
 
+### 2b. Shared carriers (`pbx-carrier-ingress`, D-77)
+
+Nothing changes in the console. Two tenants can add trunks to the **same**
+carrier (same host or same inbound ranges), and each receives the calls to
+its own numbers. If both tenants assign the **same** number, calls to it
+are refused, and the operator sees "configured in several tenants" in the
+app log. Resolve it by removing the number from the tenant that does not
+own it. The engine now has one `carrier-ingress` row instead of one row
+per trunk; the query below shows it.
+
 What the console does **not** show, by design: the addresses a name resolved to. Those are engine-facing (PRD rule 4: no engine vocabulary on screen). To see them on the rig:
 
 ```bash
@@ -53,6 +63,9 @@ docker exec deploy-postgres-1 psql -U asterisk -d atsapbx -tA -c \
   "select c.name, c.host, c.resolved_addresses, coalesce(i.match,'(no row)')
    from carrier_trunks c left join ps_endpoint_id_ips i
    on i.id = 't_' || replace(c.id::text, '-', '') order by c.name"
+# since D-77 the per-trunk column reads "(no row)"; carriers are recognised here:
+docker exec deploy-postgres-1 psql -U asterisk -d atsapbx -tA -c \
+  "select \"match\" from ps_endpoint_id_ips where id = 'carrier-ingress'"
 ```
 
 The expected values:

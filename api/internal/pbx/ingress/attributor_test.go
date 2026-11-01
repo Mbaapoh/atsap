@@ -1,4 +1,4 @@
-package application_test
+package ingress_test
 
 import (
 	"bytes"
@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"atsap-api/internal/pbx/application"
 	"atsap-api/internal/pbx/domain"
+	"atsap-api/internal/pbx/ingress"
 	shareddomain "atsap-api/internal/shared/domain"
 	telephonyports "atsap-api/internal/telephony/ports"
 )
@@ -34,7 +34,7 @@ func (f *fakeMatcher) Match(_ context.Context, source netip.Addr, number string)
 func attribute(t *testing.T, m *fakeMatcher, req telephonyports.AttributionRequest) (telephonyports.Attribution, string, error) {
 	t.Helper()
 	var log bytes.Buffer
-	a := application.NewIngressAttributor(m, slog.New(slog.NewTextHandler(&log, nil)))
+	a := ingress.NewAttributor(m, slog.New(slog.NewTextHandler(&log, nil)))
 	got, err := a.Attribute(context.Background(), req)
 	return got, log.String(), err
 }

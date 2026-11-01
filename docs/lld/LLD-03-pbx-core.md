@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-01 | **§7.7: carrier traffic enters through one ingress and is attributed by the platform** (`pbx-carrier-ingress`, D-77). Per-trunk identify rows are gone. One tenantless `carrier-ingress` endpoint recognises every trunk's addresses, and each call is attributed by its transport source address (`CHANNEL(pjsip,remote_addr)`) and the dialled number: exactly one trunk routes, none or several refuse 404. Two tenants on one carrier each receive their own numbers. One flag-guarded cross-tenant read (migration 0016). Also: the identify match is TEXT (migration 0015), and an unreachable destination is refused 480, never left ringing. |
 | 2026-11-01 | **§7.5–7.6 and §10.5: carriers recognised from their published ranges; non-carrier addresses refused** (`pbx-carrier-addresses`, D-76). `Trunk` gains `InboundAddresses` (migration 0014); identify is the union of the host's carrier addresses and those ranges. Hosts and addresses that cannot be a carrier (localhost, loopback, link-local, unspecified, multicast) are refused, never checked and never recognised; such a trunk reads "Address not allowed". |
 | 2026-11-01 | **§7.5: a carrier is recognised by address, never by name** (`pbx-trunk-host-resolution`, D-75). The engine resolved every trunk host name in its identify rows while identifying each carrier request, so one tenant's typo (`locslhodt`) stalled carrier calls for all tenants. The platform now resolves names in the trunk check and projects addresses only; `Trunk` gains `ResolvedAddresses` and `ResolvedAt` (migration 0013). |
 | 2026-10-14 | **Trunk health is checked, not assumed** (`pbx-trunk-health-probing`, D-74). A trunk starts `Unknown`, and the platform checks every carrier with SIP OPTIONS, because Asterisk 22 does not qualify realtime AORs (measured). Each observation records a reason and a time. An `Unhealthy` trunk is skipped only while another can carry the call (design D7). |
@@ -623,6 +624,39 @@ rule is never projected. The installation's own registrar address
 
 Not yet handled: ranges that overlap another trunk's, in another tenant.
 That is the shared-carrier-address change.
+
+### 7.7 One carrier ingress; the platform attributes each call (D-77)
+
+Tenants that buy from the same carrier receive its calls from the same
+addresses. Asterisk's identify cannot say "this address **and** this
+number" (its criteria are OR-ed), so per-trunk identify rows attributed
+shared traffic to whichever row the engine found first (INV-10).
+
+Carrier traffic therefore enters through one platform-owned endpoint,
+`carrier-ingress`:
+- it carries no tenant;
+- its identify row is the union of every trunk's carrier addresses and
+  inbound ranges, across tenants;
+- it is rebuilt under an advisory lock with every trunk write and address
+  change;
+- reconcile compares it, and startup ensures it.
+
+Trunk endpoints remain for calls out only.
+
+For each call on the ingress, telephony reads the transport source
+address, `CHANNEL(pjsip,remote_addr)`, which no header can change, and
+asks pbx-core *before* recording anything:
+- `carrier_ingress_match(source, number)` returns the trunks that
+  recognise the source and whose tenant has the number;
+- **exactly one** routes the call as that trunk's, through the existing
+  DID lookup, channel reservation and health watcher;
+- **none or several** refuse 404, and several are logged for the operator
+  with trunk ids only.
+
+That function and `carrier_ingress_sources()` are the only cross-tenant
+reads. Each is enabled by a SELECT-only RLS policy that applies only
+while `app.ingress_lookup` is on, a flag only these functions set and
+clear within the caller's transaction.
 
 ## 8. Definition of Done
 

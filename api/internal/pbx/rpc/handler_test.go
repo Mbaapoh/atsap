@@ -43,6 +43,15 @@ type fakeService struct {
 	trunkView       ports.TrunkView
 	lastCreateTrunk ports.CreateTrunkCommand
 	lastUpdateTrunk ports.UpdateTrunkCommand
+	trunkViews      []ports.TrunkView
+	lastTrunkID     shareddomain.TrunkID
+	routeView       ports.RouteView
+	routeViews      []ports.RouteView
+	lastCreateRoute ports.CreateRouteCommand
+	lastRouteID     shareddomain.RouteID
+	placed          ports.PlacedCall
+	lastPlaceCall   ports.PlaceCallCommand
+	lastCallID      shareddomain.CallID
 }
 
 func (f *fakeService) SipRegistrar(_ context.Context, tenantID shareddomain.TenantID) (ports.SipRegistrar, error) {
@@ -92,32 +101,39 @@ func (f *fakeService) UpdateTrunk(_ context.Context, cmd ports.UpdateTrunkComman
 	return f.trunkView, f.err
 }
 
-func (f *fakeService) DeleteTrunk(context.Context, shareddomain.TenantID, shareddomain.TrunkID) error {
+func (f *fakeService) DeleteTrunk(_ context.Context, _ shareddomain.TenantID, id shareddomain.TrunkID) error {
+	f.lastTrunkID = id
 	return f.err
 }
 
-func (f *fakeService) ListTrunks(context.Context, shareddomain.TenantID, ports.Page) ([]ports.TrunkView, error) {
-	return nil, f.err
+func (f *fakeService) ListTrunks(_ context.Context, _ shareddomain.TenantID, page ports.Page) ([]ports.TrunkView, error) {
+	f.lastPage = page
+	return f.trunkViews, f.err
 }
 
-func (f *fakeService) CreateRoute(context.Context, ports.CreateRouteCommand) (ports.RouteView, error) {
-	return ports.RouteView{}, f.err
+func (f *fakeService) CreateRoute(_ context.Context, cmd ports.CreateRouteCommand) (ports.RouteView, error) {
+	f.lastCreateRoute = cmd
+	return f.routeView, f.err
 }
 
-func (f *fakeService) DeleteRoute(context.Context, shareddomain.TenantID, shareddomain.RouteID) error {
+func (f *fakeService) DeleteRoute(_ context.Context, _ shareddomain.TenantID, id shareddomain.RouteID) error {
+	f.lastRouteID = id
 	return f.err
 }
 
-func (f *fakeService) PlaceCall(context.Context, ports.PlaceCallCommand) (ports.PlacedCall, error) {
-	return ports.PlacedCall{}, f.err
+func (f *fakeService) PlaceCall(_ context.Context, cmd ports.PlaceCallCommand) (ports.PlacedCall, error) {
+	f.lastPlaceCall = cmd
+	return f.placed, f.err
 }
 
-func (f *fakeService) HangupCall(context.Context, shareddomain.TenantID, shareddomain.CallID) error {
+func (f *fakeService) HangupCall(_ context.Context, _ shareddomain.TenantID, id shareddomain.CallID) error {
+	f.lastCallID = id
 	return f.err
 }
 
-func (f *fakeService) ListRoutes(context.Context, shareddomain.TenantID, ports.Page) ([]ports.RouteView, error) {
-	return nil, f.err
+func (f *fakeService) ListRoutes(_ context.Context, _ shareddomain.TenantID, page ports.Page) ([]ports.RouteView, error) {
+	f.lastPage = page
+	return f.routeViews, f.err
 }
 
 // Stubs for the inbound-and-emergency surface: the handlers land in

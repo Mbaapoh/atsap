@@ -128,10 +128,26 @@
 
 ## 5. Docs and close
 
-- [ ] 5.1 Update:
+- [x] 5.1 Update:
   - LLD-03 §4.2, §7.5–7.6, §11.1 (sequence) and history;
   - PROGRESS (close the High shared-address gap);
   - `docs/uat/trunk-host-resolution.md` (a note: shared carriers just work);
   - `coverage.md`.
 
   Ratchet the floors. Verify `make docs`, `make quality` and `make console-check` pass.
+
+  *(done 2026-11-01.
+  - **Docs:**
+    - LLD-03 gains §7.7 (one ingress, attribution, the flag-guarded reads) and a document history row;
+    - PROGRESS: Done row; pre-pilot item 7 done; the High shared-address gap closed;
+    - `docs/uat/trunk-host-resolution.md` §2b (shared carriers just work; how to clear an ambiguous number; the ingress query);
+    - `coverage.md`.
+  - **The unit metric's scope moved, and is put back honestly.** The attributor's unit test made integration-only `pbx/application` (957 statements) count in the unit tier, and unit coverage read 63.8% of 5,245. The attributor therefore moved to its own package, `internal/pbx/ingress`, keeping `pbx/application` out of the unit tier as before.
+  - **Coverage raised with real tests rather than a lowered floor.** The ingress projector is database code proven by integration only, so new wire tests for trunks, routes, `PlaceCall` and `HangupCall` (`rpc/routes_calls_test.go`: ids, pages, mapping, every placement error's code and message, internal text never leaked) took `pbx/rpc` from 59.4% to 81.5%. Go unit is now 79.2% of 4,308 statements; the floors are ratcheted to that.
+  - **Verified:**
+    - `make docs` passes;
+    - `make lint` 0;
+    - Go unit coverage passes its floor;
+    - SCA: no vulnerabilities, 0 reachable; no leaks; audit 0;
+    - console component 408/408, e2e 29, rig integration 26, UAT 3/3 (4.1).
+  - **Environment:** this afternoon Node and headless Chrome workers died on V8 assertion traps under full parallel load (the kernel logged `trap int3` in node and chrome-headless-shell). With fewer workers (vitest 2, Playwright 1) every tier passed. This matches this morning's tool crashes: the machine should be checked.)*

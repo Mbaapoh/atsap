@@ -32,6 +32,7 @@ import (
 	pbxasterisk "atsap-api/internal/pbx/acl/asterisk"
 	"atsap-api/internal/pbx/acl/sipprobe"
 	pbxapp "atsap-api/internal/pbx/application"
+	pbxingress "atsap-api/internal/pbx/ingress"
 	pbxpostgres "atsap-api/internal/pbx/postgres"
 	pbxrpc "atsap-api/internal/pbx/rpc"
 	corepostgres "atsap-api/internal/postgres"
@@ -300,7 +301,7 @@ func run() int {
 	callService.SetInboundRouter(pbxSvc)
 	// Calls on the shared carrier ingress name no tenant: pbx-core
 	// attributes each by its source address and the number dialled (D-77).
-	callService.SetInboundAttributor(pbxapp.NewIngressAttributor(pbxpostgres.NewIngressStore(appPool), logger))
+	callService.SetInboundAttributor(pbxingress.NewAttributor(pbxpostgres.NewIngressStore(appPool), logger))
 	pbxPath, pbxRPC := atsapbxv1connect.NewPbxServiceHandler(pbxrpc.NewPbxHandler(pbxSvc),
 		connectrpc.WithInterceptors(authInterceptor))
 	handlers[pbxPath] = pbxRPC

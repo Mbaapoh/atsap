@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"atsap-api/internal/pbx/application"
 	pbxdomain "atsap-api/internal/pbx/domain"
+	pbxingress "atsap-api/internal/pbx/ingress"
 	pbxpostgres "atsap-api/internal/pbx/postgres"
 	telephonyports "atsap-api/internal/telephony/ports"
 )
@@ -47,7 +47,7 @@ func TestIngressStore_AttributesAcrossTenants(t *testing.T) {
 		require.NoError(t, h.run(n.TenantID, func(ctx context.Context, tx pgx.Tx) error { return numbers.Insert(ctx, tx, n) }))
 	}
 
-	attributor := application.NewIngressAttributor(pbxpostgres.NewIngressStore(h.pool), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	attributor := pbxingress.NewAttributor(pbxpostgres.NewIngressStore(h.pool), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	attribute := func(dialled string) telephonyports.Attribution {
 		t.Helper()
 		got, err := attributor.Attribute(context.Background(), telephonyports.AttributionRequest{

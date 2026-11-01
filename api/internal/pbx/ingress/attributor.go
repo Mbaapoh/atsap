@@ -1,4 +1,7 @@
-package application
+// Package ingress attributes calls on the shared carrier ingress (D-77):
+// which tenant and trunk a carrier call belongs to, from its transport
+// source address and the number dialled.
+package ingress
 
 import (
 	"context"
@@ -9,26 +12,26 @@ import (
 	telephonyports "atsap-api/internal/telephony/ports"
 )
 
-// IngressAttributor implements telephony's InboundAttributor (D-77): a
+// Attributor implements telephony's InboundAttributor (D-77): a
 // call on the shared carrier ingress belongs to the one trunk that
 // recognises its transport source address and whose tenant has the
 // dialled number. None or several refuse; several are logged for the
 // operator, never told to the carrier.
-type IngressAttributor struct {
+type Attributor struct {
 	matcher ports.IngressMatcher
 	logger  *slog.Logger
 }
 
-var _ telephonyports.InboundAttributor = (*IngressAttributor)(nil)
+var _ telephonyports.InboundAttributor = (*Attributor)(nil)
 
-// NewIngressAttributor wires an attributor over matcher.
-func NewIngressAttributor(matcher ports.IngressMatcher, logger *slog.Logger) *IngressAttributor {
-	return &IngressAttributor{matcher: matcher, logger: logger}
+// NewAttributor wires an attributor over matcher.
+func NewAttributor(matcher ports.IngressMatcher, logger *slog.Logger) *Attributor {
+	return &Attributor{matcher: matcher, logger: logger}
 }
 
 // Attribute answers for the ingress endpoint only; any other endpoint's
 // own configuration names its tenant.
-func (a *IngressAttributor) Attribute(ctx context.Context, req telephonyports.AttributionRequest) (telephonyports.Attribution, error) {
+func (a *Attributor) Attribute(ctx context.Context, req telephonyports.AttributionRequest) (telephonyports.Attribution, error) {
 	if req.SourceEndpoint != domain.CarrierIngressEndpoint {
 		return telephonyports.Attribution{}, nil
 	}
