@@ -13,7 +13,9 @@
 
     Twelve orphaned identify rows were on the rig; `pbx reconcile --fix` removed them. Both cleanups now go through `releaseConfiguration`, and reconcile reports no orphans after the tests.
   - **Left alone:** the `probe-self`, `probe-dead` and `probe-nxdomain` engine rows are the throwaway AORs from the D-74 measurement. Reconcile leaves them by design (not written by the platform); they are not identify rows. They are for the owner to remove.
-- [ ] 1.2 Record D-75 in `docs/DECISIONS.md`: the platform resolves carrier names for identification; identify holds addresses only; the last good addresses are kept; unresolvable hosts are accepted and flagged. Cite the alternatives from design D1. Verify `make docs` passes.
+- [x] 1.2 Record D-75 in `docs/DECISIONS.md`: the platform resolves carrier names for identification; identify holds addresses only; the last good addresses are kept; unresolvable hosts are accepted and flagged. Cite the alternatives from design D1. Verify `make docs` passes.
+
+  *(done 2026-11-01: D-75 recorded with its four rejected alternatives and the measured context from 1.1; `make docs` passes.)*
 
 ## 2. Domain and probe
 

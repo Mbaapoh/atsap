@@ -2541,6 +2541,48 @@ D1); spec `pbx-core/trunk-routing`
 
 ---
 
+**D-75 · The platform resolves carrier names; Asterisk identifies by address only (2026-11-01).**
+
+**Decision:** The engine's identify rows (`ps_endpoint_id_ips.match`) hold
+only IP addresses, never a host name. A trunk configured by IP is
+projected as given. A trunk configured by name is resolved by the
+platform, in the trunk check of D-74 (at once on create or a host change,
+then every interval). Every address found (A and AAAA) is recorded on the
+trunk and projected in the same transaction. When a name that resolved
+before fails to resolve, the last addresses are kept; a different set
+replaces them; a host change clears them. An unresolvable host is
+accepted, flagged `Unhealthy · Host not found`, and recognises no inbound
+call (owner, 2026-11-01). The outbound contact and `from_domain` stay
+names: carriers expect their domain, and the lookup there is per call.
+
+**Context:** Asterisk loads the realtime identify rows for every request
+that reaches identification by address, and resolves each name among
+them. Carrier requests from every tenant reach it (phones are identified
+by username first). One tenant's typo, `locslhodt`, cost about 5 seconds
+per request on 2026-10-13. On 2026-11-01 the rig counted twelve lookups
+for three carrier INVITEs (`pbx-trunk-host-resolution` task 1.1).
+
+**Alternatives rejected:**
+- A caching resolver beside Asterisk (dnsmasq, unbound): the first miss
+  and a timing-out name still block. Docker's resolver answers a
+  single-label typo with a temporary failure, which is not negatively
+  cached. It would add a moving part to the engine image.
+- Refusing an unresolvable host at creation: a host that later stops
+  resolving stalls everyone again. The owner chose accept-and-flag.
+- Static `pjsip.conf` identify: trunks are realtime by design (D-47).
+- A separate resolver loop: the D-74 check already resolves at the
+  wanted cadence, under the compare-and-set that guards a stale check.
+
+**Trade-off accepted:** names are resolved on the app's network, as the
+D-74 probe is. A carrier that moves to a new address is refused for up to
+one check interval.
+
+**Related Decisions:** D-47 (engine projection), D-74 (carrier checks)
+**Traceability:** `openspec/changes/pbx-trunk-host-resolution` (design
+D1–D5); specs `pbx-core/trunk-routing`, `pbx-core/endpoint-projection`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
