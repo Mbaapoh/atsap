@@ -41,7 +41,7 @@ None.
   - `internal/pbx/application/trunk_prober.go`: a check records the addresses and reprojects identify in the same transaction, guarded by the unchanged host.
   - `internal/pbx/acl/asterisk/trunk.go`: identify is projected from addresses only, and `DiffTrunk` compares against them.
   - `internal/pbx/postgres`: the new columns.
-- **Schema:** migration 0013 adds `resolved_addresses` and `resolved_at` to `trunks`. On upgrade, existing trunks keep working:
+- **Schema:** migration 0013 adds `resolved_addresses` and `resolved_at` to `carrier_trunks`. On upgrade, existing trunks keep working:
   - IP hosts are backfilled to themselves.
   - Name hosts are resolved by the first check round at start-up, seconds after the upgrade. Their identify row keeps its old value until then.
 - **No change** to the public API, the console or the protos.

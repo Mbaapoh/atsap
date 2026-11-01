@@ -105,9 +105,30 @@
 
 ## 5. Docs and close
 
-- [ ] 5.1 Update:
+- [x] 5.1 Update:
   - LLD-03 §7 (trunk projection: addresses only, the keep rule, and a document history row);
   - `docs/PROGRESS.md` (close the DNS-stall gap with a link to this change; add any gap from 1.1);
   - this change's coverage notes.
 
   Ratchet the coverage floors. Verify `make docs`, `make quality` and `make coverage` pass, and that every tier ran green once more on the finished change (Go unit, integration, e2e and the three UATs; `make console-check` as a regression check, since the console is unchanged).
+
+  *(done 2026-11-01.
+  - **Docs:**
+    - LLD-03 gains §7.5 (a carrier is recognised by address, never by name) and a document history row;
+    - PROGRESS closes the DNS-stall gap and lists the change as done; no new gap came out of 1.1;
+    - `coverage.md` maps every scenario to its tests;
+    - the design and proposal name the table correctly (`carrier_trunks`).
+  - **Floors ratcheted** (unit): total 77.3 → 77.4; `pbx/domain` 85 → 86.4. The merged all-tier floors were not remeasured: `coverage-all` needs the cover-instrumented Tilt image, and the rig ran the compose image.
+  - **The quality gate failed first** on advisories published since 2026-10-14, none caused by this change. They were cleared in their own commit (`deps: …`):
+    - Go 1.26.10 (the one reachable finding, `crypto/x509`);
+    - `klauspost/compress` v1.18.7 and `x/crypto` v0.56.0;
+    - a dated exception for the unfixed, unused `x/crypto/openpgp` advisory;
+    - console `vitest` 4.1.12 and `undici` 7.30.1.
+  - **Verified:**
+    - `make quality` exit 0: lint 0 issues; unit coverage 77.4%; console 398/398; no vulnerabilities and 0 reachable; no leaks; audit 0.
+    - The Go integration tier passes on the new dependencies (35 packages).
+    - `make console-check`: component 398, e2e 29, rig integration 25, UAT 3, audit 0.
+    - `make docs` passes.
+    - Earlier in the change: Go e2e tier all green, and the three phone UATs PASS.
+  - **Found and fixed:** `console/e2e/support/rig.ts` hard-coded the Tilt binary path (`/out/app`); it now runs whatever the container runs.
+  - **Environment, not code:** this machine was under heavy load (load average about 20 on 8 cores, with an unrelated Rust package build). Several prebuilt Go tools crashed inside the Go runtime: OSV-Scanner (`s.allocCount > s.nelems`), govulncheck (`fatal error: fault`), golangci-lint (impossible SSA panics), plus one compiler panic. The kernel logged a segfault in that same Rust build. Each gate passed on rerun. Worth a memory test of the host.)*

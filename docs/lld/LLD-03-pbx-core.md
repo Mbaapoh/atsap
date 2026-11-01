@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-01 | **§7.5: a carrier is recognised by address, never by name** (`pbx-trunk-host-resolution`, D-75). The engine resolved every trunk host name in its identify rows while identifying each carrier request, so one tenant's typo (`locslhodt`) stalled carrier calls for all tenants. The platform now resolves names in the trunk check and projects addresses only; `Trunk` gains `ResolvedAddresses` and `ResolvedAt` (migration 0013). |
 | 2026-10-14 | **Trunk health is checked, not assumed** (`pbx-trunk-health-probing`, D-74). A trunk starts `Unknown`, and the platform checks every carrier with SIP OPTIONS, because Asterisk 22 does not qualify realtime AORs (measured). Each observation records a reason and a time. An `Unhealthy` trunk is skipped only while another can carry the call (design D7). |
 | 2026-09-07 | Initial draft. |
 | 2026-10-13 | **§6 gains `GetSipRegistrar`** (`pbx-sip-registrar-settings`): the console can tell an administrator where a phone registers, so flow A3 completes without leaving the console (HLD-18 §7). Configured per installation; read with the extension-read permission. |
@@ -570,6 +571,34 @@ credential never appears in an API response after creation, never in a
 log or audit row (§10.4), and `carrier_trunks.credential_ref` holds a
 reference so the domain table itself carries no secret. This is a real
 residual risk, recorded rather than argued away.
+
+### 7.5 A carrier is recognised by address, never by name (D-75)
+
+A carrier's requests are attributed to its trunk by the engine's identify
+row (`ps_endpoint_id_ips`). The engine loads those rows for every request
+that reaches identification by address — every carrier request, of every
+tenant; phones are identified by username first — and resolves any host
+name among them as it does. One unresolvable name therefore made every
+carrier call wait on DNS (about 5 s on the rig, 2026-10-13).
+
+So the row holds addresses only:
+
+- **An IP host** is its own address, projected with the trunk.
+- **A host name** is resolved by the platform, in the trunk check that
+  already runs at once on create or a host change and then every interval
+  (D-74). Every address found (A and AAAA) is recorded on the trunk
+  (`carrier_trunks.resolved_addresses`, `resolved_at`) and the row is
+  rewritten in the same transaction, only when the set changed.
+- **A name that fails** keeps its last addresses, so a brief outage of the
+  carrier's DNS refuses none of its calls; its health still says
+  `Host not found`. A name never resolved has no row and recognises
+  nothing. A host change drops the old addresses in the same update.
+- **Reconcile** compares the row with the recorded addresses and never
+  resolves anything; a name in the row is drift.
+
+The outbound contact and `from_domain` stay names: carriers expect their
+domain there, and that lookup happens only for a call to that trunk
+(measured: it delays no one else).
 
 ## 8. Definition of Done
 

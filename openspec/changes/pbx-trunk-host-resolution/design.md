@@ -37,7 +37,7 @@ It records health with a compare-and-set on the host and port it checked (`SetCh
 
 ### D1. The platform resolves names; identify holds addresses only (D-75)
 
-The check already resolves each name. It now returns **every** address the name resolved to (A and AAAA, sorted and deduplicated), not only the one it probed. The check records those addresses on the trunk (`resolved_addresses inet[]`, `resolved_at`). `ProjectTrunk` then writes them into `match` as a comma-separated list of IP literals. `res_pjsip_endpoint_identifier_ip` accepts a list there.
+The check already resolves each name. It now returns **every** address the name resolved to (A and AAAA, sorted and deduplicated), not only the one it probed. The check records those addresses on the trunk (`carrier_trunks.resolved_addresses inet[]`, `resolved_at`). `ProjectTrunk` then writes them into `match` as a comma-separated list of IP literals. `res_pjsip_endpoint_identifier_ip` accepts a list there.
 
 - For an IP host, the address set is the host itself, written at create or update time, so there is no gap.
 - For a host name with no recorded addresses, the identify row is **deleted** rather than left holding the name.
@@ -73,7 +73,7 @@ A host change clears the addresses in the same update that changes the host (the
 
 ### D5. Migration
 
-Migration 0013 adds `resolved_addresses inet[] NOT NULL DEFAULT '{}'` and `resolved_at timestamptz` to `trunks`.
+Migration 0013 adds `resolved_addresses inet[] NOT NULL DEFAULT '{}'` and `resolved_at timestamptz` to `carrier_trunks`.
 
 - IP hosts are backfilled to `{host}` in the migration.
 - Name hosts start empty, and their **existing identify rows are left as they are** until the first check round, seconds after start-up, rewrites them. This avoids an inbound outage across the upgrade.

@@ -124,11 +124,25 @@ export async function latestLink(to: string, timeoutMs = 15_000): Promise<string
   throw new Error(`no link emailed to ${to}`);
 }
 
+// appBinary is the app's executable in its container: /out/app under
+// Tilt, /usr/local/bin/atsap-api in the compose image. It runs whatever
+// the container runs, so the specs work on either rig.
+function appBinary(): string {
+  const command = execFileSync(
+    "docker",
+    ["inspect", "deploy-app-1", "--format", "{{range .Config.Entrypoint}}{{.}} {{end}}{{range .Config.Cmd}}{{.}} {{end}}"],
+    { encoding: "utf8" },
+  );
+  const binary = command.trim().split(/\s+/)[0];
+  if (!binary) throw new Error("deploy-app-1 has no command");
+  return binary;
+}
+
 // adminResetPassword runs the operator recovery command inside the app
 // container (D-66 §3) and returns the temporary, must-change password it
 // prints once.
 export function adminResetPassword(email: string): string {
-  const out = execFileSync("docker", ["exec", "deploy-app-1", "/out/app", "admin", "reset-password", "-email", email], {
+  const out = execFileSync("docker", ["exec", "deploy-app-1", appBinary(), "admin", "reset-password", "-email", email], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   });

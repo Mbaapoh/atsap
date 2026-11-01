@@ -7,12 +7,10 @@ slice), the flows are [HLD-18](hld/18-phase-a-user-flows.md), and the
 behaviour lives in `openspec/specs/`. When this file and those disagree,
 they win and this file is wrong.
 
-**Last updated:** 2026-10-14, after `pbx-trunk-health-probing` (trunk
-health from a real check) and the console linter. Before that, 2026-10-13,
-`phase-a-hardening` was completed:
-phone-dialled calls recorded and presented truthfully, a taken-over Stasis
-application noticed, no engine endpoint in `GetCall`, nothing provisioned
-before a licence, and no false error after every hang-up.
+**Last updated:** 2026-11-01, after `pbx-trunk-host-resolution`: one
+tenant's unresolvable trunk host no longer stalls carrier calls for every
+tenant (D-75). Before that, 2026-10-14, `pbx-trunk-health-probing` (trunk
+health from a real check) and the console linter.
 
 ## Keeping it current
 
@@ -78,10 +76,12 @@ configuration file, and without being told what Asterisk is.
 
 ### Before a pilot
 
-5. **Shared carrier address**: two trunks on one carrier IP cannot be told
+5. ~~Unresolvable trunk host stalls everyone~~ **closed** 2026-11-01
+   (`pbx-trunk-host-resolution`, D-75).
+6. **Shared carrier address**: two trunks on one carrier IP cannot be told
    apart for inbound calls.
-6. **Toll-fraud protection**: enforce outbound destination classes.
-7. **`identity-oidc-google`**: Sign in with Google, Gmail and Workspace
+7. **Toll-fraud protection**: enforce outbound destination classes.
+8. **`identity-oidc-google`**: Sign in with Google, Gmail and Workspace
    ([D-67](DECISIONS.md)).
 
 MFA (`identity-mfa`) is Phase B, before GA (D-66 as amended).
@@ -141,12 +141,13 @@ that link.
 | 2026-10-14 | `identity-refresh-grace` | 7/7 | U I W E (D-62 amendment: 30-second grace for the previous refresh secret) |
 | 2026-10-14 | `phase-a-hardening` | 10/10 | U I W E A (live takeover on the rig; phone-to-phone UAT) |
 | 2026-10-14 | `pbx-trunk-health-probing` | 7/7 | U I W E, console browser on the real API, A3–A5 UAT against a real carrier (D-74) |
+| 2026-11-01 | `pbx-trunk-host-resolution` | 9/9 | U I E, UAT as regression; a container carrier recognised by DNS name (D-75) |
 
 ## Active changes
 
 | Change | State | Tasks |
 |---|---|---|
-| `quality-and-supply-chain-gates` | Go 1.26.9, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
+| `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps
 
@@ -178,7 +179,7 @@ design; *accepted* = no fix planned.
 | Unanswered placed calls are not attributed to the carrier (no SIP cause); a slow OPTIONS response now degrades a trunk, but a slow call answer still needs one | call-placement G1, G2 | Low |
 | Both legs of an API-placed call ring at once | call-placement G6 | Low |
 | ~~ERROR log "participant-left handler failed: call not found" after every hang-up~~ | call-placement G3, inbound G6 | Closed: `phase-a-hardening` task 5.1 |
-| A trunk host that does not resolve (a typo such as `locslhodt`) makes Asterisk block about 5 s on DNS while identifying SIP requests, stalling call setup for **every** tenant; the API accepts any host | phase-a-hardening (found on the dev rig, 2026-10-13) | **High** — pilot: refuse or flag an unresolvable host at creation, and keep DNS off the identify path |
+| ~~A trunk host that does not resolve (a typo such as `locslhodt`) makes Asterisk block about 5 s on DNS while identifying SIP requests, stalling call setup for **every** tenant~~ | phase-a-hardening (found on the dev rig, 2026-10-13) | Closed: `pbx-trunk-host-resolution` (D-75): the platform resolves carrier names; identify holds addresses only. Unresolvable hosts are accepted and flagged (owner) |
 | Outbound calls present no caller ID to the carrier: a tenant has no presentation number yet | phase-a-hardening (design non-goal) | Medium — pilot |
 | A Stasis application taken over by another process is not taken back: the instance stays not-ready until restarted | phase-a-hardening D5 | Accepted (D-73) |
 | The Go integration tier defaults to the rig's live database and migrates it down; run it with `DATABASE_URL`/`ENGINE_DATABASE_URL` on `atsapbx_test` to keep the rig's data | phase-a-hardening (found while testing) | Low — tooling: make the scratch database the default |
