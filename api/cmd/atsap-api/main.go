@@ -237,17 +237,18 @@ func run() int {
 	//
 	// The realm passed here MUST match the engine's: the credential
 	// digest is computed over it (LLD-03 §7.3).
+	projector := pbxasterisk.NewProjector(pbxasterisk.Config{
+		Realm:           cfg.SIPRealm,
+		SIPTransport:    cfg.SIPTransport,
+		WebRTCTransport: cfg.SIPWebRTCTransport,
+	}, appPool)
 	pbxSvc := pbxapp.NewService(
 		appPool,
 		pbxpostgres.NewStore(),
 		pbxpostgres.NewTrunkStore(),
 		pbxpostgres.NewRouteStore(),
 		licenseManager,
-		pbxasterisk.NewProjector(pbxasterisk.Config{
-			Realm:           cfg.SIPRealm,
-			SIPTransport:    cfg.SIPTransport,
-			WebRTCTransport: cfg.SIPWebRTCTransport,
-		}, appPool),
+		projector,
 		identitySvc,
 		identityStore,
 		cfg.SIPRealm,
@@ -286,7 +287,7 @@ func run() int {
 		})
 	// Trunk health is the platform's own observation (D-74): every trunk
 	// is checked on a schedule, and at once when created or re-addressed.
-	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger)
+	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), projector, &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger)
 	pbxSvc = pbxSvc.WithTrunkChecker(trunkProber)
 	go trunkProber.Run(ctx)
 	callService.SetInboundRouter(pbxSvc)

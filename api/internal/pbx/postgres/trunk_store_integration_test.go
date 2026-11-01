@@ -313,3 +313,42 @@ func TestTrunkStore_AddressesFollowTheHost(t *testing.T) {
 	assert.Equal(t, []netip.Addr{netip.MustParseAddr("198.51.100.7")}, got.ResolvedAddresses, "a new IP host is its own address at once")
 	assert.Nil(t, got.ResolvedAt, "an IP host is never resolved")
 }
+
+// SetResolvedAddresses reports a change exactly, records the time either
+// way, and drops a result for a host since changed or another tenant's
+// trunk.
+func TestTrunkStore_ResolvedAddressesAreGuardedByHost(t *testing.T) {
+	h := newStore(t)
+	tr := newTrunk(h.tenantA)
+	h.insertTrunk(t, tr)
+	at := time.Now().UTC().Truncate(time.Microsecond)
+	set := func(tenant shareddomain.TenantID, host string, addrs ...string) bool {
+		t.Helper()
+		var list []netip.Addr
+		for _, a := range addrs {
+			list = append(list, netip.MustParseAddr(a))
+		}
+		var changed bool
+		require.NoError(t, h.run(tenant, func(ctx context.Context, tx pgx.Tx) error {
+			var err error
+			changed, err = trunks.SetResolvedAddresses(ctx, tx, tr.ID, host, list, at)
+			return err
+		}))
+		return changed
+	}
+
+	assert.True(t, set(h.tenantA, tr.Host, "203.0.113.20", "203.0.113.10"), "none to two is a change")
+	assert.False(t, set(h.tenantA, tr.Host, "203.0.113.10", "203.0.113.20"), "the same set, in any order, is not")
+	at = at.Add(time.Minute)
+	assert.False(t, set(h.tenantA, tr.Host, "203.0.113.10", "203.0.113.20"))
+	got, err := h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.ResolvedAt)
+	assert.Equal(t, at, *got.ResolvedAt, "an unchanged set still records when the name resolved")
+
+	assert.False(t, set(h.tenantA, "old.carrier.example", "198.51.100.1"), "a result for another host is dropped")
+	assert.False(t, set(h.tenantB, tr.Host, "198.51.100.1"), "another tenant's trunk is not there")
+	got, err = h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("203.0.113.10"), netip.MustParseAddr("203.0.113.20")}, got.ResolvedAddresses)
+}

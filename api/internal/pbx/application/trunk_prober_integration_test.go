@@ -4,12 +4,15 @@ package application_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -47,6 +50,13 @@ func (f *fakeCarriers) Probe(ctx context.Context, host string, _ int) ports.Carr
 	return answer
 }
 
+// set changes what host's carrier answers from now on.
+func (f *fakeCarriers) set(host string, answer ports.CarrierCheck) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answers[host] = answer
+}
+
 func (f *fakeCarriers) checks(host string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -70,7 +80,11 @@ func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)
 // withProber gives the harness a prober over carriers and a service that
 // checks through it.
 func withProber(h *harness, carriers *fakeCarriers) (*application.TrunkProber, *application.Service) {
-	prober := application.NewTrunkProber(h.pool, pbxpg.NewTrunkStore(), carriers, 0, quiet())
+	identify, ok := h.projector.EndpointProjector.(ports.TrunkIdentifyProjector)
+	if !ok {
+		panic("the harness's engine projector must project identify rows")
+	}
+	prober := application.NewTrunkProber(h.pool, pbxpg.NewTrunkStore(), identify, carriers, 0, quiet())
 	return prober, h.svc.WithTrunkChecker(prober)
 }
 
@@ -192,4 +206,141 @@ func TestTrunkProber_ARoundCoversEveryTenant(t *testing.T) {
 	v := trunkHealth(otherCtx, t, h.svc, otherID, theirs.ID)
 	assert.Equal(t, domain.HealthUnhealthy, v.Health)
 	assert.Equal(t, domain.ReasonNoResponse, v.HealthReason)
+}
+
+// resolvedTo is an answering carrier whose name resolved to addrs.
+func resolvedTo(addrs ...string) ports.CarrierCheck {
+	c := answering
+	c.Resolved = true
+	for _, a := range addrs {
+		c.Addresses = append(c.Addresses, netip.MustParseAddr(a))
+	}
+	return c
+}
+
+// identifyRow reads the engine row that recognises the trunk's carrier:
+// its match and its row version (xmin), which moves on every write.
+func (h *harness) identifyRow(t *testing.T, id shareddomain.TrunkID) (match, version string, ok bool) {
+	t.Helper()
+	err := h.pool.Unwrap().QueryRow(context.Background(),
+		`SELECT "match", xmin::text FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)).Scan(&match, &version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", false
+	}
+	require.NoError(t, err)
+	return match, version, true
+}
+
+func (h *harness) storedTrunk(t *testing.T, id shareddomain.TrunkID) domain.Trunk {
+	t.Helper()
+	var tr domain.Trunk
+	require.NoError(t, h.pool.WithTenant(context.Background(), h.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		tr, err = pbxpg.NewTrunkStore().Get(ctx, tx, id)
+		return err
+	}))
+	return tr
+}
+
+// The check is what resolves a trunk's name (D-75): a name is recognised
+// by nothing until a check resolves it, then by exactly what it resolved
+// to; a later failure keeps those addresses; a new set replaces them; an
+// unchanged set writes nothing to the engine.
+func TestTrunkProber_RecordsWhatTheNameResolvedTo(t *testing.T) {
+	h := newHarness(t)
+	carriers := newFakeCarriers(map[string]ports.CarrierCheck{"sip.carrier.example": resolvedTo("2001:db8::10", "203.0.113.10")})
+	prober, _ := withProber(h, carriers)
+	tr := h.createTrunk(t, "Primary") // created without a checker
+	_, _, ok := h.identifyRow(t, tr.ID)
+	assert.False(t, ok, "a name not resolved yet recognises nothing")
+
+	require.NoError(t, prober.Round(context.Background()))
+	match, version, ok := h.identifyRow(t, tr.ID)
+	require.True(t, ok)
+	assert.Equal(t, "203.0.113.10,2001:db8::10", match, "recognised by every address the name gave")
+	stored := h.storedTrunk(t, tr.ID)
+	assert.Len(t, stored.ResolvedAddresses, 2)
+	require.NotNil(t, stored.ResolvedAt)
+	firstResolved := *stored.ResolvedAt
+
+	time.Sleep(10 * time.Millisecond)
+	require.NoError(t, prober.Round(context.Background()))
+	_, again, _ := h.identifyRow(t, tr.ID)
+	assert.Equal(t, version, again, "an unchanged set writes nothing to the engine")
+	assert.True(t, h.storedTrunk(t, tr.ID).ResolvedAt.After(firstResolved), "but records that the name still resolves")
+
+	carriers.set("sip.carrier.example", notResolve)
+	require.NoError(t, prober.Round(context.Background()))
+	match, _, ok = h.identifyRow(t, tr.ID)
+	require.True(t, ok)
+	assert.Equal(t, "203.0.113.10,2001:db8::10", match, "a failed lookup keeps the carrier recognised")
+	assert.Equal(t, domain.HealthUnhealthy, h.storedTrunk(t, tr.ID).Health, "while its health reports the failure")
+
+	carriers.set("sip.carrier.example", resolvedTo("198.51.100.7"))
+	require.NoError(t, prober.Round(context.Background()))
+	match, _, _ = h.identifyRow(t, tr.ID)
+	assert.Equal(t, "198.51.100.7", match, "a new set replaces the old one")
+
+	differ, ok := h.projector.EndpointProjector.(interface {
+		DiffTrunk(context.Context, domain.Trunk) ([]string, error)
+	})
+	require.True(t, ok)
+	drift, err := differ.DiffTrunk(context.Background(), h.storedTrunk(t, tr.ID))
+	require.NoError(t, err)
+	assert.Empty(t, drift, "reconcile agrees with what the check recorded")
+}
+
+// A row written before addresses existed still holds the name; a check
+// that cannot resolve it removes the row rather than leave a name for the
+// engine to look up, and an IP host is never touched by a check.
+func TestTrunkProber_ANameIsNeverLeftForTheEngine(t *testing.T) {
+	h := newHarness(t)
+	carriers := newFakeCarriers(map[string]ports.CarrierCheck{"locslhodt": notResolve, "203.0.113.10": silent})
+	prober, _ := withProber(h, carriers)
+
+	typo := h.trunkCmd("Typo")
+	typo.Host = "locslhodt"
+	bad, err := h.svc.CreateTrunk(h.ctx, typo)
+	require.NoError(t, err)
+	_, err = h.pool.Unwrap().Exec(context.Background(),
+		`INSERT INTO ps_endpoint_id_ips (id, endpoint, "match") VALUES ($1, $1, 'locslhodt')`, domain.TrunkEndpointIdentifier(bad.ID))
+	require.NoError(t, err, "as an older version projected it")
+
+	byIP := h.trunkCmd("By IP")
+	byIP.Host = "203.0.113.10"
+	ip, err := h.svc.CreateTrunk(h.ctx, byIP)
+	require.NoError(t, err)
+	_, before, ok := h.identifyRow(t, ip.ID)
+	require.True(t, ok, "an IP host is recognised at creation")
+
+	require.NoError(t, prober.Round(context.Background()))
+	_, _, ok = h.identifyRow(t, bad.ID)
+	assert.False(t, ok, "the name is gone from the engine")
+	match, after, _ := h.identifyRow(t, ip.ID)
+	assert.Equal(t, "203.0.113.10", match)
+	assert.Equal(t, before, after, "a check never rewrites an IP host's row")
+}
+
+// A check whose host changed while it ran records no addresses either: the
+// old host's addresses must never be recognised under the new one.
+func TestTrunkProber_AStaleCheckRecordsNoAddresses(t *testing.T) {
+	h := newHarness(t)
+	carriers := newFakeCarriers(map[string]ports.CarrierCheck{"sip.carrier.example": resolvedTo("203.0.113.10")})
+	gate := make(chan struct{})
+	carriers.gates["sip.carrier.example"] = gate
+	_, svc := withProber(h, carriers)
+
+	created, err := svc.CreateTrunk(h.ctx, h.trunkCmd("Primary"))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return carriers.checks("sip.carrier.example") == 1 }, 5*time.Second, 20*time.Millisecond)
+
+	_, err = h.svc.UpdateTrunk(h.ctx, ports.UpdateTrunkCommand{TenantID: h.tenant, ID: created.ID, Name: "Primary",
+		Host: "198.51.100.7", Port: 5060, AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1})
+	require.NoError(t, err)
+	close(gate)
+	time.Sleep(300 * time.Millisecond)
+
+	match, _, _ := h.identifyRow(t, created.ID)
+	assert.Equal(t, "198.51.100.7", match, "the late lookup of the old name changed nothing")
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("198.51.100.7")}, h.storedTrunk(t, created.ID).ResolvedAddresses)
 }

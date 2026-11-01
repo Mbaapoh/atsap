@@ -164,6 +164,31 @@ func (TrunkStore) SetCheckedHealth(ctx context.Context, tx pgx.Tx, id shareddoma
 	return tag.RowsAffected() == 1, nil
 }
 
+// SetResolvedAddresses records the addresses a check found for the
+// trunk's host name, guarded by that host: a result for a host since
+// changed, or a trunk since deleted, is dropped. The old set is read under
+// the row's lock in the same statement, so "changed" is exact even with a
+// concurrent check.
+func (TrunkStore) SetResolvedAddresses(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, addrs []netip.Addr, at time.Time) (bool, error) {
+	var changed bool
+	err := tx.QueryRow(ctx, `
+		WITH previous AS (
+			SELECT id, resolved_addresses FROM carrier_trunks WHERE id = $1 AND host = $2 FOR UPDATE
+		)
+		UPDATE carrier_trunks t SET resolved_addresses = $3, resolved_at = $4
+		FROM previous
+		WHERE t.id = previous.id
+		RETURNING previous.resolved_addresses IS DISTINCT FROM $3
+	`, id.String(), host, addressArray(addrs), at).Scan(&changed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("set trunk resolved addresses: %w", err)
+	}
+	return changed, nil
+}
+
 // validObservation refuses an observation that is not one: Unknown is
 // where a trunk starts, never something observed.
 func validObservation(obs domain.HealthObservation) error {

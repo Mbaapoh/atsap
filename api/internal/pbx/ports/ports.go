@@ -429,6 +429,17 @@ type TrunkStore interface {
 	// host and port, only while the trunk still has that address; it
 	// reports whether the observation was recorded.
 	SetCheckedHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, port int, obs domain.HealthObservation) (bool, error)
+	// SetResolvedAddresses records what the trunk's host name resolved to
+	// at the time at, only while the trunk still has that host (D-75). It
+	// reports whether the addresses changed, which is when the engine's
+	// identify row must follow; an unchanged set records only the time.
+	SetResolvedAddresses(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, addrs []netip.Addr, at time.Time) (bool, error)
+}
+
+// TrunkIdentifyProjector rewrites the engine row that recognises a
+// trunk's carrier, from the trunk's addresses alone (D-75).
+type TrunkIdentifyProjector interface {
+	ProjectTrunkIdentify(ctx context.Context, tx pgx.Tx, trunk domain.Trunk) error
 }
 
 // RouteStore is the outbound storage port for routes.

@@ -60,13 +60,25 @@
   - **`DiffTrunk`:** reports `identify` when the row holds a name or other addresses, and also when a row exists that a trunk with no address should not have.
   - **Tests:** `sampleTrunk` now carries a resolved IPv4 and IPv6 pair. New tests are `TestProjectTrunk_IdentifyHoldsAddressesNeverAName` and `TestDiffTrunk_IdentifyIsComparedWithTheRecordedAddresses`; the latter tampers the row to the name, to a subset and to a superset, and repairs each.
   - **Verified:** the `pbx/acl/asterisk` and `pbx/application` integration tiers (reconcile included) pass on `atsapbx_test`; `make lint` 0 issues.)*
-- [ ] 3.3 The check records addresses and health in one guarded transaction (`SetCheckedObservation`), and reprojects identify only when the set changed (design D3). Integration tests:
+- [x] 3.3 The check records addresses and health in one guarded transaction (`SetCheckedObservation`), and reprojects identify only when the set changed (design D3). Integration tests:
   - a check of a resolving name writes its addresses to identify;
   - a later failure keeps them;
   - a check that raced a host change is dropped;
   - an unchanged set writes nothing to `ps_endpoint_id_ips`.
 
   Verify the prober integration tests pass.
+
+  *(done 2026-11-01.
+  - **Writes:** health is still written first, under the host-and-port guard. The new `SetResolvedAddresses` then writes the addresses under a host guard, and reports whether the set changed. It reads the old set under the row lock in the same statement, so a concurrent check cannot make that report wrong.
+  - **Identify:** the prober reprojects identify (`ports.TrunkIdentifyProjector`, the same projector `main` gives the service) only on a change.
+  - **A failed name with no addresses** has its row cleared. This covers rows written by the previous version that still hold the name, and is a no-op otherwise.
+  - **IP hosts:** a check never touches them.
+  - **Integration tests:**
+    - `RecordsWhatTheNameResolvedTo`: none, then two addresses; an unchanged set leaves the row's `xmin` alone but moves `resolved_at`; a failure keeps the set; a new set replaces it; reconcile agrees.
+    - `ANameIsNeverLeftForTheEngine`.
+    - `AStaleCheckRecordsNoAddresses`.
+    - `TrunkStore_ResolvedAddressesAreGuardedByHost`.
+  - **Verified:** the whole Go integration tier passes on `atsapbx_test` (35 packages); `make test` and `make lint` pass.)*
 
 ## 4. Live proof
 

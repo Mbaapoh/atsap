@@ -44,9 +44,14 @@ const (
 // check (D-74): on a schedule, and at once when a trunk is created or its
 // address changes. It is the writer of checked health; nothing a caller
 // sends reaches it.
+//
+// It is also the writer of the addresses a trunk's host name resolved to,
+// and of the engine row that recognises the carrier by them (D-75): the
+// check resolves the name anyway, so the engine never has to.
 type TrunkProber struct {
 	pool     *corepostgres.Pool
 	trunks   ports.TrunkStore
+	identify ports.TrunkIdentifyProjector
 	probe    ports.CarrierProbe
 	interval time.Duration
 	now      func() time.Time
@@ -57,8 +62,8 @@ var _ ports.TrunkChecker = (*TrunkProber)(nil)
 
 // NewTrunkProber wires a prober checking every interval; an interval of
 // zero or less disables the schedule, leaving checks on change.
-func NewTrunkProber(pool *corepostgres.Pool, trunks ports.TrunkStore, probe ports.CarrierProbe, interval time.Duration, logger *slog.Logger) *TrunkProber {
-	return &TrunkProber{pool: pool, trunks: trunks, probe: probe, interval: interval, now: time.Now, logger: logger}
+func NewTrunkProber(pool *corepostgres.Pool, trunks ports.TrunkStore, identify ports.TrunkIdentifyProjector, probe ports.CarrierProbe, interval time.Duration, logger *slog.Logger) *TrunkProber {
+	return &TrunkProber{pool: pool, trunks: trunks, identify: identify, probe: probe, interval: interval, now: time.Now, logger: logger}
 }
 
 // Run checks every trunk of every tenant, then waits the interval and
@@ -147,10 +152,40 @@ func (p *TrunkProber) check(ctx context.Context, t domain.Trunk) {
 	health, reason := domain.ObserveProbe(result.Outcome, result.Status, result.RTT)
 	obs := domain.HealthObservation{Health: health, Reason: reason, At: p.now().UTC()}
 	err := p.pool.WithTenant(ctx, t.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := p.trunks.SetCheckedHealth(ctx, tx, t.ID, t.Host, t.Port, obs)
-		return err
+		recorded, err := p.trunks.SetCheckedHealth(ctx, tx, t.ID, t.Host, t.Port, obs)
+		if err != nil || !recorded {
+			return err // a result for an address since changed is dropped whole
+		}
+		return p.recordAddresses(ctx, tx, t, result, obs.At)
 	})
 	if err != nil {
 		p.logger.Warn("pbx: could not record a trunk check", "trunk_id", t.ID, "error", err)
 	}
+}
+
+// recordAddresses brings the trunk's addresses, and the engine row that
+// recognises its carrier, up to what the check found (D-75), inside the
+// check's transaction. An IP host's address is set by configuration and
+// needs nothing. A resolved name records its addresses, and the row is
+// rewritten only when they changed. A name that failed keeps its current
+// addresses (domain.ObserveAddresses); when it has none — never resolved,
+// or a row written by an older version still holding the name — the row
+// is cleared, which is a no-op when there is none.
+func (p *TrunkProber) recordAddresses(ctx context.Context, tx pgx.Tx, t domain.Trunk, result ports.CarrierCheck, at time.Time) error {
+	if domain.AddressesForHost(t.Host) != nil {
+		return nil
+	}
+	next := domain.ObserveAddresses(t.ResolvedAddresses, t.Host, result.Addresses, result.Resolved)
+	if !result.Resolved {
+		if len(next) == 0 {
+			return p.identify.ProjectTrunkIdentify(ctx, tx, t)
+		}
+		return nil
+	}
+	changed, err := p.trunks.SetResolvedAddresses(ctx, tx, t.ID, t.Host, next, at)
+	if err != nil || !changed {
+		return err
+	}
+	t.ResolvedAddresses = next
+	return p.identify.ProjectTrunkIdentify(ctx, tx, t)
 }
