@@ -48,12 +48,18 @@
     - `TestTrunkAddressesMigration_IPHostsAreBackfilled`: IPv4, IPv6, a name, `1.2.3` and `locslhodt`; down to 12 removes both columns; up again.
     - `TestTrunkStore_AddressesFollowTheHost`.
   - **Verified:** the whole Go integration tier passes on `atsapbx_test` (30 packages); `make lint` 0 issues.)*
-- [ ] 3.2 `ProjectTrunk` writes identify from the addresses only, deleting the row when there are none. `DiffTrunk` compares with `IdentifyMatch(t.ResolvedAddresses)`. Integration tests:
+- [x] 3.2 `ProjectTrunk` writes identify from the addresses only, deleting the row when there are none. `DiffTrunk` compares with `IdentifyMatch(t.ResolvedAddresses)`. Integration tests:
   - an IP trunk is projected at once;
   - a name trunk with no addresses has no identify row and never a name;
   - a `match` hand-edited to a name is reported as drift, and repair restores the addresses.
 
   Verify the reconcile integration tests pass.
+
+  *(done 2026-11-01.
+  - **The projector:** `ProjectTrunk` and a new `ProjectTrunkIdentify` (for the check) both write identify through one `projectIdentify`. It writes `IdentifyMatch(t.ResolvedAddresses)`, or deletes the row when there is none.
+  - **`DiffTrunk`:** reports `identify` when the row holds a name or other addresses, and also when a row exists that a trunk with no address should not have.
+  - **Tests:** `sampleTrunk` now carries a resolved IPv4 and IPv6 pair. New tests are `TestProjectTrunk_IdentifyHoldsAddressesNeverAName` and `TestDiffTrunk_IdentifyIsComparedWithTheRecordedAddresses`; the latter tampers the row to the name, to a subset and to a superset, and repairs each.
+  - **Verified:** the `pbx/acl/asterisk` and `pbx/application` integration tiers (reconcile included) pass on `atsapbx_test`; `make lint` 0 issues.)*
 - [ ] 3.3 The check records addresses and health in one guarded transaction (`SetCheckedObservation`), and reprojects identify only when the set changed (design D3). Integration tests:
   - a check of a resolving name writes its addresses to identify;
   - a later failure keeps them;

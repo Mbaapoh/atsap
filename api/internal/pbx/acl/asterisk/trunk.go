@@ -105,19 +105,42 @@ func (p *Projector) ProjectTrunk(ctx context.Context, tx pgx.Tx, t domain.Trunk,
 		return fmt.Errorf("project trunk endpoint: %w", err)
 	}
 
-	// Identify-by-IP (design D5): one row matching the carrier's host,
-	// so signalling from that address is attributed to this trunk.
-	// Asterisk resolves a hostname match itself.
+	return p.projectIdentify(ctx, tx, t)
+}
+
+// projectIdentify writes the row that recognises the carrier's requests
+// as this trunk's (design D5 of pbx-inbound-and-emergency): its addresses
+// and nothing else. Never a name: the engine would resolve every name in
+// these rows while identifying each carrier request, for every tenant
+// (D-75). A trunk with no address yet — a name not resolved — has no row
+// and recognises nothing.
+func (p *Projector) projectIdentify(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
+	id := domain.TrunkEndpointIdentifier(t.ID)
+	match, ok := domain.IdentifyMatch(t.ResolvedAddresses)
+	if !ok {
+		if _, err := tx.Exec(ctx, `DELETE FROM ps_endpoint_id_ips WHERE id = $1`, id); err != nil {
+			return fmt.Errorf("deproject trunk identify: %w", err)
+		}
+		return nil
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO ps_endpoint_id_ips (id, endpoint, "match")
 		VALUES ($1, $2, $3)
 		ON CONFLICT (id) DO UPDATE SET
 			endpoint = EXCLUDED.endpoint,
 			"match"  = EXCLUDED."match"
-	`, id, id, t.Host); err != nil {
+	`, id, id, match); err != nil {
 		return fmt.Errorf("project trunk identify: %w", err)
 	}
 	return nil
+}
+
+// ProjectTrunkIdentify rewrites only the identify row, from t's
+// addresses: what a trunk check does when the addresses its host
+// resolved to have changed. The rest of the trunk's engine state is
+// configuration and is not touched.
+func (p *Projector) ProjectTrunkIdentify(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
+	return p.projectIdentify(ctx, tx, t)
 }
 
 // RemoveTrunk deprovisions a trunk inside the caller's transaction. Like
@@ -185,15 +208,23 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 	expect("contact", contactFor(t), str(contact))
 	expect("set_var", setVarFor(t.TenantID), str(setVar))
 
+	// Identify is compared with the addresses recorded on the trunk, never
+	// with a fresh lookup: the configuration is the sole source of truth
+	// (D-75). A name in the row is drift by construction.
 	var identifyMatch *string
+	wantMatch, wantRow := domain.IdentifyMatch(t.ResolvedAddresses)
 	err = p.pool.Unwrap().QueryRow(ctx, `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&identifyMatch)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		drift = append(drift, "identify")
+		if wantRow {
+			drift = append(drift, "identify")
+		}
 	case err != nil:
 		return nil, fmt.Errorf("read projected trunk identify: %w", err)
+	case !wantRow:
+		drift = append(drift, "identify")
 	default:
-		expect("identify", t.Host, str(identifyMatch))
+		expect("identify", wantMatch, str(identifyMatch))
 	}
 
 	if t.AuthUsername == "" {

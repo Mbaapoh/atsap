@@ -4,6 +4,8 @@ package asterisk_test
 
 import (
 	"context"
+	"errors"
+	"net/netip"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -22,7 +24,94 @@ func sampleTrunk() domain.Trunk {
 		ID: id, TenantID: shareddomain.NewTenantID(), Name: "carrier",
 		Host: "sip.carrier.example", Port: 5080, AuthUsername: "acct-1001",
 		CredentialRef: domain.TrunkCredentialRef(id), ChannelLimit: 30, Health: domain.HealthHealthy,
+		// What the platform last resolved the name to (D-75).
+		ResolvedAddresses: []netip.Addr{netip.MustParseAddr("2001:db8::10"), netip.MustParseAddr("203.0.113.10")},
 	}
+}
+
+// sampleMatch is sampleTrunk's identify match: its addresses, IPv4 first.
+const sampleMatch = "203.0.113.10,2001:db8::10"
+
+func (h *harness) identifyMatch(t *testing.T, id shareddomain.TrunkID) (string, bool) {
+	t.Helper()
+	var match string
+	err := h.pool.Unwrap().QueryRow(context.Background(),
+		`SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)).Scan(&match)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false
+	}
+	require.NoError(t, err)
+	return match, true
+}
+
+// The identify row holds the trunk's addresses and never a name (D-75):
+// the engine would resolve a name while identifying every carrier
+// request, for every tenant. A name with no address yet has no row; when
+// its addresses change, the row follows; an IP host is its own address.
+func TestProjectTrunk_IdentifyHoldsAddressesNeverAName(t *testing.T) {
+	h := newHarness(t)
+	tr := sampleTrunk()
+	tr.ResolvedAddresses = nil
+	h.projectTrunk(t, tr, []byte(carrierSecret))
+	_, ok := h.identifyMatch(t, tr.ID)
+	assert.False(t, ok, "a name not resolved yet recognises nothing")
+	assert.True(t, h.readTrunk(t, tr.ID).endpoint, "the rest of the trunk is projected all the same")
+	drift, err := h.projector.DiffTrunk(context.Background(), tr)
+	require.NoError(t, err)
+	assert.Empty(t, drift, "no row is what an unresolved name should have")
+
+	tr.ResolvedAddresses = []netip.Addr{netip.MustParseAddr("203.0.113.20")}
+	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
+		return h.projector.ProjectTrunkIdentify(ctx, tx, tr)
+	}))
+	match, ok := h.identifyMatch(t, tr.ID)
+	require.True(t, ok)
+	assert.Equal(t, "203.0.113.20", match, "a check that resolved the name writes what it found")
+
+	tr.ResolvedAddresses = nil
+	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
+		return h.projector.ProjectTrunkIdentify(ctx, tx, tr)
+	}))
+	_, ok = h.identifyMatch(t, tr.ID)
+	assert.False(t, ok, "no address, no row")
+
+	tr.Host, tr.ResolvedAddresses = "198.51.100.7", domain.AddressesForHost("198.51.100.7")
+	h.projectTrunk(t, tr, nil)
+	match, _ = h.identifyMatch(t, tr.ID)
+	assert.Equal(t, "198.51.100.7", match, "an IP host is its own address")
+}
+
+// Reconcile compares the identify row with the trunk's recorded addresses
+// and never looks a name up: a row holding a name, other addresses, or a
+// row a trunk with no address should not have, is drift; re-projection
+// repairs each.
+func TestDiffTrunk_IdentifyIsComparedWithTheRecordedAddresses(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	tr := sampleTrunk()
+	identifier := domain.TrunkEndpointIdentifier(tr.ID)
+	h.projectTrunk(t, tr, []byte(carrierSecret))
+	match, _ := h.identifyMatch(t, tr.ID)
+	assert.Equal(t, sampleMatch, match)
+
+	for _, tampered := range []string{tr.Host, "203.0.113.10", "203.0.113.10,2001:db8::10,198.51.100.1"} {
+		_, err := h.pool.Unwrap().Exec(ctx, `UPDATE ps_endpoint_id_ips SET "match" = $2 WHERE id = $1`, identifier, tampered)
+		require.NoError(t, err)
+		drift, err := h.projector.DiffTrunk(ctx, tr)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"identify"}, drift, "a match of %q is drift", tampered)
+
+		h.projectTrunk(t, tr, nil)
+		drift, err = h.projector.DiffTrunk(ctx, tr)
+		require.NoError(t, err)
+		assert.Empty(t, drift, "repair restores the recorded addresses")
+	}
+
+	unresolved := tr
+	unresolved.ResolvedAddresses = nil
+	drift, err := h.projector.DiffTrunk(ctx, unresolved)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"identify"}, drift, "a row a trunk with no address should not have is drift")
 }
 
 func (h *harness) projectTrunk(t *testing.T, tr domain.Trunk, secret []byte) {

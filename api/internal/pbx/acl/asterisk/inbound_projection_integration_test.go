@@ -67,7 +67,7 @@ func TestProjectExtension_ReportsAndRepairsMissingTenantVariable(t *testing.T) {
 
 // TestProjectTrunk_WritesTenantVariableAndIdentify covers design D5:
 // the trunk endpoint carries ATSA_TENANT_ID, and one identify row
-// matches the carrier's host so its signalling is attributed to the
+// matches the carrier's addresses so its signalling is attributed to the
 // trunk.
 func TestProjectTrunk_WritesTenantVariableAndIdentify(t *testing.T) {
 	h := newHarness(t)
@@ -85,7 +85,7 @@ func TestProjectTrunk_WritesTenantVariableAndIdentify(t *testing.T) {
 	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(),
 		`SELECT endpoint, "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&endpoint, &match))
 	assert.Equal(t, id, endpoint)
-	assert.Equal(t, tr.Host, match)
+	assert.Equal(t, sampleMatch, match, "the carrier's addresses, never its name (D-75)")
 
 	drift, err := h.projector.DiffTrunk(context.Background(), tr)
 	require.NoError(t, err)
