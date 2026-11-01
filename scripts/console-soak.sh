@@ -32,4 +32,7 @@ if [[ "$before" != "$after" ]]; then
   exit 1
 fi
 echo "No residue: ${#TABLES[@]} tables unchanged after $RUNS runs."
-docker exec deploy-app-1 /out/app pbx reconcile
+# The binary is /out/app under Tilt and /usr/local/bin/atsap-api in the
+# compose image: run whatever the container runs.
+APP_BIN="$(docker inspect deploy-app-1 --format '{{range .Config.Entrypoint}}{{.}} {{end}}{{range .Config.Cmd}}{{.}} {{end}}' | awk '{print $1}')"
+docker exec deploy-app-1 "$APP_BIN" pbx reconcile

@@ -11,6 +11,7 @@
 package e2e_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -120,4 +121,126 @@ func TestHostResolution_DiallingAnUnresolvableTrunkDelaysNoOneElse(t *testing.T)
 	wg.Wait()
 	t.Logf("the call to the unresolvable trunk ended with SIP %d after %v", dialled, dialTook)
 	assert.NotEqual(t, http.StatusOK, dialled, "nothing answers at an unresolvable host")
+}
+
+// --- a carrier configured by name (task 4.1) ----------------------------
+
+// namedCarrier is a throwaway container on the engine's network, reachable
+// by a unique name the app resolves through Docker's DNS: a carrier
+// configured by host name, as most are. It sends raw SIP from its own
+// address — what the trunk's identify row must match once resolved.
+type namedCarrier struct {
+	name, addr string
+}
+
+func startNamedCarrier(t *testing.T) namedCarrier {
+	t.Helper()
+	network := os.Getenv("ENGINE_NETWORK")
+	if network == "" {
+		network = "deploy_voip"
+	}
+	image := os.Getenv("CARRIER_IMAGE")
+	if image == "" {
+		image = "atsap-sipua:dev" // any image with bash; this one is already on the rig
+	}
+	name := fmt.Sprintf("carrier-e2e-%d", time.Now().UnixNano()%1_000_000_000)
+	out, err := exec.Command("docker", "run", "-d", "--rm", "--name", name, "--network", network, // #nosec G204 -- fixed test command
+		"--network-alias", name, "--entrypoint", "sleep", image, "300").CombinedOutput()
+	require.NoError(t, err, "start the named carrier: %s", out)
+	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", name).Run() }) // #nosec G204 -- fixed test command
+	addr, err := exec.Command("docker", "inspect", name,                     // #nosec G204 -- fixed test command
+		"--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}").Output()
+	require.NoError(t, err)
+	return namedCarrier{name: name, addr: strings.TrimSpace(string(addr))}
+}
+
+// inviteScript sends one INVITE to the engine as a single datagram (bash
+// would otherwise write it in pieces) and prints the response lines.
+const inviteScript = `ip=$(hostname -i | awk '{print $1}'); r=$RANDOM$RANDOM
+sdp="v=0\r\no=- 1 1 IN IP4 $ip\r\ns=-\r\nc=IN IP4 $ip\r\nt=0 0\r\nm=audio 18100 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n"
+len=$(printf "$sdp" | wc -c)
+printf "INVITE sip:$1@asterisk:5060 SIP/2.0\r\nVia: SIP/2.0/UDP $ip:5060;branch=z9hG4bK$r;rport\r\nMax-Forwards: 70\r\nFrom: <sip:carrier@$ip>;tag=$r\r\nTo: <sip:$1@asterisk>\r\nCall-ID: $r@$ip\r\nCSeq: 1 INVITE\r\nContact: <sip:carrier@$ip:5060>\r\nContent-Type: application/sdp\r\nContent-Length: $len\r\n\r\n$sdp" > /tmp/invite
+exec 3<>/dev/udp/asterisk/5060
+cat /tmp/invite >&3
+timeout 3 cat <&3 | grep -a '^SIP/2.0' | tr -d '\r'`
+
+// dial sends an INVITE for number and returns the final status line.
+func (c namedCarrier) dial(t *testing.T, number string) string {
+	t.Helper()
+	out, err := exec.Command("docker", "exec", c.name, "bash", "-c", inviteScript, "invite", number).CombinedOutput() // #nosec G204 -- fixed test command
+	require.NoError(t, err, "%s", out)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if len(line) >= 11 && strings.HasPrefix(line, "SIP/2.0 ") && line[8] >= '2' {
+			return line
+		}
+	}
+	t.Fatalf("no final response to the INVITE: %q", out)
+	return ""
+}
+
+// identifyMatch reads the engine row that recognises a trunk's carrier.
+func (r *rig) identifyMatch(t *testing.T, trunkID string) string {
+	t.Helper()
+	var match string
+	err := r.pool.Unwrap().QueryRow(context.Background(),
+		`SELECT "match" FROM ps_endpoint_id_ips WHERE id = 't_' || replace($1, '-', '')`, trunkID).Scan(&match)
+	if err != nil {
+		return ""
+	}
+	return match
+}
+
+// A carrier configured by its name is recognised once the platform has
+// resolved it — by its address, which is all the engine is given — and
+// changing the trunk's host stops recognising it. Reconcile then finds
+// nothing to report for the trunk.
+func TestHostResolution_ACarrierConfiguredByNameIsRecognised(t *testing.T) {
+	r := newRig(t)
+	carrier := startNamedCarrier(t)
+
+	assert.Equal(t, "SIP/2.0 401 Unauthorized", carrier.dial(t, "+442071234599"), "an unknown source is challenged, not routed")
+
+	var out struct {
+		Trunk trunkMsg `json:"trunk"`
+	}
+	r.call(t, "PbxService/CreateTrunk", r.token, map[string]any{
+		"tenantId": r.tenant.String(), "name": "By name", "host": carrier.name, "port": 5060, "channelLimit": 2,
+	}, &out, http.StatusOK)
+	trunkID := out.Trunk.TrunkID
+
+	require.Eventually(t, func() bool { return r.identifyMatch(t, trunkID) == carrier.addr },
+		10*time.Second, 100*time.Millisecond, "the check that follows creation resolves the name to %s", carrier.addr)
+	assert.Equal(t, "SIP/2.0 404 Not Found", carrier.dial(t, "+442071234599"),
+		"the carrier is recognised as the trunk's, and its unassigned DID is refused by the tenant's plan")
+
+	report, err := exec.Command("docker", "exec", appContainer(), appBinary(t), "pbx", "reconcile").CombinedOutput() // #nosec G204 -- fixed test command
+	// Reconcile exits non-zero for anything it reports, including engine
+	// rows other tooling left on the rig; what matters here is this trunk.
+	require.Contains(t, string(report), "Checked", "reconcile ran: %v %s", err, report)
+	assert.NotContains(t, string(report), trunkID, "reconcile agrees with what the check recorded")
+
+	r.call(t, "PbxService/UpdateTrunk", r.token, map[string]any{
+		"tenantId": r.tenant.String(), "trunkId": trunkID, "name": "Moved", "host": "192.0.2.1", "port": 5060, "channelLimit": 2,
+	}, nil, http.StatusOK)
+	assert.Equal(t, "192.0.2.1", r.identifyMatch(t, trunkID), "a new IP host is recognised at once")
+	assert.Equal(t, "SIP/2.0 401 Unauthorized", carrier.dial(t, "+442071234599"), "the old carrier is no longer recognised")
+}
+
+func appContainer() string {
+	if c := os.Getenv("APP_CONTAINER"); c != "" {
+		return c
+	}
+	return "deploy-app-1"
+}
+
+// appBinary is the app's executable in its container: /out/app under
+// Tilt, /usr/local/bin/atsap-api in the compose image.
+func appBinary(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("docker", "inspect", appContainer(), // #nosec G204 -- fixed test command
+		"--format", "{{range .Config.Entrypoint}}{{.}} {{end}}{{range .Config.Cmd}}{{.}} {{end}}").Output()
+	require.NoError(t, err)
+	fields := strings.Fields(string(out))
+	require.NotEmpty(t, fields, "the app container has no command")
+	return fields[0]
 }

@@ -82,12 +82,26 @@
 
 ## 4. Live proof
 
-- [ ] 4.1 Make the 1.1 e2e test pass. Add e2e tests on the rig:
+- [x] 4.1 Make the 1.1 e2e test pass. Add e2e tests on the rig:
   - a trunk configured by the carrier's **service name** (not its IP) has a carrier → DID call attributed to it once the first check completes;
   - changing that trunk's host stops recognising the old carrier;
   - `pbx reconcile` reports no divergence after a round.
 
   Verify `mise exec -- make test` with e2e (rig restored first) passes, together with `uat-inbound`, `uat-placement` and `uat-auto`, with the inbound UAT's carrier configured by name.
+
+  *(done 2026-11-01, on the rig app rebuilt with this change. Migration 13 was applied; the owner's Dev Acme trunk `localhost` now reads `127.0.0.1,::1` in identify, the same thing Asterisk resolved it to before.
+  - **The 1.1 reproduction passes:** zero lookups of `locslhodt`, and the other tenant's carrier INVITEs are answered in 22–33 ms (70–385 ms before).
+  - **New: `TestHostResolution_ACarrierConfiguredByNameIsRecognised`.** The carrier is a throwaway container on the engine's network, reached by a unique DNS name, that sends a raw INVITE.
+    - From an unknown source it gets 401.
+    - Once the trunk is created by that name, its identify row becomes the container's address within one check, and the INVITE is routed to the tenant's plan: 404 for an unassigned DID.
+    - `pbx reconcile` reports nothing for the trunk.
+    - Moving the trunk's host to `192.0.2.1` projects that address at once, and the carrier is challenged (401) again.
+  - **Full Go e2e tier:** every package passes (`pbx/e2e` 45 s, `telephony/e2e`, `identity/e2e`), after `make rig-restore`.
+  - **UATs:** `uat-auto`, `uat-placement` and `uat-inbound` all PASS, with media both ways.
+  - **Deviation:** `uat-inbound`'s carrier is still configured by IP. That carrier is baresip on the host, and no name resolves to the host's bridge address from the app's network (no `host.docker.internal`, and `host-gateway` maps to a different bridge). The by-name proof is the e2e test above, with a real container carrier resolved through Docker's DNS.
+  - **Found and fixed:** the app binary is `/out/app` under Tilt but `/usr/local/bin/atsap-api` in the compose image. `scripts/console-soak.sh` hard-coded the Tilt path, and now runs whatever the container runs; so does the e2e test.
+  - **Noted:** `pbx reconcile` exits 1 on this rig only because of the three throwaway `probe-*` rows from the D-74 measurement.
+  - **Noted:** `make dev-app` also rebuilds the Asterisk image, because the app depends on it; that build was stopped, and the app restarted with `--no-deps`.)*
 
 ## 5. Docs and close
 
