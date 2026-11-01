@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -260,4 +261,55 @@ func TestTrunkStore_RefusesWhatIsNotAnObservation(t *testing.T) {
 			assert.ErrorIs(t, err, ports.ErrInvalidInput)
 		})
 	}
+}
+
+// A trunk's addresses (D-75) round-trip; a new host drops the old ones in
+// the same update, to the new host itself or to none until the name
+// resolves; an unchanged host keeps the stored ones whatever the update
+// carries, so a configuration edit never overwrites a concurrent check.
+func TestTrunkStore_AddressesFollowTheHost(t *testing.T) {
+	h := newStore(t)
+	tr := newTrunk(h.tenantA)
+	resolved := time.Now().UTC().Truncate(time.Microsecond)
+	tr.ResolvedAddresses = []netip.Addr{netip.MustParseAddr("2001:db8::2"), netip.MustParseAddr("203.0.113.10")}
+	tr.ResolvedAt = &resolved
+	h.insertTrunk(t, tr)
+
+	got, err := h.getTrunk(h.tenantA, tr.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("203.0.113.10"), netip.MustParseAddr("2001:db8::2")}, got.ResolvedAddresses, "sorted, IPv4 first")
+	require.NotNil(t, got.ResolvedAt)
+	assert.Equal(t, resolved, *got.ResolvedAt)
+
+	update := func(tr pbxdomain.Trunk) pbxdomain.Trunk {
+		t.Helper()
+		require.NoError(t, h.run(h.tenantA, func(ctx context.Context, tx pgx.Tx) error { return trunks.Update(ctx, tx, tr) }))
+		got, err := h.getTrunk(h.tenantA, tr.ID)
+		require.NoError(t, err)
+		return got
+	}
+
+	edit := got
+	edit.Name, edit.ResolvedAddresses = "renamed", nil
+	got = update(edit)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("203.0.113.10"), netip.MustParseAddr("2001:db8::2")}, got.ResolvedAddresses,
+		"an unchanged host keeps its addresses, whatever the edit carries")
+	assert.NotNil(t, got.ResolvedAt)
+
+	edit = got
+	edit.Port = 5080
+	got = update(edit)
+	assert.Len(t, got.ResolvedAddresses, 2, "a new port is not a new carrier address")
+
+	edit = got
+	edit.Host = "other.carrier.example"
+	got = update(edit)
+	assert.Empty(t, got.ResolvedAddresses, "a new name is recognised by nothing until it resolves")
+	assert.Nil(t, got.ResolvedAt)
+
+	edit = got
+	edit.Host = "198.51.100.7"
+	got = update(edit)
+	assert.Equal(t, []netip.Addr{netip.MustParseAddr("198.51.100.7")}, got.ResolvedAddresses, "a new IP host is its own address at once")
+	assert.Nil(t, got.ResolvedAt, "an IP host is never resolved")
 }

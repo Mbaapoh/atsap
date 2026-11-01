@@ -49,6 +49,9 @@ func (s *Service) CreateTrunk(ctx context.Context, cmd ports.CreateTrunkCommand)
 		Name: cmd.Name, Host: cmd.Host, Port: cmd.Port, AuthUsername: cmd.AuthUsername,
 		ChannelLimit: cmd.ChannelLimit, Priority: cmd.Priority,
 		Health: domain.HealthUnknown, CreatedAt: now, UpdatedAt: now,
+		// An IP host is recognised at once; a name once the check that
+		// follows creation has resolved it (D-75).
+		ResolvedAddresses: domain.AddressesForHost(cmd.Host),
 	}
 	if err := validateTrunk(t, cmd.Secret); err != nil {
 		return ports.TrunkView{}, err
@@ -102,6 +105,11 @@ func (s *Service) UpdateTrunk(ctx context.Context, cmd ports.UpdateTrunkCommand)
 		after.UpdatedAt = s.now()
 		if readdressed = after.Host != before.Host || after.Port != before.Port; readdressed {
 			after.Health, after.HealthReason, after.HealthObservedAt = domain.HealthUnknown, "", nil
+		}
+		if after.Host != before.Host {
+			// The old host's addresses stop being recognised in this
+			// transaction, as the store's Update does (D-75).
+			after.ResolvedAddresses, after.ResolvedAt = domain.AddressesForHost(after.Host), nil
 		}
 		switch {
 		case cmd.AuthUsername == "":

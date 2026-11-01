@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,17 +28,19 @@ var _ ports.TrunkStore = TrunkStore{}
 func NewTrunkStore() TrunkStore { return TrunkStore{} }
 
 const trunkColumns = `id, tenant_id, name, host, port, auth_username, credentials_ref,
-	channel_limit, priority, health_status, health_reason, health_observed_at, created_at, updated_at`
+	channel_limit, priority, health_status, health_reason, health_observed_at,
+	resolved_addresses, resolved_at, created_at, updated_at`
 
-// Insert writes a new trunk. Health is written as given, which on the
-// configuration path is always Unknown with no observation.
+// Insert writes a new trunk. Health and addresses are written as given,
+// which on the configuration path is always Unknown with no observation,
+// and the host itself as the only address when it is an IP address.
 func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO carrier_trunks (`+trunkColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`, t.ID.String(), t.TenantID.String(), t.Name, t.Host, t.Port, nullable(t.AuthUsername),
 		nullable(t.CredentialRef), t.ChannelLimit, t.Priority, string(t.Health), nullable(string(t.HealthReason)),
-		t.HealthObservedAt, t.CreatedAt, t.UpdatedAt)
+		t.HealthObservedAt, addressArray(t.ResolvedAddresses), t.ResolvedAt, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert trunk: %w", err)
 	}
@@ -50,17 +53,27 @@ func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 // configuration"). A new host or port does make the old observation
 // stale — it was of another address — so the trunk returns to Unknown
 // until the new address is checked (pbx-trunk-health-probing).
+//
+// A new host likewise drops the addresses the old one was recognised by,
+// in this same statement, so the previous carrier is never recognised
+// under the new configuration: they become domain.AddressesForHost of the
+// new host (itself, or nothing until the name resolves; D-75). An
+// unchanged host keeps the stored addresses, whatever t carries — the
+// trunk check is their only other writer, and a concurrent one must not
+// be overwritten by a configuration edit.
 func (TrunkStore) Update(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	tag, err := tx.Exec(ctx, `
 		UPDATE carrier_trunks SET
 			health_status      = CASE WHEN host = $3 AND port = $4 THEN health_status      ELSE 'UNKNOWN' END,
 			health_reason      = CASE WHEN host = $3 AND port = $4 THEN health_reason      ELSE NULL END,
 			health_observed_at = CASE WHEN host = $3 AND port = $4 THEN health_observed_at ELSE NULL END,
+			resolved_addresses = CASE WHEN host = $3 THEN resolved_addresses ELSE $10 END,
+			resolved_at        = CASE WHEN host = $3 THEN resolved_at        ELSE NULL END,
 			name = $2, host = $3, port = $4, auth_username = $5, credentials_ref = $6,
 			channel_limit = $7, priority = $8, updated_at = $9
 		WHERE id = $1
 	`, t.ID.String(), t.Name, t.Host, t.Port, nullable(t.AuthUsername), nullable(t.CredentialRef),
-		t.ChannelLimit, t.Priority, t.UpdatedAt)
+		t.ChannelLimit, t.Priority, t.UpdatedAt, addressArray(domain.AddressesForHost(t.Host)))
 	if err != nil {
 		return fmt.Errorf("update trunk: %w", err)
 	}
@@ -165,10 +178,12 @@ func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 		t                      domain.Trunk
 		rawID, rawTenant, hlth string
 		username, ref, reason  *string
-		observedAt             *time.Time
+		observedAt, resolvedAt *time.Time
+		addresses              []netip.Addr
 	)
 	if err := row.Scan(&rawID, &rawTenant, &t.Name, &t.Host, &t.Port, &username, &ref,
-		&t.ChannelLimit, &t.Priority, &hlth, &reason, &observedAt, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		&t.ChannelLimit, &t.Priority, &hlth, &reason, &observedAt, &addresses, &resolvedAt,
+		&t.CreatedAt, &t.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Trunk{}, err
 		}
@@ -190,7 +205,23 @@ func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 	}
 	t.AuthUsername = deref(username)
 	t.CredentialRef = deref(ref)
+	if len(addresses) > 0 {
+		t.ResolvedAddresses = domain.NormaliseAddresses(addresses)
+	}
+	if resolvedAt != nil {
+		at := resolvedAt.UTC()
+		t.ResolvedAt = &at
+	}
 	return t, nil
+}
+
+// addressArray is addrs for an INET[] column: never NULL, which the
+// column refuses, so no address is the empty array.
+func addressArray(addrs []netip.Addr) []netip.Addr {
+	if addrs == nil {
+		return []netip.Addr{}
+	}
+	return domain.NormaliseAddresses(addrs)
 }
 
 // RouteStore implements ports.RouteStore on carrier_routes.

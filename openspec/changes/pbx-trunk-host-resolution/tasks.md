@@ -34,7 +34,20 @@
 
 ## 3. Store, projection, check
 
-- [ ] 3.1 Migration 0013: `resolved_addresses inet[] NOT NULL DEFAULT '{}'` and `resolved_at timestamptz` on `trunks`, with IP hosts backfilled to `{host}`, and a down migration. The store reads and writes the columns, and `UpdateTrunk` clears them when the host changes. Integration tests on `atsapbx_test` cover the backfill, the round trip and the clear on host change. Verify `make test` with the integration tag passes, and that down and up runs cleanly.
+- [x] 3.1 Migration 0013: `resolved_addresses inet[] NOT NULL DEFAULT '{}'` and `resolved_at timestamptz` on `trunks`, with IP hosts backfilled to `{host}`, and a down migration. The store reads and writes the columns, and `UpdateTrunk` clears them when the host changes. Integration tests on `atsapbx_test` cover the backfill, the round trip and the clear on host change. Verify `make test` with the integration tag passes, and that down and up runs cleanly.
+
+  *(done 2026-11-01. The table is `carrier_trunks`, not `trunks` as the design says.
+  - **Backfill:** each host is tried as an address in a `DO` block, and a name is skipped on `invalid_text_representation`. So `1.2.3`, a valid name that is not an address, is not cast by accident.
+  - **The store:**
+    - reads and writes both columns, normalised;
+    - writes `{}`, never NULL, for no address;
+    - in `Update`, keeps the stored addresses when the host is unchanged, whatever the edit carries, so a configuration edit cannot overwrite a concurrent check;
+    - in `Update`, sets them to the new host itself (IP) or to none (name) when the host changes.
+  - **The application:** sets the same on create and on a host change.
+  - **New integration tests:**
+    - `TestTrunkAddressesMigration_IPHostsAreBackfilled`: IPv4, IPv6, a name, `1.2.3` and `locslhodt`; down to 12 removes both columns; up again.
+    - `TestTrunkStore_AddressesFollowTheHost`.
+  - **Verified:** the whole Go integration tier passes on `atsapbx_test` (30 packages); `make lint` 0 issues.)*
 - [ ] 3.2 `ProjectTrunk` writes identify from the addresses only, deleting the row when there are none. `DiffTrunk` compares with `IdentifyMatch(t.ResolvedAddresses)`. Integration tests:
   - an IP trunk is projected at once;
   - a name trunk with no addresses has no identify row and never a name;
