@@ -205,7 +205,7 @@ func (c *Config) loadSIPPublic() error {
 	if c.SIPPublicHost != "" {
 		// The same rule as trunk hosts: a hostname or an IP address, with
 		// no scheme, port or user part (LLD-03 §10.5).
-		if err := pbxdomain.ValidateHost(c.SIPPublicHost); err != nil {
+		if err := pbxdomain.ValidateHostSyntax(c.SIPPublicHost); err != nil {
 			return fmt.Errorf("SIP_PUBLIC_HOST must be a hostname or an IP address, with no scheme or port")
 		}
 	}

@@ -167,16 +167,13 @@ func (t Trunk) Validate() error {
 	return ValidateAuthUsername(t.AuthUsername)
 }
 
-// ValidateHost accepts an IP literal or a DNS hostname and nothing else,
-// and refuses a host that cannot be a carrier (D-76).
-//
-// Allowlisted by construction, not by expression: the host ends up in
-// engine configuration (a contact URI and a From domain), so anything
-// that is not provably a name or an address is refused — no scheme, no
-// port, no user part, no whitespace (LLD-03 §10.5).
+// ValidateHost is the rule for a trunk's host (D-76): a valid hostname
+// or IP literal (ValidateHostSyntax) that can also be a carrier — not
+// localhost or *.localhost (RFC 6761), nor a loopback, link-local,
+// unspecified or multicast literal.
 func ValidateHost(host string) error {
-	if host == "" || len(host) > MaxHostLength {
-		return fmt.Errorf("%w: %q", ErrTrunkHostInvalid, host)
+	if err := ValidateHostSyntax(host); err != nil {
+		return err
 	}
 	if net.ParseIP(host) != nil {
 		if a, err := netip.ParseAddr(host); err != nil || !CarrierAddress(a) {
@@ -186,6 +183,23 @@ func ValidateHost(host string) error {
 	}
 	if name := strings.ToLower(strings.TrimSuffix(host, ".")); name == "localhost" || strings.HasSuffix(name, ".localhost") {
 		return fmt.Errorf("%w: %q", ErrTrunkHostNotCarrier, host) // RFC 6761 §6.3
+	}
+	return nil
+}
+
+// ValidateHostSyntax accepts an IP literal or a DNS hostname and nothing
+// else. Allowlisted by construction, not by expression: a host ends up in
+// engine configuration (a contact URI, a From domain, a registrar
+// address), so anything that is not provably a name or an address is
+// refused — no scheme, no port, no user part, no whitespace (LLD-03
+// §10.5). It says nothing about what the host is for: the installation's
+// own registrar address may well be localhost on a development rig.
+func ValidateHostSyntax(host string) error {
+	if host == "" || len(host) > MaxHostLength {
+		return fmt.Errorf("%w: %q", ErrTrunkHostInvalid, host)
+	}
+	if net.ParseIP(host) != nil {
+		return nil
 	}
 	for _, label := range strings.Split(host, ".") {
 		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {

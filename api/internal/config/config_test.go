@@ -167,6 +167,23 @@ func TestLoad_SIPPublicRegistrar(t *testing.T) {
 	}
 }
 
+// The registrar address is not a carrier: a development rig's is
+// localhost or a loopback address, and the trunk rule (D-76) must not
+// refuse it. (It once did, and the app would not start.)
+func TestLoad_SIPPublicRegistrarMayBeLocal(t *testing.T) {
+	for _, host := range []string{"localhost", "127.0.0.1", "::1"} {
+		setRequired(t)
+		t.Setenv("SIP_PUBLIC_HOST", host)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("SIP_PUBLIC_HOST=%s: Load() returned error: %v", host, err)
+		}
+		if cfg.SIPPublicHost != host {
+			t.Errorf("got %q, want %q", cfg.SIPPublicHost, host)
+		}
+	}
+}
+
 func TestLoad_SIPPublicRegistrarRejectsBadValues(t *testing.T) {
 	for _, tc := range []struct{ key, value, want string }{
 		{"SIP_PUBLIC_PORT", "0", "SIP_PUBLIC_PORT"},

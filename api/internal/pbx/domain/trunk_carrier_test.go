@@ -32,7 +32,8 @@ func TestCarrierAddress(t *testing.T) {
 }
 
 func TestValidateHost_RefusesWhatCannotBeACarrier(t *testing.T) {
-	for _, h := range []string{"localhost", "LOCALHOST", "localhost.", "pbx.localhost", "127.0.0.1", "::1", "169.254.1.1", "0.0.0.0", "224.0.0.1", "::ffff:127.0.0.1"} {
+	assert.ErrorIs(t, domain.ValidateHost("localhost."), domain.ErrTrunkHostInvalid, "a trailing dot is refused as syntax first")
+	for _, h := range []string{"localhost", "LOCALHOST", "pbx.localhost", "127.0.0.1", "::1", "169.254.1.1", "0.0.0.0", "224.0.0.1", "::ffff:127.0.0.1"} {
 		err := domain.ValidateHost(h)
 		require.Error(t, err, h)
 		assert.ErrorIs(t, err, domain.ErrTrunkHostNotCarrier, h)
@@ -154,4 +155,13 @@ func TestNormaliseInboundAddresses(t *testing.T) {
 	assert.Nil(t, domain.NormaliseInboundAddresses(nil))
 	assert.Equal(t, prefixes("198.51.100.0/24", "203.0.113.0/28"),
 		domain.NormaliseInboundAddresses(prefixes("203.0.113.5/28", "198.51.100.7/24", "203.0.113.0/28")))
+}
+
+func TestValidateHostSyntax_SaysNothingAboutPurpose(t *testing.T) {
+	for _, h := range []string{"localhost", "127.0.0.1", "::1", "pbx.example.com"} {
+		assert.NoError(t, domain.ValidateHostSyntax(h), h)
+	}
+	for _, h := range []string{"", "sip:pbx.example.com", "pbx.example.com:5060", "user@pbx", "a..b", "-a.example"} {
+		assert.ErrorIs(t, domain.ValidateHostSyntax(h), domain.ErrTrunkHostInvalid, h)
+	}
 }
