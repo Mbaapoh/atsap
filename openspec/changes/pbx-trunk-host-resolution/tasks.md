@@ -1,6 +1,18 @@
 ## 1. Prove it and decide it
 
-- [ ] 1.1 Reproduce the stall on the rig as a failing Go e2e test (`api/internal/pbx/e2e`). Tenant A has a trunk whose host is unresolvable (`locslhodt`); a call from tenant B (extension to extension, and carrier to DID) must reach its first ring within 1 s. Verify it fails today with roughly 5 s. In the same session, measure whether **placing** a call over the unresolvable trunk delays tenant B's calls, and record the numbers here. If it does, add a *High* gap to the design's Non-Goals and to PROGRESS, without widening this change.
+- [x] 1.1 Reproduce the stall on the rig as a failing Go e2e test (`api/internal/pbx/e2e`). Tenant A has a trunk whose host is unresolvable (`locslhodt`); a call from tenant B (extension to extension, and carrier to DID) must reach its first ring within 1 s. Verify it fails today with roughly 5 s. In the same session, measure whether **placing** a call over the unresolvable trunk delays tenant B's calls, and record the numbers here. If it does, add a *High* gap to the design's Non-Goals and to PROGRESS, without widening this change.
+
+  *(done 2026-11-01, `e2e/host_resolution_test.go`; the reproduction is by lookup count, not by time.)*
+  - **Why not time:** the slowness depends on the resolver of the day. Today the rig's Docker DNS fails `locslhodt` in 6 ms (and `localhosts2` and `.invalid` alike), so a 1 s budget passes. On 2026-10-13 the same lookup took about 5 s. The deterministic proof is that Asterisk *looks the name up at all* while identifying: every failed lookup is logged (`netsock2.c: ast_sockaddr_resolve: getaddrinfo("…")`), and the test counts those lines in the engine's log.
+  - **Who is affected:** phones are identified by username first (`endpoint_identifier_order = username,ip,anonymous`), so REGISTERs and phone calls never reach identification by address. **Carrier requests do, for every tenant.** That matches the incident: a carrier call stuck at Presenting.
+  - **The failing test** (`TestHostResolution_AnUnresolvableHostIsNotLookedUpWhileIdentifying`): tenant A has the `locslhodt` trunk; tenant B's carrier sends three INVITEs to an unassigned DID. Each is answered 404 in 70–385 ms, but the engine made **12 lookups of `locslhodt`**: four per INVITE transaction (the INVITE and its ACK, for A and AAAA).
+  - **Outbound measured** (`TestHostResolution_DiallingAnUnresolvableTrunkDelaysNoOneElse`, passing): a phone dialling a number routed to the `locslhodt` trunk ends with SIP 603 after 119 ms. Carrier INVITEs sent meanwhile were answered in 73–87 ms. Placing a call over an unresolvable trunk delays no one else, so no new gap.
+  - **Found and fixed (leaks):** two e2e cleanups orphaned trunk projections.
+    - `TestTrunkHealth_IsWhatTheCarrierSays` deleted its trunks with SQL before the API cleanup ran.
+    - The inbound rig deleted only its own carrier trunk through the API.
+
+    Twelve orphaned identify rows were on the rig; `pbx reconcile --fix` removed them. Both cleanups now go through `releaseConfiguration`, and reconcile reports no orphans after the tests.
+  - **Left alone:** the `probe-self`, `probe-dead` and `probe-nxdomain` engine rows are the throwaway AORs from the D-74 measurement. Reconcile leaves them by design (not written by the platform); they are not identify rows. They are for the owner to remove.
 - [ ] 1.2 Record D-75 in `docs/DECISIONS.md`: the platform resolves carrier names for identification; identify holds addresses only; the last good addresses are kept; unresolvable hosts are accepted and flagged. Cite the alternatives from design D1. Verify `make docs` passes.
 
 ## 2. Domain and probe

@@ -248,29 +248,12 @@ func newInboundRig(t *testing.T, channelLimit int) *inboundRig {
 	r := newRig(t)
 	p := &inboundRig{rig: r, host: hostAddr(t)}
 	t.Cleanup(func() {
-		// Remove the trunk through the API first: that is what removes
-		// its engine projection (including the identify row). A leaked
-		// identify row matches every SIP packet from this host to the
-		// dead trunk and poisons later tests. Best effort: the test
-		// itself may have deleted the trunk already.
-		p.callNoAssert(t, "PbxService/DeleteTrunk", map[string]any{
-			"tenantId": p.tenant.String(), "trunkId": p.trunkID,
-		})
-		// The same for extensions (projection rows, plus the DIDs the
-		// delete cascades): list and delete each, best effort.
-		var listed struct {
-			Extensions []struct {
-				ExtensionID string `json:"extensionId"`
-			} `json:"extensions"`
-		}
-		p.call(t, "PbxService/ListExtensions", p.token, map[string]any{
-			"tenantId": p.tenant.String(), "limit": 100,
-		}, &listed, http.StatusOK)
-		for _, e := range listed.Extensions {
-			p.callNoAssert(t, "PbxService/DeleteExtension", map[string]any{
-				"tenantId": p.tenant.String(), "extensionId": e.ExtensionID,
-			})
-		}
+		// Remove every trunk and extension through the API first: that is
+		// what removes their engine projection (including identify rows).
+		// A leaked identify row matches every SIP packet from this host to
+		// the dead trunk and poisons later tests; the SQL sweep below would
+		// otherwise orphan any trunk a test added besides the carrier.
+		r.releaseConfiguration()
 		_ = r.pool.WithTenant(context.Background(), r.tenant, func(ctx context.Context, tx pgx.Tx) error {
 			for _, stmt := range []string{
 				`DELETE FROM placed_call_legs WHERE tenant_id = $1`,
@@ -323,21 +306,6 @@ func newInboundRig(t *testing.T, channelLimit int) *inboundRig {
 		"tenantId": r.tenant.String(), "countryCode": "CM",
 	}, nil, http.StatusOK)
 	return p
-}
-
-// callNoAssert posts to the API, ignoring the status: cleanup that
-// must not fail a test that already deleted the resource itself.
-func (p *inboundRig) callNoAssert(t *testing.T, procedure string, body map[string]any) {
-	t.Helper()
-	payload, err := json.Marshal(body)
-	require.NoError(t, err)
-	req, err := http.NewRequest(http.MethodPost, apiBase+"/atsapbx.v1."+procedure, bytes.NewReader(payload))
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.token)
-	resp, err := e2eHTTP.Do(req)
-	require.NoError(t, err)
-	defer func() { _ = resp.Body.Close() }()
 }
 
 // callState polls the tenant's latest call until it reaches want.

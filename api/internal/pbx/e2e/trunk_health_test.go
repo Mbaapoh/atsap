@@ -3,12 +3,10 @@
 package e2e_test
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,13 +25,10 @@ type checkedTrunk struct {
 // on its compose name; a .invalid name cannot exist (RFC 6761); nothing
 // answers from TEST-NET-1 (RFC 5737).
 func TestTrunkHealth_IsWhatTheCarrierSays(t *testing.T) {
+	// newRig's cleanup deletes the trunks through the API, which removes
+	// their engine projection. Deleting the rows with SQL first (as this
+	// test once did) left every trunk's identify row behind as an orphan.
 	r := newRig(t)
-	t.Cleanup(func() {
-		_ = r.pool.WithTenant(context.Background(), r.tenant, func(ctx context.Context, tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, `DELETE FROM carrier_trunks WHERE tenant_id = $1`, r.tenant.String())
-			return err
-		})
-	})
 
 	create := func(name, host string) checkedTrunk {
 		var out struct {
