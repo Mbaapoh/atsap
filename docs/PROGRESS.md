@@ -159,6 +159,8 @@ design; *accepted* = no fix planned.
 | Gap | Where it came from | Severity |
 |---|---|---|
 | The Asterisk image is single-stage and ships its build toolchain: Trivy finds 20 fixable HIGH (Python 3.11) and 440 HIGH/CRITICAL that Debian has not fixed yet, so the image gate cannot pass | quality-and-supply-chain-gates 5.3 | **High** — pilot: multi-stage runtime image; owner decision on `--ignore-unfixed` |
+| Trunk health does not follow HLD T-6: checks every 30 s and one observation decides (T-6: every 10 s, 3 consecutive failures or > 20 % call-setup failures over 60 s, 5 min of health to recover). D-74 did not reconcile with T-6 | Found 2026-11-01, auditing `pbx-trunk-host-resolution` against the BRD/HLD | Medium — pilot: amend T-6 by decision or implement it (owner) |
+| BR-08: a failing carrier is not alerted to the operator; health is only shown in the console | BRD BR-08, found 2026-11-01 | Medium — pilot: needs an alerting channel (email via the existing mailer, or a webhook, LLD-05) |
 | Two trunks on one carrier address are indistinguishable for inbound calls | inbound G3 | **High** — pilot: wrong-tenant attribution once two tenants share a carrier |
 | ~~Before activation (Setup), tenant and extension caps read 0 = unlimited~~ | license-provisioning-enforcement | Closed: `phase-a-hardening` task 3.1 (D-72) |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |
