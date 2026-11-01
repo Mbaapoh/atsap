@@ -1,6 +1,8 @@
 ## 1. Decide
 
-- [ ] 1.1 Record D-76 in `docs/DECISIONS.md`: a per-trunk list of inbound signalling addresses recognised alongside the host; the rule for what can be a carrier (private networks allowed); the "Address not allowed" reason. Cite design D1–D3 alternatives and BRD FBR-R1-03, VP-3 and OWASP A10. Verify `make docs` passes.
+- [x] 1.1 Record D-76 in `docs/DECISIONS.md`: a per-trunk list of inbound signalling addresses recognised alongside the host; the rule for what can be a carrier (private networks allowed); the "Address not allowed" reason. Cite design D1–D3 alternatives and BRD FBR-R1-03, VP-3 and OWASP A10. Verify `make docs` passes.
+
+  *(done 2026-11-01: D-76 recorded with six rejected alternatives; `make docs` passes.)*
 
 ## 2. Domain and probe
 

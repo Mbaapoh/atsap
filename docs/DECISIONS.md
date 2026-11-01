@@ -2585,6 +2585,61 @@ specs `pbx-core/trunk-routing`, `pbx-core/endpoint-projection`
 
 ---
 
+**D-76 · A carrier is recognised from its published signalling ranges; addresses that cannot be a carrier are refused (2026-11-01).**
+
+**Decision:** A trunk carries an optional list of up to 20 inbound
+signalling addresses: IPv4 or IPv6 addresses or CIDR ranges, no broader
+than /16 (IPv4) or /32 (IPv6). The carrier's calls are recognised from the
+host's addresses (D-75) **and** from these. The list is configuration,
+written with the trunk and projected at once.
+
+One domain rule, `CarrierAddress`, says what can be a carrier. Loopback,
+link-local, unspecified, "this network" (`0.0.0.0/8`), multicast and
+IPv4-mapped ranges cannot; private and CGNAT ranges can. The rule is
+applied:
+- to the host at create and update, which also refuses `localhost` and
+  `*.localhost` (RFC 6761);
+- to every inbound address;
+- to what a name resolves to, where such addresses are never checked or
+  recognised and the trunk reads `Unhealthy · Address not allowed`;
+- to the identify match itself.
+
+**Context:** Carriers such as Twilio, Telnyx and Vonage send calls from
+published ranges that differ from the host a trunk sends to, so with only
+a host their calls were refused. That contradicts FBR-R1-03 ("connect to
+any standards-compliant carrier") and VP-3 (BYOT). The owner's `localhost`
+trunks (2026-11-01) showed the other half: inside the platform, that name
+is the platform itself. The trunk could never work, the console said only
+"No response", and the carrier check was aimed at the platform's own
+services (OWASP A10, server-side request forgery).
+
+**Alternatives rejected:**
+- Replacing the host's addresses with the list: a carrier that also
+  signals from its host would silently stop being recognised.
+- Asterisk `permit`/`deny` ACLs: they filter but do not attribute a call
+  to a trunk and tenant.
+- Any range allowed: `0.0.0.0/0` would capture every unidentified request
+  for one tenant.
+- Refusing private ranges as hosted platforms do: AtsaPBX runs on the
+  partner's network (BRD: deployed on their infrastructure).
+- Resolving at creation to refuse loopback targets: names change, and D-75
+  keeps lookups off the request path; the check-time filter covers every
+  case.
+- Reusing "Host not found" or "No response" for a forbidden target: both
+  are false, and the second misled the owner.
+
+**Trade-off accepted:** overlapping ranges across trunks or tenants are
+not detected. Refusing one would reveal another tenant's carrier (INV-10).
+The shared-carrier-address change that follows owns the problem.
+
+**Related Decisions:** D-47 (engine projection), D-74 (carrier checks),
+D-75 (names resolved by the platform)
+**Traceability:** BRD FBR-R1-03, VP-3; PRD US-10.10, INV-10; OWASP A10;
+`openspec/changes/pbx-carrier-addresses` (design D1–D5); spec
+`pbx-core/trunk-routing`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
