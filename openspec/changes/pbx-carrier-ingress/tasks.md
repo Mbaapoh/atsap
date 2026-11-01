@@ -99,7 +99,7 @@
 
 ## 4. Live proof
 
-- [ ] 4.1 Go e2e on the rig, with two tenants whose trunks both recognise one container carrier:
+- [x] 4.1 Go e2e on the rig, with two tenants whose trunks both recognise one container carrier:
   - a call to tenant A's number rings A's extension and is recorded in A only;
   - a call to B's number rings B's;
   - a number configured in both is refused `404`, with the warning logged;
@@ -107,6 +107,24 @@
   - the existing inbound and D-75/D-76 e2e tests still pass.
 
   Verify the full Go e2e tier, the three phone UATs and the console UAT pass after `make rig-restore` (the owner's phones are stopped and restarted with consent).
+
+  *(done 2026-11-01, on the rig app rebuilt with this change; migration 16 and the ingress are live, and per-trunk rows were removed at startup.)*
+  - **`TestCarrierIngress_TwoTenantsOnOneCarrierEachReceiveTheirOwnNumbers` passes.** Two tenants' trunks recognise one container carrier:
+    - A's number is a call in A only;
+    - B's number, dialled with `X-Tenant: <A>`, is a call in B only;
+    - a number both have gets 404, with no call in either and the operator log naming trunks, not tenants;
+    - an unknown number gets 404.
+  - **The earlier D-75 and D-76 e2e tests** now read the ingress (`ingressEntries`, which also asserts no per-trunk row) and pass.
+  - **Found and fixed, each in its own commit:**
+    1. **An arriving call whose destination could not be reached was left ringing** (the carrier heard 180, then nothing; the extension had no phone). It is now refused 480 with the new `RefusalUnreachable` (ARI `no_answer`). Commit `849465e`.
+    2. **Refusals never released licence capacity.** `refuseArrived` now always releases (a no-op for none, D-58). The fault was latent for compliance refusals and became common with fix 1. Commit `a7e7ae8`.
+  - **Residue removed:** three calls from this test's runs before fix 1 were stuck in Presenting; they were terminated directly in the database, with the reason recorded.
+  - **Verified, after `make rig-restore`:**
+    - every Go e2e package passes;
+    - `uat-auto`, `uat-placement` and `uat-inbound` PASS;
+    - console UAT 3/3;
+    - no call left held.
+  - **The owner's phones** were stopped for the run with consent, restarted, and re-registered.
 
 ## 5. Docs and close
 

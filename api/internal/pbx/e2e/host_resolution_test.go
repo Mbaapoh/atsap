@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -159,7 +160,8 @@ func startNamedCarrier(t *testing.T) namedCarrier {
 const inviteScript = `ip=$(hostname -i | awk '{print $1}'); r=$RANDOM$RANDOM
 sdp="v=0\r\no=- 1 1 IN IP4 $ip\r\ns=-\r\nc=IN IP4 $ip\r\nt=0 0\r\nm=audio 18100 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\n"
 len=$(printf "$sdp" | wc -c)
-printf "INVITE sip:$1@asterisk:5060 SIP/2.0\r\nVia: SIP/2.0/UDP $ip:5060;branch=z9hG4bK$r;rport\r\nMax-Forwards: 70\r\nFrom: <sip:carrier@$ip>;tag=$r\r\nTo: <sip:$1@asterisk>\r\nCall-ID: $r@$ip\r\nCSeq: 1 INVITE\r\nContact: <sip:carrier@$ip:5060>\r\nContent-Type: application/sdp\r\nContent-Length: $len\r\n\r\n$sdp" > /tmp/invite
+extra=""; [ -n "$2" ] && extra="$2\r\n"
+printf "INVITE sip:$1@asterisk:5060 SIP/2.0\r\nVia: SIP/2.0/UDP $ip:5060;branch=z9hG4bK$r;rport\r\nMax-Forwards: 70\r\nFrom: <sip:carrier@$ip>;tag=$r\r\nTo: <sip:$1@asterisk>\r\nCall-ID: $r@$ip\r\nCSeq: 1 INVITE\r\nContact: <sip:carrier@$ip:5060>\r\n${extra}Content-Type: application/sdp\r\nContent-Length: $len\r\n\r\n$sdp" > /tmp/invite
 exec 3<>/dev/udp/asterisk/5060
 cat /tmp/invite >&3
 timeout 3 cat <&3 | grep -a '^SIP/2.0' | tr -d '\r'`
@@ -167,7 +169,13 @@ timeout 3 cat <&3 | grep -a '^SIP/2.0' | tr -d '\r'`
 // dial sends an INVITE for number and returns the final status line.
 func (c namedCarrier) dial(t *testing.T, number string) string {
 	t.Helper()
-	out, err := exec.Command("docker", "exec", c.name, "bash", "-c", inviteScript, "invite", number).CombinedOutput() // #nosec G204 -- fixed test command
+	return c.dialWith(t, number, "")
+}
+
+// dialWith is dial with one extra header line ("Name: value").
+func (c namedCarrier) dialWith(t *testing.T, number, header string) string {
+	t.Helper()
+	out, err := exec.Command("docker", "exec", c.name, "bash", "-c", inviteScript, "invite", number, header).CombinedOutput() // #nosec G204 -- fixed test command
 	require.NoError(t, err, "%s", out)
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if len(line) >= 11 && strings.HasPrefix(line, "SIP/2.0 ") && line[8] >= '2' {
@@ -178,16 +186,22 @@ func (c namedCarrier) dial(t *testing.T, number string) string {
 	return ""
 }
 
-// identifyMatch reads the engine row that recognises a trunk's carrier.
-func (r *rig) identifyMatch(t *testing.T, trunkID string) string {
+// ingressEntries reads what recognises carrier calls since D-77 — the
+// shared carrier-ingress identify row, as its entries — after checking
+// the trunk has no identify row of its own. The rig's ingress also holds
+// other tenants' trunks, so callers ask what it contains.
+func (r *rig) ingressEntries(t *testing.T, trunkID string) []string {
 	t.Helper()
+	var own int
+	require.NoError(t, r.pool.Unwrap().QueryRow(context.Background(),
+		`SELECT count(*) FROM ps_endpoint_id_ips WHERE id = 't_' || replace($1, '-', '')`, trunkID).Scan(&own))
+	assert.Zero(t, own, "no identify row of the trunk's own (D-77)")
 	var match string
-	err := r.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT "match" FROM ps_endpoint_id_ips WHERE id = 't_' || replace($1, '-', '')`, trunkID).Scan(&match)
-	if err != nil {
-		return ""
+	if err := r.pool.Unwrap().QueryRow(context.Background(),
+		`SELECT "match" FROM ps_endpoint_id_ips WHERE id = 'carrier-ingress'`).Scan(&match); err != nil {
+		return nil
 	}
-	return match
+	return strings.Split(match, ",")
 }
 
 // A carrier configured by its name is recognised once the platform has
@@ -208,7 +222,7 @@ func TestHostResolution_ACarrierConfiguredByNameIsRecognised(t *testing.T) {
 	}, &out, http.StatusOK)
 	trunkID := out.Trunk.TrunkID
 
-	require.Eventually(t, func() bool { return r.identifyMatch(t, trunkID) == carrier.addr },
+	require.Eventually(t, func() bool { return slices.Contains(r.ingressEntries(t, trunkID), carrier.addr) },
 		10*time.Second, 100*time.Millisecond, "the check that follows creation resolves the name to %s", carrier.addr)
 	assert.Equal(t, "SIP/2.0 404 Not Found", carrier.dial(t, "+442071234599"),
 		"the carrier is recognised as the trunk's, and its unassigned DID is refused by the tenant's plan")
@@ -222,7 +236,9 @@ func TestHostResolution_ACarrierConfiguredByNameIsRecognised(t *testing.T) {
 	r.call(t, "PbxService/UpdateTrunk", r.token, map[string]any{
 		"tenantId": r.tenant.String(), "trunkId": trunkID, "name": "Moved", "host": "192.0.2.1", "port": 5060, "channelLimit": 2,
 	}, nil, http.StatusOK)
-	assert.Equal(t, "192.0.2.1", r.identifyMatch(t, trunkID), "a new IP host is recognised at once")
+	entries := r.ingressEntries(t, trunkID)
+	assert.Contains(t, entries, "192.0.2.1", "a new IP host is recognised at once")
+	assert.NotContains(t, entries, carrier.addr, "and the old carrier no longer")
 	assert.Equal(t, "SIP/2.0 401 Unauthorized", carrier.dial(t, "+442071234599"), "the old carrier is no longer recognised")
 }
 

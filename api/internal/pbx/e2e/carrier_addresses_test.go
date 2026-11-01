@@ -41,11 +41,15 @@ func TestCarrierAddresses_RecognisedFromAPublishedRange(t *testing.T) {
 		}, nil, http.StatusOK)
 	}
 	setInbound([]string{carrier.addr + "/32", "203.0.113.0/28"})
-	assert.Equal(t, carrier.addr+",203.0.113.0/28", r.identifyMatch(t, trunkID), "projected at once, with no lookup")
+	entries := r.ingressEntries(t, trunkID)
+	assert.Contains(t, entries, carrier.addr, "projected at once, with no lookup")
+	assert.Contains(t, entries, "203.0.113.0/28")
 	assert.Equal(t, "SIP/2.0 404 Not Found", carrier.dial(t, "+442071234599"), "recognised from its range, routed by the tenant's plan")
 
 	setInbound(nil)
-	assert.Empty(t, r.identifyMatch(t, trunkID), "no range and no resolved address: no row")
+	entries = r.ingressEntries(t, trunkID)
+	assert.NotContains(t, entries, carrier.addr, "a removed range leaves the ingress")
+	assert.NotContains(t, entries, "203.0.113.0/28")
 	assert.Equal(t, "SIP/2.0 401 Unauthorized", carrier.dial(t, "+442071234599"), "a removed range stops being recognised at once")
 }
 
@@ -102,5 +106,5 @@ func TestCarrierAddresses_ANameResolvingToLoopbackIsNotChecked(t *testing.T) {
 		return last.HealthReason == "TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED"
 	}, 15*time.Second, 200*time.Millisecond, "last seen: %+v", last)
 	assert.Equal(t, "TRUNK_HEALTH_UNHEALTHY", last.Health)
-	assert.Empty(t, r.identifyMatch(t, out.Trunk.TrunkID), "loopback is never recognised")
+	assert.NotContains(t, r.ingressEntries(t, out.Trunk.TrunkID), "::1", "loopback is never recognised")
 }
