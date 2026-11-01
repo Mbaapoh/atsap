@@ -113,11 +113,14 @@ func newHarness(t *testing.T) *harness {
 	require.NoError(t, identityStore.CreateTenant(context.Background(), tenant, 0))
 
 	authz := &fakeAuthorizer{}
-	projector := &failingProjector{EndpointProjector: asterisk.NewProjector(asterisk.Config{
+	engine := asterisk.NewProjector(asterisk.Config{
 		Realm:           testRealm,
 		SIPTransport:    "transport-udp",
 		WebRTCTransport: "transport-wss",
-	}, pool)}
+	}, pool)
+	// As the app does at startup (D-77): the carrier ingress exists.
+	require.NoError(t, engine.EnsureIngress(context.Background()))
+	projector := &failingProjector{EndpointProjector: engine}
 
 	extCap := &atomic.Int64{}
 	capSource := ports.ExtensionCapFunc(func(context.Context) (int, error) { return int(extCap.Load()), nil })
@@ -202,7 +205,7 @@ func TestCreateExtension_RefusedWithoutPermission(t *testing.T) {
 	})
 	require.ErrorIs(t, err, identityports.ErrPermissionDenied)
 	assert.Zero(t, h.countTenantRow(t, `SELECT count(*) FROM extensions`), "a refused call must write nothing")
-	assert.Zero(t, h.countRow(t, `SELECT count(*) FROM ps_endpoints`))
+	assert.Zero(t, h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`))
 }
 
 func TestCreateExtension_RejectsInvalidNumber(t *testing.T) {
@@ -238,13 +241,13 @@ func TestCreateExtension_DomainFailureLeavesNoProjection(t *testing.T) {
 	// A duplicate number fails the domain write; the projection for it
 	// must not survive. Any extra ps_* row would be an orphan the engine
 	// would honour and the platform would not know about.
-	before := h.countRow(t, `SELECT count(*) FROM ps_endpoints`)
+	before := h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`)
 	_, err := h.svc.CreateExtension(h.ctx, ports.CreateExtensionCommand{
 		TenantID: h.tenant, Number: "1000", DisplayName: "Duplicate", DeviceType: domain.DeviceSIP,
 	})
 	require.ErrorIs(t, err, ports.ErrNumberTaken)
 
-	assert.Equal(t, before, h.countRow(t, `SELECT count(*) FROM ps_endpoints`),
+	assert.Equal(t, before, h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`),
 		"a failed domain write must leave no engine state behind")
 	assert.Equal(t, 1, h.countTenantRow(t, `SELECT count(*) FROM extensions`))
 	_ = first

@@ -35,3 +35,20 @@ END
 $$;
 
 REVOKE ALL ON FUNCTION carrier_ingress_match(INET, TEXT) FROM PUBLIC;
+
+-- The engine's carrier-ingress identify row recognises every trunk's
+-- addresses, across tenants: this is the read that builds it. Addresses
+-- only — no tenant, no trunk, no number — under the same flag.
+CREATE FUNCTION carrier_ingress_sources()
+RETURNS TABLE (resolved INET[], inbound CIDR[])
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    PERFORM set_config('app.ingress_lookup', 'on', true);
+    RETURN QUERY SELECT t.resolved_addresses, t.inbound_addresses FROM carrier_trunks t;
+    PERFORM set_config('app.ingress_lookup', '', true);
+END
+$$;
+
+REVOKE ALL ON FUNCTION carrier_ingress_sources() FROM PUBLIC;

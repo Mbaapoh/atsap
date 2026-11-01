@@ -154,6 +154,9 @@ func printReport(r pbxapp.Report) {
 		fmt.Printf("  SECRET    trunk %q (%s, tenant %s) has lost its carrier secret; repair cannot restore it\n",
 			d.Name, d.TrunkID, d.TenantID)
 	}
+	if len(r.IngressDiverged) > 0 {
+		fmt.Printf("  DIVERGED  carrier ingress (every trunk's addresses, D-77): %v\n", r.IngressDiverged)
+	}
 	for _, id := range r.Unattributable {
 		fmt.Printf("  UNKNOWN   engine row %q was not written by this platform; left alone\n", id)
 	}

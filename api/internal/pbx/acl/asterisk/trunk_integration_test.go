@@ -29,14 +29,16 @@ func sampleTrunk() domain.Trunk {
 	}
 }
 
-// sampleMatch is sampleTrunk's identify match: its addresses, IPv4 first.
+// sampleMatch is sampleTrunk's part of the ingress match: its addresses,
+// IPv4 first.
 const sampleMatch = "203.0.113.10,2001:db8::10"
 
-func (h *harness) identifyMatch(t *testing.T, id shareddomain.TrunkID) (string, bool) {
+// ingressMatch reads the shared carrier-ingress identify row (D-77).
+func (h *harness) ingressMatch(t *testing.T) (string, bool) {
 	t.Helper()
 	var match string
 	err := h.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)).Scan(&match)
+		`SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, domain.CarrierIngressEndpoint).Scan(&match)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false
 	}
@@ -44,79 +46,155 @@ func (h *harness) identifyMatch(t *testing.T, id shareddomain.TrunkID) (string, 
 	return match, true
 }
 
-// The identify row holds the trunk's addresses and never a name (D-75):
-// the engine would resolve a name while identifying every carrier
-// request, for every tenant. A name with no address yet has no row; when
-// its addresses change, the row follows; an IP host is its own address.
-func TestProjectTrunk_IdentifyHoldsAddressesNeverAName(t *testing.T) {
+// trunkIdentifyRows counts identify rows of the trunk's own: none since
+// D-77.
+func (h *harness) trunkIdentifyRows(t *testing.T, id shareddomain.TrunkID) int {
+	t.Helper()
+	var n int
+	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(),
+		`SELECT count(*) FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)).Scan(&n))
+	return n
+}
+
+// saveTrunk writes the trunk's domain row, as the service does before it
+// projects: the ingress is built from every trunk's recorded addresses.
+func (h *harness) saveTrunk(ctx context.Context, tx pgx.Tx, tr domain.Trunk) error {
+	if _, err := tx.Exec(ctx, `INSERT INTO tenants (id, name) VALUES ($1, 'carriers') ON CONFLICT (id) DO NOTHING`, tr.TenantID.String()); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, tr.TenantID.String()); err != nil {
+		return err
+	}
+	addrs := tr.ResolvedAddresses
+	if addrs == nil {
+		addrs = []netip.Addr{}
+	}
+	ranges := tr.InboundAddresses
+	if ranges == nil {
+		ranges = []netip.Prefix{}
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO carrier_trunks (id, tenant_id, name, host, port, resolved_addresses, inbound_addresses)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (id) DO UPDATE SET host = EXCLUDED.host, port = EXCLUDED.port,
+			resolved_addresses = EXCLUDED.resolved_addresses, inbound_addresses = EXCLUDED.inbound_addresses`,
+		tr.ID.String(), tr.TenantID.String(), tr.Name, tr.Host, tr.Port, addrs, ranges)
+	return err
+}
+
+// D-77: a trunk projects no identify row of its own; its addresses are
+// recognised by the shared ingress, rebuilt with every write. A name with
+// no address adds nothing; a check that resolved it adds what it found; a
+// loopback recorded before D-76 is never there.
+func TestProjectTrunk_RecognitionIsTheIngress(t *testing.T) {
 	h := newHarness(t)
 	tr := sampleTrunk()
 	tr.ResolvedAddresses = nil
 	h.projectTrunk(t, tr, []byte(carrierSecret))
-	_, ok := h.identifyMatch(t, tr.ID)
-	assert.False(t, ok, "a name not resolved yet recognises nothing")
-	assert.True(t, h.readTrunk(t, tr.ID).endpoint, "the rest of the trunk is projected all the same")
-	drift, err := h.projector.DiffTrunk(context.Background(), tr)
-	require.NoError(t, err)
-	assert.Empty(t, drift, "no row is what an unresolved name should have")
+	assert.Zero(t, h.trunkIdentifyRows(t, tr.ID), "no identify row of its own")
+	_, ok := h.ingressMatch(t)
+	assert.False(t, ok, "a name not resolved yet adds nothing; with no trunk recognised, no ingress row")
+	assert.True(t, h.readTrunk(t, tr.ID).endpoint, "the trunk's endpoint is still projected, for calls out")
 
-	tr.ResolvedAddresses = []netip.Addr{netip.MustParseAddr("203.0.113.20")}
+	tr.ResolvedAddresses = []netip.Addr{netip.MustParseAddr("203.0.113.20"), netip.MustParseAddr("127.0.0.1")}
 	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
+		if err := h.saveTrunk(ctx, tx, tr); err != nil {
+			return err
+		}
 		return h.projector.ProjectTrunkIdentify(ctx, tx, tr)
 	}))
-	match, ok := h.identifyMatch(t, tr.ID)
+	match, ok := h.ingressMatch(t)
 	require.True(t, ok)
-	assert.Equal(t, "203.0.113.20", match, "a check that resolved the name writes what it found")
-
-	tr.ResolvedAddresses = nil
-	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
-		return h.projector.ProjectTrunkIdentify(ctx, tx, tr)
-	}))
-	_, ok = h.identifyMatch(t, tr.ID)
-	assert.False(t, ok, "no address, no row")
+	assert.Equal(t, "203.0.113.20", match, "a check's result reaches the ingress; loopback never does")
 
 	tr.Host, tr.ResolvedAddresses = "198.51.100.7", domain.AddressesForHost("198.51.100.7")
 	h.projectTrunk(t, tr, nil)
-	match, _ = h.identifyMatch(t, tr.ID)
+	match, _ = h.ingressMatch(t)
 	assert.Equal(t, "198.51.100.7", match, "an IP host is its own address")
 }
 
-// Reconcile compares the identify row with the trunk's recorded addresses
-// and never looks a name up: a row holding a name, other addresses, or a
-// row a trunk with no address should not have, is drift; re-projection
-// repairs each.
-func TestDiffTrunk_IdentifyIsComparedWithTheRecordedAddresses(t *testing.T) {
+// The ingress is the union across tenants; removing a trunk takes its part
+// out; reconcile compares the ingress with every trunk's addresses, never
+// looking a name up, and repair rebuilds it.
+func TestProjectIngress_IsTheUnionAcrossTenants(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	a := sampleTrunk()
+	b := sampleTrunk() // another tenant
+	b.ResolvedAddresses = nil
+	b.InboundAddresses = []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
+	h.projectTrunk(t, a, []byte(carrierSecret))
+	h.projectTrunk(t, b, []byte(carrierSecret))
+
+	match, ok := h.ingressMatch(t)
+	require.True(t, ok)
+	assert.Equal(t, "198.51.100.0/24,"+sampleMatch, match)
+	var setVar *string
+	require.NoError(t, h.pool.Unwrap().QueryRow(ctx, `SELECT set_var FROM ps_endpoints WHERE id = $1`, domain.CarrierIngressEndpoint).Scan(&setVar))
+	assert.Nil(t, setVar, "the ingress never names a tenant")
+	drift, err := h.projector.DiffIngress(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, drift)
+
+	for _, tampered := range []string{"sip.carrier.example", sampleMatch, "198.51.100.0/24," + sampleMatch + ",192.0.2.1"} {
+		_, err := h.pool.Unwrap().Exec(ctx, `UPDATE ps_endpoint_id_ips SET "match" = $2 WHERE id = $1`, domain.CarrierIngressEndpoint, tampered)
+		require.NoError(t, err)
+		drift, err := h.projector.DiffIngress(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"identify"}, drift, "a match of %q is drift", tampered)
+		require.NoError(t, h.projector.EnsureIngress(ctx))
+		drift, err = h.projector.DiffIngress(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, drift, "repair rebuilds the union")
+	}
+
+	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, b.TenantID.String()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM carrier_trunks WHERE id = $1`, b.ID.String()); err != nil {
+			return err
+		}
+		return h.projector.RemoveTrunk(ctx, tx, b.ID)
+	}))
+	match, _ = h.ingressMatch(t)
+	assert.Equal(t, sampleMatch, match, "a removed trunk's ranges leave the ingress with it")
+}
+
+// A per-trunk identify row left from before D-77 is drift of that trunk;
+// projecting the trunk removes it, and startup removes them all.
+func TestProjectIngress_LeftoverTrunkRowsAreRemoved(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	tr := sampleTrunk()
-	identifier := domain.TrunkEndpointIdentifier(tr.ID)
 	h.projectTrunk(t, tr, []byte(carrierSecret))
-	match, _ := h.identifyMatch(t, tr.ID)
-	assert.Equal(t, sampleMatch, match)
-
-	for _, tampered := range []string{tr.Host, "203.0.113.10", "203.0.113.10,2001:db8::10,198.51.100.1"} {
-		_, err := h.pool.Unwrap().Exec(ctx, `UPDATE ps_endpoint_id_ips SET "match" = $2 WHERE id = $1`, identifier, tampered)
+	insertLeftover := func() {
+		_, err := h.pool.Unwrap().Exec(ctx, `INSERT INTO ps_endpoint_id_ips (id, endpoint, "match") VALUES ($1, $1, '203.0.113.10')`, domain.TrunkEndpointIdentifier(tr.ID))
 		require.NoError(t, err)
-		drift, err := h.projector.DiffTrunk(ctx, tr)
-		require.NoError(t, err)
-		assert.Equal(t, []string{"identify"}, drift, "a match of %q is drift", tampered)
-
-		h.projectTrunk(t, tr, nil)
-		drift, err = h.projector.DiffTrunk(ctx, tr)
-		require.NoError(t, err)
-		assert.Empty(t, drift, "repair restores the recorded addresses")
 	}
-
-	unresolved := tr
-	unresolved.ResolvedAddresses = nil
-	drift, err := h.projector.DiffTrunk(ctx, unresolved)
+	insertLeftover()
+	drift, err := h.projector.DiffTrunk(ctx, tr)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"identify"}, drift, "a row a trunk with no address should not have is drift")
+	assert.Equal(t, []string{"identify"}, drift)
+	h.projectTrunk(t, tr, nil)
+	assert.Zero(t, h.trunkIdentifyRows(t, tr.ID), "re-projection removes it")
+
+	insertLeftover()
+	require.NoError(t, h.projector.EnsureIngress(ctx))
+	assert.Zero(t, h.trunkIdentifyRows(t, tr.ID), "startup removes every one")
+	_, err = h.pool.Unwrap().Exec(ctx, `DELETE FROM ps_endpoint_id_ips WHERE id = $1`, domain.CarrierIngressEndpoint)
+	require.NoError(t, err)
+	drift, err = h.projector.DiffIngress(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"identify"}, drift, "a missing ingress row is drift")
 }
 
 func (h *harness) projectTrunk(t *testing.T, tr domain.Trunk, secret []byte) {
 	t.Helper()
 	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
+		if err := h.saveTrunk(ctx, tx, tr); err != nil {
+			return err
+		}
 		return h.projector.ProjectTrunk(ctx, tx, tr, secret)
 	}))
 }
@@ -268,39 +346,4 @@ func TestDiffTrunk(t *testing.T) {
 	inv, err := h.projector.ListProjected(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, inv.Unattributable, "trunk rows are attributable, not unknown")
-}
-
-// D-76: the identify row is the union of the host's carrier addresses and
-// the inbound ranges; loopback recorded before the rule is never
-// projected; reconcile compares against the union and repairs it.
-func TestProjectTrunk_IdentifyIsTheUnionOfAddressesAndRanges(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-	tr := sampleTrunk()
-	tr.ResolvedAddresses = append(tr.ResolvedAddresses, netip.MustParseAddr("127.0.0.1"))
-	tr.InboundAddresses = []netip.Prefix{netip.MustParsePrefix("198.51.100.0/24")}
-	h.projectTrunk(t, tr, []byte(carrierSecret))
-	match, ok := h.identifyMatch(t, tr.ID)
-	require.True(t, ok)
-	assert.Equal(t, "198.51.100.0/24,203.0.113.10,2001:db8::10", match, "loopback never reaches the engine")
-
-	drift, err := h.projector.DiffTrunk(ctx, tr)
-	require.NoError(t, err)
-	assert.Empty(t, drift)
-
-	_, err = h.pool.Unwrap().Exec(ctx, `UPDATE ps_endpoint_id_ips SET "match" = '203.0.113.10,2001:db8::10' WHERE id = $1`, domain.TrunkEndpointIdentifier(tr.ID))
-	require.NoError(t, err)
-	drift, err = h.projector.DiffTrunk(ctx, tr)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"identify"}, drift, "a missing range is drift")
-	h.projectTrunk(t, tr, nil)
-	drift, err = h.projector.DiffTrunk(ctx, tr)
-	require.NoError(t, err)
-	assert.Empty(t, drift, "repair restores the union")
-
-	onlyLoop := sampleTrunk()
-	onlyLoop.ResolvedAddresses = []netip.Addr{netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("::1")}
-	h.projectTrunk(t, onlyLoop, []byte(carrierSecret))
-	_, ok = h.identifyMatch(t, onlyLoop.ID)
-	assert.False(t, ok, "a localhost trunk recorded before D-76 recognises nothing")
 }

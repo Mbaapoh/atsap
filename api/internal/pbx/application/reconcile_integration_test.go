@@ -187,3 +187,31 @@ func deleteDomainRowDirectly(t *testing.T, h *harness, extensionID string) {
 			return err
 		}))
 }
+
+// D-77: reconcile compares the shared carrier ingress with every trunk's
+// addresses, and repair rebuilds it — after the trunks themselves.
+func TestReconcile_CarrierIngressDriftIsReportedAndRepaired(t *testing.T) {
+	h := newHarness(t)
+	cmd := h.trunkCmd("Ranges")
+	cmd.InboundAddresses = []string{"203.0.113.0/28"}
+	_, err := h.svc.CreateTrunk(h.ctx, cmd)
+	require.NoError(t, err)
+	ctx := context.Background()
+	report, err := h.reconciler(t).Reconcile(ctx)
+	require.NoError(t, err)
+	require.True(t, report.Clean(), "%+v", report)
+
+	_, err = h.pool.Unwrap().Exec(ctx, `UPDATE ps_endpoint_id_ips SET "match" = '0.0.0.0/0' WHERE id = $1`, domain.CarrierIngressEndpoint)
+	require.NoError(t, err)
+	report, err = h.reconciler(t).Reconcile(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"identify"}, report.IngressDiverged, "a hand-widened ingress is drift")
+	assert.True(t, report.Repairable())
+
+	repaired, err := h.reconciler(t).Repair(ctx, report)
+	require.NoError(t, err)
+	assert.Equal(t, 1, repaired)
+	report, err = h.reconciler(t).Reconcile(ctx)
+	require.NoError(t, err)
+	assert.True(t, report.Clean(), "%+v", report)
+}

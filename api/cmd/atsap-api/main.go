@@ -287,6 +287,13 @@ func run() int {
 		})
 	// Trunk health is the platform's own observation (D-74): every trunk
 	// is checked on a schedule, and at once when created or re-addressed.
+	// Carrier calls enter through one ingress the platform attributes
+	// (D-77): make sure it exists and that no per-trunk identify row from
+	// before competes with it.
+	if err := projector.EnsureIngress(ctx); err != nil {
+		logger.Error("failed to project the carrier ingress", "error", err)
+		return 1
+	}
 	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), projector, &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger)
 	pbxSvc = pbxSvc.WithTrunkChecker(trunkProber)
 	go trunkProber.Run(ctx)

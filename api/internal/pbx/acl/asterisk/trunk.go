@@ -108,37 +108,19 @@ func (p *Projector) ProjectTrunk(ctx context.Context, tx pgx.Tx, t domain.Trunk,
 	return p.projectIdentify(ctx, tx, t)
 }
 
-// projectIdentify writes the row that recognises the carrier's requests
-// as this trunk's (design D5 of pbx-inbound-and-emergency): its addresses
-// and nothing else. Never a name: the engine would resolve every name in
-// these rows while identifying each carrier request, for every tenant
-// (D-75). A trunk with no address yet — a name not resolved — has no row
-// and recognises nothing.
+// projectIdentify keeps carrier recognition where D-77 puts it: no
+// per-trunk identify row (a leftover from before D-77 is removed), and
+// the shared carrier-ingress row rebuilt from every trunk's addresses.
 func (p *Projector) projectIdentify(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
-	id := domain.TrunkEndpointIdentifier(t.ID)
-	match, ok := domain.IdentifyMatch(t.ResolvedAddresses, t.InboundAddresses)
-	if !ok {
-		if _, err := tx.Exec(ctx, `DELETE FROM ps_endpoint_id_ips WHERE id = $1`, id); err != nil {
-			return fmt.Errorf("deproject trunk identify: %w", err)
-		}
-		return nil
+	if _, err := tx.Exec(ctx, `DELETE FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(t.ID)); err != nil {
+		return fmt.Errorf("deproject trunk identify: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO ps_endpoint_id_ips (id, endpoint, "match")
-		VALUES ($1, $2, $3)
-		ON CONFLICT (id) DO UPDATE SET
-			endpoint = EXCLUDED.endpoint,
-			"match"  = EXCLUDED."match"
-	`, id, id, match); err != nil {
-		return fmt.Errorf("project trunk identify: %w", err)
-	}
-	return nil
+	return p.ProjectIngress(ctx, tx)
 }
 
-// ProjectTrunkIdentify rewrites only the identify row, from t's
-// addresses: what a trunk check does when the addresses its host
-// resolved to have changed. The rest of the trunk's engine state is
-// configuration and is not touched.
+// ProjectTrunkIdentify is what a trunk check calls when the addresses a
+// host resolved to have changed: the ingress row follows (D-77). The rest
+// of the trunk's engine state is configuration and is not touched.
 func (p *Projector) ProjectTrunkIdentify(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	return p.projectIdentify(ctx, tx, t)
 }
@@ -158,7 +140,9 @@ func (p *Projector) RemoveTrunk(ctx context.Context, tx pgx.Tx, trunkID shareddo
 			return fmt.Errorf("deproject trunk %s: %w", stmt.table, err)
 		}
 	}
-	return nil
+	// The trunk's domain row is already gone in this transaction, so the
+	// rebuilt ingress no longer recognises its addresses.
+	return p.ProjectIngress(ctx, tx)
 }
 
 // DiffTrunk names the projected fields that disagree with t.
@@ -208,23 +192,14 @@ func (p *Projector) DiffTrunk(ctx context.Context, t domain.Trunk) ([]string, er
 	expect("contact", contactFor(t), str(contact))
 	expect("set_var", setVarFor(t.TenantID), str(setVar))
 
-	// Identify is compared with the addresses recorded on the trunk, never
-	// with a fresh lookup: the configuration is the sole source of truth
-	// (D-75). A name in the row is drift by construction.
-	var identifyMatch *string
-	wantMatch, wantRow := domain.IdentifyMatch(t.ResolvedAddresses, t.InboundAddresses)
-	err = p.pool.Unwrap().QueryRow(ctx, `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&identifyMatch)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		if wantRow {
-			drift = append(drift, "identify")
-		}
-	case err != nil:
+	// Since D-77 a trunk has no identify row of its own: the ingress
+	// recognises its addresses. A row left from before is drift.
+	var leftover bool
+	if err := p.pool.Unwrap().QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM ps_endpoint_id_ips WHERE id = $1)`, id).Scan(&leftover); err != nil {
 		return nil, fmt.Errorf("read projected trunk identify: %w", err)
-	case !wantRow:
+	}
+	if leftover {
 		drift = append(drift, "identify")
-	default:
-		expect("identify", wantMatch, str(identifyMatch))
 	}
 
 	if t.AuthUsername == "" {

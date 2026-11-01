@@ -97,17 +97,23 @@ type Report struct {
 	// fixes, and need an operator to supply the secret again through
 	// UpdateTrunk.
 	SecretsMissing []TrunkDivergence
+
+	// IngressDiverged names what of the shared carrier ingress disagrees
+	// with every trunk's addresses (D-77), or "missing".
+	IngressDiverged []string
 }
 
 // Clean reports whether the engine and the platform agree.
 func (r Report) Clean() bool {
 	return len(r.Diverged) == 0 && len(r.Orphaned) == 0 && len(r.Unattributable) == 0 &&
-		len(r.TrunksDiverged) == 0 && len(r.OrphanedTrunks) == 0 && len(r.SecretsMissing) == 0
+		len(r.TrunksDiverged) == 0 && len(r.OrphanedTrunks) == 0 && len(r.SecretsMissing) == 0 &&
+		len(r.IngressDiverged) == 0
 }
 
 // Repairable reports whether Repair has anything to do.
 func (r Report) Repairable() bool {
-	return len(r.Diverged) > 0 || len(r.Orphaned) > 0 || len(r.TrunksDiverged) > 0 || len(r.OrphanedTrunks) > 0
+	return len(r.Diverged) > 0 || len(r.Orphaned) > 0 || len(r.TrunksDiverged) > 0 || len(r.OrphanedTrunks) > 0 ||
+		len(r.IngressDiverged) > 0
 }
 
 // Reconcile compares every tenant's extensions against the engine.
@@ -176,6 +182,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Report, error) {
 	})
 
 	if err := r.reconcileTrunks(ctx, tenants, inventory.Trunks, &report); err != nil {
+		return Report{}, err
+	}
+	if report.IngressDiverged, err = r.inspector.DiffIngress(ctx); err != nil {
 		return Report{}, err
 	}
 	return report, nil
@@ -308,6 +317,14 @@ func (r *Reconciler) Repair(ctx context.Context, report Report) (repaired int, e
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return repaired, fmt.Errorf("commit orphan trunk removal: %w", err)
+		}
+		repaired++
+	}
+
+	// Last, once every trunk is right: the ingress is rebuilt from them.
+	if len(report.IngressDiverged) > 0 {
+		if err := r.inspector.EnsureIngress(ctx); err != nil {
+			return repaired, fmt.Errorf("repair carrier ingress: %w", err)
 		}
 		repaired++
 	}

@@ -55,7 +55,7 @@
 
 ## 3. Projection and the arriving-call path
 
-- [ ] 3.1 The projector writes the `carrier-ingress` endpoint, AOR and identify (the union across tenants) in every trunk write and address change, and stops projecting per-trunk identify rows. Startup ensures the ingress. Reconcile reports and repairs ingress drift and leftover per-trunk rows.
+- [x] 3.1 The projector writes the `carrier-ingress` endpoint, AOR and identify (the union across tenants) in every trunk write and address change, and stops projecting per-trunk identify rows. Startup ensures the ingress. Reconcile reports and repairs ingress drift and leftover per-trunk rows.
 
   Integration tests:
   - the union across two tenants;
@@ -64,6 +64,20 @@
   - reconcile.
 
   Verify the `pbx` integration tiers pass.
+
+  *(done 2026-11-01.
+  - **The union is read** through a second flag-guarded function, `carrier_ingress_sources()` (added to the still-unreleased migration 0016), which returns addresses only.
+  - **`ProjectIngress`:**
+    - takes a transaction advisory lock, so writers in different tenants cannot overwrite each other's union;
+    - writes the endpoint (no `set_var`: it never names a tenant), its AOR, and one identify row, or none when nothing is recognised;
+    - is called from every trunk projection, removal and address change. Those also delete the trunk's own identify row.
+  - **`EnsureIngress`:** run at app startup (`run()` returns 1 if it fails); it also removes every per-trunk row left from before.
+  - **Reconcile:** `DiffIngress` (endpoint fields and identify against the union, never resolving a name) appears in the report and the CLI, and `Repair` rebuilds the ingress last. `DiffTrunk` reports a leftover per-trunk row; `ListProjected` treats the ingress as the platform's own.
+  - **Tests:**
+    - projector: `RecognitionIsTheIngress`, `IsTheUnionAcrossTenants` (two tenants; tampered as a name, a subset or a superset, each repaired; a removed trunk's ranges leave), `LeftoverTrunkRowsAreRemoved`, `WritesTenantVariable` (rewritten), `RemoveTrunk_StopsRecognisingItsCarrier`;
+    - application: the identify helpers now read the ingress and assert no per-trunk row, with expectations updated to unions; `TestReconcile_CarrierIngressDriftIsReportedAndRepaired`;
+    - endpoint-count assertions exclude the ingress, which is platform infrastructure, not configuration.
+  - **Verified:** `make test`, `make lint` 0, and every Go integration package on `atsapbx_test`.)*
 - [ ] 3.2 Telephony:
   - `handleArrivingChannel` reads `CHANNEL(pjsip,remote_addr)` for the ingress endpoint;
   - `CallArrived` attributes before recording, rejecting `404` with no call row when refused;

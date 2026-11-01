@@ -267,7 +267,7 @@ func TestRoutePlanner_SelectionAndObservedHealth(t *testing.T) {
 	}
 	assert.Equal(t, primary.ID, selectFirst())
 
-	engineBefore := h.countRow(t, `SELECT count(*) FROM ps_endpoints`)
+	engineBefore := h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`)
 
 	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, primary.ID, 486, time.Second))
 	assert.Equal(t, primary.ID, selectFirst(), "a busy callee is not the carrier's fault")
@@ -277,7 +277,7 @@ func TestRoutePlanner_SelectionAndObservedHealth(t *testing.T) {
 	got, err := h.svc.SelectOutboundRoute(h.ctx, h.tenant, "+442071234567")
 	require.NoError(t, err)
 	assert.Len(t, got, 1, "and is skipped, not merely demoted")
-	assert.Equal(t, engineBefore, h.countRow(t, `SELECT count(*) FROM ps_endpoints`),
+	assert.Equal(t, engineBefore, h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`),
 		"health is selection-time state only: engine state, and so any call in progress, is untouched")
 
 	// Configuration cannot set health: an update leaves the observation.
@@ -439,14 +439,16 @@ func TestTrunkInboundAddresses_AreConfiguration(t *testing.T) {
 	assert.ErrorContains(t, err, "cannot be a carrier")
 }
 
-// identifyMatchOf reads the engine row recognising a trunk's carrier;
-// "" when there is none.
+// identifyMatchOf reads what recognises carrier calls since D-77: the
+// shared ingress row, after checking the trunk has none of its own. ""
+// when the ingress recognises nothing.
 func (h *harness) identifyMatchOf(t *testing.T, id shareddomain.TrunkID) string {
 	t.Helper()
+	assert.Zero(t, h.countRow(t, `SELECT count(*) FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)),
+		"no identify row of the trunk's own (D-77)")
 	var match string
-	err := h.pool.Unwrap().QueryRow(context.Background(), `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`,
-		domain.TrunkEndpointIdentifier(id)).Scan(&match)
-	if err != nil {
+	if err := h.pool.Unwrap().QueryRow(context.Background(), `SELECT "match" FROM ps_endpoint_id_ips WHERE id = $1`,
+		domain.CarrierIngressEndpoint).Scan(&match); err != nil {
 		return ""
 	}
 	return match
@@ -468,17 +470,17 @@ func TestTrunkInboundAddresses_AreProjectedAtOnce(t *testing.T) {
 	ipCmd.Host, ipCmd.InboundAddresses = "192.0.2.10", []string{"203.0.113.64/28"}
 	byIP, err := h.svc.CreateTrunk(h.ctx, ipCmd)
 	require.NoError(t, err)
-	assert.Equal(t, "192.0.2.10,203.0.113.64/28", h.identifyMatchOf(t, byIP.ID), "the host's address and the ranges")
+	assert.Equal(t, "192.0.2.10,198.51.100.9,203.0.113.0/28,203.0.113.64/28", h.identifyMatchOf(t, byIP.ID), "both trunks' addresses and ranges")
 
 	_, err = h.svc.UpdateTrunk(h.ctx, ports.UpdateTrunkCommand{TenantID: h.tenant, ID: byIP.ID, Name: "By IP", Host: "192.0.2.10",
 		Port: 5060, AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1})
 	require.NoError(t, err)
-	assert.Equal(t, "192.0.2.10", h.identifyMatchOf(t, byIP.ID), "a removed range stops being recognised at once")
+	assert.Equal(t, "192.0.2.10,198.51.100.9,203.0.113.0/28", h.identifyMatchOf(t, byIP.ID), "a removed range stops being recognised at once")
 
 	_, err = h.svc.UpdateTrunk(h.ctx, ports.UpdateTrunkCommand{TenantID: h.tenant, ID: byName.ID, Name: "By name", Host: "sip.carrier.example",
 		Port: 5060, AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1})
 	require.NoError(t, err)
-	assert.Empty(t, h.identifyMatchOf(t, byName.ID), "no address and no range: no row")
+	assert.Equal(t, "192.0.2.10", h.identifyMatchOf(t, byName.ID), "the name with no address and no range adds nothing")
 }
 
 // A trunk may carry 20 published ranges (D-76); the identify match then

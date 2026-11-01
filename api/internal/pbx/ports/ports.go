@@ -583,6 +583,14 @@ type ProjectionReconciler interface {
 	// compared — the platform does not hold it — so a missing secret is
 	// reported as "secret", which no repair can restore.
 	DiffTrunk(ctx context.Context, trunk domain.Trunk) ([]string, error)
+
+	// DiffIngress names what of the shared carrier-ingress projection
+	// disagrees with every trunk's addresses (D-77), or "missing".
+	DiffIngress(ctx context.Context) ([]string, error)
+
+	// EnsureIngress rebuilds the carrier ingress and removes per-trunk
+	// identify rows left from before D-77: what startup and repair do.
+	EnsureIngress(ctx context.Context) error
 }
 
 // EndpointProjector is the outbound port onto the media engine's own

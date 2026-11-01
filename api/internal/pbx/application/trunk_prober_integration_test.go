@@ -218,12 +218,15 @@ func resolvedTo(addrs ...string) ports.CarrierCheck {
 	return c
 }
 
-// identifyRow reads the engine row that recognises the trunk's carrier:
-// its match and its row version (xmin), which moves on every write.
+// identifyRow reads the shared ingress row that recognises carrier calls
+// since D-77 — its match and row version (xmin, which moves on every
+// write) — after checking the trunk has no identify row of its own.
 func (h *harness) identifyRow(t *testing.T, id shareddomain.TrunkID) (match, version string, ok bool) {
 	t.Helper()
+	assert.Zero(t, h.countRow(t, `SELECT count(*) FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)),
+		"no identify row of the trunk's own (D-77)")
 	err := h.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT "match", xmin::text FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(id)).Scan(&match, &version)
+		`SELECT "match", xmin::text FROM ps_endpoint_id_ips WHERE id = $1`, domain.CarrierIngressEndpoint).Scan(&match, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", false
 	}
@@ -310,15 +313,15 @@ func TestTrunkProber_ANameIsNeverLeftForTheEngine(t *testing.T) {
 	byIP.Host = "203.0.113.10"
 	ip, err := h.svc.CreateTrunk(h.ctx, byIP)
 	require.NoError(t, err)
-	_, before, ok := h.identifyRow(t, ip.ID)
+	before, _, ok := h.identifyRow(t, ip.ID)
 	require.True(t, ok, "an IP host is recognised at creation")
 
 	require.NoError(t, prober.Round(context.Background()))
-	_, _, ok = h.identifyRow(t, bad.ID)
-	assert.False(t, ok, "the name is gone from the engine")
-	match, after, _ := h.identifyRow(t, ip.ID)
-	assert.Equal(t, "203.0.113.10", match)
-	assert.Equal(t, before, after, "a check never rewrites an IP host's row")
+	assert.Zero(t, h.countRow(t, `SELECT count(*) FROM ps_endpoint_id_ips WHERE id = $1`, domain.TrunkEndpointIdentifier(bad.ID)),
+		"the old row holding the name is gone from the engine")
+	after, _, _ := h.identifyRow(t, ip.ID)
+	assert.Equal(t, "203.0.113.10", after)
+	assert.Equal(t, before, after, "the IP host stays recognised; the name never appears")
 }
 
 // A check whose host changed while it ran records no addresses either: the
@@ -361,7 +364,7 @@ func TestTrunkProber_AddressNotAllowedKeepsOnlyTheRanges(t *testing.T) {
 	require.NoError(t, err)
 	// As D-75 recorded it before the rule existed.
 	_, err = h.pool.Unwrap().Exec(context.Background(), `UPDATE ps_endpoint_id_ips SET "match" = '127.0.0.1,::1,203.0.113.0/28' WHERE id = $1`,
-		domain.TrunkEndpointIdentifier(tr.ID))
+		domain.CarrierIngressEndpoint)
 	require.NoError(t, err)
 
 	require.NoError(t, prober.Round(context.Background()))

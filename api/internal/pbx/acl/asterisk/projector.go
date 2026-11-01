@@ -287,6 +287,9 @@ func (p *Projector) ListProjected(ctx context.Context) (ports.ProjectionInventor
 			inv.Trunks = append(inv.Trunks, trunkID)
 			continue
 		}
+		if id == domain.CarrierIngressEndpoint {
+			continue // the platform's own (D-77); compared by DiffIngress
+		}
 		inv.Unattributable = append(inv.Unattributable, id)
 	}
 	if err := rows.Err(); err != nil {

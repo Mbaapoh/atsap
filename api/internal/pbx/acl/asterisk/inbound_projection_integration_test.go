@@ -65,11 +65,11 @@ func TestProjectExtension_ReportsAndRepairsMissingTenantVariable(t *testing.T) {
 	assert.Empty(t, drift)
 }
 
-// TestProjectTrunk_WritesTenantVariableAndIdentify covers design D5:
-// the trunk endpoint carries ATSA_TENANT_ID, and one identify row
-// matches the carrier's addresses so its signalling is attributed to the
-// trunk.
-func TestProjectTrunk_WritesTenantVariableAndIdentify(t *testing.T) {
+// TestProjectTrunk_WritesTenantVariable covers design D5 as amended by
+// D-77: the trunk endpoint (used for calls out) carries ATSA_TENANT_ID;
+// the carrier's calls in are recognised by the shared ingress, which
+// carries none, and the trunk has no identify row of its own.
+func TestProjectTrunk_WritesTenantVariable(t *testing.T) {
 	h := newHarness(t)
 	tr := sampleTrunk()
 	id := domain.TrunkEndpointIdentifier(tr.ID)
@@ -80,55 +80,32 @@ func TestProjectTrunk_WritesTenantVariableAndIdentify(t *testing.T) {
 		`SELECT set_var FROM ps_endpoints WHERE id = $1`, id).Scan(&setVar))
 	require.NotNil(t, setVar)
 	assert.Equal(t, "ATSA_TENANT_ID="+tr.TenantID.String(), *setVar)
-
-	var endpoint, match string
-	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT endpoint, "match" FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&endpoint, &match))
-	assert.Equal(t, id, endpoint)
-	assert.Equal(t, sampleMatch, match, "the carrier's addresses, never its name (D-75)")
+	assert.Zero(t, h.trunkIdentifyRows(t, tr.ID))
+	match, ok := h.ingressMatch(t)
+	require.True(t, ok)
+	assert.Equal(t, sampleMatch, match, "the carrier's addresses, never its name (D-75), in the ingress (D-77)")
 
 	drift, err := h.projector.DiffTrunk(context.Background(), tr)
 	require.NoError(t, err)
 	assert.Empty(t, drift)
 }
 
-// TestProjectTrunk_ReportsAndRepairsMissingIdentify covers the
-// reconcile half for trunks: a missing identify row is reported and
-// re-projection repairs it.
-func TestProjectTrunk_ReportsAndRepairsMissingIdentify(t *testing.T) {
+// TestRemoveTrunk_StopsRecognisingItsCarrier: a deleted trunk's carrier
+// must no longer be recognised — its addresses leave the ingress.
+func TestRemoveTrunk_StopsRecognisingItsCarrier(t *testing.T) {
 	h := newHarness(t)
 	tr := sampleTrunk()
-	id := domain.TrunkEndpointIdentifier(tr.ID)
-	h.projectTrunk(t, tr, []byte(carrierSecret))
-
-	_, err := h.pool.Unwrap().Exec(context.Background(),
-		`DELETE FROM ps_endpoint_id_ips WHERE id = $1`, id)
-	require.NoError(t, err)
-
-	drift, err := h.projector.DiffTrunk(context.Background(), tr)
-	require.NoError(t, err)
-	assert.Contains(t, drift, "identify")
-
-	h.projectTrunk(t, tr, nil)
-	drift, err = h.projector.DiffTrunk(context.Background(), tr)
-	require.NoError(t, err)
-	assert.Empty(t, drift)
-}
-
-// TestRemoveTrunk_RemovesIdentifyRow covers that a deleted trunk's
-// carrier stops being recognized: the identify row leaves with it.
-func TestRemoveTrunk_RemovesIdentifyRow(t *testing.T) {
-	h := newHarness(t)
-	tr := sampleTrunk()
-	id := domain.TrunkEndpointIdentifier(tr.ID)
 	h.projectTrunk(t, tr, []byte(carrierSecret))
 
 	require.NoError(t, h.inTx(t, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, tr.TenantID.String()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM carrier_trunks WHERE id = $1`, tr.ID.String()); err != nil {
+			return err
+		}
 		return h.projector.RemoveTrunk(ctx, tx, tr.ID)
 	}))
-
-	var n int
-	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(),
-		`SELECT COUNT(*) FROM ps_endpoint_id_ips WHERE id = $1`, id).Scan(&n))
-	assert.Zero(t, n, "a deleted trunk's carrier must no longer be recognized")
+	_, ok := h.ingressMatch(t)
+	assert.False(t, ok, "a deleted trunk's carrier must no longer be recognized")
 }

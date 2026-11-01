@@ -39,7 +39,7 @@ func TestCreateExtension_EleventhIsRefusedOnATenExtensionLicence(t *testing.T) {
 	for i := range 10 {
 		h.create(t, fmt.Sprintf("10%02d", i))
 	}
-	endpointsBefore := h.countRow(t, `SELECT count(*) FROM ps_endpoints`)
+	endpointsBefore := h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`)
 	auditBefore := h.countTenantRow(t, `SELECT count(*) FROM audit_logs`)
 
 	_, err := h.tryCreate("1010")
@@ -48,7 +48,7 @@ func TestCreateExtension_EleventhIsRefusedOnATenExtensionLicence(t *testing.T) {
 		"a licence refusal is not an authorization failure (AC-06.14)")
 
 	assert.Equal(t, 10, h.countTenantRow(t, `SELECT count(*) FROM extensions`), "the refused extension must not exist")
-	assert.Equal(t, endpointsBefore, h.countRow(t, `SELECT count(*) FROM ps_endpoints`), "nor be projected")
+	assert.Equal(t, endpointsBefore, h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`), "nor be projected")
 	assert.Equal(t, auditBefore, h.countTenantRow(t, `SELECT count(*) FROM audit_logs`), "nor be audited as created")
 }
 
@@ -225,6 +225,6 @@ func TestCreateExtension_NotLicensedIsRefusedOnTheWire(t *testing.T) {
 	assert.Contains(t, cerr.Message(), "no licence is applied")
 	assert.Zero(t, h.countTenantRow(t, `SELECT count(*) FROM extensions`))
 	var projected int
-	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(), `SELECT count(*) FROM ps_endpoints`).Scan(&projected))
+	require.NoError(t, h.pool.Unwrap().QueryRow(context.Background(), `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`).Scan(&projected))
 	assert.Zero(t, projected, "nothing is projected to the engine")
 }
