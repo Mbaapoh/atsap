@@ -1,4 +1,4 @@
-# UAT — Trunk host resolution (human pass in the browser)
+# UAT — Trunk host resolution and carrier addresses (human pass in the browser)
 
 User Acceptance Testing for OpenSpec change `pbx-trunk-host-resolution`
 (D-75). The automated tiers prove the mechanism. In particular, the engine
@@ -37,6 +37,15 @@ If the console is not running, start it with `make tilt-up` (preferred). Without
 | 7 | (Optional, other tenants unaffected) Make a call between two registered phones or through `make uat-inbound` while a `locslhodt` trunk exists | Calls connect at normal speed. Before D-75, every carrier call waited on that name |
 | 8 | Delete both test trunks: **Actions for … → Delete trunk… → Delete trunk** | Both are gone from the table |
 
+### 2a. Carrier addresses (`pbx-carrier-addresses`, D-76)
+
+| # | Step | Expected |
+|---|---|---|
+| 9 | Press **Add trunk**. Name `UAT ranges`, Host `localhost`, Channel limit `2`, **Inbound signalling addresses** `203.0.113.0/28` and `10.0.0.0/8` on two lines. Press **Add trunk** | Nothing is saved. Under Host: "This cannot be a carrier: localhost and loopback, link-local or multicast addresses are this server itself or no one…". Under the addresses: "Line 2 (10.0.0.0/8) is too broad…" |
+| 10 | Change Host to `sip.uat-ranges.example` and the second line to `198.51.100.9`. Press **Add trunk** | The trunk is added. Its row reads **Also from 198.51.100.9, 203.0.113.0/28** under the host |
+| 11 | Look at the trunks you made on `localhost` before this change | They read **Unhealthy · Address not allowed** (the platform never checks its own loopback). Edit one: it cannot be saved until the host is a real carrier |
+| 12 | Delete `UAT ranges` | It is gone |
+
 What the console does **not** show, by design: the addresses a name resolved to. Those are engine-facing (PRD rule 4: no engine vocabulary on screen). To see them on the rig:
 
 ```bash
@@ -62,3 +71,13 @@ The expected values:
 - The owner's existing `test` trunk (`localhost`) read **Unhealthy · No response**, recognised by `127.0.0.1,::1`.
 - Both test trunks were deleted through the public API afterwards, and `pbx reconcile` reported nothing for them.
 - A human pass of steps 1–8 by the owner is still to be recorded here.
+
+| Date | 2026-11-01 (second pass, `pbx-carrier-addresses`) |
+|---|---|
+| Who | Claude (scripted walk in Chromium of steps 9, 10 and 12; step 11 read from the same page) |
+| Result | **PASS** |
+
+- **Step 9:** both refusals appeared at their fields, and nothing was sent.
+- **Step 10:** the row read "Also from 198.51.100.9, 203.0.113.0/28", with the engine identify row `198.51.100.9,203.0.113.0/28`. The host `sip.uat-ranges.example` does not resolve, so the ranges alone recognise the carrier.
+- **Step 11:** the owner's `test` and `trunk2test` (`localhost`) read "Unhealthy · Address not allowed".
+- **Step 12:** the trunk was deleted through the public API afterwards.

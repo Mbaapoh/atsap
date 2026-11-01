@@ -133,7 +133,7 @@
 
 ## 5. Docs and close
 
-- [ ] 5.1 Update:
+- [x] 5.1 Update:
   - LLD-03 (§3 `Trunk`, §7.5 and §10.5, a document history row);
   - `docs/API.md`;
   - `docs/uat/trunk-host-resolution.md` (steps for the new field and the refusal, executed);
@@ -141,3 +141,16 @@
   - `coverage.md`.
 
   Ratchet the floors. Verify `make docs`, `make quality` and `make console-check` pass.
+
+  *(done 2026-11-01.
+  - **Docs:**
+    - LLD-03 gains §7.6 (published ranges and the carrier rule), `Trunk` in §3, §10.5, an OWASP A10 row and a document history row;
+    - `docs/API.md` (CreateTrunk);
+    - `docs/uat/trunk-host-resolution.md` gains steps 9–12, executed as a scripted walk in Chromium: PASS (refusals at their fields; "Also from …"; identify `198.51.100.9,203.0.113.0/28`; the owner's `localhost` trunks read "Address not allowed");
+    - PROGRESS (Done row, pre-pilot list, the overlap gap kept and widened to ranges);
+    - `coverage.md`.
+  - **Floors ratcheted:** Go unit 77.4 → 78.4.
+  - **Verified:**
+    - `make docs` passes;
+    - `make quality` exit 0 on the first run (lint 0; unit 78.4%; console 408/408; no vulnerabilities, 0 reachable; no leaks; audit 0);
+    - `make console-check`: component, e2e and integration in 4.1, UAT 3/3 in 4.2.)*

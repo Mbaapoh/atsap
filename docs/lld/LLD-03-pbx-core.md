@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-01 | **§7.5–7.6 and §10.5: carriers recognised from their published ranges; non-carrier addresses refused** (`pbx-carrier-addresses`, D-76). `Trunk` gains `InboundAddresses` (migration 0014); identify is the union of the host's carrier addresses and those ranges. Hosts and addresses that cannot be a carrier (localhost, loopback, link-local, unspecified, multicast) are refused, never checked and never recognised; such a trunk reads "Address not allowed". |
 | 2026-11-01 | **§7.5: a carrier is recognised by address, never by name** (`pbx-trunk-host-resolution`, D-75). The engine resolved every trunk host name in its identify rows while identifying each carrier request, so one tenant's typo (`locslhodt`) stalled carrier calls for all tenants. The platform now resolves names in the trunk check and projects addresses only; `Trunk` gains `ResolvedAddresses` and `ResolvedAt` (migration 0013). |
 | 2026-10-14 | **Trunk health is checked, not assumed** (`pbx-trunk-health-probing`, D-74). A trunk starts `Unknown`, and the platform checks every carrier with SIP OPTIONS, because Asterisk 22 does not qualify realtime AORs (measured). Each observation records a reason and a time. An `Unhealthy` trunk is skipped only while another can carry the call (design D7). |
 | 2026-09-07 | Initial draft. |
@@ -125,8 +126,10 @@ type Trunk struct {
     ChannelLimit   int
     Priority       int
     Health         TrunkHealth   // Unknown | Healthy | Degraded | Unhealthy — observed, never set by a user
-    HealthReason   HealthReason  // why: answering, slow response, host not found, no response, carrier error
+    HealthReason   HealthReason  // why: answering, slow response, host not found, no response, carrier error, address not allowed
     HealthObservedAt *time.Time  // when; nil until first observed
+    ResolvedAddresses []netip.Addr   // what the host last resolved to (D-75); carrier addresses only (D-76)
+    InboundAddresses  []netip.Prefix // the carrier's published signalling ranges, ≤ 20, /16 or /32 at broadest (D-76)
 }
 
 type CarrierRoute struct {
@@ -600,6 +603,27 @@ The outbound contact and `from_domain` stay names: carriers expect their
 domain there, and that lookup happens only for a call to that trunk
 (measured: it delays no one else).
 
+### 7.6 A carrier's published signalling ranges, and what can be a carrier (D-76)
+
+Carriers send calls from published ranges that often differ from the host
+a trunk sends to (Twilio, Telnyx, Vonage publish lists of /30 to /24
+ranges). A trunk therefore carries up to 20 inbound signalling addresses
+or ranges, configuration written with the trunk. The identify row is the
+union of the host's carrier addresses (§7.5) and those ranges, normalised,
+and a removed range stops matching in the same transaction.
+
+One domain rule, `CarrierAddress`, decides what can be a carrier: never
+loopback, link-local, unspecified, `0.0.0.0/8` or multicast, while private
+and CGNAT ranges can, because partners run carriers and SBCs on their own
+networks. It is applied to the host and the ranges at create and update,
+to what a name resolves to (the check sends nothing and reports "Address
+not allowed"), and to the identify match, so loopback recorded before the
+rule is never projected. The installation's own registrar address
+(`SIP_PUBLIC_HOST`) is not a carrier and is checked for syntax only.
+
+Not yet handled: ranges that overlap another trunk's, in another tenant.
+That is the shared-carrier-address change.
+
 ## 8. Definition of Done
 
 1. An extension created through `CreateExtension` is registrable by a
@@ -718,10 +742,13 @@ one missed call site leaks.
 
 ### 10.5 Input validation
 
-Extension numbers, prefix patterns and trunk hosts are all attacker-
-influenced strings that end up in engine configuration. Each is validated
-against an explicit allowlist pattern in `pbx/domain` before it can be
-stored, and all SQL uses parameter placeholders. A prefix pattern is not
+Extension numbers, prefix patterns, trunk hosts and inbound signalling
+ranges are all attacker-influenced strings that end up in engine
+configuration. Each is validated against an explicit allowlist pattern in
+`pbx/domain` before it can be stored, and all SQL uses parameter
+placeholders. A trunk host or range must also be able to be a carrier
+(§7.6): the platform's own carrier check must never be aimed at its own
+loopback or link-local services (OWASP A10, server-side request forgery). A prefix pattern is not
 a regular expression — it is digits and a small fixed wildcard set — so
 there is no expression to abuse.
 
@@ -736,6 +763,7 @@ there is no expression to abuse.
 | A05 Security misconfiguration | §5.3 least-privilege engine role, asserted by test (DoD 8) |
 | A08 Software and data integrity | §7.2 atomic projection; `reconcile` for hand-edited state |
 | A09 Logging failures | §10.4 audit row per mutation, redaction at construction |
+| A10 Server-side request forgery | §7.6 the carrier check never targets loopback, link-local, unspecified or multicast addresses, whether entered or resolved (D-76) |
 
 ## 11. Critical path sequence diagrams
 
