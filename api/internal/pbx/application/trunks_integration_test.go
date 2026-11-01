@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -478,4 +479,20 @@ func TestTrunkInboundAddresses_AreProjectedAtOnce(t *testing.T) {
 		Port: 5060, AuthUsername: "acct-1001", ChannelLimit: 30, Priority: 1})
 	require.NoError(t, err)
 	assert.Empty(t, h.identifyMatchOf(t, byName.ID), "no address and no range: no row")
+}
+
+// A trunk may carry 20 published ranges (D-76); the identify match then
+// runs far past the 80 characters migration 0009 allowed, and creation
+// failed with an internal error (found by the pbx-carrier-ingress spike).
+func TestTrunkInboundAddresses_TwentyLongRangesAreProjected(t *testing.T) {
+	h := newHarness(t)
+	cmd := h.trunkCmd("Twenty ranges")
+	for i := 0; i < 20; i++ {
+		cmd.InboundAddresses = append(cmd.InboundAddresses, fmt.Sprintf("2001:db8:%x::/48", 0xa000+i))
+	}
+	created, err := h.svc.CreateTrunk(h.ctx, cmd)
+	require.NoError(t, err)
+	match := h.identifyMatchOf(t, created.ID)
+	assert.Greater(t, len(match), 80, "longer than the old column")
+	assert.Equal(t, 20, strings.Count(match, ",")+1, "every range projected")
 }
