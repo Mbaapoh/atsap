@@ -22,8 +22,11 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** nothing in flight. #5 (trunk health exactly as HLD T-6,
-with the BR-08 carrier-failure alert) is next; see
+**Next work:** `console-call-session` is **proposed and awaiting owner
+approval** (0/32): a shell-level live call session bar, a global dialer,
+live Call history and complete `GetCall` fields; the PRD/HLD/CONSOLE-DESIGN
+changes are in the proposal, not yet applied. After approval, apply it;
+then #5 (trunk health exactly as HLD T-6, with the BR-08 alert). See
 [HANDOFF.md](HANDOFF.md) §1.
 
 ## Keeping it current
@@ -179,6 +182,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
+| `console-call-session` | **Proposed 2026-11-02, awaiting owner approval**: persistent call session bar, global New call dialer, live Call history, `GetCall` timestamps/reason; PRD/HLD/CONSOLE-DESIGN updates in the proposal | 0/32 |
 | `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps

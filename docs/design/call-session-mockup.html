@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtsaPBX — call session design proposal</title>
+<style>
+  :root {
+    --canvas:#f7f6f2; --surface:#fff; --muted:#eef1f4; --text:#17212b; --text-muted:#4f5b67;
+    --border:#ccd3da; --nav:#14213a; --nav-text:#e8edf3; --primary:#1f6f3a; --primary-hover:#185c30;
+    --on-primary:#fff; --success:#1f6f3a; --success-surface:#e5f2e8; --warning:#8a5300;
+    --warning-surface:#fdf1dc; --danger:#b3261e; --danger-surface:#fbe9e7; --info:#2a5b8a;
+    --info-surface:#e6eef7; --focus:#0b57d0; --radius:6px; --shadow:0 1px 2px rgb(23 33 43 / .08);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--canvas); color: var(--text); }
+  .proposal { max-width: 1180px; margin: 0 auto; padding: 32px 20px 64px; }
+  .banner { border: 1px solid var(--border); border-left: 4px solid var(--info); background: var(--info-surface);
+            padding: 12px 16px; border-radius: var(--radius); color: var(--info); margin-bottom: 24px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 36px 0 8px; }
+  p.lead { color: var(--text-muted); margin: 0 0 24px; }
+  .note { color: var(--text-muted); font-size: .9rem; margin-top: 8px; }
+  .shell { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--canvas); box-shadow: var(--shadow); }
+  .topbar { display: flex; align-items: center; gap: 16px; background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 16px; font-size: .9rem; }
+  .brand { font-weight: 700; color: var(--nav); }
+  .tenant { color: var(--text-muted); }
+  .licence { margin-left: auto; color: var(--success); font-weight: 600; }
+  .new-call { background: var(--primary); color: var(--on-primary); border: 0; border-radius: var(--radius); padding: 8px 14px; font-weight: 600; }
+  .new-call:disabled { background: #9aa4ae; }
+  .body { display: flex; min-height: 260px; }
+  .rail { width: 150px; background: var(--nav); color: var(--nav-text); padding: 16px 12px; font-size: .85rem; }
+  .rail div { padding: 7px 8px; border-radius: 4px; margin-bottom: 2px; }
+  .rail .active { background: rgb(255 255 255 / .12); font-weight: 600; }
+  .content { flex: 1; padding: 18px; }
+  .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .page-head h3 { margin: 0; font-size: 1.15rem; }
+  .page-head .new-call { margin-left: auto; }
+  .bar { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--border);
+         border-left: 4px solid var(--info); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .bar.connected { border-left-color: var(--success); background: var(--success-surface); }
+  .bar.ended { border-left-color: var(--warning); background: var(--warning-surface); }
+  .icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--info-surface); color: var(--info); font-size: 1rem; flex: none; }
+  .connected .icon { background: var(--success); color: #fff; }
+  .ended .icon { background: var(--warning-surface); color: var(--warning); }
+  .bar-text { flex: 1; min-width: 0; }
+  .bar-text strong { display: block; font-size: .98rem; }
+  .bar-text span { color: var(--text-muted); font-size: .86rem; font-variant-numeric: tabular-nums; }
+  .btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: var(--radius); padding: 8px 14px; font-weight: 600; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn.ghost-danger { border-color: var(--danger); color: var(--danger); background: var(--surface); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  th { background: var(--muted); font-weight: 600; color: var(--text-muted); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--info); font-weight: 600; font-size: .8rem; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--info); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .72rem; font-weight: 600; background: var(--success-surface); color: var(--success); }
+  .badge.pending { background: var(--warning-surface); color: var(--warning); }
+  .row-hangup { font-size: .8rem; padding: 4px 10px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
+  .dialog-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  .dialog-head button { margin-left: auto; border: 0; background: transparent; font-size: 1.1rem; color: var(--text-muted); }
+  .dialog-body { padding: 16px; }
+  label.f { display: block; font-size: .8rem; font-weight: 600; margin: 0 0 6px; }
+  .field { border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; display: flex; align-items: center; gap: 8px; font-size: .9rem; margin-bottom: 14px; background: var(--surface); }
+  .field .status { margin-left: auto; font-size: .72rem; color: var(--success); font-weight: 600; }
+  .field input { border: 0; outline: 0; font: inherit; flex: 1; min-width: 0; background: transparent; }
+  .dial { display: grid; grid-template-columns: repeat(3, 54px); gap: 8px; margin: 4px 0 14px; }
+  .dial button { height: 42px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font-size: 1rem; font-weight: 600; }
+  .recents { font-size: .82rem; color: var(--text-muted); }
+  .recents div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  .recents span:last-child { font-variant-numeric: tabular-nums; }
+  .hint { background: var(--info-surface); color: var(--info); border-radius: var(--radius); padding: 9px 11px; font-size: .82rem; margin: 4px 0 14px; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  .phone { width: 360px; max-width: 100%; margin: 0 auto; border: 8px solid #1c2530; border-radius: 28px; overflow: hidden; background: var(--canvas); box-shadow: var(--shadow); }
+  .phone-top { background: var(--nav); color: var(--nav-text); padding: 10px 14px; font-size: .8rem; display: flex; justify-content: space-between; }
+  .phone-body { padding: 12px; min-height: 300px; }
+  .sheet { background: var(--surface); border: 1px solid var(--border); border-radius: 12px 12px 0 0; margin: 140px -12px -12px; padding: 14px; box-shadow: 0 -4px 16px rgb(23 33 43 / .12); }
+  .sheet .btn { width: 100%; margin-top: 10px; padding: 12px; }
+  .flexline { display: flex; align-items: center; gap: 10px; }
+  .muted { color: var(--text-muted); font-size: .82rem; }
+  .tag { font-size: .72rem; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .rail { display: none; } }
+</style>
+</head>
+<body>
+<div class="proposal">
+  <div class="banner"><strong>Design proposal — static mockup.</strong> This page is not the console. It shows the call-session UX proposed in
+    <code>openspec/changes/console-call-session/design.md</code>. Colours and spacing use the console's real tokens.</div>
+  <h1>Call session and dialer</h1>
+  <p class="lead">Inspired by the call panels in 3CX and VitalPBX: a call is a visible session with a live state and one-click hang-up, and the dialer is available from anywhere.</p>
+
+  <h2>1. Ringing the caller — desktop</h2>
+  <div class="shell">
+    <div class="topbar">
+      <span class="brand">AtsaPBX</span><span class="tenant">Tenant: Dev Acme ▾</span>
+      <span class="licence">Licence: Valid · 16</span><button class="new-call" disabled>A call is in progress</button>
+    </div>
+    <div class="body">
+      <div class="rail"><div>Overview</div><div>Users</div><div>Extensions</div><div>Trunks &amp; routes</div><div class="active">Call history</div><div>Account</div></div>
+      <div class="content">
+        <div class="page-head"><h3>Call history</h3><button class="new-call" disabled>New call</button></div>
+        <div class="bar">
+          <div class="icon">☎</div>
+          <div class="bar-text"><strong>Ringing your extension 1001</strong><span>Answer your phone to continue. 1002 is not dialled yet.</span></div>
+          <button class="btn ghost-danger">Cancel call</button>
+        </div>
+        <table>
+          <thead><tr><th>Started</th><th>Direction</th><th>From</th><th>To</th><th>State</th><th>Duration</th></tr></thead>
+          <tbody><tr><td>2 Nov 20:12</td><td>Internal</td><td class="num">1001</td><td class="num">1002</td><td><span class="live"><span class="dot"></span>Presenting</span></td><td>—</td></tr></tbody>
+        </table>
+        <p class="note">The bar sits under the top bar on every route, so navigating away does not lose the call or the hang-up control.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. Connected and ended — the same bar</h2>
+  <div class="shell">
+    <div class="content" style="padding:22px">
+      <div class="bar connected">
+        <div class="icon">✓</div>
+        <div class="bar-text"><strong>In call with 1002</strong><span>00:12 · from extension 1001</span></div>
+        <button class="btn danger">Hang up</button>
+      </div>
+      <div class="bar ended">
+        <div class="icon">!</div>
+        <div class="bar-text"><strong>Call ended — 1001 did not answer</strong><span>1002 was never dialled.</span></div>
+        <button class="btn">Dismiss</button>
+      </div>
+      <p class="note">Hang up is immediate: no confirmation dialog, one click. Before the caller answers the same button reads <em>Cancel call</em>, because no one else has been rung.</p>
+    </div>
+  </div>
+
+  <h2>3. The New call dialer</h2>
+  <div class="layout">
+    <div class="card">
+      <div class="dialog-head">New call <button aria-label="Close">✕</button></div>
+      <div class="dialog-body">
+        <label class="f" for="from">From extension</label>
+        <div class="field"><span>1001 · Reception</span><span class="status">Registered ▾</span></div>
+        <label class="f" for="to">Number to call</label>
+        <div class="field"><input id="to" value="+44 207 123 4567" aria-label="Number to call"><span class="muted">✕</span></div>
+        <div style="display:flex; gap:20px; align-items:flex-start">
+          <div class="dial" aria-label="Dial pad">
+            <button>1</button><button>2</button><button>3</button>
+            <button>4</button><button>5</button><button>6</button>
+            <button>7</button><button>8</button><button>9</button>
+            <button>*</button><button>0</button><button>#</button>
+          </div>
+          <div class="recents" style="flex:1">
+            <strong style="display:block; color:var(--text); margin-bottom:6px">Recent numbers</strong>
+            <div><span>+44 207 123 4567</span><span>2 min ago</span></div>
+            <div><span>1002</span><span>yesterday</span></div>
+            <div><span>+44 207 000 1111</span><span>Mon</span></div>
+          </div>
+        </div>
+        <div class="hint">Your phone rings first. Answer it to be connected.</div>
+      </div>
+      <div class="dialog-actions"><button class="btn">Cancel</button><button class="btn primary">Call</button></div>
+    </div>
+    <div>
+      <div class="phone">
+        <div class="phone-top"><span>AtsaPBX</span><span>☰</span></div>
+        <div class="phone-body">
+          <div class="flexline"><strong>Call history</strong><button class="new-call" style="margin-left:auto; font-size:.75rem">New call</button></div>
+          <p class="muted">The same session on a phone: a bottom sheet with 44 px targets.</p>
+          <div class="sheet">
+            <div class="flexline"><div class="icon">☎</div><div class="bar-text"><strong>In call with 1002</strong><span>00:12 · from 1001</span></div></div>
+            <button class="btn danger">Hang up</button>
+          </div>
+        </div>
+      </div>
+      <p class="note">Below 768 px the dialog is a full-screen sheet; the Call button stays above the keyboard.</p>
+    </div>
+  </div>
+
+  <h2>4. States at a glance</h2>
+  <div style="overflow:auto">
+    <table>
+      <thead><tr><th>State</th><th>Heading</th><th>Detail</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>Starting</td><td>Starting call</td><td>Asking the platform to place it</td><td>Cancel</td></tr>
+        <tr><td>Ringing caller</td><td>Ringing your extension 1001</td><td>Answer your phone to continue. 1002 is not dialled yet.</td><td>Cancel call</td></tr>
+        <tr><td>Calling destination</td><td>Calling 1002…</td><td>Connected to 1001. Waiting for 1002 to answer.</td><td>Hang up</td></tr>
+        <tr><td>Connected</td><td>In call with 1002</td><td>00:12 · from extension 1001</td><td>Hang up</td></tr>
+        <tr><td>Ended — timeout</td><td>Call ended — 1001 did not answer</td><td>1002 was never dialled.</td><td>Dismiss</td></tr>
+        <tr><td>Ended — normal</td><td>Call ended</td><td>00:42 · normal clearing</td><td>Dismiss</td></tr>
+        <tr><td>Failed</td><td>Call could not be placed</td><td>No extension or outbound route matches that number.</td><td>Dismiss</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>5. Why this is better than the current screen</h2>
+  <ul>
+    <li>The current screen closes the dialog and shows a six-second toast; there is then nothing to watch and nothing to press.</li>
+    <li>Call history is never refreshed, so a finished call can still read <code>Presenting</code>. The live bar and the 1 s refresh fix that.</li>
+    <li>Hang up is only inside the row's Actions menu. The bar makes it the primary action, and Cancel is distinct before anyone else is rung.</li>
+    <li>A call survives navigation; the current dialog and toast do not.</li>
+  </ul>
+</div>
+</body>
+</html>
