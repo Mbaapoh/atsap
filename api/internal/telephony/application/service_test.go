@@ -129,6 +129,20 @@ func (f *fakeMediaGateway) RejectChannel(_ context.Context, ref ports.ChannelRef
 	return nil
 }
 
+// originated returns a snapshot of the legs originated so far, safe to
+// read while a placement timer may run on another goroutine.
+func (f *fakeMediaGateway) originated() []ports.OriginateRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ports.OriginateRequest(nil), f.originateCalls...)
+}
+
+func (f *fakeMediaGateway) destroyedChannelCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.destroyedChans)
+}
+
 type channelHistoryEntry struct {
 	participantID string
 	channelRef    ports.ChannelRef
@@ -205,6 +219,20 @@ func (f *fakeCallStore) get(id shareddomain.CallID) *domain.Call {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls[id.String()]
+}
+
+// hasEvent reports whether any event saved for callID matches want. It
+// locks, so a test may poll it while the placement timer saves from
+// another goroutine.
+func (f *fakeCallStore) hasEvent(want func(event.DomainEvent) bool) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.savedEvents {
+		if want(e) {
+			return true
+		}
+	}
+	return false
 }
 
 // --- test harness ----------------------------------------------------------
@@ -320,6 +348,119 @@ func TestInitiateCall_ReachesActive(t *testing.T) {
 	}
 	assert.True(t, sawInitiated)
 	assert.True(t, sawActive)
+}
+
+// initiateOrderedCall places a caller-first call (console-click-to-call
+// design D1) with the given caller timeout.
+func initiateOrderedCall(t *testing.T, h *harness, timeout time.Duration) shareddomain.CallID {
+	t.Helper()
+	callID, err := h.svc.InitiateCall(context.Background(), ports.InitiateCallCommand{
+		TenantID:          shareddomain.NewTenantID(),
+		Direction:         domain.Outbound,
+		SourceNumber:      "1000",
+		DestNumber:        "1001",
+		SourceEndpointURI: "PJSIP/1000",
+		DestEndpointURI:   "PJSIP/1001",
+		Ordered:           true,
+		CallerTimeout:     timeout,
+	})
+	require.NoError(t, err)
+	return callID
+}
+
+// answerOriginated answers the leg the fake MediaGateway originated at
+// index i, using the correlation registered for its channel.
+func answerOriginated(t *testing.T, h *harness, i int) {
+	t.Helper()
+	req := h.mediaGW.originated()[i]
+	corr, ok := h.registry.Lookup(req.ChannelID)
+	require.True(t, ok, "correlation should be registered for %s", req.ChannelID)
+	require.NoError(t, h.svc.ParticipantAnswered(context.Background(),
+		corr.TenantID, corr.CallID, corr.ParticipantID, req.ChannelID))
+}
+
+// TestInitiateCall_OrderedWaitsForCaller proves that in ordered mode the
+// destination is not rung until the caller answers, and that answering
+// the caller rungs it exactly once (console-click-to-call spec: "The
+// destination is never rung before the caller answers").
+func TestInitiateCall_OrderedWaitsForCaller(t *testing.T) {
+	h := newHarness()
+	callID := initiateOrderedCall(t, h, time.Second)
+
+	require.Len(t, h.mediaGW.originated(), 1, "only the caller is rung before it answers")
+	saved := h.callStore.get(callID)
+	require.NotNil(t, saved)
+	assert.Equal(t, domain.CallPresenting, saved.State)
+
+	answerOriginated(t, h, 0)
+	require.Len(t, h.mediaGW.originated(), 2, "the destination rings once the caller answers")
+	saved = h.callStore.get(callID)
+	require.NotNil(t, saved)
+	assert.Equal(t, domain.CallPresenting, saved.State, "one connected participant is not Active")
+
+	answerOriginated(t, h, 0)
+	assert.Len(t, h.mediaGW.originated(), 2, "a duplicate answer does not originate the destination twice")
+}
+
+// TestInitiateCall_OrderedConnects proves the caller-first call reaches
+// Active when both parties answer, and reserves/releases capacity once.
+func TestInitiateCall_OrderedConnects(t *testing.T) {
+	h := newHarness()
+	callID := initiateOrderedCall(t, h, time.Second)
+
+	answerOriginated(t, h, 0)
+	answerOriginated(t, h, 1)
+
+	assert.Equal(t, domain.CallActive, h.callStore.get(callID).State)
+	require.NoError(t, h.svc.HangupCall(context.Background(), callID, "api_hangup"))
+
+	reserved, released := h.license.counts(callID.String())
+	assert.Equal(t, 1, reserved, "capacity is reserved once")
+	assert.Equal(t, 1, released, "capacity is released once")
+}
+
+// TestInitiateCall_OrderedCallerTimeout proves an unanswered caller ends
+// the call with caller_no_answer, never rings the destination, releases
+// the caller's leg and gives the licence channel back
+// (console-click-to-call spec: "A caller who does not answer rings no
+// one").
+func TestInitiateCall_OrderedCallerTimeout(t *testing.T) {
+	h := newHarness()
+	callID := initiateOrderedCall(t, h, 20*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return h.callStore.hasEvent(func(e event.DomainEvent) bool {
+			ev, ok := e.(domain.CallTerminatedEvent)
+			return ok && ev.Reason == "caller_no_answer"
+		})
+	}, 2*time.Second, 5*time.Millisecond, "the placement should time out")
+
+	assert.Equal(t, domain.CallTerminated, h.callStore.get(callID).State)
+	assert.Equal(t, "caller_no_answer", h.callStore.get(callID).TerminationReason)
+	assert.Len(t, h.mediaGW.originated(), 1, "the destination must never be rung")
+
+	require.Eventually(t, func() bool {
+		reserved, released := h.license.counts(callID.String())
+		return reserved == 1 && released == 1
+	}, 2*time.Second, 5*time.Millisecond, "capacity is reserved and released once")
+	require.Eventually(t, func() bool {
+		return h.mediaGW.destroyedChannelCount() == 1
+	}, 2*time.Second, 5*time.Millisecond, "the ringing caller leg is released")
+}
+
+// TestInitiateCall_OrderedAnswerCancelsTimeout proves that once the
+// caller answers, the placement timer no longer ends the call.
+func TestInitiateCall_OrderedAnswerCancelsTimeout(t *testing.T) {
+	h := newHarness()
+	callID := initiateOrderedCall(t, h, 40*time.Millisecond)
+
+	answerOriginated(t, h, 0)
+	answerOriginated(t, h, 1)
+	require.Equal(t, domain.CallActive, h.callStore.get(callID).State)
+
+	time.Sleep(120 * time.Millisecond)
+	assert.Equal(t, domain.CallActive, h.callStore.get(callID).State,
+		"the placement timeout must not end a call whose caller answered")
 }
 
 // TestInitiateCall_ScreeningRejection covers a call whose capacity or

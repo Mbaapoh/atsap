@@ -34,6 +34,12 @@ var ErrNotImplemented = errors.New("not implemented in this change")
 // CallStore, not this in-memory set.
 var ErrCallNotFound = errors.New("call not found")
 
+// callerNoAnswerReason is the termination reason of an ordered placement
+// whose calling extension did not answer within the caller timeout
+// (console-click-to-call design D1; spec: "A caller who does not answer
+// rings no one").
+const callerNoAnswerReason = "caller_no_answer"
+
 // Service implements ports.CallService and structurally satisfies
 // acl.EventSink (ParticipantAnswered/ParticipantLeft) without importing
 // acl — see the package doc.
@@ -73,6 +79,20 @@ type Service struct {
 	// originated legs, has no deterministic address) and records
 	// whether the caller has been answered yet.
 	arrived map[string]*arrivedCall
+	// ordered tracks calls originated in caller-first order, keyed by
+	// call ID string: the caller participant, its placement timer, and
+	// whether the destination may be originated yet.
+	ordered map[string]*orderedCall
+}
+
+// orderedCall is the per-call state for an ordered (caller-first)
+// placement (console-click-to-call design D1).
+type orderedCall struct {
+	callerParticipant     shareddomain.ParticipantID
+	timer                 *time.Timer
+	callerAnswered        bool
+	destinationOriginated bool
+	timedOut              bool
 }
 
 // arrivedCall is the per-call state for a call that began with an
@@ -107,6 +127,7 @@ func NewService(
 		calls:          make(map[string]*domain.Call),
 		bridges:        make(map[string]ports.BridgeID),
 		arrived:        make(map[string]*arrivedCall),
+		ordered:        make(map[string]*orderedCall),
 	}
 }
 
@@ -253,6 +274,18 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 		return shareddomain.CallID{}, fmt.Errorf("create bridge: %w", err)
 	}
 
+	// Caller-first placement (console-click-to-call design D1): ring the
+	// calling extension alone, and originate the destination only from
+	// ParticipantAnswered once that extension answers. The timer ends a
+	// placement nobody picks up, and the destination is never rung.
+	if cmd.Ordered {
+		if err := s.originateParticipant(ctx, cmd.TenantID, callID, caller, ""); err != nil {
+			return shareddomain.CallID{}, fmt.Errorf("originate caller: %w", err)
+		}
+		s.armCallerTimeout(ctx, callID, caller.ID, cmd.CallerTimeout)
+		return callID, nil
+	}
+
 	for _, p := range call.Participants {
 		if err := s.originateParticipant(ctx, cmd.TenantID, callID, p, ""); err != nil {
 			return shareddomain.CallID{}, fmt.Errorf("originate participant %s: %w", p.ID, err)
@@ -260,6 +293,82 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	}
 
 	return callID, nil
+}
+
+// armCallerTimeout starts the caller-first placement timer. The timer is
+// associated with the call and cancelled when the caller answers or the
+// call ends, so a timer never outlives its call. It keeps ctx's values
+// but not its cancellation: the request that placed the call has usually
+// returned long before the timer fires.
+func (s *Service) armCallerTimeout(ctx context.Context, callID shareddomain.CallID, callerID shareddomain.ParticipantID, timeout time.Duration) {
+	if timeout <= 0 {
+		timeout = ports.DefaultCallerTimeout
+	}
+	oc := &orderedCall{callerParticipant: callerID}
+	timerCtx := context.WithoutCancel(ctx)
+	s.mu.Lock()
+	s.ordered[callID.String()] = oc
+	oc.timer = time.AfterFunc(timeout, func() { s.callerTimedOut(timerCtx, callID) })
+	s.mu.Unlock()
+}
+
+// callerTimedOut ends an ordered placement whose caller never answered:
+// no destination was originated, the caller's leg is released, and the
+// capacity reserved at placement is given back (finalizeTermination does
+// that). A call that already ended, or whose caller has answered, is left
+// alone.
+func (s *Service) callerTimedOut(ctx context.Context, callID shareddomain.CallID) {
+	s.mu.Lock()
+	oc, ok := s.ordered[callID.String()]
+	if !ok || oc.callerAnswered || oc.timedOut {
+		s.mu.Unlock()
+		return
+	}
+	oc.timedOut = true
+	call, ok := s.calls[callID.String()]
+	s.mu.Unlock()
+	if !ok {
+		return
+	}
+
+	if err := s.finalizeTermination(ctx, call, callerNoAnswerReason); err != nil {
+		s.logger.Error("terminate unanswered caller placement", "error", err, "call_id", callID)
+		return
+	}
+	s.releaseLegs(ctx, callID, []ports.ChannelRef{participantChannel(oc.callerParticipant)})
+}
+
+// orderedDestination is called from ParticipantAnswered. When participantID
+// is the caller of an ordered placement, it marks the caller answered,
+// cancels the timer, and returns the destination participant to originate
+// — exactly once. handled is true for an ordered caller even when there is
+// nothing left to originate (a placement already timed out, or a duplicate
+// answer event). A non-caller, or a non-ordered call, returns handled false.
+func (s *Service) orderedDestination(call *domain.Call, participantID shareddomain.ParticipantID) (*domain.CallParticipant, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oc, ok := s.ordered[call.ID.String()]
+	if !ok || oc.callerParticipant != participantID {
+		return nil, false
+	}
+	if oc.timedOut {
+		return nil, true
+	}
+	oc.callerAnswered = true
+	if oc.timer != nil {
+		oc.timer.Stop()
+	}
+	if oc.destinationOriginated {
+		return nil, true
+	}
+	for _, p := range call.Participants {
+		if p.ID != oc.callerParticipant {
+			oc.destinationOriginated = true
+			return p, true
+		}
+	}
+	return nil, true
 }
 
 // connectArrived adds the routed destination to an arriving call and
@@ -649,6 +758,14 @@ func (s *Service) ParticipantAnswered(ctx context.Context, _, callIDStr, partici
 		return fmt.Errorf("participant answered for call %s: %w", callID, ErrCallNotFound)
 	}
 
+	// Ordered placement: the caller answering is what starts the
+	// destination's leg. A placement that already timed out has nothing
+	// left to do here; the timer terminates it.
+	destination, ordered := s.orderedDestination(call, participantID)
+	if ordered && destination == nil {
+		return nil
+	}
+
 	connectEvents, err := call.ConnectParticipant(participantID, time.Now().UTC())
 	if err != nil {
 		return fmt.Errorf("connect participant: %w", err)
@@ -660,6 +777,19 @@ func (s *Service) ParticipantAnswered(ctx context.Context, _, callIDStr, partici
 	}
 	if err := s.mediaGateway.AddChannelToBridge(ctx, bridgeID, ports.ChannelRef(channelID)); err != nil {
 		return fmt.Errorf("add channel to bridge: %w", err)
+	}
+
+	// Only now is the destination rung: the caller has answered.
+	if destination != nil {
+		if err := s.originateParticipant(ctx, call.TenantID, callID, destination, ""); err != nil {
+			s.logger.Error("originate ordered destination failed; ending call",
+				"error", err, "call_id", callID)
+			if ferr := s.finalizeTermination(ctx, call, "destination unreachable"); ferr != nil {
+				return fmt.Errorf("terminate call after destination failure: %w", ferr)
+			}
+			s.releaseLegs(ctx, callID, []ports.ChannelRef{ports.ChannelRef(channelID)})
+			return fmt.Errorf("originate ordered destination: %w", err)
+		}
 	}
 
 	if a, ok := s.arrivedOf(callID); ok && !a.answered && a.callerParticipant != participantID {
@@ -961,4 +1091,10 @@ func (s *Service) removeCall(id shareddomain.CallID) {
 	defer s.mu.Unlock()
 	delete(s.calls, id.String())
 	delete(s.arrived, id.String())
+	if oc, ok := s.ordered[id.String()]; ok {
+		if oc.timer != nil {
+			oc.timer.Stop()
+		}
+		delete(s.ordered, id.String())
+	}
 }

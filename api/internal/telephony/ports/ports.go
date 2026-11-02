@@ -35,7 +35,20 @@ type InitiateCallCommand struct {
 	// importing pbx-core, which HLD 04 §10.1 forbids. Default false
 	// preserves existing behavior.
 	BypassScreening bool
+	// Ordered originates the caller's leg first and the destination only
+	// after the caller answers (console-click-to-call design D1). When
+	// false — the default — both legs originate at once as before.
+	Ordered bool
+	// CallerTimeout bounds how long the caller's leg may ring in ordered
+	// mode. When it elapses without an answer, the call ends with the
+	// reason caller_no_answer and the destination is never originated.
+	// Zero uses DefaultCallerTimeout.
+	CallerTimeout time.Duration
 }
+
+// DefaultCallerTimeout is how long a click-to-call caller may ring before
+// the placement ends with caller_no_answer (console-click-to-call D1).
+const DefaultCallerTimeout = 30 * time.Second
 
 // TransferCommand is not implemented in this change (LLD-01 §1
 // out-of-scope table) — the type exists so CallService's shape matches
