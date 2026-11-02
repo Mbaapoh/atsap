@@ -151,8 +151,9 @@ type PbxServiceClient interface {
 	// PlaceCall places a call from one of the tenant's extensions to a
 	// destination as dialled. The platform's dial plan decides how it is
 	// reached: an emergency number first, then another extension, then the
-	// tenant's outbound routes. The caller's phone and the far end are rung
-	// at the same time and connected when both answer. The request has no
+	// tenant's outbound routes. The caller's extension is rung first and the
+	// destination only after it answers; an unanswered caller ends the call
+	// with caller_no_answer and the destination is never rung. The request has no
 	// field that names an engine endpoint or could exempt a call from
 	// checks — only the dial plan recognises an emergency number.
 	PlaceCall(context.Context, *connect.Request[v1.PlaceCallRequest]) (*connect.Response[v1.PlaceCallResponse], error)
@@ -547,8 +548,9 @@ type PbxServiceHandler interface {
 	// PlaceCall places a call from one of the tenant's extensions to a
 	// destination as dialled. The platform's dial plan decides how it is
 	// reached: an emergency number first, then another extension, then the
-	// tenant's outbound routes. The caller's phone and the far end are rung
-	// at the same time and connected when both answer. The request has no
+	// tenant's outbound routes. The caller's extension is rung first and the
+	// destination only after it answers; an unanswered caller ends the call
+	// with caller_no_answer and the destination is never rung. The request has no
 	// field that names an engine endpoint or could exempt a call from
 	// checks — only the dial plan recognises an emergency number.
 	PlaceCall(context.Context, *connect.Request[v1.PlaceCallRequest]) (*connect.Response[v1.PlaceCallResponse], error)

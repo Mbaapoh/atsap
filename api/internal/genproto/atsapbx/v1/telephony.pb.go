@@ -87,12 +87,22 @@ type GetCallResponse struct {
 	// Degraded, Terminating, Terminated (docs/telephony/domain.CallState).
 	State string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
 	// direction is one of: INBOUND, OUTBOUND, INTERNAL.
-	Direction     string         `protobuf:"bytes,4,opt,name=direction,proto3" json:"direction,omitempty"`
-	SourceNumber  string         `protobuf:"bytes,5,opt,name=source_number,json=sourceNumber,proto3" json:"source_number,omitempty"`
-	DestNumber    string         `protobuf:"bytes,6,opt,name=dest_number,json=destNumber,proto3" json:"dest_number,omitempty"`
-	Participants  []*Participant `protobuf:"bytes,7,rep,name=participants,proto3" json:"participants,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Direction    string         `protobuf:"bytes,4,opt,name=direction,proto3" json:"direction,omitempty"`
+	SourceNumber string         `protobuf:"bytes,5,opt,name=source_number,json=sourceNumber,proto3" json:"source_number,omitempty"`
+	DestNumber   string         `protobuf:"bytes,6,opt,name=dest_number,json=destNumber,proto3" json:"dest_number,omitempty"`
+	Participants []*Participant `protobuf:"bytes,7,rep,name=participants,proto3" json:"participants,omitempty"`
+	// started_at is when the call was created; always set.
+	StartedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	// answered_at is when the call became Active (the second participant
+	// answered); unset while it has not.
+	AnsweredAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=answered_at,json=answeredAt,proto3" json:"answered_at,omitempty"`
+	// ended_at and termination_reason are set only once the call is
+	// Terminated. The reason is the platform's own vocabulary (for example
+	// caller_no_answer or normal clearing), never engine text.
+	EndedAt           *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
+	TerminationReason string                 `protobuf:"bytes,11,opt,name=termination_reason,json=terminationReason,proto3" json:"termination_reason,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetCallResponse) Reset() {
@@ -172,6 +182,34 @@ func (x *GetCallResponse) GetParticipants() []*Participant {
 		return x.Participants
 	}
 	return nil
+}
+
+func (x *GetCallResponse) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *GetCallResponse) GetAnsweredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AnsweredAt
+	}
+	return nil
+}
+
+func (x *GetCallResponse) GetEndedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EndedAt
+	}
+	return nil
+}
+
+func (x *GetCallResponse) GetTerminationReason() string {
+	if x != nil {
+		return x.TerminationReason
+	}
+	return ""
 }
 
 type Participant struct {
@@ -522,7 +560,7 @@ const file_atsapbx_v1_telephony_proto_rawDesc = "" +
 	"atsapbx.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"F\n" +
 	"\x0eGetCallRequest\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1b\n" +
-	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\xfe\x01\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\xdc\x03\n" +
 	"\x0fGetCallResponse\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x14\n" +
@@ -531,7 +569,14 @@ const file_atsapbx_v1_telephony_proto_rawDesc = "" +
 	"\rsource_number\x18\x05 \x01(\tR\fsourceNumber\x12\x1f\n" +
 	"\vdest_number\x18\x06 \x01(\tR\n" +
 	"destNumber\x12;\n" +
-	"\fparticipants\x18\a \x03(\v2\x17.atsapbx.v1.ParticipantR\fparticipants\"\xb0\x01\n" +
+	"\fparticipants\x18\a \x03(\v2\x17.atsapbx.v1.ParticipantR\fparticipants\x129\n" +
+	"\n" +
+	"started_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
+	"\vanswered_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"answeredAt\x125\n" +
+	"\bended_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12-\n" +
+	"\x12termination_reason\x18\v \x01(\tR\x11terminationReason\"\xb0\x01\n" +
 	"\vParticipant\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12%\n" +
@@ -591,22 +636,25 @@ var file_atsapbx_v1_telephony_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_telephony_proto_depIdxs = []int32{
-	2, // 0: atsapbx.v1.GetCallResponse.participants:type_name -> atsapbx.v1.Participant
-	6, // 1: atsapbx.v1.ListCallsRequest.started_from:type_name -> google.protobuf.Timestamp
-	6, // 2: atsapbx.v1.ListCallsRequest.started_to:type_name -> google.protobuf.Timestamp
-	6, // 3: atsapbx.v1.CallSummary.started_at:type_name -> google.protobuf.Timestamp
-	6, // 4: atsapbx.v1.CallSummary.answered_at:type_name -> google.protobuf.Timestamp
-	6, // 5: atsapbx.v1.CallSummary.ended_at:type_name -> google.protobuf.Timestamp
-	4, // 6: atsapbx.v1.ListCallsResponse.calls:type_name -> atsapbx.v1.CallSummary
-	0, // 7: atsapbx.v1.TelephonyService.GetCall:input_type -> atsapbx.v1.GetCallRequest
-	3, // 8: atsapbx.v1.TelephonyService.ListCalls:input_type -> atsapbx.v1.ListCallsRequest
-	1, // 9: atsapbx.v1.TelephonyService.GetCall:output_type -> atsapbx.v1.GetCallResponse
-	5, // 10: atsapbx.v1.TelephonyService.ListCalls:output_type -> atsapbx.v1.ListCallsResponse
-	9, // [9:11] is the sub-list for method output_type
-	7, // [7:9] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	2,  // 0: atsapbx.v1.GetCallResponse.participants:type_name -> atsapbx.v1.Participant
+	6,  // 1: atsapbx.v1.GetCallResponse.started_at:type_name -> google.protobuf.Timestamp
+	6,  // 2: atsapbx.v1.GetCallResponse.answered_at:type_name -> google.protobuf.Timestamp
+	6,  // 3: atsapbx.v1.GetCallResponse.ended_at:type_name -> google.protobuf.Timestamp
+	6,  // 4: atsapbx.v1.ListCallsRequest.started_from:type_name -> google.protobuf.Timestamp
+	6,  // 5: atsapbx.v1.ListCallsRequest.started_to:type_name -> google.protobuf.Timestamp
+	6,  // 6: atsapbx.v1.CallSummary.started_at:type_name -> google.protobuf.Timestamp
+	6,  // 7: atsapbx.v1.CallSummary.answered_at:type_name -> google.protobuf.Timestamp
+	6,  // 8: atsapbx.v1.CallSummary.ended_at:type_name -> google.protobuf.Timestamp
+	4,  // 9: atsapbx.v1.ListCallsResponse.calls:type_name -> atsapbx.v1.CallSummary
+	0,  // 10: atsapbx.v1.TelephonyService.GetCall:input_type -> atsapbx.v1.GetCallRequest
+	3,  // 11: atsapbx.v1.TelephonyService.ListCalls:input_type -> atsapbx.v1.ListCallsRequest
+	1,  // 12: atsapbx.v1.TelephonyService.GetCall:output_type -> atsapbx.v1.GetCallResponse
+	5,  // 13: atsapbx.v1.TelephonyService.ListCalls:output_type -> atsapbx.v1.ListCallsResponse
+	12, // [12:14] is the sub-list for method output_type
+	10, // [10:12] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_telephony_proto_init() }

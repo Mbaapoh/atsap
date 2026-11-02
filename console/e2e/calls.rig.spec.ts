@@ -77,7 +77,7 @@ async function apiToken(request: APIRequestContext, email: string): Promise<stri
   return ((await res.json()) as { access: { token: string } }).access.token;
 }
 
-test("A5: place a call from the console, see it ringing, and hang it up", async ({ page, request }) => {
+test("A5: place a call from the console, see it ringing, and cancel it", async ({ page, request }) => {
   user = seedUser(["Acme"]);
   const tenantId = user.tenants[0]!.id;
   const token = await apiToken(request, user.email);
@@ -89,7 +89,8 @@ test("A5: place a call from the console, see it ringing, and hang it up", async 
     expect(res.status()).toBe(200);
     return ((await res.json()) as { extension: { extensionId: string } }).extension.extensionId;
   };
-  const callerId = await create(`78${String(Date.now()).slice(-4)}`, "Console caller");
+  const callerNumber = `78${String(Date.now()).slice(-4)}`;
+  const callerId = await create(callerNumber, "Console caller");
   const calleeNumber = `79${String(Date.now()).slice(-4)}`;
   const calleeId = await create(calleeNumber, "Console callee");
   seedContact(callerId);
@@ -103,19 +104,22 @@ test("A5: place a call from the console, see it ringing, and hang it up", async 
   await signIn(page, user.email);
   await page.goto("/calls");
   await page.getByRole("button", { name: "Place a call" }).click();
-  const dialog = page.getByRole("dialog", { name: "Place a call" });
+  const dialog = page.getByRole("dialog", { name: "New call" });
   await dialog.getByLabel("From extension").selectOption(callerId);
   await dialog.getByLabel("Number to call").fill(calleeNumber);
   await dialog.getByRole("button", { name: "Call" }).click();
+
+  const bar = page.getByRole("region", { name: "Current call" });
+  await expect(bar.getByText(`Ringing your extension ${callerNumber}`)).toBeVisible();
+  await expect(bar.getByText(`Answer your phone to continue. ${calleeNumber} is not dialled yet.`)).toBeVisible();
 
   const table = page.getByRole("table", { name: "Calls of this tenant" });
   const row = table.getByRole("row").nth(1);
   await expect(row).toContainText(calleeNumber);
   await expect(row).toContainText("Presenting");
 
-  await row.getByRole("button", { name: /^Actions for call to / }).click();
-  await page.getByRole("menuitem", { name: "Hang up…" }).click();
-  await page.getByRole("dialog", { name: /Hang up the call with/ }).getByRole("button", { name: "Hang up" }).click();
-  await expect(page.getByText("Call ended.")).toBeVisible();
-  await expect(row).toContainText("Terminated");
+  // Cancel before answering: the destination is never dialled.
+  await bar.getByRole("button", { name: `Cancel call to ${calleeNumber}` }).click();
+  await expect(bar.getByText("Call ended — ended from the console")).toBeVisible();
+  await expect(row).toContainText("Terminated", { timeout: 5000 });
 });

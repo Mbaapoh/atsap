@@ -261,6 +261,12 @@ flowchart TD
     H --> I["Hangup. Call terminated,<br/>call detail available in the console"]
 ```
 
+The console adds the same path for an administrator: **Place a call** from a
+chosen registered extension, the caller's phone ringing first (D-78), and a
+shell-level **call session** showing the live state and a one-click
+**Hang up** (D-79). The session survives navigation, so flow A5 is not lost
+when the person opens Extensions or Trunks while a call is in flight.
+
 Inbound is the same picture with the ends swapped: the trunk presents
 the call, the route decides which extension it reaches, and the
 registered phone rings.
@@ -288,7 +294,7 @@ is — nothing more, and none of it optional:
 | Users, roles, permissions | A2 |
 | Extensions, with registration status | A3 |
 | Trunks and outbound routes, with health | A4 |
-| Call history (read-only) | A5 |
+| Call history, with Place a call and the live call session (status and Hang up) | A5 |
 
 Phase A is done when a partner can walk A1 → A5 without leaving the
 console, without touching a configuration file, and without being told
@@ -307,7 +313,7 @@ nothing in A1–A5 needs one.
 | Users | Email, name, status, roles; add, disable, grant, revoke, reset password | "Extensions" column; agent toggle and queues (`pbx-queues`) |
 | Extensions | Number, name, registration status, credentials shown once | "Assigned to" (`pbx-extension-assignment`) |
 | Trunks and routes | As built | Health latency (`Degraded`) |
-| Call history | Time, direction, from and to (extension numbers joined to names client-side), state, duration, end reason; filters | Person per call, "my calls", agent-scoped visibility, recordings and quality (`pbx-extension-assignment`, LLD-09) |
+| Call history | Time, direction, from and to (extension numbers joined to names client-side), state, duration, end reason; filters; Place a call from a registered extension, the shell call session (ringing the caller, calling the destination, connected duration, ended reason) and a one-click Hang up | Person per call, "my calls", agent-scoped visibility, recordings and quality (`pbx-extension-assignment`, LLD-09) |
 | Licence | Status and activation | — |
 
 **Phase B, in order:** `pbx-extension-assignment` → `pbx-ivr-flows` →

@@ -23,7 +23,7 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 
 | RPC | Service | Landed in | Consumer |
 |---|---|---|---|
-| `GetCall` | `atsapbx.v1.TelephonyService` | `telephony-core-originate-bridge-hangup` (LLD-01) | e2e harness; the portal's future call view |
+| `GetCall` | `atsapbx.v1.TelephonyService` | `telephony-core-originate-bridge-hangup` (LLD-01); widened by `console-call-session` | The console's live call session and the e2e harness. Reports state, participants, `started_at`, `answered_at`, `ended_at` and `termination_reason`; the end fields are unset while the call is in flight, and no engine identifier is returned |
 | `AuthenticateUser` | `atsapbx.v1.IdentityService` | `identity-api` | **Deprecated for people** since `identity-accounts-and-sessions`: machines and harnesses; `username` is read as the email; no session; throttled |
 | `ProvisionTenant` | `atsapbx.v1.IdentityService` | `identity-api` | EPIC-01 admin stories; the portal's first screens |
 | `ProvisionPrincipal` | `atsapbx.v1.IdentityService` | `identity-api`; by email since `identity-accounts-and-sessions` | Console users screen (A2): adds a person by email; a new person without a password is invited; the response never reveals an existing account (D-61) |

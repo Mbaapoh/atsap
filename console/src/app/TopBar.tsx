@@ -6,6 +6,9 @@ interface TopBarProps {
   // (tasks 2.1 and 2.3); the bar keeps their places and order.
   tenant?: ReactNode;
   licence?: ReactNode;
+  // callAction is the global New call action (D-79); it is rendered only
+  // when the person may place calls and no call is in progress.
+  callAction?: ReactNode;
   menuOpen: boolean;
   onMenu: () => void;
   menuButtonRef?: Ref<HTMLButtonElement>;
@@ -14,7 +17,7 @@ interface TopBarProps {
 // TopBar shows, in order: the current Tenant, the licence pill, and the
 // account link (CONSOLE-DESIGN "App shell"). Below 768 px it also carries
 // the menu button that opens the navigation drawer.
-export function TopBar({ tenant, licence, menuOpen, onMenu, menuButtonRef }: TopBarProps) {
+export function TopBar({ tenant, licence, callAction, menuOpen, onMenu, menuButtonRef }: TopBarProps) {
   return (
     <header className="top-bar">
       <button
@@ -30,6 +33,7 @@ export function TopBar({ tenant, licence, menuOpen, onMenu, menuButtonRef }: Top
       </button>
       <span className="product product-compact">AtsaPBX</span>
       <div className="top-bar-items">
+        {callAction ? <div className="top-bar-call">{callAction}</div> : null}
         {tenant ? <div className="top-bar-tenant">{tenant}</div> : null}
         {licence ? <div className="top-bar-licence">{licence}</div> : null}
       </div>

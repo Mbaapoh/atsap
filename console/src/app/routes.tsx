@@ -14,6 +14,9 @@ import { OverviewPage } from "../features/overview/OverviewPage";
 import { UsersPage } from "../features/users/UsersPage";
 import { ExtensionsPage } from "../features/extensions/ExtensionsPage";
 import { CallsPage } from "../features/calls/CallsPage";
+import { CallSessionBar } from "../features/calls/CallSessionBar";
+import { NewCallAction } from "../features/calls/NewCall";
+import { CallSessionProvider } from "../features/calls/session";
 import { TrunksRoutesPage } from "../features/telephony/TrunksRoutesPage";
 import { AppShell } from "./AppShell";
 import { NotFound } from "./NotFound";
@@ -31,7 +34,15 @@ export const routes: RouteObject[] = [
   {
     element: (
       <RequireSession>
-        <AppShell tenant={<TenantIndicator />} licence={<LicenceIndicator />} notice={<SessionExpiryNotice />} />
+        <CallSessionProvider>
+          <AppShell
+            tenant={<TenantIndicator />}
+            licence={<LicenceIndicator />}
+            notice={<SessionExpiryNotice />}
+            callAction={<NewCallAction />}
+            callBar={<CallSessionBar />}
+          />
+        </CallSessionProvider>
       </RequireSession>
     ),
     children: [

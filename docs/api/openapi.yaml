@@ -1387,8 +1387,9 @@ paths:
         PlaceCall places a call from one of the tenant's extensions to a
          destination as dialled. The platform's dial plan decides how it is
          reached: an emergency number first, then another extension, then the
-         tenant's outbound routes. The caller's phone and the far end are rung
-         at the same time and connected when both answer. The request has no
+         tenant's outbound routes. The caller's extension is rung first and the
+         destination only after it answers; an unanswered caller ends the call
+         with caller_no_answer and the destination is never rung. The request has no
          field that names an engine endpoint or could exempt a call from
          checks — only the dial plan recognises an emergency number.
       operationId: atsapbx.v1.PbxService.PlaceCall
@@ -3658,6 +3659,26 @@ components:
           items:
             $ref: '#/components/schemas/atsapbx.v1.Participant'
           title: participants
+        startedAt:
+          title: started_at
+          description: started_at is when the call was created; always set.
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        answeredAt:
+          title: answered_at
+          description: |-
+            answered_at is when the call became Active (the second participant
+             answered); unset while it has not.
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        endedAt:
+          title: ended_at
+          description: |-
+            ended_at and termination_reason are set only once the call is
+             Terminated. The reason is the platform's own vocabulary (for example
+             caller_no_answer or normal clearing), never engine text.
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        terminationReason:
+          type: string
+          title: termination_reason
       title: GetCallResponse
       additionalProperties: false
     atsapbx.v1.ListCallsRequest:

@@ -207,6 +207,7 @@ These hold in every release, every configuration and every failure mode. A featu
 | US-03.8 | As a tenant administrator, I test a call flow before publishing it, and roll back a bad change. |
 | US-03.9 | As a caller, I wait in a queue and hear my position or expected wait. |
 | US-03.10 | As an employee on a poor network, I see an honest connection state rather than a dead call. |
+| US-03.11 | As a person placing a call from the console, I see whether my phone is ringing, whether the destination is ringing, and can end the call with one action. |
 
 **Acceptance criteria**
 - AC-03.1 A user places and answers calls on office, home and mobile networks with nothing installed.
@@ -219,6 +220,7 @@ These hold in every release, every configuration and every failure mode. A featu
 - AC-03.8 Publishing applies to the next call with no restart and no effect on calls in progress; rollback completes in under one minute.
 - AC-03.9 Loss of connectivity produces a visible state within 10 seconds. The interface never shows a call as active when it is not.
 - AC-03.10 A call in progress survives the user navigating anywhere in the application.
+- AC-03.11 A placed call shows its live state — ringing the caller, calling the destination, connected with a running duration, or ended with its reason — within 2 seconds, offers Hang up at every point in flight, survives navigation and a reload, and never shows an ended call as active.
 
 ---
 
@@ -929,7 +931,7 @@ Every failure mode has a defined user experience. "Undefined behaviour" is not a
 
 | Area | Requirement |
 |---|---|
-| **Responsiveness** | Call controls respond within 100 ms. Live figures update within 2 seconds. Any list returns within 2 seconds regardless of size. |
+| **Responsiveness** | Call controls respond within 100 ms. Call state, duration and other live figures update within 2 seconds. Any list returns within 2 seconds regardless of size. |
 | **Honesty of state** | Every live figure shows its freshness. Stale data is visibly marked, never silently displayed. |
 | **Accessibility** | Full keyboard operation of all call controls; screen-reader labelling; no meaning carried by colour alone; WCAG 2.2 AA for agent and admin interfaces. |
 | **Localisation** | All interfaces translatable from the first release; tenant time zone and currency respected everywhere. |

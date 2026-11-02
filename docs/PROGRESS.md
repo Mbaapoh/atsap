@@ -9,11 +9,14 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-02, after `console-click-to-call`: the console
-rings the caller's extension first, dials the destination only when it
-answers, and offers Place a call and Hang up (D-78). Before that,
-2026-11-01, `pbx-carrier-ingress`: tenants that share a carrier each
-receive their own numbers' calls, attributed by the platform (D-77).
+**Last updated:** 2026-11-02, after `console-call-session`: a placed call
+is a shell-level live session with Cancel/Hang up, a global dialer, live
+Call history, and `GetCall` timestamps and reason (D-79). Before that,
+2026-11-02, `console-click-to-call`: the console rings the caller's
+extension first, dials the destination only when it answers, and offers
+Place a call and Hang up (D-78). Before that, 2026-11-01,
+`pbx-carrier-ingress`: tenants that share a carrier each receive their own
+numbers' calls, attributed by the platform (D-77).
 Before that, the same day, `pbx-carrier-addresses`: a carrier is recognised
 from its published signalling ranges, and hosts that cannot be a carrier
 (localhost, loopback) are refused (D-76). Before that, the same day,
@@ -22,11 +25,8 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** `console-call-session` is **proposed and awaiting owner
-approval** (0/32): a shell-level live call session bar, a global dialer,
-live Call history and complete `GetCall` fields; the PRD/HLD/CONSOLE-DESIGN
-changes are in the proposal, not yet applied. After approval, apply it;
-then #5 (trunk health exactly as HLD T-6, with the BR-08 alert). See
+**Next work:** nothing in flight. #5 (trunk health exactly as HLD T-6,
+with the BR-08 carrier-failure alert) is next; see
 [HANDOFF.md](HANDOFF.md) §1.
 
 ## Keeping it current
@@ -47,7 +47,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 15 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 16 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call and the live call session | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -66,7 +66,7 @@ configuration file, and without being told what Asterisk is.
 | A2 Add a user and give them a role | Add by email (one person, many tenants), invite, disable, grant, list, revoke, administrator reset ✅ | U I W E | ✅ Users, roles, permissions (`console-admin-screens`; browser, rig, UAT) |
 | A3 Add an extension a phone can register to | ✅ | U I W E A | ✅ Extensions with registration status, credentials shown once (`console-admin-screens`; UAT: a real phone registers with them) |
 | A4 Connect a SIP trunk and route outbound calls | ✅ (plus DIDs and emergency profile) | U I W E A | ✅ Trunks and routes with health, inbound numbers, emergency (`console-admin-screens`; browser, rig, UAT) |
-| A5 The first real call (out, in, desk phone, emergency) | Calls ✅. Call history list ✅ (`console-apis-phase-a`). Click-to-call ✅ (`console-click-to-call`, D-78) | U I W E A | ✅ Call history with filters, and Place a call / Hang up for administrators (`console-admin-screens`, `console-click-to-call`; UAT: a real call appears and can be placed and ended) |
+| A5 The first real call (out, in, desk phone, emergency) | Calls ✅. Call history list ✅ (`console-apis-phase-a`). Click-to-call and the live session ✅ (`console-click-to-call`, `console-call-session`; D-78/D-79) | U I W E A | ✅ Call history with filters, New call dialer, and a persistent live call bar with Cancel/Hang up (`console-admin-screens`, `console-click-to-call`, `console-call-session`; UAT: a real call appears, is observed, and is ended) |
 
 ### Phase A — next steps, in order
 
@@ -107,6 +107,9 @@ and §5):
 - ~~**Click-to-call**~~ **done 2026-11-02** (`console-click-to-call`):
   the console rings the administrator's extension first, dials the
   destination only on the answer, and offers Hang up; 30 s caller timeout.
+- ~~**Call session UX**~~ **done 2026-11-02** (`console-call-session`,
+  D-79): a persistent live bar, New call dialer, live history and
+  `GetCall` outcome fields.
 - **Trunk health per HLD T-6, implemented as written** (10 s checks,
   thresholds, 5-minute recovery), with the **BR-08 carrier-failure
   alert**.
@@ -177,12 +180,12 @@ that link.
 | 2026-11-01 | `pbx-carrier-addresses` | 9/9 | U I E A; a container carrier recognised from its published range; console field, browser and rig; phone UATs as regression (D-76) |
 | 2026-11-01 | `pbx-carrier-ingress` | 7/7 | U I E A; spike (one ingress, `remote_addr` through ARI, 500 ranges); two tenants on one container carrier each receive their own numbers (D-77) |
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
+| 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
 
 ## Active changes
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-call-session` | **Proposed 2026-11-02, awaiting owner approval**: persistent call session bar, global New call dialer, live Call history, `GetCall` timestamps/reason; PRD/HLD/CONSOLE-DESIGN updates in the proposal | 0/32 |
 | `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps

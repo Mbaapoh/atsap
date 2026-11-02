@@ -2735,6 +2735,73 @@ spec `pbx-core/call-placement`
 
 ---
 
+**D-79 · A call placed from the console is a live session with an always-visible hang-up (2026-11-02).**
+
+**Decision:** Click-to-call is presented as a *session*, not a dialog and a
+toast.
+- A shell-level **call session bar** is visible on every signed-in route:
+  *ringing your extension*, *calling the destination*, *connected with a
+  running duration*, *ended with the reason*, or *failed*. The caller's
+  extension must answer before the destination is dialled (D-78).
+- **Cancel call** before the caller answers; **Hang up** after. Both are
+  immediate, with no confirmation, and the bar is the primary control. The
+  row action in Call history calls the same handler.
+- The console polls `GetCall` every **1 s** while a call is in flight and
+  the tab is visible, stops at `Terminated`, and refetches Call history on
+  each transition. Push events are deferred until the browser softphone
+  (#8) needs them; 1 s meets PRD §14's 2 s bound.
+- `GetCall` gains `started_at`, `answered_at`, `ended_at` and
+  `termination_reason` so the bar can explain an ended call without
+  reading the history. This is additive; no new RPC.
+- A global **New call** action (top bar and Call-history header) opens a
+  dialer: a searchable extension picker with observed registration, a
+  dial pad, recent numbers, and one primary Call action.
+- **One active click-to-call session** in Phase A. A second placement is
+  refused in the UI while one is live; multiple calls wait for the
+  softphone and call waiting.
+- The active call id is kept in `sessionStorage` (never a token or secret)
+  so a reload can re-attach; the bar clears it when the call ends.
+- **Phase A scope:** call **status and hang-up** are Phase A (they are
+  needed for click-to-call). **Hold, mute, transfer, park and conference**
+  remain Phase B. This narrows HLD-19 §2's earlier blanket exclusion of
+  "live call controls".
+
+**Context:** The first click-to-call shipped the API but not the session.
+The dialog vanished, a six-second toast was the only feedback, Call
+history never refreshed (so an ended call could still read `Presenting`),
+and hang-up lived in a row menu. The owner's three test calls on
+2026-11-02 all ended `caller_no_answer` after 30 s while the console never
+said the caller's phone was still ringing or offered a cancel. 3CX and
+VitalPBX both treat a call as a persistent panel with a live state and a
+one-click hang-up; that is the expected VoIP interaction.
+
+**Alternatives rejected:**
+- Keep the dialog open until the call ends: blocks the console and cannot
+  satisfy PRD AC-03.10 (a call survives navigation).
+- A toast with an action: transient and not a reliable primary control.
+- Server-sent events/WebSocket now: a second transport, auth and
+  reconnect surface; polling at 1 s already meets the latency requirement.
+  Revisit with the softphone.
+- Poll `ListCalls` to find the call: wrong shape, heavier, needs filters;
+  the call id from `PlaceCall` is the resource.
+- A stack of simultaneous sessions: needs hold/switch semantics Phase A
+  does not have.
+- A confirmation before hang-up: every VoIP client hangs up immediately;
+  a delayed hang-up is worse.
+- Store the session only in memory: a reload would lose the only hang-up
+  control; a call id is not a credential.
+
+**Trade-off accepted:** one active click-to-call and 1 s polling while the
+tab is visible. A registered device nobody answers holds a licence channel
+until the placement timeout (D-78), which the bar now makes visible.
+
+**Related Decisions:** D-36, D-43, D-46, D-65, D-78
+**Traceability:** BRD FBR-R1-01, §16; PRD EPIC-03 (AC-03.9, AC-03.10, §14);
+HLD-18 A5; HLD-19 §§2, 5–7; `docs/CONSOLE-DESIGN.md` ("Call history");
+`openspec/changes/console-call-session` (design D1–D11)
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

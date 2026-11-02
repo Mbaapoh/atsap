@@ -14,13 +14,13 @@ pilot), in this order:
 
 | # | What | State | How to start |
 |---|---|---|---|
-| **7a** | **Call session UX** (owner request, 2026-11-02): a persistent call bar with live state and one-click Hang up/Cancel, a global dialer (searchable extension, keypad, recents), live Call history, and `GetCall` timestamps/reason | **Proposed, awaiting owner approval**: `openspec/changes/console-call-session` (all planning artifacts done, 0/32 tasks). Decisions D1–D11 and the PRD/HLD scope change need the owner's sign-off | `/opsx:apply console-call-session` **after approval** |
+| **7a** | **Call session UX** (owner request, 2026-11-02): a persistent call bar with live state and one-click Hang up/Cancel, a global dialer (searchable extension, keypad, recents), live Call history, and `GetCall` timestamps/reason | **Done and archived 2026-11-02** (`console-call-session`, D-79); proven by full Go e2e, all three phone UATs, `make console-check` and the console tiers | — |
 | **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **Done and archived 2026-11-02** (`console-click-to-call`, D-78); proven by e2e, all three phone UATs and `make console-check` | — |
 | **5** | **Trunk health exactly as HLD T-6** ([hld/11-decisions.md](hld/11-decisions.md)): check every 10 s; *Degraded* after 3 consecutive failed checks **or** > 20 % call-setup failures over 60 s (min 5 calls); recover only after 5 min of healthy checks | Not planned yet. The owner chose **implement T-6 as written**, not amend it | `/opsx:propose` a change (suggested name `pbx-trunk-health-thresholds`) |
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | Not planned. Pairs naturally with #5: alert on the thresholded state change, never on one failed check | Same change as #5, or the next one |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | Not planned. The owner placed it in this phase | `/opsx:propose`. It needs owner decisions first (see §5) |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`, and **#7 is done and archived 2026-11-02** (`console-click-to-call`, D-78). **#7a is the owner's follow-up request the same day** and awaits their approval; after it, **#5 is next.** PROGRESS's own "Before a pilot" list continues after these with toll-fraud classes and Sign in with Google.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 is done and archived 2026-11-02** (`console-click-to-call`, D-78); **#7a is done and archived the same day** (`console-call-session`, D-79). **#5 is next.** PROGRESS's own "Before a pilot" list continues after these with toll-fraud classes and Sign in with Google.
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -28,6 +28,19 @@ The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3
 ---
 
 ## 2. What was done this week
+
+### 2026-11-02 — live call session and dialer (D-79)
+
+`console-call-session` archived. A placed call is now a shell-level session:
+the bar shows *ringing your extension*, *calling the destination*,
+*connected with a duration*, or *ended with the reason*, with **Cancel call**
+before the answer and **Hang up** after — one click, no confirmation. A
+global **New call** dialer offers a searchable registered-extension picker, a
+dial pad and recent numbers. Call history refreshes every second while a call
+is in flight, ticks the duration, and gives live rows a direct Hang up.
+`GetCall` now carries `started_at`, `answered_at`, `ended_at` and
+`termination_reason`. The PRD/HLD/CONSOLE-DESIGN/API docs and D-79 record it;
+the phone UATs, full Go e2e and `make console-check` pass.
 
 ### 2026-11-02 — click-to-call (D-78)
 

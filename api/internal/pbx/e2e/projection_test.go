@@ -418,7 +418,11 @@ func TestG1_ProjectionIsLiveWithoutAnApplyStep(t *testing.T) {
 			"tenantId": r.tenant.String(), "extensionId": ext.ExtensionID,
 		}, nil, http.StatusOK)
 
-		assert.Equal(t, http.StatusUnauthorized, registerOnce(t, ext.AuthUsername, secret),
+		// Asterisk refuses a REGISTER for a deleted endpoint with 401 while a
+		// cached endpoint still exists, and 404 once it is gone. Both are
+		// refusals; this test is about immediacy, not which 4xx the
+		// distributor chooses.
+		assert.Contains(t, []int{http.StatusUnauthorized, http.StatusNotFound}, registerOnce(t, ext.AuthUsername, secret),
 			"the correct secret must stop working the moment the extension is deleted — no reload issued")
 
 		// The endpoint itself is what deprovisioning removes, and its

@@ -83,9 +83,37 @@ func TestGetCall_Success(t *testing.T) {
 	assert.Equal(t, tenantID.String(), resp.Msg.GetTenantId())
 	assert.Equal(t, "Active", resp.Msg.GetState())
 	assert.Equal(t, "1000", resp.Msg.GetSourceNumber())
+	assert.Equal(t, call.StartedAt, resp.Msg.GetStartedAt().AsTime(), "the start time is always reported")
+	assert.Nil(t, resp.Msg.GetAnsweredAt(), "an Active fixture without an AnsweredAt leaves the field unset")
+	assert.Nil(t, resp.Msg.GetEndedAt())
+	assert.Empty(t, resp.Msg.GetTerminationReason())
 	require.Len(t, resp.Msg.GetParticipants(), 1)
 	assert.Empty(t, resp.Msg.GetParticipants()[0].GetEndpointUri(), "the deprecated endpoint field is never filled (phase-a-hardening task 2.1)")
 	assert.Equal(t, int32(42), resp.Msg.GetParticipants()[0].GetBillableSeconds())
+}
+
+func TestGetCall_TerminatedReportsTimesAndReason(t *testing.T) {
+	store := newFakeCallStore()
+	call, tenantID := testCall(t)
+	answered := call.StartedAt.Add(5 * time.Second)
+	ended := answered.Add(42 * time.Second)
+	call.AnsweredAt = &answered
+	call.EndedAt = &ended
+	call.TerminationReason = "caller_no_answer"
+	call.State = domain.CallTerminated
+	store.calls[call.ID.String()] = call
+
+	handler := rpc.NewTelephonyHandler(store, nil)
+	resp, err := handler.GetCall(context.Background(), connect.NewRequest(&atsapbxv1.GetCallRequest{
+		CallId: call.ID.String(), TenantId: tenantID.String(),
+	}))
+	require.NoError(t, err)
+
+	assert.Equal(t, "Terminated", resp.Msg.GetState())
+	assert.Equal(t, call.StartedAt, resp.Msg.GetStartedAt().AsTime())
+	assert.Equal(t, answered, resp.Msg.GetAnsweredAt().AsTime())
+	assert.Equal(t, ended, resp.Msg.GetEndedAt().AsTime())
+	assert.Equal(t, "caller_no_answer", resp.Msg.GetTerminationReason())
 }
 
 func TestGetCall_NotFound(t *testing.T) {

@@ -26,11 +26,13 @@ The console enables the five HLD-18 journeys:
 | A2 | Provision/list users; manage status and role bindings | identity |
 | A3 | Configure extensions; show observed registration state; reveal secrets once | pbx-core |
 | A4 | Configure trunks, outbound routes, inbound numbers, and emergency settings; show observed health | pbx-core |
-| A5 | Show read-only, filtered and paged Call history | telephony-core |
+| A5 | Show filtered and paged Call history; place a call from a registered extension; show its live session and end it from the shell | telephony-core, pbx-core |
 
 Phase A excludes User-to-Extension assignment, agents, queues, IVR, voicemail,
-recording, reporting, live call controls, and partner commerce. Those receive
-their own console slice alongside the Phase B/C capabilities that own them.
+recording, reporting, hold/transfer/park/conference, and partner commerce.
+Call **status and hang-up** are Phase A because click-to-call needs them
+(D-79); the other live call controls receive their own console slice with the
+Phase B/C capabilities that own them.
 
 ## 3. Logical architecture
 
@@ -128,13 +130,19 @@ AppShell
 │   ├── Connectivity and routing
 │   ├── Call history
 │   └── Account (utility link)
-├── Top bar: Tenant · Licence status pill (links to /licence) · account
+├── Top bar: New call · Tenant · Licence status pill (links to /licence) · account
+├── CallSessionProvider: the live call id, polling and shell call bar
 └── Feature boundaries
     ├── identity      users, roles, account
     ├── licensing     status, activation
     ├── pbx-core      extensions, trunks, routes, DIDs, emergency
     └── telephony     Call history
 ```
+
+The call session is the one deliberate cross-page piece of client state: it
+holds one active call id and its last `GetCall` snapshot, and it is what lets
+the bar survive navigation (D-79). Its polling is paused while the tab is
+hidden and stops at Terminated.
 
 Feature-local server-state queries are cached and invalidated after a successful
 mutation. The UI does not optimistically apply a licence, rotate a secret,
@@ -149,12 +157,16 @@ the authoritative resource after success.
 | Extension registration | `Registered` or `Not registered` is observed device state, never an editable toggle. |
 | Trunk health | `Healthy`, `Degraded`, and `Unhealthy` are observed state, never an input. A reason is a status detail, not a timestamp. |
 | Call lifecycle | Render API Call states and termination reason. Derived labels are supplementary and never replace lifecycle state. |
+| Call session | The shell bar follows `GetCall` every second while the call is in flight (visible tab), stops at Terminated, and never shows an ended call as active. The caller's ring is distinct from the destination's, and the primary action is Cancel before the caller answers and Hang up after. |
 | Pending configuration | A successful response is shown as live only when the API reports it live. Otherwise render the real pending state (PRD AC-10.9). |
 
 ## 7. Accessibility and responsive requirements
 
 - Meet WCAG 2.2 AA contrast; colour is accompanied by text and icon.
 - All functions are keyboard reachable with visible focus and semantic labels.
+- The call session bar is a named region; a new call moves focus to it, its
+  state text is a polite live region, and its actions are at least 44 px on a
+  phone. Below 768 px it is a bottom sheet with the primary action full width.
 - Tables preserve all information through horizontal scrolling, then labelled
   compact cards on narrow screens.
 - The 240 px desktop navigation rail becomes a focus-managed modal drawer at
@@ -175,7 +187,9 @@ Browser E2E proves A1–A5 through the running public API. At minimum it proves:
    secret flow;
 4. trunk create/update/delete, observed health, long-prefix route explanation,
    route create/delete, inbound number assignment, and emergency settings;
-5. Call-history pagination and combined date/direction/state filters;
+5. Call-history pagination and combined date/direction/state filters; the
+   live call session bar (ringing, connected, ended, cancel/hang up) and its
+   survival across navigation;
 6. a wire/render scan proving no credential or engine identifier reaches the
    browser.
 

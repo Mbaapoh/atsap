@@ -10,6 +10,17 @@ Read [[DECISIONS.md]] first — most of what's below is just this document
 applying those decisions concretely; don't re-litigate a decision that's
 already there.
 
+## Console live call state (D-79)
+
+A call placed from the console is a client-side session, not a one-off
+dialog: the shell holds one call id, polls `TelephonyService.GetCall` every
+second while the tab is visible, stops at Terminated, and renders a
+persistent bar with Cancel/Hang up. The poll is a public read over the same
+ConnectRPC transport; there is no private console endpoint (D-43). Push
+events are deferred until the browser softphone needs them. The call id is
+the only persisted value (`sessionStorage`); tokens stay in memory
+(HLD-19 §4). See D-79, HLD-19 §6 and CONSOLE-DESIGN "Call history".
+
 ## Terminology note — Leg superseded by Participant
 
 `docs/DECISIONS.md` D-17 and D-18 originally introduced this domain concept

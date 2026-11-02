@@ -12,5 +12,9 @@ beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 afterEach(() => {
   server.resetHandlers();
   cleanup();
+  // A test's call session is presentation state for that test only; the
+  // next test must not start with a stored call id.
+  sessionStorage.clear();
+  localStorage.clear();
 });
 afterAll(() => server.close());

@@ -132,12 +132,20 @@ func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[ats
 	}
 
 	resp := &atsapbxv1.GetCallResponse{
-		CallId:       call.ID.String(),
-		TenantId:     call.TenantID.String(),
-		State:        string(call.State),
-		Direction:    string(call.Direction),
-		SourceNumber: call.SourceNumber,
-		DestNumber:   call.DestNumber,
+		CallId:            call.ID.String(),
+		TenantId:          call.TenantID.String(),
+		State:             string(call.State),
+		Direction:         string(call.Direction),
+		SourceNumber:      call.SourceNumber,
+		DestNumber:        call.DestNumber,
+		StartedAt:         timestamppb.New(call.StartedAt),
+		TerminationReason: call.TerminationReason,
+	}
+	if call.AnsweredAt != nil {
+		resp.AnsweredAt = timestamppb.New(*call.AnsweredAt)
+	}
+	if call.EndedAt != nil {
+		resp.EndedAt = timestamppb.New(*call.EndedAt)
 	}
 	for _, p := range call.Participants {
 		resp.Participants = append(resp.Participants, &atsapbxv1.Participant{

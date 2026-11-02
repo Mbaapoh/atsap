@@ -44,6 +44,16 @@ message GetCallResponse {
   string source_number = 5;
   string dest_number = 6;
   repeated Participant participants = 7;
+  // started_at is when the call was created; always set.
+  google.protobuf.Timestamp started_at = 8;
+  // answered_at is when the call became Active (the second participant
+  // answered); unset while it has not.
+  google.protobuf.Timestamp answered_at = 9;
+  // ended_at and termination_reason are set only once the call is
+  // Terminated. The reason is the platform's own vocabulary (for example
+  // caller_no_answer or normal clearing), never engine text.
+  google.protobuf.Timestamp ended_at = 10;
+  string termination_reason = 11;
 }
 
 message Participant {

@@ -11,6 +11,10 @@ interface AppShellProps {
   // notice is a shell-wide message shown above every page, such as the
   // session-expiry warning.
   notice?: ReactNode;
+  // callAction and callBar are the global New call action and the live call
+  // session (D-79). They are injected so the shell stays feature-agnostic.
+  callAction?: ReactNode;
+  callBar?: ReactNode;
 }
 
 // AppShell is the signed-in frame (CONSOLE-DESIGN "App shell", HLD-19 §7):
@@ -18,7 +22,7 @@ interface AppShellProps {
 // below 768 px, a top bar, and the page. After each navigation it moves
 // focus to the page heading and announces the new page, so keyboard and
 // screen-reader users land where sighted users look.
-export function AppShell({ tenant, licence, notice }: AppShellProps) {
+export function AppShell({ tenant, licence, notice, callAction, callBar }: AppShellProps) {
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -61,7 +65,8 @@ export function AppShell({ tenant, licence, notice }: AppShellProps) {
         <NavLinks />
       </nav>
       <div className="shell-main">
-        <TopBar tenant={tenant} licence={licence} menuOpen={drawerOpen} onMenu={() => setDrawerOpen(true)} menuButtonRef={menuButton} />
+        <TopBar tenant={tenant} licence={licence} callAction={callAction} menuOpen={drawerOpen} onMenu={() => setDrawerOpen(true)} menuButtonRef={menuButton} />
+        {callBar}
         <main id="main" ref={mainRef} className="content" tabIndex={-1}>
           {notice}
           <Outlet />

@@ -90,7 +90,7 @@ navigation rail on desktop and a slide-out drawer on small screens.
 | `/users` | Users | List users, invite/provision, disable, reset passwords, grant and revoke roles. |
 | `/extensions` | Extensions | List, create, edit, provision, rotate a secret, and delete extensions; show registration state. |
 | `/trunks` | Connectivity and routing | Manage trunks, observed trunk health, outbound routes, inbound numbers, and emergency settings. |
-| `/calls` | Call history | Paged and filtered Tenant call history, with Place a call and Hang up for administrators. |
+| `/calls` | Call history | Paged and filtered Tenant call history, with New call and a live call session (Cancel/Hang up) for administrators. |
 | `/account` | Account | Change password and sign out. |
 
 `/licence` is the only usable destination after sign-in when the
@@ -254,27 +254,58 @@ public inbound and emergency configuration APIs.
 
 ### Call history
 
-This is a read-only, paged operational record. List time, direction, from, to,
-extension number/name where available, actual Call state, duration, and
-termination reason. Provide date-range, direction, and state filters that map
-directly to `ListCalls`; all three filters must be sent to the API and work
-together. Do not substitute invented states such as “Answered”, “Missed”, or
-“Failed” for the Call lifecycle. A derived presentation label may be added
-only when its rule is explicit and the underlying state remains visible.
+A paged operational record plus the console's call actions (D-79). List time,
+direction, from, to, extension number/name where available, actual Call state,
+duration, and termination reason. Provide date-range, direction, and state
+filters that map directly to `ListCalls`; all three filters must be sent to the
+API and work together. Do not substitute invented states such as “Answered”,
+“Missed”, or “Failed” for the Call lifecycle. Never display Asterisk endpoint
+names, channel IDs, bridge IDs, or other engine identifiers. Do not label a
+number as a user or agent: Phase A knows only Call Participants, numbers, and
+extension names.
 
-Never display Asterisk endpoint names, channel IDs, bridge IDs, or other engine
-identifiers. Do not label a number as a user or agent: Phase A knows only Call
-Participants, numbers, and extension names.
+**A call is a session, not a toast.** The application shell carries a
+persistent **call bar** on every signed-in route. It survives navigation and a
+reload (the non-secret call id is kept in `sessionStorage`; never a token).
+Its states are fixed copy:
 
-Administrators holding `call.place` get **Place a call**: choose an
-extension the platform observes as registered, then the number. The
-extension rings first and the destination is dialled only when it answers;
-the dialog and the toast say so. Presenting and Active rows offer **Hang
-up**, with a confirmation naming the party. Refusals are console words —
-no route, trunk at capacity, no registered device, refused — never the
-server's text. Agents and supervisors get these actions in Phase B,
-together with extension ownership (D-65), so "call from my phone" has a
-meaning.
+| State | Heading | Detail | Primary action |
+|---|---|---|---|
+| Starting | Starting call | Asking the platform to place it | Cancel |
+| Ringing caller | Ringing your extension 1001 | Answer your phone to continue. 1002 is not dialled yet. | Cancel call |
+| Calling destination | Calling 1002… | Connected to 1001. Waiting for 1002 to answer. | Hang up |
+| Connected | In call with 1002 | 00:12 · from extension 1001 | Hang up |
+| Ended — timeout | Call ended — 1001 did not answer | 1002 was never dialled. | Dismiss |
+| Ended — normal | Call ended — normal clearing | 00:42 · from extension 1001 | Dismiss |
+| Failed | Call could not be placed | No extension or outbound route matches that number. | Dismiss |
+
+Hang up is immediate: there is **no confirmation**. Before the caller answers
+the action reads **Cancel call**, because no one else has been rung. The bar is
+a named region with a polite live region; a new call moves focus to it. On
+desktop it is a strip under the top bar; below 768 px it is a bottom sheet with
+a full-width 44 px action.
+
+**New call.** A global **New call** action in the top bar (and the Call-history
+header) opens a dialer: a searchable **From** extension picker (number, name
+and observed registration; unregistered options disabled), a large **To** field,
+a dial pad, the last five distinct recent numbers from Call history, and one
+primary **Call** action. It says, in words, “Your phone rings first. Answer it
+to be connected.” The Call button is disabled until a registered extension is
+chosen and the number matches the server rule (optional leading `+`, 1–32
+digits). Immediate refusals are console words — no route, trunk at capacity, no
+registered device, refused — never the server's text. While a call is live the
+global action is disabled with “A call is in progress”.
+
+**Live history.** While a call is in flight the list refetches every second and
+shows a **Live · updated** pill; an Active row ticks its duration from the
+answer time; Presenting and Active rows get a direct **Hang up** button, not
+only a menu. The session bar remains the primary control. When the call ends
+the row shows Terminated with the reason, and it is never shown as active after
+that (PRD AC-03.9).
+
+Agents and supervisors get these actions in Phase B, together with extension
+ownership (D-65). Hold, mute, transfer, park and conference are Phase B; Phase A
+has status and hang-up only.
 
 Current API access is Tenant-wide for authenticated users. The UI must not
 claim history is person- or agent-scoped; those views arrive with Phase B

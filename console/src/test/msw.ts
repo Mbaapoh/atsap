@@ -25,6 +25,7 @@ const api = (procedure: string) => `http://localhost:3000/atsapbx.v1.${procedure
 
 // The overview's reads default to an empty tenant: no other users, no
 // extensions, trunks, routes or calls.
+export const GET_CALL_URL = api("TelephonyService/GetCall");
 export const OVERVIEW_URLS = {
   principals: api("IdentityService/ListPrincipals"),
   extensions: api("PbxService/ListExtensions"),
@@ -46,6 +47,7 @@ export const server = setupServer(
   http.post(OVERVIEW_URLS.trunks, () => HttpResponse.json({})),
   http.post(OVERVIEW_URLS.routes, () => HttpResponse.json({})),
   http.post(OVERVIEW_URLS.calls, () => HttpResponse.json({})),
+  http.post(GET_CALL_URL, () => HttpResponse.json({ callId: "c0", state: "Presenting", participants: [{ role: "CALLER", state: "Invited" }] })),
   http.post(INBOUND_URL, () => HttpResponse.json({})),
   http.post(EMERGENCY_URL, () => HttpResponse.json({ countryCode: "CM", countrySet: true, inCatalogue: true, numbers: [{ number: "112", builtIn: true }] })),
   http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp" })),
