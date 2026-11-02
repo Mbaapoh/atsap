@@ -9,18 +9,22 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-01 (end of week), after `pbx-carrier-ingress`: tenants that
-share a carrier each receive their own numbers' calls, attributed by the
-platform (D-77).
+**Last updated:** 2026-11-02, after `console-click-to-call`: the console
+rings the caller's extension first, dials the destination only when it
+answers, and offers Place a call and Hang up (D-78). Before that,
+2026-11-01, `pbx-carrier-ingress`: tenants that share a carrier each
+receive their own numbers' calls, attributed by the platform (D-77).
+Before that, the same day, `pbx-carrier-addresses`: a carrier is recognised
+from its published signalling ranges, and hosts that cannot be a carrier
+(localhost, loopback) are refused (D-76). Before that, the same day,
+`pbx-trunk-host-resolution`: one tenant's unresolvable trunk host no
+longer stalls carrier calls for every tenant (D-75). Before that,
+2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
+and the console linter.
 
-**In flight (2026-11-02):** none. `console-click-to-call` is archived
-(D-78); the next pre-pilot work is #5, trunk health exactly as HLD T-6,
-with the BR-08 carrier-failure alert (see [HANDOFF.md](HANDOFF.md) §1). Before that, the same day, `pbx-carrier-addresses`: a carrier
-is recognised from its published signalling ranges, and hosts that cannot
-be a carrier (localhost, loopback) are refused (D-76). Before that, the
-same day, `pbx-trunk-host-resolution`: one tenant's unresolvable trunk
-host no longer stalls carrier calls for every tenant (D-75). Before that, 2026-10-14, `pbx-trunk-health-probing` (trunk
-health from a real check) and the console linter.
+**Next work:** nothing in flight. #5 (trunk health exactly as HLD T-6,
+with the BR-08 carrier-failure alert) is next; see
+[HANDOFF.md](HANDOFF.md) §1.
 
 ## Keeping it current
 
