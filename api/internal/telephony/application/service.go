@@ -279,10 +279,21 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	// ParticipantAnswered once that extension answers. The timer ends a
 	// placement nobody picks up, and the destination is never rung.
 	if cmd.Ordered {
-		if err := s.originateParticipant(ctx, cmd.TenantID, callID, caller, ""); err != nil {
+		callerTimeout := cmd.CallerTimeout
+		if callerTimeout <= 0 {
+			callerTimeout = ports.DefaultCallerTimeout
+		}
+		// Arm before originating: the caller can answer while this
+		// function is still running, and the ordered state must exist
+		// first or the answer would be treated as an ordinary one and
+		// the destination would never be rung.
+		s.armCallerTimeout(ctx, callID, caller.ID, callerTimeout)
+		// Give the engine a longer alerting window than the platform's
+		// timer, so the timer — not the engine — decides the reason
+		// (caller_no_answer) and the capacity release.
+		if err := s.originateParticipantWithTimeout(ctx, cmd.TenantID, callID, caller, "", callerAlertSeconds(callerTimeout)); err != nil {
 			return shareddomain.CallID{}, fmt.Errorf("originate caller: %w", err)
 		}
-		s.armCallerTimeout(ctx, callID, caller.ID, cmd.CallerTimeout)
 		return callID, nil
 	}
 
@@ -310,6 +321,18 @@ func (s *Service) armCallerTimeout(ctx context.Context, callID shareddomain.Call
 	s.ordered[callID.String()] = oc
 	oc.timer = time.AfterFunc(timeout, func() { s.callerTimedOut(timerCtx, callID) })
 	s.mu.Unlock()
+}
+
+// callerAlertSeconds is the caller leg's engine alerting window: a few
+// seconds longer than the placement timer, so the platform's timer fires
+// first and records caller_no_answer rather than the engine's generic
+// no-answer timeout.
+func callerAlertSeconds(timeout time.Duration) int {
+	seconds := int(timeout/time.Second) + 5
+	if timeout%time.Second != 0 {
+		seconds++
+	}
+	return seconds
 }
 
 // callerTimedOut ends an ordered placement whose caller never answered:
@@ -949,6 +972,13 @@ func (s *Service) endForRemaining(ctx context.Context, call *domain.Call, now ti
 // bridgeID is intentionally empty here: no bridge exists yet at
 // origination time — ensureBridge creates it on the first connect.
 func (s *Service) originateParticipant(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID, p *domain.CallParticipant, callerID string) error {
+	return s.originateParticipantWithTimeout(ctx, tenantID, callID, p, callerID, s.timeoutSeconds)
+}
+
+// originateParticipantWithTimeout is originateParticipant with an
+// explicit engine alerting window, for the caller-first leg whose timer
+// the platform must win.
+func (s *Service) originateParticipantWithTimeout(ctx context.Context, tenantID shareddomain.TenantID, callID shareddomain.CallID, p *domain.CallParticipant, callerID string, timeoutSeconds int) error {
 	req := ports.OriginateRequest{
 		EndpointURI: p.EndpointURI,
 		CallerID:    callerID,
@@ -958,7 +988,7 @@ func (s *Service) originateParticipant(ctx context.Context, tenantID shareddomai
 			"ATSA_CALL_ID":        callID.String(),
 			"ATSA_PARTICIPANT_ID": p.ID.String(),
 		},
-		TimeoutSeconds: s.timeoutSeconds,
+		TimeoutSeconds: timeoutSeconds,
 	}
 	channelRef, err := s.mediaGateway.Originate(ctx, req)
 	if err != nil {

@@ -73,6 +73,10 @@ type agent struct {
 	port     int
 	user     string
 	ringOnly atomic.Bool
+	// answerDelay holds the caller ringing before this endpoint answers
+	// (nanoseconds), so a test can prove the destination is not dialled
+	// until the caller picks up.
+	answerDelay atomic.Int64
 
 	mu      sync.Mutex
 	invites []string // Request-URI user of each INVITE received
@@ -111,6 +115,9 @@ func startAgent(t *testing.T, host string, port int, user string) *agent {
 		_ = tx.Respond(sip.NewResponseFromRequest(req, 180, "Ringing", nil))
 		if a.ringOnly.Load() {
 			return
+		}
+		if d := time.Duration(a.answerDelay.Load()); d > 0 {
+			time.Sleep(d)
 		}
 		res := sip.NewResponseFromRequest(req, 200, "OK", []byte(a.sdp()))
 		res.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
@@ -310,6 +317,27 @@ func (p *placementRig) state(t *testing.T, callID string) string {
 	return out.State
 }
 
+// terminationReason reads the call's reason from ListCalls: GetCall does
+// not carry it, and this is the public API's way to see it.
+func (p *placementRig) terminationReason(t *testing.T, callID string) string {
+	t.Helper()
+	var out struct {
+		Calls []struct {
+			CallID            string `json:"callId"`
+			TerminationReason string `json:"terminationReason"`
+		} `json:"calls"`
+	}
+	p.call(t, "TelephonyService/ListCalls", p.token, map[string]any{
+		"tenantId": p.tenant.String(), "state": "Terminated", "limit": 50,
+	}, &out, http.StatusOK)
+	for _, c := range out.Calls {
+		if c.CallID == callID {
+			return c.TerminationReason
+		}
+	}
+	return ""
+}
+
 func (p *placementRig) hangup(t *testing.T, callID string) {
 	t.Helper()
 	p.call(t, "PbxService/HangupCall", p.token, map[string]any{
@@ -436,4 +464,41 @@ func (p *placementRig) callAny(t *testing.T, procedure string, body map[string]a
 		require.NoError(t, json.Unmarshal(buf.Bytes(), out))
 	}
 	return buf.String()
+}
+
+// --- caller first (console-click-to-call D1) ------------------------------
+
+// The carrier must not receive an INVITE while the caller is still
+// ringing; it is dialled only after the caller's phone answers.
+func TestPlaceCall_RingsTheCallerBeforeTheDestination(t *testing.T) {
+	p := newPlacementRig(t, true, 4)
+	p.phone.answerDelay.Store(int64(2 * time.Second))
+
+	callID, _ := p.place(t, p.ext, "+442071234567", http.StatusOK)
+
+	time.Sleep(750 * time.Millisecond)
+	assert.Empty(t, p.carrier.invited(),
+		"the carrier must not be dialled while the caller is still ringing")
+
+	require.Eventually(t, func() bool { return p.state(t, callID) == "Active" },
+		10*time.Second, 200*time.Millisecond, "the call connects once the caller answers")
+	assert.Contains(t, p.phone.invited(), p.ext.AuthUsername, "the caller's phone was rung")
+	assert.Equal(t, []string{"442071234567"}, p.carrier.invited(),
+		"the carrier is dialled only after the caller answers")
+	p.hangup(t, callID)
+}
+
+// An unanswered caller ends the placement with caller_no_answer, and the
+// carrier never sees an INVITE (console-click-to-call spec).
+func TestPlaceCall_UnansweredCallerNeverRingsTheDestination(t *testing.T) {
+	p := newPlacementRig(t, true, 4)
+	p.phone.ringOnly.Store(true)
+
+	callID, _ := p.place(t, p.ext, "+442071234567", http.StatusOK)
+
+	require.Eventually(t, func() bool { return p.state(t, callID) == "Terminated" },
+		45*time.Second, 500*time.Millisecond, "an unanswered caller ends the placement")
+
+	assert.Equal(t, "caller_no_answer", p.terminationReason(t, callID))
+	assert.Empty(t, p.carrier.invited(), "the destination was never rung")
 }

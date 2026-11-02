@@ -385,9 +385,11 @@ func answerOriginated(t *testing.T, h *harness, i int) {
 // destination is never rung before the caller answers").
 func TestInitiateCall_OrderedWaitsForCaller(t *testing.T) {
 	h := newHarness()
-	callID := initiateOrderedCall(t, h, time.Second)
+	callID := initiateOrderedCall(t, h, 20*time.Second)
 
 	require.Len(t, h.mediaGW.originated(), 1, "only the caller is rung before it answers")
+	assert.Greater(t, h.mediaGW.originated()[0].TimeoutSeconds, 20,
+		"the engine must not time the caller out before the placement timer does")
 	saved := h.callStore.get(callID)
 	require.NotNil(t, saved)
 	assert.Equal(t, domain.CallPresenting, saved.State)

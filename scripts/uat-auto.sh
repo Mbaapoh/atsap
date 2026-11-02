@@ -33,23 +33,38 @@ log()  { echo "UAT-AUTO: $1"; }
 
 # ctrl RPC helper: netstring-framed JSON, prints the raw reply.
 ctrl_rpc() { # <port> <command> [params]
+	# Returns as soon as the command's own response arrives. baresip
+	# streams call EVENTS over the same socket, so reading "until quiet"
+	# blocked for the whole life of a call (a dial returned only when the
+	# call ended — once after 2 min 46 s, once past a 300 s timeout).
 	python3 - "$1" "$2" "${3:-}" <<'EOF'
-import socket, json, sys
+import socket, json, sys, time
 port, cmd, params = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 s = socket.create_connection(('127.0.0.1', port), timeout=5)
 payload = json.dumps({'command': cmd, 'params': params, 'token': 'uat-auto'})
 s.sendall(f'{len(payload)}:{payload},'.encode())
-s.settimeout(5)
-out = b''
-try:
-    while True:
+buf, deadline = b'', time.time() + 10
+while time.time() < deadline:
+    try:
         chunk = s.recv(4096)
-        if not chunk:
+    except socket.timeout:
+        break
+    if not chunk:
+        break
+    buf += chunk
+    while b':' in buf:  # netstrings: <len>:<payload>,
+        n, rest = buf.split(b':', 1)
+        if not n.isdigit() or len(rest) < int(n) + 1:
             break
-        out += chunk
-except socket.timeout:
-    pass
-print(out.decode(errors='replace'))
+        msg, buf = rest[:int(n)], rest[int(n) + 1:]
+        try:
+            obj = json.loads(msg)
+        except ValueError:
+            continue
+        if obj.get('response') and obj.get('token') == 'uat-auto':
+            print(msg.decode(errors='replace'))
+            sys.exit(0)
+print(buf.decode(errors='replace'))
 EOF
 }
 

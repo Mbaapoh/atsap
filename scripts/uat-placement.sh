@@ -8,9 +8,12 @@
 #   carrier — baresip standing in for a SIP carrier, IP-authenticated,
 #             answering whatever number it is sent (catchall)
 #
-# PlaceCall rings both at once (LLD-03 §4.1); both auto-answer; the script
-# asserts the call reaches Active, RTP flows in BOTH directions on BOTH
-# phones, and HangupCall ends it. The rig is restored on exit, green or red.
+# PlaceCall rings the caller's phone first; the carrier is dialled only
+# after that phone answers (console-click-to-call D1). The phone answers
+# by hand through its control port, and the script asserts the carrier has
+# not been dialled while it is still ringing. Then RTP must flow in BOTH
+# directions on BOTH phones, and HangupCall must end it. The rig is
+# restored on exit, green or red.
 #
 # Ports: the phones use 5070/5071 and RTP 18000-18039 — the ports a host
 # firewall admitting the Docker bridge is expected to allow (the same
@@ -76,23 +79,38 @@ for k in sys.argv[1].split("."): d=d.get(k, "") if isinstance(d, dict) else ""
 print(d)' "$1"; }
 
 ctrl_rpc() { # <port> <command> [params]
+	# Returns as soon as the command's own response arrives. baresip
+	# streams call EVENTS over the same socket, so reading "until quiet"
+	# blocked for the whole life of a call (a dial returned only when the
+	# call ended — once after 2 min 46 s, once past a 300 s timeout).
 	python3 - "$1" "$2" "${3:-}" <<'EOF'
-import socket, json, sys
+import socket, json, sys, time
 port, cmd, params = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 s = socket.create_connection(('127.0.0.1', port), timeout=5)
 payload = json.dumps({'command': cmd, 'params': params, 'token': 'uat-placement'})
 s.sendall(f'{len(payload)}:{payload},'.encode())
-s.settimeout(5)
-out = b''
-try:
-    while True:
+buf, deadline = b'', time.time() + 10
+while time.time() < deadline:
+    try:
         chunk = s.recv(4096)
-        if not chunk:
+    except socket.timeout:
+        break
+    if not chunk:
+        break
+    buf += chunk
+    while b':' in buf:  # netstrings: <len>:<payload>,
+        n, rest = buf.split(b':', 1)
+        if not n.isdigit() or len(rest) < int(n) + 1:
             break
-        out += chunk
-except socket.timeout:
-    pass
-print(out.decode(errors='replace'))
+        msg, buf = rest[:int(n)], rest[int(n) + 1:]
+        try:
+            obj = json.loads(msg)
+        except ValueError:
+            continue
+        if obj.get('response') and obj.get('token') == 'uat-placement':
+            print(msg.decode(errors='replace'))
+            sys.exit(0)
+print(buf.decode(errors='replace'))
 EOF
 }
 
@@ -198,15 +216,28 @@ done
 [ "$reg" = "REGISTRATION_STATUS_REGISTERED" ] || fail "the phone did not register (last: $reg)"
 log "phone registered"
 
-for p in "$PHONE_CTRL" "$CARRIER_CTRL"; do
-	reply="$(ctrl_rpc "$p" answermode auto)"
-	echo "$reply" | grep -q "changed to: auto" || fail "answermode auto rejected on ctrl port $p: $reply"
-done
+# The caller answers by hand, so the script can observe the ordering.
+reply="$(ctrl_rpc "$PHONE_CTRL" answermode manual)"
+echo "$reply" | grep -q "changed to: manual" || fail "answermode manual rejected on the phone: $reply"
+reply="$(ctrl_rpc "$CARRIER_CTRL" answermode auto)"
+echo "$reply" | grep -q "changed to: auto" || fail "answermode auto rejected on the carrier: $reply"
 
 # --- 4. place the call through the public API ---------------------------
 PLACED="$(api PbxService/PlaceCall "{\"tenantId\":\"$TENANT\",\"extensionId\":\"$EXT_ID\",\"destination\":\"$DEST\"}")" || fail "PlaceCall refused: $PLACED"
 CALL_ID="$(echo "$PLACED" | field callId)"
 log "PlaceCall $DEST → call $CALL_ID"
+
+# The caller is ringing; the carrier must not have been dialled yet.
+state="$(api TelephonyService/GetCall "{\"tenantId\":\"$TENANT\",\"callId\":\"$CALL_ID\"}" | field state)"
+[ "$state" = "Presenting" ] || fail "the caller should be ringing (state: $state)"
+sleep 1
+if grep -qi "Call established" "$CARRIER_LOG"; then
+	fail "the carrier was dialled before the caller answered"
+fi
+log "caller ringing; the carrier has not been dialled"
+
+reply="$(ctrl_rpc "$PHONE_CTRL" accept)"
+echo "$reply" | grep -qi "accept" || log "phone accept reply: $reply"
 
 state=""
 for _ in $(seq 1 30); do
@@ -215,7 +246,10 @@ for _ in $(seq 1 30); do
 	sleep 0.5
 done
 [ "$state" = "Active" ] || fail "the call never became Active (last state: $state)"
-log "call Active — letting media flow for 6 s"
+if ! grep -qi "Call established" "$CARRIER_LOG"; then
+	fail "the carrier was never dialled after the caller answered"
+fi
+log "caller answered; the carrier was dialled afterwards — call Active, letting media flow for 6 s"
 sleep 6
 
 api PbxService/HangupCall "{\"tenantId\":\"$TENANT\",\"callId\":\"$CALL_ID\"}" >/dev/null || fail "HangupCall failed"
