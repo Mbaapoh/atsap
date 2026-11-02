@@ -5,8 +5,12 @@ import { DataTable, type Column } from "../../components/DataTable";
 import { EmptyState } from "../../components/EmptyState";
 import { PageHeader } from "../../components/PageHeader";
 import { Pager } from "../../components/Pager";
+import { RowActions } from "../../components/RowActions";
 import { TextField } from "../../components/TextField";
+import { usePermissions } from "../auth/permissions";
+import { useExtensionDirectory } from "../extensions/adapter";
 import { useCallHistory, type CallRow } from "./adapter";
+import { HangupCallDialog, PlaceCallDialog } from "./CallDialogs";
 import { directionLabel, durationLabel, serverText } from "./copy";
 import { CALL_STATES, DIRECTIONS, readFilters, writeFilters, type CallFilters } from "./filters";
 
@@ -30,6 +34,10 @@ export function CallsPage() {
   const [params, setParams] = useSearchParams();
   const applied = readFilters(params);
   const calls = useCallHistory(applied);
+  const { canAdminister } = usePermissions();
+  const directory = useExtensionDirectory(canAdminister);
+  const [placing, setPlacing] = useState(false);
+  const [hangingUp, setHangingUp] = useState<CallRow | null>(null);
   const [draft, setDraft] = useState<CallFilters>(applied);
   const [rangeError, setRangeError] = useState<string | undefined>();
   const directionId = useId();
@@ -61,7 +69,19 @@ export function CallsPage() {
 
   return (
     <section className="page" aria-labelledby="page-title">
-      <PageHeader title="Call history" description="Calls of this tenant, newest first, as the platform recorded them." />
+      <PageHeader
+        title="Call history"
+        description="Calls of this tenant, newest first, as the platform recorded them."
+        action={
+          canAdminister ? (
+            <button type="button" className="button button-primary" onClick={() => setPlacing(true)}>
+              Place a call
+            </button>
+          ) : undefined
+        }
+      />
+      {canAdminister ? <PlaceCallDialog open={placing} extensions={directory.data ?? []} onClose={() => setPlacing(false)} /> : null}
+      <HangupCallDialog call={hangingUp} onClose={() => setHangingUp(null)} />
       <form className="filters" onSubmit={onApply} noValidate aria-label="Call filters">
         <TextField label="From" type="date" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
         <TextField label="To" type="date" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} error={rangeError} />
@@ -116,6 +136,17 @@ export function CallsPage() {
             columns={columns}
             rows={calls.data}
             rowKey={(c) => c.id}
+            rowActions={
+              canAdminister
+                ? (c) =>
+                    c.state === "Presenting" || c.state === "Active" ? (
+                      <RowActions
+                        label={`call to ${c.to || c.from || "this party"}`}
+                        actions={[{ label: "Hang up…", onSelect: () => setHangingUp(c), destructive: true }]}
+                      />
+                    ) : null
+                : undefined
+            }
             empty={
               filtered ? (
                 <EmptyState title="No calls match these filters">Widen the dates or clear a filter.</EmptyState>

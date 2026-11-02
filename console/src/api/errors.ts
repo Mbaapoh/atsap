@@ -78,6 +78,21 @@ function kindOf(code: Code): ApiErrorKind {
   }
 }
 
+// ErrorDetail is what a feature may learn about a failure without
+// importing the transport: its console kind, and the server's raw text
+// only so the feature can recognise a fixed prerequisite. rawMessage must
+// never be rendered — put it in a comparison, never in the DOM.
+export interface ErrorDetail {
+  kind: ApiErrorKind;
+  rawMessage: string;
+}
+
+export function errorDetail(err: unknown): ErrorDetail {
+  if (err instanceof ApiError) return { kind: err.kind, rawMessage: "" };
+  const ce = ConnectError.from(err);
+  return { kind: kindOf(ce.code), rawMessage: ce.rawMessage };
+}
+
 // toApiError turns anything a call threw into an ApiError.
 export function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;

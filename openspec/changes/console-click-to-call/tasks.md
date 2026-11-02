@@ -19,13 +19,15 @@
 
 ## 2. Console
 
-- [ ] 2.1 The Place-a-call dialog on Call history:
+- [x] 2.1 The Place-a-call dialog on Call history:
   - an extension select (unregistered disabled) and a number field;
   - the `PlaceCall` adapter and copy for every refusal;
   - visible only with `call.place`;
   - a Hang-up row action for Presenting and Active calls.
 
   Component tests, a mocked browser spec (including a 390 px width) and a rig spec placing a real call to an internal extension. Verify `make console-check` (if Node or Chrome workers crash under load, rerun with fewer workers and record it).
+
+  *(done 2026-11-02: `CallDialogs` adds the Place-a-call dialog and a Hang-up confirmation; `PlaceCall`/`HangupCall` live in the calls adapter and invalidate call history; refusals map the server's fixed preconditions to console words through `placeCallError`; both actions show only to administrators (`call.place`/`call.hangup`). The extension directory now carries registration so unregistered extensions are disabled. Component tests cover placement, every refusal, validation, no-device and no-extension states, row hang-up and failure; a stateful mocked browser spec passes at 1280 and 390 px; a rig spec places a real internal call (registered contact) sees it Presenting, and hangs it up. `make console-check` passes (lint, typecheck, 423 component tests with coverage floors, 31 mocked browser specs, 27 rig integration specs, 3 console UATs, audit, gitleaks).)*
 
 ## 3. Docs and close
 

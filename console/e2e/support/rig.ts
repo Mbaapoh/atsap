@@ -178,6 +178,24 @@ export function engineCredential(endpointId: string): string {
   return psql(`SELECT COALESCE(md5_cred, '') FROM ps_auths WHERE id = '${endpointId}';`).trim();
 }
 
+// seedContact makes the platform observe an extension as registered: the
+// engine's realtime contact row is what RegistrationStatus reads. The
+// contact points nowhere, so a call to it rings until the test ends it.
+export function seedContact(extensionId: string): void {
+  const endpoint = `e_${extensionId.replace(/-/g, "")}`;
+  psql(
+    // The id is Asterisk's realtime contact key, "<aor>;@<hash>" encoded
+    // as "<aor>^3B@<hash>"; without it the contact is not found for the
+    // AOR and an outgoing call fails as an invalid URI.
+    `INSERT INTO ps_contacts (id, endpoint, uri, expiration_time) VALUES ('${endpoint}^3B@console-e2e', '${endpoint}', 'sip:${endpoint}@127.0.0.1:5099', ${Math.floor(Date.now() / 1000) + 3600}) ON CONFLICT (id) DO UPDATE SET expiration_time = EXCLUDED.expiration_time;`,
+  );
+}
+
+// forgetContact removes the registration seedContact wrote.
+export function forgetContact(extensionId: string): void {
+  psql(`DELETE FROM ps_contacts WHERE endpoint = 'e_${extensionId.replace(/-/g, "")}';`);
+}
+
 // engineAuthFingerprint is a digest of whatever credential the engine
 // holds for an endpoint (ps_auths password and md5_cred), so a spec can
 // prove it unchanged, changed or gone without reading it.

@@ -72,6 +72,9 @@ export interface ExtensionEntry {
   id: string;
   number: string;
   name: string;
+  // registration is the platform's observation, not configuration: a
+  // call can only be placed from an extension that has one.
+  registration: Registration;
 }
 
 // DIRECTORY_PAGE is the server's largest page (pbx rpc maxPageLimit).
@@ -80,7 +83,7 @@ const DIRECTORY_PAGE = 200;
 // useExtensionDirectory reads every extension of the tenant, page by page,
 // for screens that must name or offer any of them (inbound numbers). It
 // lives under the extensions key, so any extension change refreshes it.
-export function useExtensionDirectory() {
+export function useExtensionDirectory(enabled = true) {
   const { pbx } = useApiClients();
   const tenantId = useTenantId();
   return useQuery<ExtensionEntry[], ApiError>({
@@ -90,11 +93,18 @@ export function useExtensionDirectory() {
         const out: ExtensionEntry[] = [];
         for (let offset = 0; ; offset += DIRECTORY_PAGE) {
           const { extensions } = await pbx.listExtensions({ tenantId, limit: DIRECTORY_PAGE, offset });
-          out.push(...extensions.map((e) => ({ id: e.extensionId, number: e.number, name: e.displayName })));
+          out.push(
+            ...extensions.map((e) => ({
+              id: e.extensionId,
+              number: e.number,
+              name: e.displayName,
+              registration: registrationOf(e.registration),
+            })),
+          );
           if (extensions.length < DIRECTORY_PAGE) return out;
         }
       }),
-    enabled: tenantId !== "",
+    enabled: tenantId !== "" && enabled,
   });
 }
 

@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { rigAvailable, seedCalls, seedUser, signIn, type RigUser } from "./support/rig";
+import { expect, test, type APIRequestContext } from "@playwright/test";
+import { FIXTURE_PASSWORD, forgetContact, rigAvailable, seedCalls, seedContact, seedUser, signIn, type RigUser } from "./support/rig";
 
 // console-admin-screens: HLD-18 A5 (call history) against the real API on
 // the dev rig. Call records are seeded as the telephony core stores them;
@@ -14,7 +14,10 @@ test.beforeEach(() => {
 });
 
 let user: RigUser | undefined;
-test.afterEach(() => {
+let teardown: (() => Promise<void>) | undefined;
+test.afterEach(async () => {
+  await teardown?.();
+  teardown = undefined;
   user?.cleanup();
   user = undefined;
 });
@@ -64,4 +67,55 @@ test("A5: filters are sent together, kept in the address across reload and Back,
 
   const text = (await page.locator("main").textContent()) ?? "";
   expect(text).not.toMatch(/\bAnswered\b|\bMissed\b|\bFailed\b/);
+});
+
+// console-click-to-call task 2.1: place a real call through the console
+// (the caller's extension is registered; the callee is never rung while
+// the caller is still ringing) and end it from the row.
+async function apiToken(request: APIRequestContext, email: string): Promise<string> {
+  const res = await request.post("/atsapbx.v1.AuthService/SignIn", { data: { email, password: FIXTURE_PASSWORD } });
+  return ((await res.json()) as { access: { token: string } }).access.token;
+}
+
+test("A5: place a call from the console, see it ringing, and hang it up", async ({ page, request }) => {
+  user = seedUser(["Acme"]);
+  const tenantId = user.tenants[0]!.id;
+  const token = await apiToken(request, user.email);
+  const create = async (number: string, name: string) => {
+    const res = await request.post("/atsapbx.v1.PbxService/CreateExtension", {
+      data: { tenantId, number, displayName: name, deviceType: "DEVICE_TYPE_SIP" },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(200);
+    return ((await res.json()) as { extension: { extensionId: string } }).extension.extensionId;
+  };
+  const callerId = await create(`78${String(Date.now()).slice(-4)}`, "Console caller");
+  const calleeNumber = `79${String(Date.now()).slice(-4)}`;
+  const calleeId = await create(calleeNumber, "Console callee");
+  seedContact(callerId);
+  teardown = async () => {
+    forgetContact(callerId);
+    for (const extensionId of [callerId, calleeId]) {
+      await request.post("/atsapbx.v1.PbxService/DeleteExtension", { data: { tenantId, extensionId }, headers: { Authorization: `Bearer ${token}` } });
+    }
+  };
+
+  await signIn(page, user.email);
+  await page.goto("/calls");
+  await page.getByRole("button", { name: "Place a call" }).click();
+  const dialog = page.getByRole("dialog", { name: "Place a call" });
+  await dialog.getByLabel("From extension").selectOption(callerId);
+  await dialog.getByLabel("Number to call").fill(calleeNumber);
+  await dialog.getByRole("button", { name: "Call" }).click();
+
+  const table = page.getByRole("table", { name: "Calls of this tenant" });
+  const row = table.getByRole("row").nth(1);
+  await expect(row).toContainText(calleeNumber);
+  await expect(row).toContainText("Presenting");
+
+  await row.getByRole("button", { name: /^Actions for call to / }).click();
+  await page.getByRole("menuitem", { name: "Hang up…" }).click();
+  await page.getByRole("dialog", { name: /Hang up the call with/ }).getByRole("button", { name: "Hang up" }).click();
+  await expect(page.getByText("Call ended.")).toBeVisible();
+  await expect(row).toContainText("Terminated");
 });

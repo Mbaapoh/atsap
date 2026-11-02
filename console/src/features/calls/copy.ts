@@ -1,3 +1,5 @@
+import { errorDetail, toApiError } from "../../api/errors";
+
 // Words for call values. The value itself is never replaced by a
 // different meaning; an unknown value is shown as the server sent it.
 
@@ -32,6 +34,44 @@ const ENGINE_VOCABULARY = [
 ];
 
 export const WITHHELD = "Not shown";
+
+// DIALLED is the server's destination rule (pbx/domain
+// ValidateDestination): an optional leading + then 1-32 digits.
+export const DIALLED = /^\+?[0-9]{1,32}$/;
+
+// PlaceCallFailure is a placement refusal in console words. It carries
+// fixed copy, never the server's message, so nothing raw can reach a
+// dialog.
+export class PlaceCallFailure extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PlaceCallFailure";
+  }
+}
+
+// placeCallError maps the server's fixed placement preconditions
+// (pbx/rpc mapCallErr) to console words by matching those exact prefixes,
+// exactly as the server names them. It never shows the raw message: an
+// unrecognised one falls back to the generic fixed copy.
+export function placeCallError(err: unknown): Error {
+  const detail = errorDetail(err);
+  if (detail.kind === "conflict") {
+    const raw = detail.rawMessage;
+    if (raw.startsWith("destination is unroutable")) {
+      return new PlaceCallFailure("No extension or outbound route matches that number. Check it and try again.");
+    }
+    if (raw.startsWith("trunk capacity")) {
+      return new PlaceCallFailure("Every trunk for that number is at its channel limit. Try again shortly.");
+    }
+    if (raw.startsWith("the calling extension has no registered device")) {
+      return new PlaceCallFailure("That extension has no registered device. Register a phone to it first.");
+    }
+    if (raw.startsWith("call refused")) {
+      return new PlaceCallFailure("The platform refused this call. Check the number and the extension, then try again.");
+    }
+  }
+  return toApiError(err);
+}
 
 // serverText returns server-written text as it came, or WITHHELD when it
 // carries engine vocabulary.

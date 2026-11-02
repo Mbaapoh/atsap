@@ -33,6 +33,8 @@ export const OVERVIEW_URLS = {
   calls: api("TelephonyService/ListCalls"),
 };
 
+export const PLACE_CALL_URL = api("PbxService/PlaceCall");
+export const HANGUP_CALL_URL = api("PbxService/HangupCall");
 export const REGISTRAR_URL = api("PbxService/GetSipRegistrar");
 export const INBOUND_URL = api("PbxService/ListInboundNumbers");
 export const EMERGENCY_URL = api("PbxService/GetEmergencyProfile");
