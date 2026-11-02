@@ -43,6 +43,10 @@ type Placement struct {
 	// WatchInterval and WatchTimeout bound the health observer (D5).
 	WatchInterval time.Duration
 	WatchTimeout  time.Duration
+	// CallerTimeout bounds how long the caller's extension rings before
+	// the placement ends with caller_no_answer (console-click-to-call D1).
+	// Zero uses telephony-core's default.
+	CallerTimeout time.Duration
 }
 
 // DefaultPlacement fills the observer bounds design D5 sets.
@@ -55,6 +59,9 @@ func DefaultPlacement(p Placement) Placement {
 	}
 	if p.WatchTimeout == 0 {
 		p.WatchTimeout = 40 * time.Second
+	}
+	if p.CallerTimeout == 0 {
+		p.CallerTimeout = telephonyports.DefaultCallerTimeout
 	}
 	return p
 }
@@ -262,6 +269,10 @@ func (s *Service) originate(ctx context.Context, leg domain.PlacedCallLeg, calle
 		SourceEndpointURI: p.Addresser.ExtensionAddress(caller.ID),
 		DestEndpointURI:   destAddress,
 		BypassScreening:   leg.Emergency,
+		// Click-to-call rings the caller's extension first and the
+		// destination only once it answers (console-click-to-call D1).
+		Ordered:       true,
+		CallerTimeout: p.CallerTimeout,
 	})
 	if err != nil {
 		s.releaseLeg(ctx, leg)

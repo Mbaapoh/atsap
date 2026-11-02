@@ -10,7 +10,9 @@
   Verify `make test` and `make lint`.
 
   *(done 2026-11-02: `InitiateCallCommand.Ordered` plus `CallerTimeout`; `orderedDestination` originates the destination from the caller's `ParticipantAnswered`, and `callerTimedOut` finalizes with `caller_no_answer` and releases the caller's leg and the licence channel. Unit tests: waits for the caller, duplicate answer does not re-originate, full connect, timeout never rings the destination, answer cancels the timer. `make lint` 0. `make test` (`-race -cover`) passes in a `golang:1.26-bookworm` container because the host's `/usr/lib/gcc/.../libgcc.a` and `liblto_plugin.so` return EIO; the host's `-race` link fails for every package, including an empty program.)*
-- [ ] 1.2 pbx-core placement uses the ordered mode, and the timeout is configuration (`ATSAPBX_PLACEMENT_CALLER_TIMEOUT`, default 30 s). Integration tests for placement. Verify the integration tier on `atsapbx_test`.
+- [x] 1.2 pbx-core placement uses the ordered mode, and the timeout is configuration (`ATSAPBX_PLACEMENT_CALLER_TIMEOUT`, default 30 s). Integration tests for placement. Verify the integration tier on `atsapbx_test`.
+
+  *(done 2026-11-02: `Placement.CallerTimeout`, filled from the new config field, is passed as `Ordered: true` on every placement. Config unit tests cover the default and invalid values; `DefaultPlacement` unit test covers the 30 s fallback; placement integration asserts `Ordered` and the timeout. Integration tier on `atsapbx_test` passes (`internal/pbx/application`, `internal/telephony/...`). `make lint` 0.)*
 - [ ] 1.3 Live: Go e2e (the phone agent answers after a delay, and the carrier receives the INVITE only afterwards; an unanswered caller means the carrier never sees an INVITE), plus `uat-placement` updated to assert the order. Verify the full Go e2e tier and the three phone UATs after `make rig-restore`. The owner's phones on 5070/5071 must be stopped first, **with consent**.
 
 ## 2. Console

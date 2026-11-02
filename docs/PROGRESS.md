@@ -11,7 +11,14 @@ they win and this file is wrong.
 
 **Last updated:** 2026-11-01 (end of week), after `pbx-carrier-ingress`: tenants that
 share a carrier each receive their own numbers' calls, attributed by the
-platform (D-77). Before that, the same day, `pbx-carrier-addresses`: a carrier
+platform (D-77).
+
+**In flight (2026-11-02):** `console-click-to-call` tasks 1.1 and 1.2 are
+done — placement rings the caller first and the destination only on the
+caller's answer, with `ATSAPBX_PLACEMENT_CALLER_TIMEOUT` (default 30 s).
+Next: task 1.3 (live e2e and `uat-placement`, which needs the owner's
+phones on UDP 5070/5071 stopped first), then the console dialog (2.1) and
+the docs/close task (3.1). Before that, the same day, `pbx-carrier-addresses`: a carrier
 is recognised from its published signalling ranges, and hosts that cannot
 be a carrier (localhost, loopback) are refused (D-76). Before that, the
 same day, `pbx-trunk-host-resolution`: one tenant's unresolvable trunk
@@ -168,7 +175,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-click-to-call` | Planned 2026-11-01: ring the caller first, then the destination (closes call-placement G6); Place a call and Hang up on Call history | 0/6 |
+| `console-click-to-call` | In progress 2026-11-02: ordered placement in telephony and pbx-core is done (unit, race, integration, lint green); live e2e/UAT and the console dialog remain | 2/5 |
 | `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps

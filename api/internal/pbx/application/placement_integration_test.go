@@ -182,6 +182,9 @@ func TestPlaceCall_OutboundOverATrunk(t *testing.T) {
 	assert.Equal(t, "PJSIP/442071234567@"+domain.TrunkEndpointIdentifier(tr.ID), cmd.DestEndpointURI, "the other leaves via the trunk")
 	assert.False(t, cmd.BypassScreening, "an ordinary call is screened")
 	assert.Equal(t, "1001", cmd.SourceNumber)
+	assert.True(t, cmd.Ordered, "placement rings the caller before the destination")
+	assert.Equal(t, telephonyports.DefaultCallerTimeout, cmd.CallerTimeout,
+		"the caller timeout defaults to 30 s when not configured")
 
 	assert.Equal(t, 1, p.countTenantRow(t, `SELECT count(*) FROM placed_call_legs WHERE call_id = $1
 		AND trunk_id = $2 AND route_id IS NOT NULL AND released_at IS NULL`, placed.CallID.String(), tr.ID.String()),

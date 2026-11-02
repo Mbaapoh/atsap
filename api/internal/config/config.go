@@ -102,6 +102,12 @@ type Config struct {
 	// schedule off; a trunk is still checked when created or re-addressed.
 	TrunkProbeInterval time.Duration
 
+	// PlacementCallerTimeout is how long a click-to-call placement rings
+	// the caller's extension before the call ends with caller_no_answer
+	// (console-click-to-call D1). It is the ATSAPBX_PLACEMENT_CALLER_TIMEOUT
+	// setting, default 30 s.
+	PlacementCallerTimeout time.Duration
+
 	// LicenseToken is a signed licence in the compact form
 	// domain.SplitToken decodes, supplied so a compose stack, a Helm
 	// chart or a CI job can activate an installation without a portal
@@ -185,6 +191,12 @@ func Load() (Config, error) {
 		return cfg, fmt.Errorf("ATSAPBX_TRUNK_PROBE_INTERVAL must be a duration of 5s or more, or 0 to turn scheduled checks off")
 	}
 	cfg.TrunkProbeInterval = interval
+
+	callerTimeout, err := time.ParseDuration(getEnv("ATSAPBX_PLACEMENT_CALLER_TIMEOUT", "30s"))
+	if err != nil || callerTimeout <= 0 {
+		return cfg, fmt.Errorf("ATSAPBX_PLACEMENT_CALLER_TIMEOUT must be a positive duration")
+	}
+	cfg.PlacementCallerTimeout = callerTimeout
 
 	return cfg, nil
 }

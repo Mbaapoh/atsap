@@ -60,6 +60,9 @@ func TestLoad_Defaults(t *testing.T) {
 		SMTPFrom:   "AtsaPBX <no-reply@localhost>",
 		// Every trunk is checked twice a minute (D-74).
 		TrunkProbeInterval: 30 * time.Second,
+		// Click-to-call rings the caller for 30 s by default
+		// (console-click-to-call D1).
+		PlacementCallerTimeout: 30 * time.Second,
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
@@ -231,6 +234,37 @@ func TestLoad_TrunkProbeInterval(t *testing.T) {
 			}
 			if err != nil || cfg.TrunkProbeInterval != tc.want {
 				t.Errorf("Load() = %v, %v; want %v", cfg.TrunkProbeInterval, err, tc.want)
+			}
+		})
+	}
+}
+
+// console-click-to-call: the caller ring timeout is configurable and must
+// be positive.
+func TestLoad_PlacementCallerTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+		ok    bool
+	}{
+		{"45s", 45 * time.Second, true},
+		{"1m30s", 90 * time.Second, true},
+		{"0", 0, false},
+		{"-5s", 0, false},
+		{"soon", 0, false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv("ATSAPBX_PLACEMENT_CALLER_TIMEOUT", tc.value)
+			cfg, err := Load()
+			if !tc.ok {
+				if err == nil || !strings.Contains(err.Error(), "ATSAPBX_PLACEMENT_CALLER_TIMEOUT") {
+					t.Errorf("Load() error = %v, want one naming ATSAPBX_PLACEMENT_CALLER_TIMEOUT", err)
+				}
+				return
+			}
+			if err != nil || cfg.PlacementCallerTimeout != tc.want {
+				t.Errorf("Load() = %v, %v; want %v", cfg.PlacementCallerTimeout, err, tc.want)
 			}
 		})
 	}

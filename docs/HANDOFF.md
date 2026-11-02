@@ -14,7 +14,7 @@ pilot), in this order:
 
 | # | What | State | How to start |
 |---|---|---|---|
-| **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **Planned**: `openspec/changes/console-click-to-call` (0/6 tasks) | `/opsx:apply console-click-to-call` |
+| **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **In progress**: `openspec/changes/console-click-to-call` (2/5 tasks). Ordered placement in telephony and pbx-core is done; next is task 1.3 (live e2e + `uat-placement`, needs the owner's phones stopped first) | `/opsx:apply console-click-to-call` |
 | **5** | **Trunk health exactly as HLD T-6** ([hld/11-decisions.md](hld/11-decisions.md)): check every 10 s; *Degraded* after 3 consecutive failed checks **or** > 20 % call-setup failures over 60 s (min 5 calls); recover only after 5 min of healthy checks | Not planned yet. The owner chose **implement T-6 as written**, not amend it | `/opsx:propose` a change (suggested name `pbx-trunk-health-thresholds`) |
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | Not planned. Pairs naturally with #5: alert on the thresholded state change, never on one failed check | Same change as #5, or the next one |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | Not planned. The owner placed it in this phase | `/opsx:propose`. It needs owner decisions first (see §5) |
@@ -123,6 +123,9 @@ Run from the repo root; `mise` pins the toolchain (`.mise.toml`, `console/mise.t
 - **The owner's trunks** in Dev Acme are `test` and `trunk2test` (host `localhost`, now "Address not allowed" by design) and `testwithsteriskhost` (host `asterisk`, Healthy).
 - **Test residue:** about 330 throwaway e2e tenants remain in the rig database. Their cleanup cannot delete a tenant that has call rows. They are harmless; making the cleanup complete is a small to-do.
 - **The machine is unstable under heavy parallel load** (2026-11-01, morning and afternoon). Prebuilt tools (OSV-Scanner, govulncheck, golangci-lint, the Go compiler) and Node and Chrome workers died on internal runtime or V8 faults, and the kernel logged `segfault` and `trap int3`. Every gate passed on rerun or with fewer workers (`npx vitest run --coverage --maxWorkers=2`, `npx playwright test --workers=1`). The owner was advised to run a memory test. **A crash inside a tool is not a test failure: rerun before debugging.**
+- **Host toolchain corruption (2026-11-02):** `/usr/lib/gcc/x86_64-pc-linux-gnu/16/libgcc.a` and `liblto_plugin.so` return `Input/output error` on `stat`, so the host's `go test -race` fails for **every** package with `relocation target __popcountdi2 not defined` — even an empty program. This is the filesystem, not the change. Until it is repaired (fsck / reinstall the toolchain), run the race tier in the local Go image:
+  `docker run --rm -v /home/mbaapoh/atsap:/src -v /home/mbaapoh/go/pkg/mod:/gomod:ro -e GOMODCACHE=/gomod -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath -e GOFLAGS=-mod=mod -w /src/api golang:1.26-bookworm go test ./... -race -cover -count=1`
+  Non-race `go test`, `make lint`, integration and e2e are unaffected. Ask the owner before running fsck on a mounted filesystem.
 
 ---
 

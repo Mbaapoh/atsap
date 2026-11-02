@@ -261,6 +261,9 @@ func run() int {
 		Status:    callStatusAdapter{calls: callStore},
 		Addresser: pbxasterisk.Addresser{},
 		Legs:      pbxpostgres.NewCallLegStore(),
+		// Click-to-call rings the caller first; the timeout is
+		// ATSAPBX_PLACEMENT_CALLER_TIMEOUT (default 30 s).
+		CallerTimeout: cfg.PlacementCallerTimeout,
 	})
 	// Inbound numbers and the emergency profile live beside the
 	// configuration stores; the router answers telephony-core's
