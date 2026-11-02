@@ -90,7 +90,7 @@ navigation rail on desktop and a slide-out drawer on small screens.
 | `/users` | Users | List users, invite/provision, disable, reset passwords, grant and revoke roles. |
 | `/extensions` | Extensions | List, create, edit, provision, rotate a secret, and delete extensions; show registration state. |
 | `/trunks` | Connectivity and routing | Manage trunks, observed trunk health, outbound routes, inbound numbers, and emergency settings. |
-| `/calls` | Call history | Read-only, paged and filtered Tenant call history. |
+| `/calls` | Call history | Paged and filtered Tenant call history, with Place a call and Hang up for administrators. |
 | `/account` | Account | Change password and sign out. |
 
 `/licence` is the only usable destination after sign-in when the
@@ -265,6 +265,16 @@ only when its rule is explicit and the underlying state remains visible.
 Never display Asterisk endpoint names, channel IDs, bridge IDs, or other engine
 identifiers. Do not label a number as a user or agent: Phase A knows only Call
 Participants, numbers, and extension names.
+
+Administrators holding `call.place` get **Place a call**: choose an
+extension the platform observes as registered, then the number. The
+extension rings first and the destination is dialled only when it answers;
+the dialog and the toast say so. Presenting and Active rows offer **Hang
+up**, with a confirmation naming the party. Refusals are console words —
+no route, trunk at capacity, no registered device, refused — never the
+server's text. Agents and supervisors get these actions in Phase B,
+together with extension ownership (D-65), so "call from my phone" has a
+meaning.
 
 Current API access is Tenant-wide for authenticated users. The UI must not
 claim history is person- or agent-scoped; those views arrive with Phase B

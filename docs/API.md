@@ -61,7 +61,7 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `CreateRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing (flow A4) |
 | `ListRoutes` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing table |
 | `DeleteRoute` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console outbound routing |
-| `PlaceCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | The UAT harness (BRD §16); the Phase B agent UI. Rings the caller's phone and the far end at once, connecting when both answer |
+| `PlaceCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | The console Call-history action, the UAT harness (BRD §16) and the Phase B agent UI. Rings the caller's extension first and the destination only after it answers; an unanswered caller ends with `caller_no_answer` and the destination is never rung |
 | `HangupCall` | `atsapbx.v1.PbxService` | `pbx-call-placement` (LLD-03) | Ends a call placed with `PlaceCall`; idempotent |
 | `SetEmergencyProfile` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console emergency-country setting; catalogue numbers join 112 from the next call on |
 | `GetEmergencyProfile` | `atsapbx.v1.PbxService` | `pbx-inbound-and-emergency` (LLD-03) | Console emergency view: country, flags, effective numbers marked built-in or own |

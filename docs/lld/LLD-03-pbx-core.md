@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-02 | **§4.1 and §11.2: placement rings the caller first** (`console-click-to-call`, design D1). `InitiateCall` gains an ordered mode: the caller's leg is originated alone, the destination's from the caller's `ParticipantAnswered`, and a placement timeout (default 30 s) ends an unanswered caller with `caller_no_answer`, never ringing the destination and releasing the licence channel. The engine's alerting window is set longer than the placement timer so the platform owns the reason. The console gets Place a call and Hang up on Call history. |
 | 2026-11-01 | **§7.7: carrier traffic enters through one ingress and is attributed by the platform** (`pbx-carrier-ingress`, D-77). Per-trunk identify rows are gone. One tenantless `carrier-ingress` endpoint recognises every trunk's addresses, and each call is attributed by its transport source address (`CHANNEL(pjsip,remote_addr)`) and the dialled number: exactly one trunk routes, none or several refuse 404. Two tenants on one carrier each receive their own numbers. One flag-guarded cross-tenant read (migration 0016). Also: the identify match is TEXT (migration 0015), and an unreachable destination is refused 480, never left ringing. |
 | 2026-11-01 | **§7.5–7.6 and §10.5: carriers recognised from their published ranges; non-carrier addresses refused** (`pbx-carrier-addresses`, D-76). `Trunk` gains `InboundAddresses` (migration 0014); identify is the union of the host's carrier addresses and those ranges. Hosts and addresses that cannot be a carrier (localhost, loopback, link-local, unspecified, multicast) are refused, never checked and never recognised; such a trunk reads "Address not allowed". |
 | 2026-11-01 | **§7.5: a carrier is recognised by address, never by name** (`pbx-trunk-host-resolution`, D-75). The engine resolved every trunk host name in its identify rows while identifying each carrier request, so one tenant's typo (`locslhodt`) stalled carrier calls for all tenants. The platform now resolves names in the trunk check and projects addresses only; `Trunk` gains `ResolvedAddresses` and `ResolvedAt` (migration 0013). |
@@ -242,7 +243,11 @@ from `pbx-core` to `telephony-core`, which is the legal direction, and
 `InitiateCallCommand` already carries `SourceEndpointURI` and
 `DestEndpointURI` — LLD-01 wrote them for exactly this and said so.
 
-Nothing about outbound requires `telephony-core` to change.
+For click-to-call, `InitiateCallCommand` also carries `Ordered` and
+`CallerTimeout`. `telephony-core` originates the caller's leg alone and
+the destination's from the caller's answer; the command shape was widened
+rather than adding a telephony port, so the dependency direction is
+unchanged (console-click-to-call design D1).
 
 ### 4.2 Inbound requires one new outbound port
 
@@ -855,19 +860,30 @@ sequenceDiagram
     C->>PBX: PlaceCall(dialled)
     PBX->>PBX: IsEmergency(dialled)?
     alt emergency
-        PBX->>TC: InitiateCall(BypassScreening=true)
+        PBX->>TC: InitiateCall(Ordered, BypassScreening=true)
         Note over TC,LIC: Screening skipped entirely (INV-01)
     else normal
         PBX->>PBX: SelectRoutes, check Outbound class
-        PBX->>TC: InitiateCall(trunk endpoint)
+        PBX->>TC: InitiateCall(Ordered, caller timeout)
         TC->>LIC: ValidateCapacity
         alt capacity exhausted
             TC-->>AST: SIP 503 + Retry-After
             TC-->>C: RESOURCE_EXHAUSTED
         end
     end
-    TC->>AST: Originate, bridge
+    TC->>AST: Originate the caller's extension only
+    AST->>TC: ParticipantAnswered (caller)
+    TC->>AST: Originate the destination (extension or trunk)
+    AST->>TC: ParticipantAnswered (destination)
+    TC->>AST: Bridge both
+    Note over TC: no caller answer before the timeout: terminate caller_no_answer, never originate the destination
 ```
+
+The caller-first order is what makes click-to-call feel like a PBX: the
+person who clicked hears their own phone ring, answers it, and only then
+does the far end ring. The placement timer is the platform's, so the
+recorded reason is `caller_no_answer` even though the engine also has an
+alerting timeout (set 5 s longer).
 
 ## 12. OpenSpec handoff
 

@@ -14,7 +14,7 @@ pilot), in this order:
 
 | # | What | State | How to start |
 |---|---|---|---|
-| **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **In progress**: `openspec/changes/console-click-to-call` (4/5 tasks). Placement and the console actions are proven (e2e, phone UATs, `make console-check`); only the docs/close task remains | `/opsx:apply console-click-to-call` |
+| **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **Done (5/5 tasks), ready to archive**: `openspec/changes/console-click-to-call`. Placement and the console actions are proven by e2e, phone UATs and `make console-check` | `/opsx:archive console-click-to-call` |
 | **5** | **Trunk health exactly as HLD T-6** ([hld/11-decisions.md](hld/11-decisions.md)): check every 10 s; *Degraded* after 3 consecutive failed checks **or** > 20 % call-setup failures over 60 s (min 5 calls); recover only after 5 min of healthy checks | Not planned yet. The owner chose **implement T-6 as written**, not amend it | `/opsx:propose` a change (suggested name `pbx-trunk-health-thresholds`) |
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | Not planned. Pairs naturally with #5: alert on the thresholded state change, never on one failed check | Same change as #5, or the next one |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | Not planned. The owner placed it in this phase | `/opsx:propose`. It needs owner decisions first (see §5) |

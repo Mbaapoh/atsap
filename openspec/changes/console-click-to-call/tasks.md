@@ -31,7 +31,7 @@
 
 ## 3. Docs and close
 
-- [ ] 3.1 Update:
+- [x] 3.1 Update:
   - LLD-03 (placement order);
   - CONSOLE-DESIGN (Call history actions);
   - `docs/API.md` (the PlaceCall note: rings the caller first);
@@ -40,3 +40,5 @@
   - `coverage.md`.
 
   Ratchet the floors. Verify `make docs` and `make quality`.
+
+  *(done 2026-11-02: LLD-03 gains a history row, §4.1's ordered command and §11.2's caller-first sequence; CONSOLE-DESIGN documents Place a call and Hang up; API.md (and the proto comment) says the caller rings first; `docs/uat/click-to-call.md` is the procedure with the automated evidence, a human pass still to record; `coverage.md` maps every scenario to its proof. Floors ratcheted (console statements 96.5, functions 98.4, lines 97.6; Go unit unchanged). `make docs` passes. `make quality`: lint, console-lint, console-test/coverage, SCA, gitleaks and npm audit pass; the Go unit coverage gate passes at 79.2% ≥ 79.1% (the `DefaultPlacement` test moved behind the integration tag so pbx/application stays out of the unit denominator, as task 5.1 of the previous change required). The host's `-race` link still fails on the EIO-corrupted GCC files; the same race+cover suite passes in golang:1.26-bookworm.)*

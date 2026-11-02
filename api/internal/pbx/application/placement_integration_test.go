@@ -405,3 +405,17 @@ func TestPlaceCall_RacingPlacementsCannotShareTheLastChannel(t *testing.T) {
 }
 
 func newUUID() uuid.UUID { return uuid.New() }
+
+// DefaultPlacement fills the caller-first timeout so a caller placement
+// never rings forever (console-click-to-call D1). It stays behind the
+// integration tag with the rest of pbx/application: a unit file here would
+// pull this integration-only package into the unit coverage denominator.
+func TestDefaultPlacement_CallerTimeout(t *testing.T) {
+	p := application.DefaultPlacement(application.Placement{})
+	assert.Equal(t, telephonyports.DefaultCallerTimeout, p.CallerTimeout,
+		"an unset caller timeout defaults to 30 s")
+
+	p = application.DefaultPlacement(application.Placement{CallerTimeout: 12 * time.Second})
+	assert.Equal(t, 12*time.Second, p.CallerTimeout,
+		"a configured caller timeout is kept")
+}

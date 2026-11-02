@@ -13,11 +13,12 @@ they win and this file is wrong.
 share a carrier each receive their own numbers' calls, attributed by the
 platform (D-77).
 
-**In flight (2026-11-02):** `console-click-to-call` tasks 1.1–2.1 are
-done — placement rings the caller first and the destination only on the
-caller's answer, with `ATSAPBX_PLACEMENT_CALLER_TIMEOUT` (default 30 s);
-live e2e, the three phone UATs and the console dialog prove it. Next: the
-docs/close task (3.1). Before that, the same day, `pbx-carrier-addresses`: a carrier
+**In flight (2026-11-02):** `console-click-to-call` is implemented and
+documented (5/5 tasks) — placement rings the caller first and the
+destination only on the caller's answer, with
+`ATSAPBX_PLACEMENT_CALLER_TIMEOUT` (default 30 s); live e2e, the three
+phone UATs, `make console-check` and the docs prove it. Archive it to move
+the row to Done and tick the Phase A flow. Before that, the same day, `pbx-carrier-addresses`: a carrier
 is recognised from its published signalling ranges, and hosts that cannot
 be a carrier (localhost, loopback) are refused (D-76). Before that, the
 same day, `pbx-trunk-host-resolution`: one tenant's unresolvable trunk
@@ -99,7 +100,9 @@ configuration file, and without being told what Asterisk is.
 in this order (details and open questions: [HANDOFF.md](HANDOFF.md) §1
 and §5):
 
-- **Click-to-call** (`console-click-to-call`, planned).
+- ~~**Click-to-call**~~ **done 2026-11-02** (`console-click-to-call`):
+  the console rings the administrator's extension first, dials the
+  destination only on the answer, and offers Hang up; 30 s caller timeout.
 - **Trunk health per HLD T-6, implemented as written** (10 s checks,
   thresholds, 5-minute recovery), with the **BR-08 carrier-failure
   alert**.
@@ -174,7 +177,7 @@ that link.
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-click-to-call` | In progress 2026-11-02: caller-first placement and the console Place-a-call/Hang-up actions are proven by unit, race, integration, live e2e, phone UATs and `make console-check`; docs/close remains | 4/5 |
+| `console-click-to-call` | In progress 2026-11-02: all tasks done — caller-first placement, the console actions, live e2e, phone UATs, `make console-check`, docs and ratcheted floors; ready to archive | 5/5 |
 | `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps
@@ -207,7 +210,7 @@ design; *accepted* = no fix planned.
 | Toll-fraud outbound classes not enforced | call-placement G4 | Medium — pilot: tenant country now exists to build it on |
 | ~~Trunk health assumed `Healthy` until a call said otherwise~~ | owner, 2026-10-13 (a trunk to `locslhodt` read Healthy) | Closed: `pbx-trunk-health-probing` (checked by SIP OPTIONS, with reason and time; D-74) |
 | Unanswered placed calls are not attributed to the carrier (no SIP cause); a slow OPTIONS response now degrades a trunk, but a slow call answer still needs one | call-placement G1, G2 | Low |
-| Both legs of an API-placed call ring at once | call-placement G6 | Low |
+| ~~Both legs of an API-placed call ring at once~~ | call-placement G6 | Closed: `console-click-to-call` rings the caller first and the destination only on the answer (D1) |
 | ~~ERROR log "participant-left handler failed: call not found" after every hang-up~~ | call-placement G3, inbound G6 | Closed: `phase-a-hardening` task 5.1 |
 | ~~A trunk host that does not resolve (a typo such as `locslhodt`) makes Asterisk block about 5 s on DNS while identifying SIP requests, stalling call setup for **every** tenant~~ | phase-a-hardening (found on the dev rig, 2026-10-13) | Closed: `pbx-trunk-host-resolution` (D-75): the platform resolves carrier names; identify holds addresses only. Unresolvable hosts are accepted and flagged (owner) |
 | Outbound calls present no caller ID to the carrier: a tenant has no presentation number yet | phase-a-hardening (design non-goal) | Medium — pilot |
