@@ -2690,6 +2690,51 @@ platform must see carriers' real addresses, as identify already requires.
 
 ---
 
+**D-78 · Click-to-call rings the caller first (2026-11-02).**
+
+**Decision:** A call placed through the public API rings the caller's
+extension first. The destination is originated only when that extension
+answers, and bridged when the destination answers. A placement that the
+caller does not answer within `ATSAPBX_PLACEMENT_CALLER_TIMEOUT` (default
+30 s) ends with `caller_no_answer`, releases the licence channel, and never
+rings the destination. The caller leg's engine alerting window is set
+longer than the placement timer (caller timeout + 5 s), so the platform's
+timer owns the outcome and the recorded reason.
+
+The console offers **Place a call** and **Hang up** on Call history to
+roles holding `call.place`/`call.hangup` — tenant and platform
+administrators in Phase A. An administrator chooses the extension to ring;
+an extension the platform does not observe as registered cannot be chosen.
+
+**Context:** `PlaceCall` existed but only the API used it, and it
+originated both legs at once (call-placement G6), so the far end could
+answer before the person who clicked had picked up their own phone. Every
+comparable PBX rings the clicker first. The ordered mode is in
+`telephony-core`, which keeps call control in the platform (D-47) and
+per-leg participant tracking intact; the console is a thin client of the
+same dialling surface.
+
+**Alternatives rejected:**
+- A Local channel or dialplan `Dial()` sequencing the legs in Asterisk:
+  moves call control out of the platform and loses per-leg participants.
+- Ringing both legs in parallel: the defect this closes; it also makes
+  "answer your phone first" meaningless.
+- Ringing the destination first: the far end would hear silence while the
+  clicker's phone rings, and could answer before anyone is on the line.
+- A separate click-to-call RPC: `PlaceCall` is already the public dialling
+  surface; a second one would fork routing and permissions.
+
+**Trade-off accepted:** the far end waits for the caller to answer. A
+registered device nobody answers holds a licence channel until the timeout
+— short, configurable, and released on every end.
+
+**Related Decisions:** D-47, D-58, D-65, D-77
+**Traceability:** BRD FBR-R1-01, §16; PRD EPIC-03; `docs/CONSOLE-DESIGN.md`
+("Call history"); `openspec/changes/console-click-to-call` (design D1–D2);
+spec `pbx-core/call-placement`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

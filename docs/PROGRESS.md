@@ -13,12 +13,9 @@ they win and this file is wrong.
 share a carrier each receive their own numbers' calls, attributed by the
 platform (D-77).
 
-**In flight (2026-11-02):** `console-click-to-call` is implemented and
-documented (5/5 tasks) — placement rings the caller first and the
-destination only on the caller's answer, with
-`ATSAPBX_PLACEMENT_CALLER_TIMEOUT` (default 30 s); live e2e, the three
-phone UATs, `make console-check` and the docs prove it. Archive it to move
-the row to Done and tick the Phase A flow. Before that, the same day, `pbx-carrier-addresses`: a carrier
+**In flight (2026-11-02):** none. `console-click-to-call` is archived
+(D-78); the next pre-pilot work is #5, trunk health exactly as HLD T-6,
+with the BR-08 carrier-failure alert (see [HANDOFF.md](HANDOFF.md) §1). Before that, the same day, `pbx-carrier-addresses`: a carrier
 is recognised from its published signalling ranges, and hosts that cannot
 be a carrier (localhost, loopback) are refused (D-76). Before that, the
 same day, `pbx-trunk-host-resolution`: one tenant's unresolvable trunk
@@ -43,7 +40,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 14 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`) | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 15 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -62,7 +59,7 @@ configuration file, and without being told what Asterisk is.
 | A2 Add a user and give them a role | Add by email (one person, many tenants), invite, disable, grant, list, revoke, administrator reset ✅ | U I W E | ✅ Users, roles, permissions (`console-admin-screens`; browser, rig, UAT) |
 | A3 Add an extension a phone can register to | ✅ | U I W E A | ✅ Extensions with registration status, credentials shown once (`console-admin-screens`; UAT: a real phone registers with them) |
 | A4 Connect a SIP trunk and route outbound calls | ✅ (plus DIDs and emergency profile) | U I W E A | ✅ Trunks and routes with health, inbound numbers, emergency (`console-admin-screens`; browser, rig, UAT) |
-| A5 The first real call (out, in, desk phone, emergency) | Calls ✅. Call history list ✅ (`console-apis-phase-a`) | U I W E A | ✅ Call history, read-only, filters in the address (`console-admin-screens`; UAT: a real call appears) |
+| A5 The first real call (out, in, desk phone, emergency) | Calls ✅. Call history list ✅ (`console-apis-phase-a`). Click-to-call ✅ (`console-click-to-call`, D-78) | U I W E A | ✅ Call history with filters, and Place a call / Hang up for administrators (`console-admin-screens`, `console-click-to-call`; UAT: a real call appears and can be placed and ended) |
 
 ### Phase A — next steps, in order
 
@@ -172,12 +169,12 @@ that link.
 | 2026-11-01 | `pbx-trunk-host-resolution` | 9/9 | U I E, UAT as regression; a container carrier recognised by DNS name (D-75) |
 | 2026-11-01 | `pbx-carrier-addresses` | 9/9 | U I E A; a container carrier recognised from its published range; console field, browser and rig; phone UATs as regression (D-76) |
 | 2026-11-01 | `pbx-carrier-ingress` | 7/7 | U I E A; spike (one ingress, `remote_addr` through ARI, 500 ranges); two tenants on one container carrier each receive their own numbers (D-77) |
+| 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 
 ## Active changes
 
 | Change | State | Tasks |
 |---|---|---|
-| `console-click-to-call` | In progress 2026-11-02: all tasks done — caller-first placement, the console actions, live e2e, phone UATs, `make console-check`, docs and ratcheted floors; ready to archive | 5/5 |
 | `quality-and-supply-chain-gates` | Go 1.26.10, expanded linters (0 issues), coverage floors on every tier, OSV-Scanner, gitleaks, Trivy and SBOM, Jenkins stages; console linter (Oxlint) done; the Asterisk image scan pending | 12/13 |
 
 ## Open gaps
