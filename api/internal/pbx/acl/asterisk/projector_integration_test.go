@@ -60,6 +60,7 @@ func newHarness(t *testing.T) *harness {
 			Realm:           testRealm,
 			SIPTransport:    "transport-udp",
 			WebRTCTransport: "transport-wss",
+			Domain:          "pbx.example.test",
 		}, pool),
 	}
 }
@@ -170,12 +171,23 @@ func TestProjectExtension_IsIdempotentAndUpdatesInPlace(t *testing.T) {
 		`SELECT count(*) FROM ps_endpoints WHERE id = $1`, id).Scan(&count))
 	assert.Equal(t, 1, count, "re-projecting must update in place, never duplicate")
 
-	var transport, digest string
-	require.NoError(t, h.pool.Unwrap().QueryRow(ctx,
-		`SELECT transport FROM ps_endpoints WHERE id = $1`, id).Scan(&transport))
+	var transport, digest, allow, webrtc, enc, dtls, ice, avpf, rtcp, fromDomain string
+	require.NoError(t, h.pool.Unwrap().QueryRow(ctx, `
+		SELECT transport, allow, COALESCE(webrtc,''), COALESCE(media_encryption,''),
+		       COALESCE(dtls_auto_generate_cert,''), COALESCE(ice_support,''),
+		       COALESCE(use_avpf,''), COALESCE(rtcp_mux,''), COALESCE(from_domain,'')
+		FROM ps_endpoints WHERE id = $1`, id).Scan(&transport, &allow, &webrtc, &enc, &dtls, &ice, &avpf, &rtcp, &fromDomain))
 	require.NoError(t, h.pool.Unwrap().QueryRow(ctx,
 		`SELECT md5_cred FROM ps_auths WHERE id = $1`, id).Scan(&digest))
 	assert.Equal(t, "transport-wss", transport, "the device type change must reach the engine")
+	assert.Equal(t, "ulaw,alaw", allow, "a browser endpoint uses the engine's narrow-band codecs")
+	assert.Equal(t, "yes", webrtc)
+	assert.Equal(t, "dtls", enc)
+	assert.Equal(t, "yes", dtls)
+	assert.Equal(t, "yes", ice)
+	assert.Equal(t, "yes", avpf)
+	assert.Equal(t, "yes", rtcp)
+	assert.Equal(t, "pbx.example.test", fromDomain, "the From domain is configured, not the engine hostname")
 	assert.Equal(t, ext.SecretDigest, digest, "a rotated credential must replace the old one")
 }
 

@@ -267,6 +267,10 @@ type SipRegistrar struct {
 	Host       string
 	Port       int
 	Transport  string
+	// WebRTCURL is the installation's WebRTC signalling endpoint (ws:// or
+	// wss://), empty when not configured. Public configuration, never a
+	// secret (D-81).
+	WebRTCURL string
 }
 
 // ConfigService is pbx-core's inbound port: the configuration API the

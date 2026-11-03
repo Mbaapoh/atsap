@@ -150,3 +150,24 @@ The diagnostic bundle generator strictly enforces:
 4. **Diagnostic Bundle Sanitization Test:** Inspects generated diagnostic archive; asserts zero occurrences of passwords, auth tokens, private keys, or audio payloads.
 
 
+
+
+## Browser (WebRTC) transport, TLS and TURN
+
+- **Dev rig:** Asterisk's HTTP server serves PJSIP WebSocket at
+  `ws://localhost:8088/ws` (the `transport-ws` transport). The app sets
+  `SIP_WEBRTC_TRANSPORT=transport-ws` and
+  `SIP_WEBRTC_URL=ws://localhost:8088/ws`. Plain WS is a dev-only choice:
+  the console page is on localhost, so the browser permits it.
+- **Production:** the public ingress terminates TLS on 443 and forwards
+  `/ws` to Asterisk's HTTP server; set `SIP_WEBRTC_URL=wss://<public
+  host>/ws`. Alternatively, terminate TLS in Asterisk with a
+  `transport-wss` using the operator's certificate and key; no
+  certificate or private key is committed to this repository. The app's
+  `SIP_WEBRTC_TRANSPORT` names the transport the projector writes.
+- **Certificates:** supplied by the operator (Vault or a mounted secret);
+  never generated into the image and never committed.
+- **TURN:** Phase A offers host ICE candidates only. A browser behind a
+  symmetric NAT cannot connect without a relay; production must add
+  coturn (or equivalent) and configure Asterisk's ICE. This is a recorded
+  gap, not a hidden fallback.

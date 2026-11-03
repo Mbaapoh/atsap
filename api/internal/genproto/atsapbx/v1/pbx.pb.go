@@ -1034,7 +1034,11 @@ type GetSipRegistrarResponse struct {
 	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
 	Port int32  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
 	// "udp", "tcp" or "tls".
-	Transport     string `protobuf:"bytes,4,opt,name=transport,proto3" json:"transport,omitempty"`
+	Transport string `protobuf:"bytes,4,opt,name=transport,proto3" json:"transport,omitempty"`
+	// The WebRTC signalling endpoint (ws:// for the dev rig, wss:// in
+	// production); empty when the installation has not configured one. It
+	// is public configuration, never a secret.
+	WebrtcUrl     string `protobuf:"bytes,5,opt,name=webrtc_url,json=webrtcUrl,proto3" json:"webrtc_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1093,6 +1097,13 @@ func (x *GetSipRegistrarResponse) GetPort() int32 {
 func (x *GetSipRegistrarResponse) GetTransport() string {
 	if x != nil {
 		return x.Transport
+	}
+	return ""
+}
+
+func (x *GetSipRegistrarResponse) GetWebrtcUrl() string {
+	if x != nil {
+		return x.WebrtcUrl
 	}
 	return ""
 }
@@ -3269,14 +3280,16 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\textension\x18\x01 \x01(\v2\x15.atsapbx.v1.ExtensionR\textension\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\"5\n" +
 	"\x16GetSipRegistrarRequest\x12\x1b\n" +
-	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"\x7f\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"\x9e\x01\n" +
 	"\x17GetSipRegistrarResponse\x12\x1e\n" +
 	"\n" +
 	"configured\x18\x01 \x01(\bR\n" +
 	"configured\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1c\n" +
-	"\ttransport\x18\x04 \x01(\tR\ttransport\"\xcf\x03\n" +
+	"\ttransport\x18\x04 \x01(\tR\ttransport\x12\x1d\n" +
+	"\n" +
+	"webrtc_url\x18\x05 \x01(\tR\twebrtcUrl\"\xcf\x03\n" +
 	"\x05Trunk\x12\x19\n" +
 	"\btrunk_id\x18\x01 \x01(\tR\atrunkId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +

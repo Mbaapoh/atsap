@@ -311,6 +311,25 @@ Current API access is Tenant-wide for authenticated users. The UI must not
 claim history is person- or agent-scoped; those views arrive with Phase B
 reporting.
 
+### Browser phone
+
+A signed-in administrator holding `call.place` can open **Browser phone**
+from the top bar (and `/phone`) and register a **WEBRTC** extension in the
+browser. The form asks for the WEBRTC extension and its **SIP password**,
+which is shown once when the extension is created or rotated; it is held
+in memory only and cleared on reload, disconnect and Tenant change. The
+installing operator supplies the signalling URL (`SIP_WEBRTC_URL`):
+`ws://…` on the dev rig, `wss://…` in production.
+
+The page states are: not configured / no WEBRTC extension / connect /
+connecting / registered with dialler / incoming (Answer, Reject) /
+calling / in call (Mute, Hang up) / ended (Dismiss) / connection failure.
+The top-bar indicator names the state ("Browser phone", "Phone 1001",
+"Incoming call", "Phone: in call") and always links back to the page. The
+remote party is shown as the extension number and name when the directory
+knows it, or "Unknown caller"; an engine endpoint id is never shown. Hold,
+transfer, park and conference are Phase B. See D-81.
+
 ### Account
 
 Allow the signed-in user to change their password and sign out. Password change

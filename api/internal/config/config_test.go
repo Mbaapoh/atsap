@@ -285,3 +285,35 @@ func TestLoad_CarrierAlertEmails(t *testing.T) {
 		t.Errorf("CarrierAlertEmails = %v, want the two trimmed addresses", cfg.CarrierAlertEmails)
 	}
 }
+
+// console-browser-phone (D-81): the WebRTC signalling URL is optional and
+// must be a ws:// or wss:// URL with a host.
+func TestLoad_SIPWebRTCURL(t *testing.T) {
+	setRequired(t)
+	for _, tc := range []struct {
+		value string
+		ok    bool
+	}{
+		{"ws://localhost:8089/ws", true},
+		{"wss://pbx.example.com/ws", true},
+		{"", true},
+		{"http://pbx.example.com/ws", false},
+		{"wss:///ws", false},
+		{"not a url", false},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv("SIP_WEBRTC_URL", tc.value)
+			cfg, err := Load()
+			if tc.ok {
+				if err != nil || cfg.SIPWebRTCURL != tc.value {
+					t.Errorf("Load() = %q, %v; want %q", cfg.SIPWebRTCURL, err, tc.value)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "SIP_WEBRTC_URL") {
+				t.Errorf("Load() error = %v, want one naming SIP_WEBRTC_URL", err)
+			}
+		})
+	}
+}

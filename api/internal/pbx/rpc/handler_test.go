@@ -542,13 +542,14 @@ func TestOnlyMintingResponsesCarryTheSecret(t *testing.T) {
 
 func TestGetSipRegistrar_MapsEveryField(t *testing.T) {
 	e := newEnv(t)
-	e.svc.registrar = ports.SipRegistrar{Configured: true, Host: "pbx.example.com", Port: 5080, Transport: "tls"}
+	e.svc.registrar = ports.SipRegistrar{Configured: true, Host: "pbx.example.com", Port: 5080, Transport: "tls", WebRTCURL: "wss://pbx.example.com/ws"}
 	resp, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{TenantId: e.tenant.String()}))
 	require.NoError(t, err)
 	assert.True(t, resp.Msg.GetConfigured())
 	assert.Equal(t, "pbx.example.com", resp.Msg.GetHost())
 	assert.EqualValues(t, 5080, resp.Msg.GetPort())
 	assert.Equal(t, "tls", resp.Msg.GetTransport())
+	assert.Equal(t, "wss://pbx.example.com/ws", resp.Msg.GetWebrtcUrl())
 	assert.Equal(t, e.tenant, e.svc.lastTenID)
 }
 

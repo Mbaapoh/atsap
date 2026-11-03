@@ -41,6 +41,11 @@ const (
 	// transcode is worse than one it refuses.
 	disallowedCodecs = "all"
 	allowedCodecs    = "ulaw,alaw"
+	// Browser endpoints use the same narrow-band codecs as a desk phone.
+	// These browsers support PCMU/PCMA; the engine image does not ship
+	// codec_opus, and adding one would be a new codec dependency. A
+	// deployment with codec_opus may add it here (D-81).
+	webRTCCodecs = "ulaw,alaw"
 
 	// One contact per extension: a fresh REGISTER replaces a stale one
 	// rather than being refused, which matters because a device's address
@@ -68,6 +73,11 @@ type Config struct {
 	// wiring must not offer WebRTC before that config ships.
 	SIPTransport    string
 	WebRTCTransport string
+
+	// Domain is the SIP domain in a platform-originated leg's From URI.
+	// Empty leaves the engine's own default; the installation's public
+	// host is used when known, "localhost" on the dev rig.
+	Domain string
 }
 
 // setVarFor is the endpoint configuration that carries the tenant onto
@@ -105,6 +115,24 @@ var (
 // transports, reading registration state through pool.
 func NewProjector(cfg Config, pool *corepostgres.Pool) *Projector {
 	return &Projector{cfg: cfg, pool: pool}
+}
+
+// projectedMedia is the endpoint media configuration for a device type.
+// A SIP phone gets the previous values (nil browser fields); a WEBRTC
+// endpoint asks the engine for DTLS, ICE, AVPF and RTCP muxing.
+type projectedMedia struct {
+	allow                                                         string
+	webrtc, mediaEncryption, dtlsAutoGenerate, ice, avpf, rtcpMux any
+}
+
+func mediaFor(d domain.DeviceType) projectedMedia {
+	if d == domain.DeviceWebRTC {
+		return projectedMedia{
+			allow: webRTCCodecs, webrtc: "yes", mediaEncryption: "dtls",
+			dtlsAutoGenerate: "yes", ice: "yes", avpf: "yes", rtcpMux: "yes",
+		}
+	}
+	return projectedMedia{allow: allowedCodecs}
 }
 
 // transportFor maps a domain device type onto an engine transport name.
@@ -161,10 +189,16 @@ func (p *Projector) ProjectExtension(ctx context.Context, tx pgx.Tx, ext domain.
 		return fmt.Errorf("project auth: %w", err)
 	}
 
+	media := mediaFor(ext.DeviceType)
+	var fromDomain any
+	if p.cfg.Domain != "" {
+		fromDomain = p.cfg.Domain
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO ps_endpoints
-			(id, transport, aors, auth, context, disallow, allow, direct_media, set_var)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'no', $8)
+			(id, transport, aors, auth, context, disallow, allow, direct_media, set_var, from_domain,
+			 webrtc, media_encryption, dtls_auto_generate_cert, ice_support, use_avpf, rtcp_mux)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'no', $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (id) DO UPDATE SET
 			transport    = EXCLUDED.transport,
 			aors         = EXCLUDED.aors,
@@ -173,9 +207,17 @@ func (p *Projector) ProjectExtension(ctx context.Context, tx pgx.Tx, ext domain.
 			disallow     = EXCLUDED.disallow,
 			allow        = EXCLUDED.allow,
 			direct_media = EXCLUDED.direct_media,
-			set_var      = EXCLUDED.set_var
+			set_var      = EXCLUDED.set_var,
+			from_domain  = EXCLUDED.from_domain,
+			webrtc       = EXCLUDED.webrtc,
+			media_encryption = EXCLUDED.media_encryption,
+			dtls_auto_generate_cert = EXCLUDED.dtls_auto_generate_cert,
+			ice_support  = EXCLUDED.ice_support,
+			use_avpf     = EXCLUDED.use_avpf,
+			rtcp_mux     = EXCLUDED.rtcp_mux
 	`, id, p.transportFor(ext.DeviceType), id, id, stasisContext,
-		disallowedCodecs, allowedCodecs, setVarFor(ext.TenantID)); err != nil {
+		disallowedCodecs, media.allow, setVarFor(ext.TenantID), fromDomain,
+		media.webrtc, media.mediaEncryption, media.dtlsAutoGenerate, media.ice, media.avpf, media.rtcpMux); err != nil {
 		return fmt.Errorf("project endpoint: %w", err)
 	}
 
@@ -318,18 +360,24 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 		authType, username, digest, realm             string
 		setVar                                        *string
 		maxContactsGot                                int
+		webrtc, mediaEncryption, dtlsAuto             *string
+		ice, avpf, rtcpMux                            *string
+		fromDomain                                    *string
 	)
 
 	err := p.pool.Unwrap().QueryRow(ctx, `
 		SELECT e.transport, e.aors, e.auth, e.context, e.allow, e.set_var,
 		       a.auth_type, a.username, a.md5_cred, a.realm,
-		       r.max_contacts
+		       r.max_contacts,
+		       e.webrtc, e.media_encryption, e.dtls_auto_generate_cert,
+		       e.ice_support, e.use_avpf, e.rtcp_mux, e.from_domain
 		FROM ps_endpoints e
 		JOIN ps_auths a ON a.id = e.id
 		JOIN ps_aors  r ON r.id = e.id
 		WHERE e.id = $1
 	`, id).Scan(&transport, &aors, &auth, &dialplanContext, &allow, &setVar,
-		&authType, &username, &digest, &realm, &maxContactsGot)
+		&authType, &username, &digest, &realm, &maxContactsGot,
+		&webrtc, &mediaEncryption, &dtlsAuto, &ice, &avpf, &rtcpMux, &fromDomain)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return []string{"missing"}, nil
 	}
@@ -337,6 +385,18 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 		return nil, fmt.Errorf("read projected extension: %w", err)
 	}
 
+	strOrEmpty := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	anyString := func(v any) string {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		return ""
+	}
 	var drift []string
 	expect := func(field, want, got string) {
 		if want != got {
@@ -347,17 +407,19 @@ func (p *Projector) DiffExtension(ctx context.Context, ext domain.Extension) ([]
 	expect("aors", id, aors)
 	expect("auth", id, auth)
 	expect("context", stasisContext, dialplanContext)
-	expect("allow", allowedCodecs, allow)
+	media := mediaFor(ext.DeviceType)
+	expect("allow", media.allow, allow)
+	expect("webrtc", anyString(media.webrtc), strOrEmpty(webrtc))
+	expect("media_encryption", anyString(media.mediaEncryption), strOrEmpty(mediaEncryption))
+	expect("dtls_auto_generate_cert", anyString(media.dtlsAutoGenerate), strOrEmpty(dtlsAuto))
+	expect("ice_support", anyString(media.ice), strOrEmpty(ice))
+	expect("use_avpf", anyString(media.avpf), strOrEmpty(avpf))
+	expect("rtcp_mux", anyString(media.rtcpMux), strOrEmpty(rtcpMux))
+	expect("from_domain", p.cfg.Domain, strOrEmpty(fromDomain))
 	expect("auth_type", "md5", authType)
 	expect("username", id, username)
 	expect("md5_cred", ext.SecretDigest, digest)
 	expect("realm", p.cfg.Realm, realm)
-	strOrEmpty := func(s *string) string {
-		if s == nil {
-			return ""
-		}
-		return *s
-	}
 	expect("set_var", setVarFor(ext.TenantID), strOrEmpty(setVar))
 	if maxContactsGot != maxContacts {
 		drift = append(drift, "max_contacts")

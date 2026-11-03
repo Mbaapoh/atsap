@@ -17,6 +17,9 @@ import { CallsPage } from "../features/calls/CallsPage";
 import { CallSessionBar } from "../features/calls/CallSessionBar";
 import { NewCallAction } from "../features/calls/NewCall";
 import { CallSessionProvider } from "../features/calls/session";
+import { PhoneIndicator } from "../features/softphone/PhoneIndicator";
+import { PhonePage } from "../features/softphone/PhonePage";
+import { SoftphoneProvider } from "../features/softphone/SoftphoneProvider";
 import { TrunksRoutesPage } from "../features/telephony/TrunksRoutesPage";
 import { AppShell } from "./AppShell";
 import { NotFound } from "./NotFound";
@@ -35,13 +38,16 @@ export const routes: RouteObject[] = [
     element: (
       <RequireSession>
         <CallSessionProvider>
-          <AppShell
-            tenant={<TenantIndicator />}
-            licence={<LicenceIndicator />}
-            notice={<SessionExpiryNotice />}
-            callAction={<NewCallAction />}
-            callBar={<CallSessionBar />}
-          />
+          <SoftphoneProvider>
+            <AppShell
+              tenant={<TenantIndicator />}
+              licence={<LicenceIndicator />}
+              notice={<SessionExpiryNotice />}
+              callAction={<NewCallAction />}
+              callBar={<CallSessionBar />}
+              phoneAction={<PhoneIndicator />}
+            />
+          </SoftphoneProvider>
         </CallSessionProvider>
       </RequireSession>
     ),
@@ -70,6 +76,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireLicence area="Call history">
             <CallsPage />
+          </RequireLicence>
+        ),
+      },
+      {
+        path: "phone",
+        element: (
+          <RequireLicence area="Browser phone">
+            <PhonePage />
           </RequireLicence>
         ),
       },

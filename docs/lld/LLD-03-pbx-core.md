@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-02 | **§7.1: WEBRTC extensions are projected as browser endpoints** (`console-browser-phone`, D-81). Migration 0018 adds the realtime columns; a WEBRTC endpoint uses the configured WebRTC transport, DTLS media, ICE, AVPF and RTCP multiplexing, with ulaw/alaw (the engine has no codec_opus). The console registers it with SIP.js over WS on the dev rig (WSS in production) and the password is entered, never read back. `from_domain` is the installation's domain, not the engine hostname. |
 | 2026-11-02 | **§7.5/§7.6: trunk health follows HLD T-6** (`pbx-trunk-health-thresholds`, D-80). Checks every 10 s; 3 consecutive failures or a >20 % call-setup failure rate over a rolling 60 s window (min 5) make a trunk Degraded; recovery needs 5 continuous healthy minutes. Configuration failures stay Unhealthy at once. Observations are stored in `trunk_health_samples`; a failure transition emails the tenant administrators and `ATSAPBX_CARRIER_ALERT_EMAILS` (BR-08). |
 | 2026-11-02 | **§4.1 and §11.2: placement rings the caller first** (`console-click-to-call`, design D1). `InitiateCall` gains an ordered mode: the caller's leg is originated alone, the destination's from the caller's `ParticipantAnswered`, and a placement timeout (default 30 s) ends an unanswered caller with `caller_no_answer`, never ringing the destination and releasing the licence channel. The engine's alerting window is set longer than the placement timer so the platform owns the reason. The console gets Place a call and Hang up on Call history. |
 | 2026-11-01 | **§7.7: carrier traffic enters through one ingress and is attributed by the platform** (`pbx-carrier-ingress`, D-77). Per-trunk identify rows are gone. One tenantless `carrier-ingress` endpoint recognises every trunk's addresses, and each call is attributed by its transport source address (`CHANNEL(pjsip,remote_addr)`) and the dialled number: exactly one trunk routes, none or several refuse 404. Two tenants on one carrier each receive their own numbers. One flag-guarded cross-tenant read (migration 0016). Also: the identify match is TEXT (migration 0015), and an unreachable destination is refused 480, never left ringing. |
@@ -501,6 +502,14 @@ what they are looking at. **This identifier never appears in an API
 response, a console field, a log line a user can see, or an error
 message** (PRD principle 4, and the same rule `telephony-core` applies to
 channel IDs).
+
+A `WEBRTC` extension's endpoint additionally sets the browser media
+columns: the WebRTC transport, `webrtc=yes`, `media_encryption=dtls`,
+`dtls_auto_generate_cert=yes`, `ice_support=yes`, `use_avpf=yes` and
+`rtcp_mux=yes`, with ulaw/alaw (D-81). A `SIP` extension leaves those
+columns unset. Every extension endpoint records `from_domain` as the
+installation's SIP domain so a platform-originated leg never presents the
+engine's container hostname.
 
 ### 7.2 Transactionality
 

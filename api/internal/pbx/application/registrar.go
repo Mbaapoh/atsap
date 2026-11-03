@@ -13,7 +13,10 @@ import (
 func (s *Service) WithRegistrar(r ports.SipRegistrar) *Service {
 	clone := *s
 	if r.Host == "" {
-		r = ports.SipRegistrar{}
+		// The public registrar host is separate configuration from the
+		// WebRTC URL; a browser can be given a signalling URL even before
+		// an installer names the phone registrar.
+		r.Configured, r.Port, r.Transport = false, 0, ""
 	} else {
 		r.Configured = true
 	}

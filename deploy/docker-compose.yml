@@ -50,7 +50,7 @@ services:
     ports:
       - "5060:5060/udp"
       - "5060:5060/tcp"
-      - "8088:8088/tcp"   # ARI / HTTP
+      - "8088:8088/tcp"   # ARI / HTTP, and PJSIP WebSocket /ws
       - "5038:5038/tcp"   # AMI
       - "10000-10200:10000-10200/udp" # RTP media
     volumes:
@@ -125,6 +125,11 @@ services:
       # rig serves plain HTTP, so both insecure flags are set HERE and
       # nowhere else. The app logs a warning for each at startup.
       ATSAPBX_SMTP_ADDR: mailpit:1025
+      # The browser phone: the dev rig uses a plain WS transport on
+      # localhost. Production sets a wss:// URL and a transport-wss
+      # configured with the operator's certificate.
+      SIP_WEBRTC_TRANSPORT: transport-ws
+      SIP_WEBRTC_URL: ws://localhost:8088/ws
       ATSAPBX_SMTP_INSECURE: "true"
       ATSAPBX_COOKIE_INSECURE: "true"
       # Emailed reset and invitation links open the console's dev server

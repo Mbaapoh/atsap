@@ -27,6 +27,7 @@ The console enables the five HLD-18 journeys:
 | A3 | Configure extensions; show observed registration state; reveal secrets once | pbx-core |
 | A4 | Configure trunks, outbound routes, inbound numbers, and emergency settings; show observed health | pbx-core |
 | A5 | Show filtered and paged Call history; place a call from a registered extension; show its live session and end it from the shell | telephony-core, pbx-core |
+| Browser phone | Connect a WEBRTC extension with SIP.js over WSS, dial, answer, mute and hang up; the SIP password is entered per session | pbx-core (projection, registrar), telephony-core (call path) |
 
 Phase A excludes User-to-Extension assignment, agents, queues, IVR, voicemail,
 recording, reporting, hold/transfer/park/conference, and partner commerce.
@@ -130,8 +131,9 @@ AppShell
 │   ├── Connectivity and routing
 │   ├── Call history
 │   └── Account (utility link)
-├── Top bar: New call · Tenant · Licence status pill (links to /licence) · account
+├── Top bar: Browser phone · New call · Tenant · Licence status pill (links to /licence) · account
 ├── CallSessionProvider: the live call id, polling and shell call bar
+├── SoftphoneProvider: the browser SIP session and its indicator
 └── Feature boundaries
     ├── identity      users, roles, account
     ├── licensing     status, activation
@@ -158,6 +160,7 @@ the authoritative resource after success.
 | Trunk health | `Healthy`, `Degraded`, and `Unhealthy` are observed state, never an input. A reason is a status detail, not a timestamp. |
 | Call lifecycle | Render API Call states and termination reason. Derived labels are supplementary and never replace lifecycle state. |
 | Call session | The shell bar follows `GetCall` every second while the call is in flight (visible tab), stops at Terminated, and never shows an ended call as active. The caller's ring is distinct from the destination's, and the primary action is Cancel before the caller answers and Hang up after. |
+| Browser phone | The softphone registers a WEBRTC extension over the installation's signalling URL. The SIP password is memory-only; a reload/disconnect/tenant change clears it. An incoming call is visible from the top-bar indicator; the page offers Answer/Reject, mute and hang up. |
 | Pending configuration | A successful response is shown as live only when the API reports it live. Otherwise render the real pending state (PRD AC-10.9). |
 
 ## 7. Accessibility and responsive requirements

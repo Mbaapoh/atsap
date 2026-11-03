@@ -250,6 +250,10 @@ message GetSipRegistrarResponse {
   int32 port = 3;
   // "udp", "tcp" or "tls".
   string transport = 4;
+  // The WebRTC signalling endpoint (ws:// for the dev rig, wss:// in
+  // production); empty when the installation has not configured one. It
+  // is public configuration, never a secret.
+  string webrtc_url = 5;
 }
 
 // TrunkHealth is what the platform has OBSERVED about a carrier: its own

@@ -75,6 +75,13 @@ export interface ExtensionEntry {
   // registration is the platform's observation, not configuration: a
   // call can only be placed from an extension that has one.
   registration: Registration;
+  // device is how a device attaches: the browser phone offers WEBRTC
+  // extensions only.
+  device: DeviceType;
+  // sipUsername is the engine endpoint id the browser phone registers
+  // with. It is used by the softphone, never rendered outside the marked
+  // credential surface (console brief §6 rule 8).
+  sipUsername: string;
 }
 
 // DIRECTORY_PAGE is the server's largest page (pbx rpc maxPageLimit).
@@ -99,6 +106,8 @@ export function useExtensionDirectory(enabled = true) {
               number: e.number,
               name: e.displayName,
               registration: registrationOf(e.registration),
+              device: e.deviceType,
+              sipUsername: e.authUsername,
             })),
           );
           if (extensions.length < DIRECTORY_PAGE) return out;
@@ -114,6 +123,9 @@ export interface Registrar {
   host: string;
   port: number;
   transport: string;
+  // webrtcUrl is the browser phone's signalling endpoint, empty when the
+  // installation has not configured one (D-81).
+  webrtcUrl: string;
 }
 
 export function useRegistrar() {
@@ -124,7 +136,9 @@ export function useRegistrar() {
     queryFn: () =>
       callApi(async () => {
         const r = await pbx.getSipRegistrar({ tenantId });
-        return r.configured ? { host: r.host, port: r.port, transport: r.transport } : null;
+        return r.configured
+          ? { host: r.host, port: r.port, transport: r.transport, webrtcUrl: r.webrtcUrl }
+          : null;
       }),
     enabled: tenantId !== "",
     staleTime: 5 * 60_000,

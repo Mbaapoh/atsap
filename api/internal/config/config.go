@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -88,6 +89,10 @@ type Config struct {
 	// against a transport that does not exist.
 	SIPTransport       string
 	SIPWebRTCTransport string
+	// SIPWebRTCURL is the browser's WebRTC signalling endpoint, e.g.
+	// ws://localhost:8089/ws on the dev rig or wss://pbx.example.com/ws in
+	// production. Empty disables the browser phone.
+	SIPWebRTCURL string
 
 	// SIPPublicHost, SIPPublicPort and SIPPublicTransport are the address
 	// devices register to: the installation's public face, which only the
@@ -158,6 +163,7 @@ func Load() (Config, error) {
 		SIPRealm:           getEnv("SIP_REALM", "asterisk"),
 		SIPTransport:       getEnv("SIP_TRANSPORT", "transport-udp"),
 		SIPWebRTCTransport: getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
+		SIPWebRTCURL:       getEnv("SIP_WEBRTC_URL", ""),
 		SIPPublicHost:      getEnv("SIP_PUBLIC_HOST", ""),
 		SIPPublicTransport: getEnv("SIP_PUBLIC_TRANSPORT", "udp"),
 		LicenseToken:       getEnv("ATSAPBX_LICENSE_TOKEN", ""),
@@ -192,6 +198,12 @@ func Load() (Config, error) {
 	}
 	if err := cfg.loadSIPPublic(); err != nil {
 		return cfg, err
+	}
+	if cfg.SIPWebRTCURL != "" {
+		u, err := url.Parse(cfg.SIPWebRTCURL)
+		if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
+			return cfg, fmt.Errorf("SIP_WEBRTC_URL must be a ws:// or wss:// URL with a host")
+		}
 	}
 	interval, err := time.ParseDuration(getEnv("ATSAPBX_TRUNK_PROBE_INTERVAL", "10s"))
 	if err != nil || interval < 0 || (interval > 0 && interval < 5*time.Second) {

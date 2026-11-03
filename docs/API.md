@@ -53,7 +53,7 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `UpdateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console rename and device-type change |
 | `DeleteExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console deprovisioning |
 | `RegenerateSecret` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Credential rotation; the second and last place a secret appears |
-| `GetSipRegistrar` | `atsapbx.v1.PbxService` | `pbx-sip-registrar-settings` (LLD-03) | Console extension credential panel: where a phone registers (host, port, transport), or "not configured"; authorized as reading extensions |
+| `GetSipRegistrar` | `atsapbx.v1.PbxService` | `pbx-sip-registrar-settings` (LLD-03); widened by `console-browser-phone` | Console extension credential panel and browser phone: where a phone registers (host, port, transport) and the WebRTC signalling URL when configured (empty otherwise); authorized as reading extensions |
 | `CreateTrunk` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console trunks screen (flow A4); accepts the carrier secret, never returns it; optional `inbound_addresses` (D-76); refuses hosts that cannot be a carrier |
 | `ListTrunks` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console trunks list, with observed health |
 | `UpdateTrunk` | `atsapbx.v1.PbxService` | `pbx-trunks-routes` (LLD-03) | Console trunk edit; optional replacement secret, health not an input |

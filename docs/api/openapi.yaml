@@ -3189,6 +3189,13 @@ components:
           type: string
           title: transport
           description: '"udp", "tcp" or "tls".'
+        webrtcUrl:
+          type: string
+          title: webrtc_url
+          description: |-
+            The WebRTC signalling endpoint (ws:// for the dev rig, wss:// in
+             production); empty when the installation has not configured one. It
+             is public configuration, never a secret.
       title: GetSipRegistrarResponse
       additionalProperties: false
     atsapbx.v1.HangupCallRequest:

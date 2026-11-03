@@ -18,9 +18,9 @@ pilot), in this order:
 | **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **Done and archived 2026-11-02** (`console-click-to-call`, D-78); proven by e2e, all three phone UATs and `make console-check` | — |
 | **5** | **Trunk health exactly as HLD T-6**: 10 s checks; Degraded after 3 consecutive failures or >20 % call-setup failures over 60 s (min 5); 5 min recovery | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80) | — |
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
-| **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | Not planned. The owner placed it in this phase | `/opsx:propose`. It needs owner decisions first (see §5) |
+| **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5 and #6 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80). **#8 is next.** PROGRESS's own "Before a pilot" list continues after these with toll-fraud classes and Sign in with Google.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Toll-fraud outbound classes, then `identity-oidc-google`, are next.**
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -28,6 +28,18 @@ The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3
 ---
 
 ## 2. What was done this week
+
+### 2026-11-03 — browser phone (D-81)
+
+`console-browser-phone` archived. A WEBRTC extension is projected with a
+WebRTC transport, DTLS, ICE, AVPF and RTCP mux; the console registers it
+with SIP.js over WebSocket (WS on the rig, WSS in production) and offers
+connect, dial, incoming answer/reject, mute and hang up. The SIP password
+is entered per session and never stored. The two-browser rig spec proves
+a real call over the rig's WS transport; the full Go e2e, console-check
+and the three phone UATs pass. No TURN yet: a symmetric-NAT browser needs
+a relay before a production pilot (recorded gap). The engine image has no
+codec_opus, so the browser uses PCMU/PCMA.
 
 ### 2026-11-03 — trunk health T-6 and the BR-08 alert (D-80)
 
@@ -137,12 +149,12 @@ Run from the repo root; `mise` pins the toolchain (`.mise.toml`, `console/mise.t
 
 ---
 
-## 5. Decisions the owner must take before #8 (browser calling)
+## 5. Browser calling — decisions taken (D-81)
 
-- **Which SIP-over-WebSocket library** for the console softphone, for example SIP.js or JsSIP. It is a new runtime dependency, so it needs a D-68 amendment with its licence checked against D-35.
-- **The engine's WSS transport.** `core/conf` has no WSS transport yet: `pbx/acl/asterisk/projector.go` warns that projecting a WEBRTC extension points at a transport that does not exist. TLS certificates for the dev rig and for production need settling too.
-- **Who may use the browser phone in Phase A.** Users have no extension yet (D-65; extension ownership is Phase B). Either the softphone registers as an extension the administrator picks, or #8 pulls `pbx-extension-assignment` forward.
-- **NAT and media:** TURN/STUN for browsers behind NAT (coturn as a new component, or ICE without TURN in Phase A).
+- **Library:** SIP.js 0.21.2 (MIT; D-35/68 allowed).
+- **Transport:** WS on the dev rig via Asterisk's HTTP server, WSS in production through the reverse proxy or a mounted `transport-wss` certificate; `SIP_WEBRTC_URL` selects it.
+- **Who may use it:** an administrator chooses a WEBRTC extension and enters its one-time SIP password; ownership waits for Phase B (D-65).
+- **NAT:** host ICE only in Phase A. **TURN/coturn is still required before a production NAT pilot**, recorded as a gap.
 
 #5 and #6 need fewer decisions:
 - The alert channel for BR-08: **email through the existing mailer** (Mailpit on the rig) is the simplest. Webhooks are LLD-05, later.

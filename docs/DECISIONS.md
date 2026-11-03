@@ -2859,6 +2859,58 @@ Phase A; webhooks remain LLD-05.
 
 ---
 
+**D-81 · Browser calling uses SIP.js over WebSocket, with a WEBRTC extension the administrator connects (2026-11-02).**
+
+**Decision:** The console has a browser phone. It uses **SIP.js 0.21.2**
+(MIT, allowed by D-35) behind a small `Softphone` interface. A WEBRTC
+extension is projected with a WebRTC transport, DTLS media, ICE, AVPF and
+RTCP multiplexing; a SIP extension is unchanged. The dev rig serves PJSIP
+WebSocket at `ws://localhost:8088/ws` through Asterisk's HTTP server; a
+production deployment terminates TLS at its reverse proxy and sets
+`SIP_WEBRTC_URL` to `wss://…`, or uses the documented `transport-wss`
+with mounted certificates. An extension's `from_domain` is projected from
+the installation's domain, so a browser never sees the engine's container
+hostname in a SIP URI.
+
+Because Phase A has no user↔extension ownership (D-65), the administrator
+chooses a **WEBRTC extension** and enters its one-time SIP password. The
+password lives in the form and then in SIP.js for that page only — never
+in storage, a URL, a log, or a toast. The browser phone offers
+connect/disconnect, dial, incoming answer/reject, mute and hang up. It is
+the same extension call path as a desk phone, so routing, call history and
+the API call session see it unchanged. Hold, transfer, park and conference
+are Phase B.
+
+**Context:** FBR-R1-01/EPIC-03 require browser calling. The engine
+projection already knew `WEBRTC` as a device type but `core/conf` had no
+WebSocket transport and `ps_endpoints` lacked the browser-media columns;
+the projector's own comment warned that a WEBRTC extension pointed at a
+transport that did not exist. The console had no SIP stack.
+
+**Alternatives rejected:**
+- JsSIP: also MIT, but SIP.js's TypeScript API and browser media handling
+  fit the console better.
+- A hand-written SIP stack: unsafe and out of scope.
+- A committed self-signed certificate: fails in a real browser and is a
+  bad example. Dev uses WS on localhost; production requires WSS.
+- Opus-only media: the engine image has no `codec_opus`; browsers support
+  PCMU/PCMA, so WEBRTC endpoints negotiate ulaw/alaw. A deployment that
+  installs codec_opus may add it.
+- User↔extension ownership now: it is Phase B (D-65); the administrator
+  chooses the extension until then.
+- TURN in this change: Phase A is host candidates only. A symmetric-NAT
+  browser needs a relay; production must add TURN, recorded as a gap.
+
+**Trade-off accepted:** a password prompt per browser session (the secret
+is not recoverable), no TURN, and no hold/transfer in Phase A.
+
+**Related Decisions:** D-35, D-36, D-43, D-65, D-68, D-79
+**Traceability:** BRD FBR-R1-01, §16; PRD EPIC-03, AC-03.1; HLD-12, HLD-19;
+`openspec/changes/console-browser-phone` (design D1–D8); specs
+`pbx-core/endpoint-projection`, `pbx-core/extension-management`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

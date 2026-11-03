@@ -193,6 +193,7 @@ func (h *PbxHandler) GetSipRegistrar(ctx context.Context, req *connect.Request[a
 		Host:       r.Host,
 		Port:       wire.Int32(r.Port),
 		Transport:  r.Transport,
+		WebrtcUrl:  r.WebRTCURL,
 	}), nil
 }
 

@@ -50,5 +50,5 @@ export const server = setupServer(
   http.post(GET_CALL_URL, () => HttpResponse.json({ callId: "c0", state: "Presenting", participants: [{ role: "CALLER", state: "Invited" }] })),
   http.post(INBOUND_URL, () => HttpResponse.json({})),
   http.post(EMERGENCY_URL, () => HttpResponse.json({ countryCode: "CM", countrySet: true, inCatalogue: true, numbers: [{ number: "112", builtIn: true }] })),
-  http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp" })),
+  http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp", webrtcUrl: "ws://localhost:8089/ws" })),
 );

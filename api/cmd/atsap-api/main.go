@@ -238,10 +238,15 @@ func run() int {
 	//
 	// The realm passed here MUST match the engine's: the credential
 	// digest is computed over it (LLD-03 §7.3).
+	sipDomain := cfg.SIPPublicHost
+	if sipDomain == "" {
+		sipDomain = "localhost"
+	}
 	projector := pbxasterisk.NewProjector(pbxasterisk.Config{
 		Realm:           cfg.SIPRealm,
 		SIPTransport:    cfg.SIPTransport,
 		WebRTCTransport: cfg.SIPWebRTCTransport,
+		Domain:          sipDomain,
 	}, appPool)
 	pbxSvc := pbxapp.NewService(
 		appPool,
@@ -273,6 +278,7 @@ func run() int {
 	// the installer knows (pbx-sip-registrar-settings).
 	pbxSvc = pbxSvc.WithRegistrar(pbxports.SipRegistrar{
 		Host: cfg.SIPPublicHost, Port: cfg.SIPPublicPort, Transport: cfg.SIPPublicTransport,
+		WebRTCURL: cfg.SIPWebRTCURL,
 	})
 	pbxSvc = pbxSvc.
 		WithEmergencyStores(pbxpostgres.NewInboundNumberStore(), pbxpostgres.NewEmergencyStore()).

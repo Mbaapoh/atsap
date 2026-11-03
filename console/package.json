@@ -31,7 +31,8 @@
     "@tanstack/react-query": "5.104.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-router": "8.4.0"
+    "react-router": "8.4.0",
+    "sip.js": "0.21.2"
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "2.16.0",
