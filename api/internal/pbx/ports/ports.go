@@ -442,6 +442,36 @@ type TrunkStore interface {
 	// reports whether the addresses changed, which is when the engine's
 	// identify row must follow; an unchanged set records only the time.
 	SetResolvedAddresses(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, addrs []netip.Addr, at time.Time) (bool, error)
+
+	// RecordProbeHealth locks the trunk, records one check sample, and
+	// returns the stored state and rolling counts for the health decision
+	// (D-80). recorded is false when the trunk no longer has host:port.
+	RecordProbeHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, port int, sample domain.HealthSample, windowStart time.Time) (state domain.HealthState, recorded bool, err error)
+	// RecordCallHealth locks the trunk, records one call-setup sample, and
+	// returns the stored state and rolling counts (D-80).
+	RecordCallHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, sample domain.HealthSample, windowStart time.Time) (domain.HealthState, error)
+	// SetHealthState applies a decided state, including the recovery start.
+	SetHealthState(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, decision domain.HealthDecision, at time.Time) error
+}
+
+// CarrierAlert is one failure transition worth telling the operator about
+// (BR-08, D-80). It carries configuration and platform vocabulary only: no
+// secret, engine identifier or channel identifier.
+type CarrierAlert struct {
+	TenantID  shareddomain.TenantID
+	TrunkID   shareddomain.TrunkID
+	TrunkName string
+	Host      string
+	Health    domain.TrunkHealth
+	Reason    domain.HealthReason
+	At        time.Time
+}
+
+// CarrierAlerter tells the operator that a carrier failed. Implementations
+// send outside the call and check paths; an error is logged, never
+// returned to a call.
+type CarrierAlerter interface {
+	CarrierDown(ctx context.Context, alert CarrierAlert) error
 }
 
 // IngressMatcher finds the trunks, in any tenant, that recognise a

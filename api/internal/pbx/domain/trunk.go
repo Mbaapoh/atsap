@@ -34,6 +34,11 @@ const (
 	HealthUnhealthy TrunkHealth = "UNHEALTHY"
 )
 
+// Failed reports whether h means the carrier is not fully serving calls.
+func (h TrunkHealth) Failed() bool {
+	return h == HealthDegraded || h == HealthUnhealthy
+}
+
 // Valid reports whether h is one of the three observed states.
 func (h TrunkHealth) Valid() bool {
 	switch h {
@@ -60,12 +65,15 @@ const (
 	// ReasonAddressNotAllowed is the trunk's host name resolving only to
 	// addresses that cannot be a carrier (D-76): nothing was sent.
 	ReasonAddressNotAllowed HealthReason = "ADDRESS_NOT_ALLOWED"
+	// ReasonCallSetupFailures is a trunk degraded by the rolling call
+	// setup failure rate, not by the OPTIONS checks (D-80, HLD T-6).
+	ReasonCallSetupFailures HealthReason = "CALL_SETUP_FAILURES"
 )
 
 // Valid reports whether r is one of the defined reasons.
 func (r HealthReason) Valid() bool {
 	switch r {
-	case ReasonAnswering, ReasonSlowResponse, ReasonHostNotFound, ReasonNoResponse, ReasonCarrierError, ReasonAddressNotAllowed:
+	case ReasonAnswering, ReasonSlowResponse, ReasonHostNotFound, ReasonNoResponse, ReasonCarrierError, ReasonAddressNotAllowed, ReasonCallSetupFailures:
 		return true
 	}
 	return false
@@ -126,6 +134,10 @@ type Trunk struct {
 	// is first observed.
 	HealthReason     HealthReason
 	HealthObservedAt *time.Time
+	// HealthySince is when the current run of healthy checks began while
+	// the trunk is recovering; nil when it is Healthy, or not recovering
+	// (D-80, HLD T-6).
+	HealthySince *time.Time
 	// ResolvedAddresses are what the carrier is recognised by (D-75): the
 	// host itself when it is an IP address, otherwise what the platform
 	// last resolved the name to. ResolvedAt is when a name last resolved;
@@ -324,6 +336,124 @@ func ObserveProbe(outcome ProbeOutcome, statusCode int, rtt time.Duration) (Trun
 	default:
 		return HealthHealthy, ReasonAnswering
 	}
+}
+
+// HLD T-6 (D-80) health thresholds. They are deliberately constants, not
+// configuration: the owner chose T-6 exactly as written.
+const (
+	// DefaultProbeInterval is how often a carrier is checked.
+	DefaultProbeInterval = 10 * time.Second
+	// DegradeAfterFailures is the consecutive failed checks that degrade.
+	DegradeAfterFailures = 3
+	// CallWindow is the rolling window for call-setup outcomes.
+	CallWindow = 60 * time.Second
+	// MinCallSamples is the smallest window that can degrade a trunk.
+	MinCallSamples = 5
+	// CallFailureRate is the fraction above which the window degrades.
+	CallFailureRate = 0.20
+	// RecoveryWindow is how long healthy checks must continue to recover.
+	RecoveryWindow = 5 * time.Minute
+)
+
+// HealthSource is where one health observation came from.
+type HealthSource string
+
+// The sample sources: a platform check, and one call-setup outcome.
+const (
+	HealthFromProbe HealthSource = "PROBE"
+	HealthFromCall  HealthSource = "CALL"
+)
+
+// Valid reports whether s is a defined sample source.
+func (s HealthSource) Valid() bool {
+	return s == HealthFromProbe || s == HealthFromCall
+}
+
+// HealthSample is one observation: a check, or one call-setup outcome.
+// Healthy is whether it counts as a healthy check for the recovery
+// window; a slow answer is not.
+type HealthSample struct {
+	Source  HealthSource
+	Healthy bool
+	Reason  HealthReason
+	At      time.Time
+}
+
+// HealthState is the data the health decision needs: the stored state and
+// the rolling counts ending at the latest sample.
+type HealthState struct {
+	Health                   TrunkHealth
+	Reason                   HealthReason
+	HealthySince             *time.Time
+	ConsecutiveProbeFailures int
+	CallTotal                int
+	CallFailures             int
+}
+
+// HealthDecision is what the stored state should become.
+type HealthDecision struct {
+	Health       TrunkHealth
+	Reason       HealthReason
+	HealthySince *time.Time
+	// Changed is true only when the health state itself changed; that is
+	// the transition that alerts the operator (D-80).
+	Changed bool
+}
+
+// DecideHealth applies HLD T-6 to one sample. It is pure: the store
+// supplies the state and rolling counts, and applies the result.
+func DecideHealth(state HealthState, sample HealthSample) HealthDecision {
+	current := state.Health
+	if current == "" {
+		current = HealthUnknown
+	}
+	next, reason, since := current, state.Reason, state.HealthySince
+
+	callFailed := state.CallTotal >= MinCallSamples &&
+		float64(state.CallFailures) > CallFailureRate*float64(state.CallTotal)
+
+	if sample.Source == HealthFromProbe {
+		configFailure := sample.Reason == ReasonHostNotFound || sample.Reason == ReasonAddressNotAllowed
+		switch {
+		case configFailure:
+			next, reason, since = HealthUnhealthy, sample.Reason, nil
+		case sample.Reason == ReasonSlowResponse:
+			next, reason, since = HealthDegraded, sample.Reason, nil
+		case !sample.Healthy && state.ConsecutiveProbeFailures >= DegradeAfterFailures:
+			next, reason, since = HealthDegraded, sample.Reason, nil
+		case sample.Healthy:
+			switch current {
+			case HealthHealthy, HealthUnknown:
+				next, reason, since = HealthHealthy, ReasonAnswering, nil
+			default:
+				// Recovering from Degraded/Unhealthy: keep the state
+				// until the window has run.
+				if since == nil {
+					at := sample.At
+					since = &at
+				}
+				if sample.At.Sub(*since) >= RecoveryWindow {
+					next, reason, since = HealthHealthy, ReasonAnswering, nil
+				}
+			}
+		default:
+			// A failed check below the threshold. A healthy trunk stays
+			// healthy; an unknown, degraded or unhealthy one keeps its
+			// state, and the recovery window restarts.
+			if current == HealthHealthy {
+				next, reason = HealthHealthy, ReasonAnswering
+			}
+			since = nil
+		}
+	}
+
+	// The call window can degrade a trunk on its own, but never overrides
+	// a configuration failure that already makes it Unhealthy.
+	if callFailed && next != HealthUnhealthy {
+		next, reason, since = HealthDegraded, ReasonCallSetupFailures, nil
+	}
+
+	return HealthDecision{Health: next, Reason: reason, HealthySince: since, Changed: next != current}
 }
 
 // TrunkCredentialRef is the reference a trunk row holds in place of its

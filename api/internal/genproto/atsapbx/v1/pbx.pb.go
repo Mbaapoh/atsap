@@ -207,6 +207,9 @@ const (
 	// carrier (loopback, link-local, unspecified or multicast); nothing was
 	// sent to them.
 	TrunkHealthReason_TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED TrunkHealthReason = 6
+	// The rolling call-setup failure rate, not a check, degraded the trunk
+	// (HLD T-6, D-80).
+	TrunkHealthReason_TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES TrunkHealthReason = 7
 )
 
 // Enum value maps for TrunkHealthReason.
@@ -219,6 +222,7 @@ var (
 		4: "TRUNK_HEALTH_REASON_NO_RESPONSE",
 		5: "TRUNK_HEALTH_REASON_CARRIER_ERROR",
 		6: "TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED",
+		7: "TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES",
 	}
 	TrunkHealthReason_value = map[string]int32{
 		"TRUNK_HEALTH_REASON_UNSPECIFIED":         0,
@@ -228,6 +232,7 @@ var (
 		"TRUNK_HEALTH_REASON_NO_RESPONSE":         4,
 		"TRUNK_HEALTH_REASON_CARRIER_ERROR":       5,
 		"TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED": 6,
+		"TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES": 7,
 	}
 )
 
@@ -3416,7 +3421,7 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x14TRUNK_HEALTH_HEALTHY\x10\x01\x12\x19\n" +
 	"\x15TRUNK_HEALTH_DEGRADED\x10\x02\x12\x1a\n" +
 	"\x16TRUNK_HEALTH_UNHEALTHY\x10\x03\x12\x18\n" +
-	"\x14TRUNK_HEALTH_UNKNOWN\x10\x04*\xa3\x02\n" +
+	"\x14TRUNK_HEALTH_UNKNOWN\x10\x04*\xd0\x02\n" +
 	"\x11TrunkHealthReason\x12#\n" +
 	"\x1fTRUNK_HEALTH_REASON_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dTRUNK_HEALTH_REASON_ANSWERING\x10\x01\x12%\n" +
@@ -3424,7 +3429,8 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\"TRUNK_HEALTH_REASON_HOST_NOT_FOUND\x10\x03\x12#\n" +
 	"\x1fTRUNK_HEALTH_REASON_NO_RESPONSE\x10\x04\x12%\n" +
 	"!TRUNK_HEALTH_REASON_CARRIER_ERROR\x10\x05\x12+\n" +
-	"'TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED\x10\x062\x94\x11\n" +
+	"'TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED\x10\x06\x12+\n" +
+	"'TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES\x10\a2\x94\x11\n" +
 	"\n" +
 	"PbxService\x12Z\n" +
 	"\x0fCreateExtension\x12\".atsapbx.v1.CreateExtensionRequest\x1a#.atsapbx.v1.CreateExtensionResponse\x12Q\n" +

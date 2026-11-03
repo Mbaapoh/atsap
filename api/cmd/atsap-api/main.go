@@ -298,7 +298,14 @@ func run() int {
 		logger.Error("failed to project the carrier ingress", "error", err)
 		return 1
 	}
-	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), projector, &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger)
+	carrierAlerter, err := newCarrierAlerter(cfg, identityStore, logger)
+	if err != nil {
+		logger.Error("carrier alerts", "error", err)
+		return 1
+	}
+	pbxSvc = pbxSvc.WithCarrierAlerter(carrierAlerter)
+	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), projector, &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger).
+		WithCarrierAlerter(carrierAlerter)
 	pbxSvc = pbxSvc.WithTrunkChecker(trunkProber)
 	go trunkProber.Run(ctx)
 	callService.SetInboundRouter(pbxSvc)

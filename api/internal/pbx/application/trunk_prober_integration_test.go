@@ -200,11 +200,15 @@ func TestTrunkProber_ARoundCoversEveryTenant(t *testing.T) {
 	assert.Equal(t, domain.HealthUnknown, trunkHealth(h.ctx, t, h.svc, h.tenant, ours.ID).Health)
 
 	prober, _ := withProber(h, carriers)
-	require.NoError(t, prober.Round(context.Background()))
+	// T-6: one silent check is not enough; three consecutive failures
+	// degrade the trunk.
+	for i := 0; i < domain.DegradeAfterFailures; i++ {
+		require.NoError(t, prober.Round(context.Background()))
+	}
 
 	assert.Equal(t, domain.HealthHealthy, trunkHealth(h.ctx, t, h.svc, h.tenant, ours.ID).Health)
 	v := trunkHealth(otherCtx, t, h.svc, otherID, theirs.ID)
-	assert.Equal(t, domain.HealthUnhealthy, v.Health)
+	assert.Equal(t, domain.HealthDegraded, v.Health)
 	assert.Equal(t, domain.ReasonNoResponse, v.HealthReason)
 }
 
@@ -372,4 +376,83 @@ func TestTrunkProber_AddressNotAllowedKeepsOnlyTheRanges(t *testing.T) {
 	assert.Equal(t, domain.HealthUnhealthy, v.Health)
 	assert.Equal(t, domain.ReasonAddressNotAllowed, v.HealthReason)
 	assert.Equal(t, "203.0.113.0/28", h.identifyMatchOf(t, tr.ID), "the ranges stay; loopback is gone")
+}
+
+// recordingAlerter records the alerts the application emits.
+type recordingAlerter struct {
+	mu     sync.Mutex
+	alerts []ports.CarrierAlert
+}
+
+func (r *recordingAlerter) CarrierDown(_ context.Context, a ports.CarrierAlert) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.alerts = append(r.alerts, a)
+	return nil
+}
+
+func (r *recordingAlerter) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.alerts)
+}
+
+// D-80 / HLD T-6: three failed checks degrade; recovery needs five healthy
+// minutes; the operator is told once on the failure, never on recovery.
+func TestTrunkProber_ThresholdsRecoveryAndAlert(t *testing.T) {
+	h := newHarness(t)
+	carriers := newFakeCarriers(map[string]ports.CarrierCheck{"dead.carrier.example": silent})
+	alerter := &recordingAlerter{}
+	base := time.Now().UTC()
+	clock := base
+	prober, _ := withProber(h, carriers)
+	prober = prober.WithCarrierAlerter(alerter).WithClock(func() time.Time { return clock })
+
+	cmd := h.trunkCmd("Dead")
+	cmd.Host = "dead.carrier.example"
+	tr, err := h.svc.CreateTrunk(h.ctx, cmd)
+	require.NoError(t, err)
+
+	round := func() domain.TrunkHealth {
+		require.NoError(t, prober.Round(context.Background()))
+		return trunkHealth(h.ctx, t, h.svc, h.tenant, tr.ID).Health
+	}
+	assert.Equal(t, domain.HealthUnknown, round(), "one failed check is not a verdict")
+	assert.Equal(t, domain.HealthUnknown, round(), "two are not either")
+	assert.Equal(t, domain.HealthDegraded, round(), "the third degrades")
+	require.Eventually(t, func() bool { return alerter.count() == 1 }, 2*time.Second, 20*time.Millisecond)
+	assert.Equal(t, domain.HealthDegraded, round(), "further failures keep it degraded")
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 1, alerter.count(), "no repeated alert while failed")
+
+	// Recover: five continuous minutes of healthy checks.
+	carriers.set("dead.carrier.example", answering)
+	clock = base.Add(time.Minute)
+	assert.Equal(t, domain.HealthDegraded, round(), "one healthy check starts the window")
+	clock = base.Add(6 * time.Minute)
+	assert.Equal(t, domain.HealthHealthy, round(), "five healthy minutes recover")
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 1, alerter.count(), "recovery is silent")
+}
+
+// D-80: five call setups over the rolling window degrade the trunk and
+// emit one alert; a further failure does not repeat it.
+func TestReportRouteHealth_CallWindowDegradesAndAlertsOnce(t *testing.T) {
+	h := newHarness(t)
+	alerter := &recordingAlerter{}
+	svc := h.svc.WithCarrierAlerter(alerter)
+	tr, err := svc.CreateTrunk(h.ctx, h.trunkCmd("Primary"))
+	require.NoError(t, err)
+
+	for i := 0; i < domain.MinCallSamples; i++ {
+		require.NoError(t, svc.ReportRouteHealth(h.ctx, tr.ID, 503, 0))
+	}
+	v := trunkHealth(h.ctx, t, svc, h.tenant, tr.ID)
+	assert.Equal(t, domain.HealthDegraded, v.Health)
+	assert.Equal(t, domain.ReasonCallSetupFailures, v.HealthReason)
+	require.Eventually(t, func() bool { return alerter.count() == 1 }, 2*time.Second, 20*time.Millisecond)
+
+	require.NoError(t, svc.ReportRouteHealth(h.ctx, tr.ID, 503, 0))
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 1, alerter.count(), "still one alert for the same failure")
 }

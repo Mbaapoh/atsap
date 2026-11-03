@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	pbxdomain "atsap-api/internal/pbx/domain"
@@ -98,9 +99,15 @@ type Config struct {
 	SIPPublicTransport string
 
 	// TrunkProbeInterval is how often every trunk's carrier is checked
-	// with SIP OPTIONS (pbx-trunk-health-probing, D-74). Zero turns the
-	// schedule off; a trunk is still checked when created or re-addressed.
+	// with SIP OPTIONS (D-74); HLD T-6 sets the default to 10 s. Zero turns
+	// the schedule off; a trunk is still checked when created or
+	// re-addressed.
 	TrunkProbeInterval time.Duration
+
+	// CarrierAlertEmails are installation-level recipients of the BR-08
+	// carrier-failure email (D-80), in addition to each tenant's active
+	// tenant administrators. Comma-separated; empty is normal.
+	CarrierAlertEmails []string
 
 	// PlacementCallerTimeout is how long a click-to-call placement rings
 	// the caller's extension before the call ends with caller_no_answer
@@ -186,7 +193,7 @@ func Load() (Config, error) {
 	if err := cfg.loadSIPPublic(); err != nil {
 		return cfg, err
 	}
-	interval, err := time.ParseDuration(getEnv("ATSAPBX_TRUNK_PROBE_INTERVAL", "30s"))
+	interval, err := time.ParseDuration(getEnv("ATSAPBX_TRUNK_PROBE_INTERVAL", "10s"))
 	if err != nil || interval < 0 || (interval > 0 && interval < 5*time.Second) {
 		return cfg, fmt.Errorf("ATSAPBX_TRUNK_PROBE_INTERVAL must be a duration of 5s or more, or 0 to turn scheduled checks off")
 	}
@@ -197,6 +204,14 @@ func Load() (Config, error) {
 		return cfg, fmt.Errorf("ATSAPBX_PLACEMENT_CALLER_TIMEOUT must be a positive duration")
 	}
 	cfg.PlacementCallerTimeout = callerTimeout
+
+	if raw := getEnv("ATSAPBX_CARRIER_ALERT_EMAILS", ""); raw != "" {
+		for _, address := range strings.Split(raw, ",") {
+			if address = strings.TrimSpace(address); address != "" {
+				cfg.CarrierAlertEmails = append(cfg.CarrierAlertEmails, address)
+			}
+		}
+	}
 
 	return cfg, nil
 }

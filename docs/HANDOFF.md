@@ -16,11 +16,11 @@ pilot), in this order:
 |---|---|---|---|
 | **7a** | **Call session UX** (owner request, 2026-11-02): a persistent call bar with live state and one-click Hang up/Cancel, a global dialer (searchable extension, keypad, recents), live Call history, and `GetCall` timestamps/reason | **Done and archived 2026-11-02** (`console-call-session`, D-79); proven by full Go e2e, all three phone UATs, `make console-check` and the console tiers | — |
 | **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **Done and archived 2026-11-02** (`console-click-to-call`, D-78); proven by e2e, all three phone UATs and `make console-check` | — |
-| **5** | **Trunk health exactly as HLD T-6** ([hld/11-decisions.md](hld/11-decisions.md)): check every 10 s; *Degraded* after 3 consecutive failed checks **or** > 20 % call-setup failures over 60 s (min 5 calls); recover only after 5 min of healthy checks | Not planned yet. The owner chose **implement T-6 as written**, not amend it | `/opsx:propose` a change (suggested name `pbx-trunk-health-thresholds`) |
-| **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | Not planned. Pairs naturally with #5: alert on the thresholded state change, never on one failed check | Same change as #5, or the next one |
+| **5** | **Trunk health exactly as HLD T-6**: 10 s checks; Degraded after 3 consecutive failures or >20 % call-setup failures over 60 s (min 5); 5 min recovery | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80) | — |
+| **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | Not planned. The owner placed it in this phase | `/opsx:propose`. It needs owner decisions first (see §5) |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 is done and archived 2026-11-02** (`console-click-to-call`, D-78); **#7a is done and archived the same day** (`console-call-session`, D-79). **#5 is next.** PROGRESS's own "Before a pilot" list continues after these with toll-fraud classes and Sign in with Google.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5 and #6 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80). **#8 is next.** PROGRESS's own "Before a pilot" list continues after these with toll-fraud classes and Sign in with Google.
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -28,6 +28,19 @@ The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3
 ---
 
 ## 2. What was done this week
+
+### 2026-11-03 — trunk health T-6 and the BR-08 alert (D-80)
+
+`pbx-trunk-health-thresholds` archived. Checks run every 10 s; a carrier
+is Degraded after 3 consecutive failures or a call-setup failure rate
+above 20 % over a rolling 60 s window (min 5); recovery needs 5 continuous
+healthy minutes. Configuration failures stay Unhealthy at once. The
+observations are in `trunk_health_samples` and `healthy_since`; a failure
+transition emails the tenant administrators and
+`ATSAPBX_CARRIER_ALERT_EMAILS` once, with no alert on recovery. Migration
+0017, the pure decision, the prober and the call window are tested at
+unit, integration and e2e (the alert is verified in Mailpit). The Asterisk
+image scan remains owner-deferred.
 
 ### 2026-11-02 — live call session and dialer (D-79)
 

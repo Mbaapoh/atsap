@@ -9,9 +9,12 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-02, after `console-call-session`: a placed call
-is a shell-level live session with Cancel/Hang up, a global dialer, live
-Call history, and `GetCall` timestamps and reason (D-79). Before that,
+**Last updated:** 2026-11-03, after `pbx-trunk-health-thresholds`: trunk
+health follows HLD T-6 (10 s checks, 3 failures or a 20 % call window, a
+5 min recovery) and a failing carrier emails the operator (BR-08, D-80).
+Before that, 2026-11-02, `console-call-session`: a placed call is a
+shell-level live session with Cancel/Hang up, a global dialer, live Call
+history, and `GetCall` timestamps and reason (D-79). Before that,
 2026-11-02, `console-click-to-call`: the console rings the caller's
 extension first, dials the destination only when it answers, and offers
 Place a call and Hang up (D-78). Before that, 2026-11-01,
@@ -25,9 +28,9 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** nothing in flight. #5 (trunk health exactly as HLD T-6,
-with the BR-08 carrier-failure alert) is next; see
-[HANDOFF.md](HANDOFF.md) §1.
+**Next work:** #8, browser calling (FBR-R1-01). It needs the WebRTC
+decisions in [HANDOFF.md](HANDOFF.md) §5. The Asterisk image scan remains
+owner-deferred.
 
 ## Keeping it current
 
@@ -47,7 +50,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 16 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call and the live call session | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 17 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session and T-6 health with alerts | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -110,9 +113,10 @@ and §5):
 - ~~**Call session UX**~~ **done 2026-11-02** (`console-call-session`,
   D-79): a persistent live bar, New call dialer, live history and
   `GetCall` outcome fields.
-- **Trunk health per HLD T-6, implemented as written** (10 s checks,
-  thresholds, 5-minute recovery), with the **BR-08 carrier-failure
-  alert**.
+- ~~**Trunk health per HLD T-6 and the BR-08 alert**~~ **done 2026-11-03**
+  (`pbx-trunk-health-thresholds`, D-80): 10 s checks, 3 failures or a
+  20 % call-setup window, 5-minute recovery, and one email per failure
+  transition.
 - **Browser calling** (FBR-R1-01), pending the WebRTC decisions listed in
   the handoff.
 8. **Toll-fraud protection**: enforce outbound destination classes.
@@ -181,6 +185,7 @@ that link.
 | 2026-11-01 | `pbx-carrier-ingress` | 7/7 | U I E A; spike (one ingress, `remote_addr` through ARI, 500 ranges); two tenants on one container carrier each receive their own numbers (D-77) |
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 | 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
+| 2026-11-03 | `pbx-trunk-health-thresholds` | 12/12 | U I E A; T-6 thresholds and recovery, `trunk_health_samples`, BR-08 email alert in Mailpit (D-80); full pbx integration, full Go e2e, console-check, three phone UATs |
 
 ## Active changes
 
@@ -198,8 +203,9 @@ design; *accepted* = no fix planned.
 | Gap | Where it came from | Severity |
 |---|---|---|
 | The Asterisk image is single-stage and ships its build toolchain: Trivy finds 20 fixable HIGH (Python 3.11) and 440 HIGH/CRITICAL that Debian has not fixed yet, so the image gate cannot pass | quality-and-supply-chain-gates 5.3 | **High** — pilot: multi-stage runtime image; owner decision on `--ignore-unfixed` |
-| Trunk health does not follow HLD T-6: checks every 30 s and one observation decides (T-6: every 10 s, 3 consecutive failures or > 20 % call-setup failures over 60 s, 5 min of health to recover). D-74 did not reconcile with T-6 | Found 2026-11-01, auditing `pbx-trunk-host-resolution` against the BRD/HLD | Medium — pilot: amend T-6 by decision or implement it (owner) |
-| BR-08: a failing carrier is not alerted to the operator; health is only shown in the console | BRD BR-08, found 2026-11-01 | Medium — pilot: needs an alerting channel (email via the existing mailer, or a webhook, LLD-05) |
+| ~~Trunk health did not follow HLD T-6~~ | Found 2026-11-01 | Closed: `pbx-trunk-health-thresholds` implements T-6 as written (D-80) |
+| ~~BR-08: a failing carrier was not alerted~~ | BRD BR-08 | Closed: `pbx-trunk-health-thresholds` emails tenant administrators and `ATSAPBX_CARRIER_ALERT_EMAILS` on the failure transition (D-80) |
+| The BR-08 alert is email-only; webhooks are LLD-05 | pbx-trunk-health-thresholds G1 | Accepted |
 | ~~Two trunks on one carrier address (or overlapping inbound ranges, D-76) are indistinguishable for inbound calls~~ | inbound G3 | Closed: `pbx-carrier-ingress` (D-77): one ingress, attributed by source address and number; a number configured in two tenants that share a carrier is refused and logged |
 | ~~Before activation (Setup), tenant and extension caps read 0 = unlimited~~ | license-provisioning-enforcement | Closed: `phase-a-hardening` task 3.1 (D-72) |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |

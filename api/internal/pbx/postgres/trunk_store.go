@@ -29,7 +29,7 @@ func NewTrunkStore() TrunkStore { return TrunkStore{} }
 
 const trunkColumns = `id, tenant_id, name, host, port, auth_username, credentials_ref,
 	channel_limit, priority, health_status, health_reason, health_observed_at,
-	resolved_addresses, resolved_at, inbound_addresses, created_at, updated_at`
+	healthy_since, resolved_addresses, resolved_at, inbound_addresses, created_at, updated_at`
 
 // Insert writes a new trunk. Health and addresses are written as given,
 // which on the configuration path is always Unknown with no observation,
@@ -37,10 +37,10 @@ const trunkColumns = `id, tenant_id, name, host, port, auth_username, credential
 func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO carrier_trunks (`+trunkColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 	`, t.ID.String(), t.TenantID.String(), t.Name, t.Host, t.Port, nullable(t.AuthUsername),
 		nullable(t.CredentialRef), t.ChannelLimit, t.Priority, string(t.Health), nullable(string(t.HealthReason)),
-		t.HealthObservedAt, addressArray(t.ResolvedAddresses), t.ResolvedAt, rangeArray(t.InboundAddresses),
+		t.HealthObservedAt, t.HealthySince, addressArray(t.ResolvedAddresses), t.ResolvedAt, rangeArray(t.InboundAddresses),
 		t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert trunk: %w", err)
@@ -65,11 +65,20 @@ func (TrunkStore) Insert(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
 // trunk check is their only other writer, and a concurrent one must not
 // be overwritten by a configuration edit.
 func (TrunkStore) Update(ctx context.Context, tx pgx.Tx, t domain.Trunk) error {
+	// A new address has no history: the old checks were of another
+	// carrier, so they must not count towards the T-6 windows.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM trunk_health_samples WHERE trunk_id = $1
+		AND EXISTS (SELECT 1 FROM carrier_trunks WHERE id = $1 AND (host <> $2 OR port <> $3))
+	`, t.ID.String(), t.Host, t.Port); err != nil {
+		return fmt.Errorf("clear health samples on readdress: %w", err)
+	}
 	tag, err := tx.Exec(ctx, `
 		UPDATE carrier_trunks SET
 			health_status      = CASE WHEN host = $3 AND port = $4 THEN health_status      ELSE 'UNKNOWN' END,
 			health_reason      = CASE WHEN host = $3 AND port = $4 THEN health_reason      ELSE NULL END,
 			health_observed_at = CASE WHEN host = $3 AND port = $4 THEN health_observed_at ELSE NULL END,
+			healthy_since      = CASE WHEN host = $3 AND port = $4 THEN healthy_since      ELSE NULL END,
 			resolved_addresses = CASE WHEN host = $3 THEN resolved_addresses ELSE $10 END,
 			resolved_at        = CASE WHEN host = $3 THEN resolved_at        ELSE NULL END,
 			name = $2, host = $3, port = $4, auth_username = $5, credentials_ref = $6,
@@ -193,6 +202,135 @@ func (TrunkStore) SetResolvedAddresses(ctx context.Context, tx pgx.Tx, id shared
 	return changed, nil
 }
 
+// RecordProbeHealth locks the trunk, records a check sample and returns
+// the stored state with the rolling counts. A check whose address has
+// changed is dropped whole (recorded false), as SetCheckedHealth did.
+func (TrunkStore) RecordProbeHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, port int, sample domain.HealthSample, windowStart time.Time) (domain.HealthState, bool, error) {
+	return recordHealthSample(ctx, tx, id, host, port, sample, windowStart)
+}
+
+// RecordCallHealth locks the trunk, records a call-setup sample and
+// returns the stored state with the rolling counts.
+func (TrunkStore) RecordCallHealth(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, sample domain.HealthSample, windowStart time.Time) (domain.HealthState, error) {
+	state, _, err := recordHealthSample(ctx, tx, id, "", 0, sample, windowStart)
+	return state, err
+}
+
+// recordHealthSample inserts one sample after locking the trunk, then
+// reads the rolling counts. Every write for a trunk is serialized by the
+// row lock, so the counts and the decision cannot race.
+func recordHealthSample(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, host string, port int, sample domain.HealthSample, windowStart time.Time) (domain.HealthState, bool, error) {
+	if !sample.Source.Valid() || !sample.Reason.Valid() || sample.At.IsZero() {
+		return domain.HealthState{}, false, fmt.Errorf("%w: health sample %+v", ports.ErrInvalidInput, sample)
+	}
+
+	var (
+		state                domain.HealthState
+		rawHealth, rawReason string
+		healthySince         *time.Time
+		tenantID             string
+	)
+	lock := `SELECT tenant_id, health_status, COALESCE(health_reason, ''), healthy_since
+		FROM carrier_trunks WHERE id = $1 FOR UPDATE`
+	args := []any{id.String()}
+	if host != "" {
+		lock = `SELECT tenant_id, health_status, COALESCE(health_reason, ''), healthy_since
+			FROM carrier_trunks WHERE id = $1 AND host = $2 AND port = $3 FOR UPDATE`
+		args = append(args, host, port)
+	}
+	err := tx.QueryRow(ctx, lock, args...).Scan(&tenantID, &rawHealth, &rawReason, &healthySince)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.HealthState{}, false, nil
+	}
+	if err != nil {
+		return domain.HealthState{}, false, fmt.Errorf("lock trunk health: %w", err)
+	}
+	state.Health = domain.TrunkHealth(rawHealth)
+	state.Reason = domain.HealthReason(rawReason)
+	state.HealthySince = healthySince
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO trunk_health_samples (tenant_id, trunk_id, source, healthy, reason, at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, tenantID, id.String(), string(sample.Source), sample.Healthy, string(sample.Reason), sample.At); err != nil {
+		return domain.HealthState{}, false, fmt.Errorf("record health sample: %w", err)
+	}
+	// Keep the table bounded: the longest window is the five-minute
+	// recovery, so an hour is ample.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM trunk_health_samples
+		WHERE trunk_id = $1 AND at < $2
+	`, id.String(), windowStart.Add(-time.Hour)); err != nil {
+		return domain.HealthState{}, false, fmt.Errorf("prune health samples: %w", err)
+	}
+
+	failures, err := consecutiveProbeFailures(ctx, tx, id)
+	if err != nil {
+		return domain.HealthState{}, false, err
+	}
+	total, failed, err := callWindow(ctx, tx, id, windowStart)
+	if err != nil {
+		return domain.HealthState{}, false, err
+	}
+	state.ConsecutiveProbeFailures = failures
+	state.CallTotal, state.CallFailures = total, failed
+	return state, true, nil
+}
+
+func consecutiveProbeFailures(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID) (int, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT healthy FROM trunk_health_samples
+		WHERE trunk_id = $1 AND source = 'PROBE'
+		ORDER BY at DESC, id DESC LIMIT 10
+	`, id.String())
+	if err != nil {
+		return 0, fmt.Errorf("read probe samples: %w", err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var healthy bool
+		if err := rows.Scan(&healthy); err != nil {
+			return 0, fmt.Errorf("scan probe sample: %w", err)
+		}
+		if healthy {
+			break
+		}
+		n++
+	}
+	return n, rows.Err()
+}
+
+func callWindow(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, windowStart time.Time) (total, failures int, err error) {
+	err = tx.QueryRow(ctx, `
+		SELECT count(*), count(*) FILTER (WHERE NOT healthy)
+		FROM trunk_health_samples
+		WHERE trunk_id = $1 AND source = 'CALL' AND at > $2
+	`, id.String(), windowStart).Scan(&total, &failures)
+	if err != nil {
+		return 0, 0, fmt.Errorf("read call health window: %w", err)
+	}
+	return total, failures, nil
+}
+
+// SetHealthState applies a decided health, its reason and the recovery
+// start. health_observed_at moves on every decision, so the console can
+// show when the last observation was made.
+func (TrunkStore) SetHealthState(ctx context.Context, tx pgx.Tx, id shareddomain.TrunkID, decision domain.HealthDecision, at time.Time) error {
+	tag, err := tx.Exec(ctx, `
+		UPDATE carrier_trunks SET health_status = $2, health_reason = $3,
+			health_observed_at = $4, healthy_since = $5
+		WHERE id = $1
+	`, id.String(), string(decision.Health), nullable(string(decision.Reason)), at, decision.HealthySince)
+	if err != nil {
+		return fmt.Errorf("set trunk health state: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("trunk %s: %w", id, ports.ErrNotFound)
+	}
+	return nil
+}
+
 // validObservation refuses an observation that is not one: Unknown is
 // where a trunk starts, never something observed.
 func validObservation(obs domain.HealthObservation) error {
@@ -204,15 +342,15 @@ func validObservation(obs domain.HealthObservation) error {
 
 func scanTrunk(row pgx.Row) (domain.Trunk, error) {
 	var (
-		t                      domain.Trunk
-		rawID, rawTenant, hlth string
-		username, ref, reason  *string
-		observedAt, resolvedAt *time.Time
-		addresses              []netip.Addr
-		inbound                []netip.Prefix
+		t                                    domain.Trunk
+		rawID, rawTenant, hlth               string
+		username, ref, reason                *string
+		observedAt, healthySince, resolvedAt *time.Time
+		addresses                            []netip.Addr
+		inbound                              []netip.Prefix
 	)
 	if err := row.Scan(&rawID, &rawTenant, &t.Name, &t.Host, &t.Port, &username, &ref,
-		&t.ChannelLimit, &t.Priority, &hlth, &reason, &observedAt, &addresses, &resolvedAt,
+		&t.ChannelLimit, &t.Priority, &hlth, &reason, &observedAt, &healthySince, &addresses, &resolvedAt,
 		&inbound, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Trunk{}, err

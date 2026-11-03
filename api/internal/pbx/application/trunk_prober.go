@@ -53,9 +53,26 @@ type TrunkProber struct {
 	trunks   ports.TrunkStore
 	identify ports.TrunkIdentifyProjector
 	probe    ports.CarrierProbe
+	alerter  ports.CarrierAlerter
 	interval time.Duration
 	now      func() time.Time
 	logger   *slog.Logger
+}
+
+// WithClock returns a copy using now as its clock. Tests use it to move
+// through the five-minute recovery window without sleeping.
+func (p *TrunkProber) WithClock(now func() time.Time) *TrunkProber {
+	clone := *p
+	clone.now = now
+	return &clone
+}
+
+// WithCarrierAlerter returns a copy that tells the operator when a trunk
+// fails (BR-08, D-80). Without one, health is still observed and recorded.
+func (p *TrunkProber) WithCarrierAlerter(a ports.CarrierAlerter) *TrunkProber {
+	clone := *p
+	clone.alerter = a
+	return &clone
 }
 
 var _ ports.TrunkChecker = (*TrunkProber)(nil)
@@ -151,16 +168,54 @@ func (p *TrunkProber) check(ctx context.Context, t domain.Trunk) {
 	}
 	health, reason := domain.ObserveProbe(result.Outcome, result.Status, result.RTT)
 	obs := domain.HealthObservation{Health: health, Reason: reason, At: p.now().UTC()}
+	sample := domain.HealthSample{
+		Source: domain.HealthFromProbe, Healthy: health == domain.HealthHealthy,
+		Reason: reason, At: obs.At,
+	}
+	var (
+		prev     domain.HealthState
+		decision domain.HealthDecision
+		recorded bool
+	)
 	err := p.pool.WithTenant(ctx, t.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		recorded, err := p.trunks.SetCheckedHealth(ctx, tx, t.ID, t.Host, t.Port, obs)
+		var err error
+		prev, recorded, err = p.trunks.RecordProbeHealth(ctx, tx, t.ID, t.Host, t.Port, sample, obs.At.Add(-domain.CallWindow))
 		if err != nil || !recorded {
 			return err // a result for an address since changed is dropped whole
+		}
+		decision = domain.DecideHealth(prev, sample)
+		if err := p.trunks.SetHealthState(ctx, tx, t.ID, decision, obs.At); err != nil {
+			return err
 		}
 		return p.recordAddresses(ctx, tx, t, result, obs.At)
 	})
 	if err != nil {
 		p.logger.Warn("pbx: could not record a trunk check", "trunk_id", t.ID, "error", err)
+		return
 	}
+	if recorded && decision.Changed && decision.Health.Failed() && !prev.Health.Failed() {
+		p.notify(ctx, t, decision, obs.At)
+	}
+}
+
+// notify tells the operator about a failure transition, outside the check
+// path so mail can never delay or fail a check.
+func (p *TrunkProber) notify(ctx context.Context, t domain.Trunk, decision domain.HealthDecision, at time.Time) {
+	if p.alerter == nil {
+		return
+	}
+	alert := ports.CarrierAlert{
+		TenantID: t.TenantID, TrunkID: t.ID, TrunkName: t.Name, Host: t.Host,
+		Health: decision.Health, Reason: decision.Reason, At: at,
+	}
+	alertCtx := context.WithoutCancel(ctx)
+	go func() {
+		ctx, cancel := context.WithTimeout(alertCtx, 20*time.Second)
+		defer cancel()
+		if err := p.alerter.CarrierDown(ctx, alert); err != nil {
+			p.logger.Warn("pbx: carrier alert failed", "trunk_id", t.ID, "error", err)
+		}
+	}()
 }
 
 // recordAddresses brings the trunk's addresses, and the engine row that

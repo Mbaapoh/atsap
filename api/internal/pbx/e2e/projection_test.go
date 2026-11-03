@@ -78,6 +78,7 @@ type rig struct {
 	pool   *corepostgres.Pool
 	tenant shareddomain.TenantID
 	token  string
+	email  string
 }
 
 // newRig seeds a synthetic tenant and an authenticated operator, then
@@ -143,7 +144,7 @@ func newRig(t *testing.T) *rig {
 		_, _ = pool.Unwrap().Exec(cleanupCtx, `DELETE FROM users WHERE id = $1`, userID)
 	})
 
-	r := &rig{pool: pool, tenant: tenantID}
+	r := &rig{pool: pool, tenant: tenantID, email: username + "@e2e.invalid"}
 	r.token = r.authenticate(t, username)
 	// Registered after the SQL sweep above, so it runs BEFORE it (LIFO):
 	// trunks and extensions go through the API, which is what removes

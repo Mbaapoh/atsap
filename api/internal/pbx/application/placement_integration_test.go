@@ -153,6 +153,19 @@ func (p *placer) place(dest string) (ports.PlacedCall, error) {
 	return p.svc.PlaceCall(p.ctx, ports.PlaceCallCommand{TenantID: p.tenant, ExtensionID: p.from.Extension.ID, Destination: dest})
 }
 
+func healthReason(t *testing.T, p *placer, id shareddomain.TrunkID) domain.HealthReason {
+	t.Helper()
+	listed, err := p.svc.ListTrunks(p.ctx, p.tenant, ports.Page{Limit: 50})
+	require.NoError(t, err)
+	for _, v := range listed {
+		if v.ID == id {
+			return v.HealthReason
+		}
+	}
+	t.Fatalf("trunk %s not listed", id)
+	return ""
+}
+
 func (p *placer) health(t *testing.T, id shareddomain.TrunkID) domain.TrunkHealth {
 	t.Helper()
 	listed, err := p.svc.ListTrunks(p.ctx, p.tenant, ports.Page{Limit: 50})
@@ -290,43 +303,49 @@ func TestPlaceCall_ScreenedOutIsARefusalWithItsReason(t *testing.T) {
 
 // --- 4.3: the observer -----------------------------------------------------
 
-func TestPlaceCall_OriginateFailureTakesTheTrunkOutOfSelection(t *testing.T) {
+func TestPlaceCall_CallSetupFailuresDemoteTheTrunk(t *testing.T) {
 	p := newPlacer(t)
 	bad := p.trunk(t, "Bad", 5, 0)
 	good := p.trunk(t, "Good", 5, 1)
 	p.route(t, "44", bad, 0)
 	p.route(t, "44", good, 1)
 
-	p.calls.failNext = errors.New("allocation failed")
-	_, err := p.place("4420")
-	require.Error(t, err)
-	assert.Equal(t, domain.HealthUnhealthy, p.health(t, bad.ID))
+	// T-6: one failed setup is not enough; five attempts with a failure
+	// rate above 20% degrade the trunk.
+	for i := 0; i < domain.MinCallSamples; i++ {
+		p.calls.failNext = errors.New("allocation failed")
+		_, err := p.place("4420")
+		require.Error(t, err)
+	}
+	assert.Equal(t, domain.HealthDegraded, p.health(t, bad.ID))
+	assert.Equal(t, domain.ReasonCallSetupFailures, healthReason(t, p, bad.ID))
 	assert.Zero(t, p.countTenantRow(t, `SELECT count(*) FROM placed_call_legs WHERE released_at IS NULL`))
 
-	_, err = p.place("4420")
+	_, err := p.place("4420")
 	require.NoError(t, err)
-	assert.Contains(t, p.calls.last().DestEndpointURI, domain.TrunkEndpointIdentifier(good.ID), "skipped by the next placement")
+	assert.Contains(t, p.calls.last().DestEndpointURI, domain.TrunkEndpointIdentifier(good.ID), "the healthy trunk is preferred")
 }
 
-func TestPlaceCall_AnsweredCallReportsHealthyAndUnansweredReportsNothing(t *testing.T) {
+func TestPlaceCall_CallSetupWindowDegradesAndSuccessDoesNotRestore(t *testing.T) {
 	p := newPlacer(t)
 	tr := p.trunk(t, "Primary", 5, 0)
 	p.route(t, "44", tr, 0)
-	require.NoError(t, p.svc.ReportRouteHealth(p.ctx, tr.ID, 200, 3*time.Second)) // degraded, still selectable
+
+	// Five slow answers are five failures in the rolling window.
+	for i := 0; i < domain.MinCallSamples; i++ {
+		require.NoError(t, p.svc.ReportRouteHealth(p.ctx, tr.ID, 200, 3*time.Second))
+	}
 	require.Equal(t, domain.HealthDegraded, p.health(t, tr.ID))
 
 	unanswered, err := p.place("4420")
 	require.NoError(t, err)
 	p.calls.set(unanswered.CallID, func(o *ports.CallOutcome) { o.Ended = true })
 	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, domain.HealthDegraded, p.health(t, tr.ID), "an unanswered call does not blame or clear the carrier")
+	assert.Equal(t, domain.HealthDegraded, p.health(t, tr.ID), "an unanswered call is not attributed to the carrier")
 
-	answered, err := p.place("4420")
-	require.NoError(t, err)
-	now := time.Now().UTC().Add(15 * time.Second) // rang for 15 s: a person, not the carrier
-	p.calls.set(answered.CallID, func(o *ports.CallOutcome) { o.AnsweredAt = &now })
-	assert.Eventually(t, func() bool { return p.health(t, tr.ID) == domain.HealthHealthy },
-		2*time.Second, 20*time.Millisecond, "an answered leg is reported healthy, however long it rang")
+	// One successful setup is counted, but the window still fails.
+	require.NoError(t, p.svc.ReportRouteHealth(p.ctx, tr.ID, 200, 100*time.Millisecond))
+	assert.Equal(t, domain.HealthDegraded, p.health(t, tr.ID), "recovery needs five healthy checks, not one call")
 }
 
 // --- 4.4 -----------------------------------------------------------------

@@ -47,6 +47,7 @@ describe("trunks", () => {
         { trunkId: "u", name: "Brand new", host: "sip.new.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_UNKNOWN" },
         { trunkId: "t", name: "Typo", host: "locslhodt", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_UNHEALTHY", healthReason: "TRUNK_HEALTH_REASON_HOST_NOT_FOUND", healthObservedAt: today.toISOString() },
         { trunkId: "s", name: "Slow", host: "sip.slow.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_DEGRADED", healthReason: "TRUNK_HEALTH_REASON_SLOW_RESPONSE", healthObservedAt: lastYear.toISOString() },
+        { trunkId: "c", name: "Failing setups", host: "sip.calls.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_DEGRADED", healthReason: "TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES", healthObservedAt: today.toISOString() },
         { trunkId: "o", name: "Fine", host: "sip.fine.example", channelLimit: 2, priority: 0, health: "TRUNK_HEALTH_HEALTHY", healthReason: "TRUNK_HEALTH_REASON_ANSWERING", healthObservedAt: today.toISOString() },
       ]),
     );
@@ -59,6 +60,7 @@ describe("trunks", () => {
 
     expect(table.getByRole("row", { name: /Typo/ })).toHaveTextContent(`UnhealthyHost not found · checked ${checkedAt(today)}`);
     expect(table.getByRole("row", { name: /Slow/ })).toHaveTextContent(`DegradedSlow to respond · checked ${checkedAt(lastYear)}`);
+    expect(table.getByRole("row", { name: /Failing setups/ })).toHaveTextContent(`DegradedCall setup failures · checked ${checkedAt(today)}`);
     expect(table.getByRole("row", { name: /Fine/ })).toHaveTextContent(`HealthyAnswering · checked ${checkedAt(today)}`);
   });
 

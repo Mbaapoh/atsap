@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"time"
 
@@ -322,10 +323,56 @@ func (s *Service) ReportRouteHealth(ctx context.Context, trunkID shareddomain.Tr
 	if !ok {
 		return nil
 	}
-	obs := domain.HealthObservation{Health: health, Reason: reason, At: s.now().UTC()}
-	return s.pool.WithTenant(ctx, tc.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		return s.trunks.SetHealth(ctx, tx, trunkID, obs)
+	now := s.now().UTC()
+	sample := domain.HealthSample{
+		Source: domain.HealthFromCall, Healthy: health == domain.HealthHealthy,
+		Reason: reason, At: now,
+	}
+	var (
+		prev     domain.HealthState
+		decision domain.HealthDecision
+		trunk    domain.Trunk
+	)
+	err := s.pool.WithTenant(ctx, tc.TenantID, func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		prev, err = s.trunks.RecordCallHealth(ctx, tx, trunkID, sample, now.Add(-domain.CallWindow))
+		if err != nil {
+			return err
+		}
+		decision = domain.DecideHealth(prev, sample)
+		if err := s.trunks.SetHealthState(ctx, tx, trunkID, decision, now); err != nil {
+			return err
+		}
+		trunk, err = s.trunks.Get(ctx, tx, trunkID)
+		return err
 	})
+	if err != nil {
+		return err
+	}
+	if decision.Changed && decision.Health.Failed() && !prev.Health.Failed() {
+		s.notifyCarrier(ctx, trunk, decision, now)
+	}
+	return nil
+}
+
+// notifyCarrier tells the operator about a call-driven failure transition,
+// outside the call path.
+func (s *Service) notifyCarrier(ctx context.Context, trunk domain.Trunk, decision domain.HealthDecision, at time.Time) {
+	if s.alerter == nil {
+		return
+	}
+	alert := ports.CarrierAlert{
+		TenantID: trunk.TenantID, TrunkID: trunk.ID, TrunkName: trunk.Name, Host: trunk.Host,
+		Health: decision.Health, Reason: decision.Reason, At: at,
+	}
+	alertCtx := context.WithoutCancel(ctx)
+	go func() {
+		ctx, cancel := context.WithTimeout(alertCtx, 20*time.Second)
+		defer cancel()
+		if err := s.alerter.CarrierDown(ctx, alert); err != nil {
+			slog.Default().Warn("pbx: carrier alert failed", "trunk_id", trunk.ID, "error", err)
+		}
+	}()
 }
 
 // --- helpers -------------------------------------------------------------

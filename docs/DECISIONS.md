@@ -2802,6 +2802,63 @@ HLD-18 A5; HLD-19 §§2, 5–7; `docs/CONSOLE-DESIGN.md` ("Call history");
 
 ---
 
+**D-80 · Trunk health follows HLD T-6, and a failing carrier alerts the operator (2026-11-02).**
+
+**Decision:** Trunk health is the HLD T-6 measurement window, implemented
+as written:
+- the carrier is checked every **10 s** (`ATSAPBX_TRUNK_PROBE_INTERVAL` may
+  tune it; the default changes from 30 s);
+- a trunk becomes **Degraded** after **3 consecutive failed checks**, or
+  when its **call-setup failure rate exceeds 20 % over a rolling 60 s
+  window with at least 5 attempts**;
+- it returns to **Healthy** only after **5 continuous minutes of healthy
+  checks**; a failed check or a call-setup failure resets the window;
+- a host that does not resolve, or resolves only to addresses that cannot
+  be a carrier, is **Unhealthy at once**; a slow answer is **Degraded at
+  once**; a server error or no response is a failed check under the
+  three-check rule.
+
+Every observation is stored in `trunk_health_samples` (`PROBE` or `CALL`),
+with `carrier_trunks.healthy_since` for the recovery window, so the
+rolling window is exact across restarts. A call-driven degradation has
+the new reason `CALL_SETUP_FAILURES`.
+
+For **BR-08**, on the transition from Healthy/Unknown to Degraded or
+Unhealthy the platform emails the tenant's active tenant administrators
+and the installation addresses in `ATSAPBX_CARRIER_ALERT_EMAILS`. It sends
+once per failure, no alert on recovery, asynchronously through the
+existing mailer; a mail failure is logged and never affects health or a
+call.
+
+**Context:** D-74 checked every 30 s and let one observation decide, so a
+single transient failure could remove a working carrier and a diagreement
+with T-6 was recorded as a gap. The owner chose to implement T-6 exactly
+rather than amend it. BR-08 was satisfied only by the console showing
+health; an operator who was not watching was not told.
+
+**Alternatives rejected:**
+- Keep the 30 s single-observation health: reacts to one transient and
+  disagrees with the HLD the partner reads.
+- In-memory counters: a restart forgets the window and two instances
+  disagree; the samples table is the honest record.
+- A webhook (LLD-05, not built) or console-only banner for BR-08: the
+  operator may not be watching, and a webhook does not exist in Phase A.
+- Email only platform operators, or only tenant administrators: the tenant
+  administrator can fix the carrier; the platform operator needs the
+  installation view. Both are addressed.
+
+**Trade-off accepted:** more OPTIONS traffic (one per trunk per 10 s) and a
+five-minute recovery even once the carrier answers again. A Degraded trunk
+is still selected after every healthy one. The alert is email-only in
+Phase A; webhooks remain LLD-05.
+
+**Related Decisions:** D-47, D-74, D-75, D-76, D-77
+**Traceability:** BRD BR-08; PRD AC-02.2, AC-02.5, US-10.10; HLD T-6
+(`docs/hld/11-decisions.md`); `openspec/changes/pbx-trunk-health-thresholds`
+(design D1–D5); spec `pbx-core/trunk-routing`
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

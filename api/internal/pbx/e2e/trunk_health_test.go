@@ -60,7 +60,7 @@ func TestTrunkHealth_IsWhatTheCarrierSays(t *testing.T) {
 		require.Eventually(t, func() bool {
 			last = health(id)
 			return last.Health == wantHealth && last.HealthReason == wantReason
-		}, 15*time.Second, 200*time.Millisecond, "want %s/%s", wantHealth, wantReason)
+		}, 60*time.Second, 500*time.Millisecond, "want %s/%s", wantHealth, wantReason)
 		observed, err := time.Parse(time.RFC3339Nano, last.HealthObservedAt)
 		require.NoError(t, err, "an observation carries its time")
 		assert.WithinDuration(t, time.Now(), observed, time.Minute)
@@ -72,7 +72,8 @@ func TestTrunkHealth_IsWhatTheCarrierSays(t *testing.T) {
 
 	await(engine.TrunkID, "TRUNK_HEALTH_HEALTHY", "TRUNK_HEALTH_REASON_ANSWERING")
 	await(missing.TrunkID, "TRUNK_HEALTH_UNHEALTHY", "TRUNK_HEALTH_REASON_HOST_NOT_FOUND")
-	await(unreachable.TrunkID, "TRUNK_HEALTH_UNHEALTHY", "TRUNK_HEALTH_REASON_NO_RESPONSE")
+	// T-6: one silent check is not a verdict; the third degrades the trunk.
+	await(unreachable.TrunkID, "TRUNK_HEALTH_DEGRADED", "TRUNK_HEALTH_REASON_NO_RESPONSE")
 
 	// Fixing the typo is checked at once, not at the next round.
 	var updated struct {

@@ -272,11 +272,13 @@ func TestRoutePlanner_SelectionAndObservedHealth(t *testing.T) {
 	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, primary.ID, 486, time.Second))
 	assert.Equal(t, primary.ID, selectFirst(), "a busy callee is not the carrier's fault")
 
-	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, primary.ID, 503, 0))
-	assert.Equal(t, backup.ID, selectFirst(), "an unhealthy trunk leaves selection immediately")
+	for i := 0; i < domain.MinCallSamples; i++ {
+		require.NoError(t, h.svc.ReportRouteHealth(h.ctx, primary.ID, 503, 0))
+	}
+	assert.Equal(t, backup.ID, selectFirst(), "a degraded trunk is preferred after a healthy one")
 	got, err := h.svc.SelectOutboundRoute(h.ctx, h.tenant, "+442071234567")
 	require.NoError(t, err)
-	assert.Len(t, got, 1, "and is skipped, not merely demoted")
+	assert.Len(t, got, 2, "a degraded trunk is still selectable when nothing healthier can take the call")
 	assert.Equal(t, engineBefore, h.countRow(t, `SELECT count(*) FROM ps_endpoints WHERE id <> 'carrier-ingress'`),
 		"health is selection-time state only: engine state, and so any call in progress, is untouched")
 
@@ -288,18 +290,15 @@ func TestRoutePlanner_SelectionAndObservedHealth(t *testing.T) {
 	require.NoError(t, err)
 	for _, tv := range listed {
 		if tv.ID == primary.ID {
-			assert.Equal(t, domain.HealthUnhealthy, tv.Health)
+			assert.Equal(t, domain.HealthDegraded, tv.Health)
+			assert.Equal(t, domain.ReasonCallSetupFailures, tv.HealthReason)
 		}
 	}
 
-	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, primary.ID, 200, 3*time.Second))
-	got, err = h.svc.SelectOutboundRoute(h.ctx, h.tenant, "+442071234567")
-	require.NoError(t, err)
-	require.Len(t, got, 2)
-	assert.Equal(t, backup.ID, got[0].Trunk.ID, "a slow answer degrades: back in, behind the healthy trunk")
-
+	// A successful call is counted in the window, but recovery needs five
+	// healthy checks; one answer does not restore the trunk.
 	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, primary.ID, 200, 100*time.Millisecond))
-	assert.Equal(t, primary.ID, selectFirst(), "a good answer restores it")
+	assert.Equal(t, domain.HealthDegraded, trunkHealth(h.ctx, t, h.svc, h.tenant, primary.ID).Health)
 }
 
 func TestReportRouteHealth_RequiresATenantAndStaysInIt(t *testing.T) {
@@ -316,12 +315,15 @@ func TestReportRouteHealth_RequiresATenantAndStaysInIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.HealthUnknown, listed[0].Health, "refused reports changed nothing")
 
-	// The tenant's own report is recorded with its reason and time.
-	require.NoError(t, h.svc.ReportRouteHealth(h.ctx, v.ID, 503, 0))
+	// One report is one sample, not a verdict; five failing setups over
+	// the window degrade the trunk.
+	for i := 0; i < domain.MinCallSamples; i++ {
+		require.NoError(t, h.svc.ReportRouteHealth(h.ctx, v.ID, 503, 0))
+	}
 	listed, err = h.svc.ListTrunks(h.ctx, h.tenant, ports.Page{Limit: 1})
 	require.NoError(t, err)
-	assert.Equal(t, domain.HealthUnhealthy, listed[0].Health)
-	assert.Equal(t, domain.ReasonCarrierError, listed[0].HealthReason)
+	assert.Equal(t, domain.HealthDegraded, listed[0].Health)
+	assert.Equal(t, domain.ReasonCallSetupFailures, listed[0].HealthReason)
 	assert.NotNil(t, listed[0].HealthObservedAt)
 }
 

@@ -2825,6 +2825,7 @@ components:
         - TRUNK_HEALTH_REASON_NO_RESPONSE
         - TRUNK_HEALTH_REASON_CARRIER_ERROR
         - TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED
+        - TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES
       description: TrunkHealthReason says why a trunk has its health.
     atsapbx.v1.CreateEmergencyNumberRequest:
       type: object

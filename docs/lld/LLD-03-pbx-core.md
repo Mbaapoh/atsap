@@ -11,6 +11,7 @@
 
 | Date | Change |
 |---|---|
+| 2026-11-02 | **§7.5/§7.6: trunk health follows HLD T-6** (`pbx-trunk-health-thresholds`, D-80). Checks every 10 s; 3 consecutive failures or a >20 % call-setup failure rate over a rolling 60 s window (min 5) make a trunk Degraded; recovery needs 5 continuous healthy minutes. Configuration failures stay Unhealthy at once. Observations are stored in `trunk_health_samples`; a failure transition emails the tenant administrators and `ATSAPBX_CARRIER_ALERT_EMAILS` (BR-08). |
 | 2026-11-02 | **§4.1 and §11.2: placement rings the caller first** (`console-click-to-call`, design D1). `InitiateCall` gains an ordered mode: the caller's leg is originated alone, the destination's from the caller's `ParticipantAnswered`, and a placement timeout (default 30 s) ends an unanswered caller with `caller_no_answer`, never ringing the destination and releasing the licence channel. The engine's alerting window is set longer than the placement timer so the platform owns the reason. The console gets Place a call and Hang up on Call history. |
 | 2026-11-01 | **§7.7: carrier traffic enters through one ingress and is attributed by the platform** (`pbx-carrier-ingress`, D-77). Per-trunk identify rows are gone. One tenantless `carrier-ingress` endpoint recognises every trunk's addresses, and each call is attributed by its transport source address (`CHANNEL(pjsip,remote_addr)`) and the dialled number: exactly one trunk routes, none or several refuse 404. Two tenants on one carrier each receive their own numbers. One flag-guarded cross-tenant read (migration 0016). Also: the identify match is TEXT (migration 0015), and an unreachable destination is refused 480, never left ringing. |
 | 2026-11-01 | **§7.5–7.6 and §10.5: carriers recognised from their published ranges; non-carrier addresses refused** (`pbx-carrier-addresses`, D-76). `Trunk` gains `InboundAddresses` (migration 0014); identify is the union of the host's carrier addresses and those ranges. Hosts and addresses that cannot be a carrier (localhost, loopback, link-local, unspecified, multicast) are refused, never checked and never recognised; such a trunk reads "Address not allowed". |
@@ -726,14 +727,15 @@ clear within the caller's transaction.
   extensions list costs one query against engine state per page. Adequate
   for Phase A; a presence cache is Phase B work, alongside AC-03.3's
   3-second presence requirement, which this LLD does not attempt.
-- **Trunk health is a coarse observation**, not the failover-quality
-  signal `09-failure-model.md` describes. Since `pbx-trunk-health-probing`
-  it is the platform's own SIP OPTIONS check of each carrier, every 30 s
-  and at once on create or re-address (D-74), plus the outcomes of calls
-  through the trunk. It carries a reason and an observation time, starts
-  `Unknown`, and an `Unhealthy` trunk is the last resort in selection
-  rather than a dead end. Carrier failover across trunks mid-setup is
-  designed but not built here.
+- **Trunk health is HLD T-6** (D-80): the platform's own SIP OPTIONS
+  checks every 10 s and at once on create or re-address, plus call-setup
+  outcomes over a rolling 60 s window. Three consecutive failed checks or
+  a >20 % call-failure rate (min 5) make a trunk Degraded; 5 continuous
+  healthy minutes recover it; configuration failures are Unhealthy at
+  once. It carries a reason and an observation time, starts `Unknown`, and
+  a Degraded/Unhealthy trunk is selected only when no healthier one can
+  take the call. A failure transition emails the operator (BR-08). Carrier
+  failover across trunks mid-setup is still designed but not built here.
 - **Single-node assumptions carried from LLD-02** apply unchanged:
   capacity counting is per-process, and registration contacts live in
   node-local `astdb` (D-08, D-47).

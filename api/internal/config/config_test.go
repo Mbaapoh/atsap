@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -58,13 +59,13 @@ func TestLoad_Defaults(t *testing.T) {
 		// server is named (identity-accounts-and-sessions D10).
 		ConsoleURL: "http://localhost:8080",
 		SMTPFrom:   "AtsaPBX <no-reply@localhost>",
-		// Every trunk is checked twice a minute (D-74).
-		TrunkProbeInterval: 30 * time.Second,
+		// HLD T-6 (D-80): every trunk is checked every ten seconds.
+		TrunkProbeInterval: 10 * time.Second,
 		// Click-to-call rings the caller for 30 s by default
 		// (console-click-to-call D1).
 		PlacementCallerTimeout: 30 * time.Second,
 	}
-	if cfg != want {
+	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
 	}
 }
@@ -216,6 +217,7 @@ func TestLoad_TrunkProbeInterval(t *testing.T) {
 		ok    bool
 	}{
 		{"1m", time.Minute, true},
+		{"10s", 10 * time.Second, true},
 		{"5s", 5 * time.Second, true},
 		{"0", 0, true},
 		{"1s", 0, false},
@@ -267,5 +269,19 @@ func TestLoad_PlacementCallerTimeout(t *testing.T) {
 				t.Errorf("Load() = %v, %v; want %v", cfg.PlacementCallerTimeout, err, tc.want)
 			}
 		})
+	}
+}
+
+// pbx-trunk-health-thresholds (D-80): installation-level recipients of the
+// carrier-failure alert, comma-separated and trimmed.
+func TestLoad_CarrierAlertEmails(t *testing.T) {
+	setRequired(t)
+	t.Setenv("ATSAPBX_CARRIER_ALERT_EMAILS", " ops@example.test , , noc@example.test ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if len(cfg.CarrierAlertEmails) != 2 || cfg.CarrierAlertEmails[0] != "ops@example.test" || cfg.CarrierAlertEmails[1] != "noc@example.test" {
+		t.Errorf("CarrierAlertEmails = %v, want the two trimmed addresses", cfg.CarrierAlertEmails)
 	}
 }

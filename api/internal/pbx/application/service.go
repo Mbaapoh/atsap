@@ -68,6 +68,7 @@ type Service struct {
 	inbound   *Inbound
 	registrar ports.SipRegistrar
 	checker   ports.TrunkChecker
+	alerter   ports.CarrierAlerter
 	rand      io.Reader
 	now       func() time.Time
 }
@@ -103,6 +104,14 @@ func NewService(
 		rand:      rand.Reader,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithCarrierAlerter returns a copy that tells the operator when a
+// call-driven health change fails a carrier (BR-08, D-80).
+func (s *Service) WithCarrierAlerter(a ports.CarrierAlerter) *Service {
+	clone := *s
+	clone.alerter = a
+	return &clone
 }
 
 // Actor is who is performing a mutation, for the audit trail.
