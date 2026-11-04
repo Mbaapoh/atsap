@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file atsapbx/v1/pbx.proto.
  */
 export const file_atsapbx_v1_pbx: GenFile = /*@__PURE__*/
-  fileDesc("ChRhdHNhcGJ4L3YxL3BieC5wcm90bxIKYXRzYXBieC52MSL0AQoJRXh0ZW5zaW9uEhQKDGV4dGVuc2lvbl9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhUKDWF1dGhfdXNlcm5hbWUYBCABKAkSKwoLZGV2aWNlX3R5cGUYBSABKA4yFi5hdHNhcGJ4LnYxLkRldmljZVR5cGUSNAoMcmVnaXN0cmF0aW9uGAYgASgOMh4uYXRzYXBieC52MS5SZWdpc3RyYXRpb25TdGF0dXMSMQoOb3V0Ym91bmRfY2xhc3MYByABKA4yGS5hdHNhcGJ4LnYxLk91dGJvdW5kQ2xhc3MisQEKFkNyZWF0ZUV4dGVuc2lvblJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEg4KBm51bWJlchgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSKwoLZGV2aWNlX3R5cGUYBCABKA4yFi5hdHNhcGJ4LnYxLkRldmljZVR5cGUSMQoOb3V0Ym91bmRfY2xhc3MYBSABKA4yGS5hdHNhcGJ4LnYxLk91dGJvdW5kQ2xhc3MiUwoXQ3JlYXRlRXh0ZW5zaW9uUmVzcG9uc2USKAoJZXh0ZW5zaW9uGAEgASgLMhUuYXRzYXBieC52MS5FeHRlbnNpb24SDgoGc2VjcmV0GAIgASgJIj4KE0dldEV4dGVuc2lvblJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEhQKDGV4dGVuc2lvbl9pZBgCIAEoCSJAChRHZXRFeHRlbnNpb25SZXNwb25zZRIoCglleHRlbnNpb24YASABKAsyFS5hdHNhcGJ4LnYxLkV4dGVuc2lvbiJJChVMaXN0RXh0ZW5zaW9uc1JlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEg0KBWxpbWl0GAIgASgFEg4KBm9mZnNldBgDIAEoBSJDChZMaXN0RXh0ZW5zaW9uc1Jlc3BvbnNlEikKCmV4dGVuc2lvbnMYASADKAsyFS5hdHNhcGJ4LnYxLkV4dGVuc2lvbiK3AQoWVXBkYXRlRXh0ZW5zaW9uUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSFAoMZXh0ZW5zaW9uX2lkGAIgASgJEhQKDGRpc3BsYXlfbmFtZRgDIAEoCRIrCgtkZXZpY2VfdHlwZRgEIAEoDjIWLmF0c2FwYngudjEuRGV2aWNlVHlwZRIxCg5vdXRib3VuZF9jbGFzcxgFIAEoDjIZLmF0c2FwYngudjEuT3V0Ym91bmRDbGFzcyJDChdVcGRhdGVFeHRlbnNpb25SZXNwb25zZRIoCglleHRlbnNpb24YASABKAsyFS5hdHNhcGJ4LnYxLkV4dGVuc2lvbiJBChZEZWxldGVFeHRlbnNpb25SZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIUCgxleHRlbnNpb25faWQYAiABKAkiGQoXRGVsZXRlRXh0ZW5zaW9uUmVzcG9uc2UiQgoXUmVnZW5lcmF0ZVNlY3JldFJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEhQKDGV4dGVuc2lvbl9pZBgCIAEoCSJUChhSZWdlbmVyYXRlU2VjcmV0UmVzcG9uc2USKAoJZXh0ZW5zaW9uGAEgASgLMhUuYXRzYXBieC52MS5FeHRlbnNpb24SDgoGc2VjcmV0GAIgASgJIisKFkdldFNpcFJlZ2lzdHJhclJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJInAKF0dldFNpcFJlZ2lzdHJhclJlc3BvbnNlEhIKCmNvbmZpZ3VyZWQYASABKAgSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgFEhEKCXRyYW5zcG9ydBgEIAEoCRISCgp3ZWJydGNfdXJsGAUgASgJIskCCgVUcnVuaxIQCgh0cnVua19pZBgBIAEoCRIMCgRuYW1lGAIgASgJEgwKBGhvc3QYAyABKAkSDAoEcG9ydBgEIAEoBRIVCg1hdXRoX3VzZXJuYW1lGAUgASgJEhIKCmhhc19zZWNyZXQYBiABKAgSFQoNY2hhbm5lbF9saW1pdBgHIAEoBRIQCghwcmlvcml0eRgIIAEoBRInCgZoZWFsdGgYCSABKA4yFy5hdHNhcGJ4LnYxLlRydW5rSGVhbHRoEjQKDWhlYWx0aF9yZWFzb24YCiABKA4yHS5hdHNhcGJ4LnYxLlRydW5rSGVhbHRoUmVhc29uEjYKEmhlYWx0aF9vYnNlcnZlZF9hdBgLIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGQoRaW5ib3VuZF9hZGRyZXNzZXMYDCADKAkivAEKEkNyZWF0ZVRydW5rUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRob3N0GAMgASgJEgwKBHBvcnQYBCABKAUSFQoNYXV0aF91c2VybmFtZRgFIAEoCRIOCgZzZWNyZXQYBiABKAkSFQoNY2hhbm5lbF9saW1pdBgHIAEoBRIQCghwcmlvcml0eRgIIAEoBRIZChFpbmJvdW5kX2FkZHJlc3NlcxgJIAMoCSI3ChNDcmVhdGVUcnVua1Jlc3BvbnNlEiAKBXRydW5rGAEgASgLMhEuYXRzYXBieC52MS5UcnVuayJFChFMaXN0VHJ1bmtzUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDQoFbGltaXQYAiABKAUSDgoGb2Zmc2V0GAMgASgFIjcKEkxpc3RUcnVua3NSZXNwb25zZRIhCgZ0cnVua3MYASADKAsyES5hdHNhcGJ4LnYxLlRydW5rIs4BChJVcGRhdGVUcnVua1JlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEhAKCHRydW5rX2lkGAIgASgJEgwKBG5hbWUYAyABKAkSDAoEaG9zdBgEIAEoCRIMCgRwb3J0GAUgASgFEhUKDWF1dGhfdXNlcm5hbWUYBiABKAkSDgoGc2VjcmV0GAcgASgJEhUKDWNoYW5uZWxfbGltaXQYCCABKAUSEAoIcHJpb3JpdHkYCSABKAUSGQoRaW5ib3VuZF9hZGRyZXNzZXMYCiADKAkiNwoTVXBkYXRlVHJ1bmtSZXNwb25zZRIgCgV0cnVuaxgBIAEoCzIRLmF0c2FwYngudjEuVHJ1bmsiOQoSRGVsZXRlVHJ1bmtSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIQCgh0cnVua19pZBgCIAEoCSIVChNEZWxldGVUcnVua1Jlc3BvbnNlInUKBVJvdXRlEhAKCHJvdXRlX2lkGAEgASgJEhYKDnByZWZpeF9wYXR0ZXJuGAIgASgJEhAKCHRydW5rX2lkGAMgASgJEh4KFmNvc3RfcGVyX21pbnV0ZV9taWNyb3MYBCABKAMSEAoIcHJpb3JpdHkYBSABKAUigwEKEkNyZWF0ZVJvdXRlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSFgoOcHJlZml4X3BhdHRlcm4YAiABKAkSEAoIdHJ1bmtfaWQYAyABKAkSHgoWY29zdF9wZXJfbWludXRlX21pY3JvcxgEIAEoAxIQCghwcmlvcml0eRgFIAEoBSI3ChNDcmVhdGVSb3V0ZVJlc3BvbnNlEiAKBXJvdXRlGAEgASgLMhEuYXRzYXBieC52MS5Sb3V0ZSJFChFMaXN0Um91dGVzUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDQoFbGltaXQYAiABKAUSDgoGb2Zmc2V0GAMgASgFIjcKEkxpc3RSb3V0ZXNSZXNwb25zZRIhCgZyb3V0ZXMYASADKAsyES5hdHNhcGJ4LnYxLlJvdXRlIjkKEkRlbGV0ZVJvdXRlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSEAoIcm91dGVfaWQYAiABKAkiFQoTRGVsZXRlUm91dGVSZXNwb25zZSJQChBQbGFjZUNhbGxSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIUCgxleHRlbnNpb25faWQYAiABKAkSEwoLZGVzdGluYXRpb24YAyABKAkiJAoRUGxhY2VDYWxsUmVzcG9uc2USDwoHY2FsbF9pZBgBIAEoCSI3ChFIYW5ndXBDYWxsUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDwoHY2FsbF9pZBgCIAEoCSIUChJIYW5ndXBDYWxsUmVzcG9uc2UiMwoPRW1lcmdlbmN5TnVtYmVyEg4KBm51bWJlchgBIAEoCRIQCghidWlsdF9pbhgCIAEoCCJFChpTZXRFbWVyZ2VuY3lQcm9maWxlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSFAoMY291bnRyeV9jb2RlGAIgASgJIh0KG1NldEVtZXJnZW5jeVByb2ZpbGVSZXNwb25zZSIvChpHZXRFbWVyZ2VuY3lQcm9maWxlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkijAEKG0dldEVtZXJnZW5jeVByb2ZpbGVSZXNwb25zZRIUCgxjb3VudHJ5X2NvZGUYASABKAkSEwoLY291bnRyeV9zZXQYAiABKAgSFAoMaW5fY2F0YWxvZ3VlGAMgASgIEiwKB251bWJlcnMYBCADKAsyGy5hdHNhcGJ4LnYxLkVtZXJnZW5jeU51bWJlciJBChxDcmVhdGVFbWVyZ2VuY3lOdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkiHwodQ3JlYXRlRW1lcmdlbmN5TnVtYmVyUmVzcG9uc2UiMAobTGlzdEVtZXJnZW5jeU51bWJlcnNSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCSJMChxMaXN0RW1lcmdlbmN5TnVtYmVyc1Jlc3BvbnNlEiwKB251bWJlcnMYASADKAsyGy5hdHNhcGJ4LnYxLkVtZXJnZW5jeU51bWJlciJBChxEZWxldGVFbWVyZ2VuY3lOdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkiHwodRGVsZXRlRW1lcmdlbmN5TnVtYmVyUmVzcG9uc2UiUAoNSW5ib3VuZE51bWJlchIZChFpbmJvdW5kX251bWJlcl9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkSFAoMZXh0ZW5zaW9uX2lkGAMgASgJIlUKGkNyZWF0ZUluYm91bmROdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkSFAoMZXh0ZW5zaW9uX2lkGAMgASgJIlAKG0NyZWF0ZUluYm91bmROdW1iZXJSZXNwb25zZRIxCg5pbmJvdW5kX251bWJlchgBIAEoCzIZLmF0c2FwYngudjEuSW5ib3VuZE51bWJlciIuChlMaXN0SW5ib3VuZE51bWJlcnNSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCSJIChpMaXN0SW5ib3VuZE51bWJlcnNSZXNwb25zZRIqCgdudW1iZXJzGAEgAygLMhkuYXRzYXBieC52MS5JbmJvdW5kTnVtYmVyIkoKGkRlbGV0ZUluYm91bmROdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIZChFpbmJvdW5kX251bWJlcl9pZBgCIAEoCSIdChtEZWxldGVJbmJvdW5kTnVtYmVyUmVzcG9uc2UqVgoKRGV2aWNlVHlwZRIbChdERVZJQ0VfVFlQRV9VTlNQRUNJRklFRBAAEhYKEkRFVklDRV9UWVBFX1dFQlJUQxABEhMKD0RFVklDRV9UWVBFX1NJUBACKosBCg1PdXRib3VuZENsYXNzEh4KGk9VVEJPVU5EX0NMQVNTX1VOU1BFQ0lGSUVEEAASGwoXT1VUQk9VTkRfQ0xBU1NfSU5URVJOQUwQARIbChdPVVRCT1VORF9DTEFTU19OQVRJT05BTBACEiAKHE9VVEJPVU5EX0NMQVNTX0lOVEVSTkFUSU9OQUwQAyqFAQoSUmVnaXN0cmF0aW9uU3RhdHVzEiMKH1JFR0lTVFJBVElPTl9TVEFUVVNfVU5TUEVDSUZJRUQQABImCiJSRUdJU1RSQVRJT05fU1RBVFVTX05PVF9SRUdJU1RFUkVEEAESIgoeUkVHSVNUUkFUSU9OX1NUQVRVU19SRUdJU1RFUkVEEAIqlgEKC1RydW5rSGVhbHRoEhwKGFRSVU5LX0hFQUxUSF9VTlNQRUNJRklFRBAAEhgKFFRSVU5LX0hFQUxUSF9IRUFMVEhZEAESGQoVVFJVTktfSEVBTFRIX0RFR1JBREVEEAISGgoWVFJVTktfSEVBTFRIX1VOSEVBTFRIWRADEhgKFFRSVU5LX0hFQUxUSF9VTktOT1dOEAQq0AIKEVRydW5rSGVhbHRoUmVhc29uEiMKH1RSVU5LX0hFQUxUSF9SRUFTT05fVU5TUEVDSUZJRUQQABIhCh1UUlVOS19IRUFMVEhfUkVBU09OX0FOU1dFUklORxABEiUKIVRSVU5LX0hFQUxUSF9SRUFTT05fU0xPV19SRVNQT05TRRACEiYKIlRSVU5LX0hFQUxUSF9SRUFTT05fSE9TVF9OT1RfRk9VTkQQAxIjCh9UUlVOS19IRUFMVEhfUkVBU09OX05PX1JFU1BPTlNFEAQSJQohVFJVTktfSEVBTFRIX1JFQVNPTl9DQVJSSUVSX0VSUk9SEAUSKwonVFJVTktfSEVBTFRIX1JFQVNPTl9BRERSRVNTX05PVF9BTExPV0VEEAYSKwonVFJVTktfSEVBTFRIX1JFQVNPTl9DQUxMX1NFVFVQX0ZBSUxVUkVTEAcylBEKClBieFNlcnZpY2USWgoPQ3JlYXRlRXh0ZW5zaW9uEiIuYXRzYXBieC52MS5DcmVhdGVFeHRlbnNpb25SZXF1ZXN0GiMuYXRzYXBieC52MS5DcmVhdGVFeHRlbnNpb25SZXNwb25zZRJRCgxHZXRFeHRlbnNpb24SHy5hdHNhcGJ4LnYxLkdldEV4dGVuc2lvblJlcXVlc3QaIC5hdHNhcGJ4LnYxLkdldEV4dGVuc2lvblJlc3BvbnNlElcKDkxpc3RFeHRlbnNpb25zEiEuYXRzYXBieC52MS5MaXN0RXh0ZW5zaW9uc1JlcXVlc3QaIi5hdHNhcGJ4LnYxLkxpc3RFeHRlbnNpb25zUmVzcG9uc2USWgoPVXBkYXRlRXh0ZW5zaW9uEiIuYXRzYXBieC52MS5VcGRhdGVFeHRlbnNpb25SZXF1ZXN0GiMuYXRzYXBieC52MS5VcGRhdGVFeHRlbnNpb25SZXNwb25zZRJaCg9EZWxldGVFeHRlbnNpb24SIi5hdHNhcGJ4LnYxLkRlbGV0ZUV4dGVuc2lvblJlcXVlc3QaIy5hdHNhcGJ4LnYxLkRlbGV0ZUV4dGVuc2lvblJlc3BvbnNlEl0KEFJlZ2VuZXJhdGVTZWNyZXQSIy5hdHNhcGJ4LnYxLlJlZ2VuZXJhdGVTZWNyZXRSZXF1ZXN0GiQuYXRzYXBieC52MS5SZWdlbmVyYXRlU2VjcmV0UmVzcG9uc2USWgoPR2V0U2lwUmVnaXN0cmFyEiIuYXRzYXBieC52MS5HZXRTaXBSZWdpc3RyYXJSZXF1ZXN0GiMuYXRzYXBieC52MS5HZXRTaXBSZWdpc3RyYXJSZXNwb25zZRJOCgtDcmVhdGVUcnVuaxIeLmF0c2FwYngudjEuQ3JlYXRlVHJ1bmtSZXF1ZXN0Gh8uYXRzYXBieC52MS5DcmVhdGVUcnVua1Jlc3BvbnNlEksKCkxpc3RUcnVua3MSHS5hdHNhcGJ4LnYxLkxpc3RUcnVua3NSZXF1ZXN0Gh4uYXRzYXBieC52MS5MaXN0VHJ1bmtzUmVzcG9uc2USTgoLVXBkYXRlVHJ1bmsSHi5hdHNhcGJ4LnYxLlVwZGF0ZVRydW5rUmVxdWVzdBofLmF0c2FwYngudjEuVXBkYXRlVHJ1bmtSZXNwb25zZRJOCgtEZWxldGVUcnVuaxIeLmF0c2FwYngudjEuRGVsZXRlVHJ1bmtSZXF1ZXN0Gh8uYXRzYXBieC52MS5EZWxldGVUcnVua1Jlc3BvbnNlEk4KC0NyZWF0ZVJvdXRlEh4uYXRzYXBieC52MS5DcmVhdGVSb3V0ZVJlcXVlc3QaHy5hdHNhcGJ4LnYxLkNyZWF0ZVJvdXRlUmVzcG9uc2USSwoKTGlzdFJvdXRlcxIdLmF0c2FwYngudjEuTGlzdFJvdXRlc1JlcXVlc3QaHi5hdHNhcGJ4LnYxLkxpc3RSb3V0ZXNSZXNwb25zZRJOCgtEZWxldGVSb3V0ZRIeLmF0c2FwYngudjEuRGVsZXRlUm91dGVSZXF1ZXN0Gh8uYXRzYXBieC52MS5EZWxldGVSb3V0ZVJlc3BvbnNlEkgKCVBsYWNlQ2FsbBIcLmF0c2FwYngudjEuUGxhY2VDYWxsUmVxdWVzdBodLmF0c2FwYngudjEuUGxhY2VDYWxsUmVzcG9uc2USSwoKSGFuZ3VwQ2FsbBIdLmF0c2FwYngudjEuSGFuZ3VwQ2FsbFJlcXVlc3QaHi5hdHNhcGJ4LnYxLkhhbmd1cENhbGxSZXNwb25zZRJmChNTZXRFbWVyZ2VuY3lQcm9maWxlEiYuYXRzYXBieC52MS5TZXRFbWVyZ2VuY3lQcm9maWxlUmVxdWVzdBonLmF0c2FwYngudjEuU2V0RW1lcmdlbmN5UHJvZmlsZVJlc3BvbnNlEmYKE0dldEVtZXJnZW5jeVByb2ZpbGUSJi5hdHNhcGJ4LnYxLkdldEVtZXJnZW5jeVByb2ZpbGVSZXF1ZXN0GicuYXRzYXBieC52MS5HZXRFbWVyZ2VuY3lQcm9maWxlUmVzcG9uc2USbAoVQ3JlYXRlRW1lcmdlbmN5TnVtYmVyEiguYXRzYXBieC52MS5DcmVhdGVFbWVyZ2VuY3lOdW1iZXJSZXF1ZXN0GikuYXRzYXBieC52MS5DcmVhdGVFbWVyZ2VuY3lOdW1iZXJSZXNwb25zZRJpChRMaXN0RW1lcmdlbmN5TnVtYmVycxInLmF0c2FwYngudjEuTGlzdEVtZXJnZW5jeU51bWJlcnNSZXF1ZXN0GiguYXRzYXBieC52MS5MaXN0RW1lcmdlbmN5TnVtYmVyc1Jlc3BvbnNlEmwKFURlbGV0ZUVtZXJnZW5jeU51bWJlchIoLmF0c2FwYngudjEuRGVsZXRlRW1lcmdlbmN5TnVtYmVyUmVxdWVzdBopLmF0c2FwYngudjEuRGVsZXRlRW1lcmdlbmN5TnVtYmVyUmVzcG9uc2USZgoTQ3JlYXRlSW5ib3VuZE51bWJlchImLmF0c2FwYngudjEuQ3JlYXRlSW5ib3VuZE51bWJlclJlcXVlc3QaJy5hdHNhcGJ4LnYxLkNyZWF0ZUluYm91bmROdW1iZXJSZXNwb25zZRJjChJMaXN0SW5ib3VuZE51bWJlcnMSJS5hdHNhcGJ4LnYxLkxpc3RJbmJvdW5kTnVtYmVyc1JlcXVlc3QaJi5hdHNhcGJ4LnYxLkxpc3RJbmJvdW5kTnVtYmVyc1Jlc3BvbnNlEmYKE0RlbGV0ZUluYm91bmROdW1iZXISJi5hdHNhcGJ4LnYxLkRlbGV0ZUluYm91bmROdW1iZXJSZXF1ZXN0GicuYXRzYXBieC52MS5EZWxldGVJbmJvdW5kTnVtYmVyUmVzcG9uc2VCMlowYXRzYXAtYXBpL2ludGVybmFsL2dlbnByb3RvL2F0c2FwYngvdjE7YXRzYXBieHYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("ChRhdHNhcGJ4L3YxL3BieC5wcm90bxIKYXRzYXBieC52MSL0AQoJRXh0ZW5zaW9uEhQKDGV4dGVuc2lvbl9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkSFAoMZGlzcGxheV9uYW1lGAMgASgJEhUKDWF1dGhfdXNlcm5hbWUYBCABKAkSKwoLZGV2aWNlX3R5cGUYBSABKA4yFi5hdHNhcGJ4LnYxLkRldmljZVR5cGUSNAoMcmVnaXN0cmF0aW9uGAYgASgOMh4uYXRzYXBieC52MS5SZWdpc3RyYXRpb25TdGF0dXMSMQoOb3V0Ym91bmRfY2xhc3MYByABKA4yGS5hdHNhcGJ4LnYxLk91dGJvdW5kQ2xhc3MisQEKFkNyZWF0ZUV4dGVuc2lvblJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEg4KBm51bWJlchgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSKwoLZGV2aWNlX3R5cGUYBCABKA4yFi5hdHNhcGJ4LnYxLkRldmljZVR5cGUSMQoOb3V0Ym91bmRfY2xhc3MYBSABKA4yGS5hdHNhcGJ4LnYxLk91dGJvdW5kQ2xhc3MiUwoXQ3JlYXRlRXh0ZW5zaW9uUmVzcG9uc2USKAoJZXh0ZW5zaW9uGAEgASgLMhUuYXRzYXBieC52MS5FeHRlbnNpb24SDgoGc2VjcmV0GAIgASgJIj4KE0dldEV4dGVuc2lvblJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEhQKDGV4dGVuc2lvbl9pZBgCIAEoCSJAChRHZXRFeHRlbnNpb25SZXNwb25zZRIoCglleHRlbnNpb24YASABKAsyFS5hdHNhcGJ4LnYxLkV4dGVuc2lvbiJJChVMaXN0RXh0ZW5zaW9uc1JlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEg0KBWxpbWl0GAIgASgFEg4KBm9mZnNldBgDIAEoBSJDChZMaXN0RXh0ZW5zaW9uc1Jlc3BvbnNlEikKCmV4dGVuc2lvbnMYASADKAsyFS5hdHNhcGJ4LnYxLkV4dGVuc2lvbiK3AQoWVXBkYXRlRXh0ZW5zaW9uUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSFAoMZXh0ZW5zaW9uX2lkGAIgASgJEhQKDGRpc3BsYXlfbmFtZRgDIAEoCRIrCgtkZXZpY2VfdHlwZRgEIAEoDjIWLmF0c2FwYngudjEuRGV2aWNlVHlwZRIxCg5vdXRib3VuZF9jbGFzcxgFIAEoDjIZLmF0c2FwYngudjEuT3V0Ym91bmRDbGFzcyJDChdVcGRhdGVFeHRlbnNpb25SZXNwb25zZRIoCglleHRlbnNpb24YASABKAsyFS5hdHNhcGJ4LnYxLkV4dGVuc2lvbiJBChZEZWxldGVFeHRlbnNpb25SZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIUCgxleHRlbnNpb25faWQYAiABKAkiGQoXRGVsZXRlRXh0ZW5zaW9uUmVzcG9uc2UiQgoXUmVnZW5lcmF0ZVNlY3JldFJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEhQKDGV4dGVuc2lvbl9pZBgCIAEoCSJUChhSZWdlbmVyYXRlU2VjcmV0UmVzcG9uc2USKAoJZXh0ZW5zaW9uGAEgASgLMhUuYXRzYXBieC52MS5FeHRlbnNpb24SDgoGc2VjcmV0GAIgASgJIisKFkdldFNpcFJlZ2lzdHJhclJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJIpwBChdHZXRTaXBSZWdpc3RyYXJSZXNwb25zZRISCgpjb25maWd1cmVkGAEgASgIEgwKBGhvc3QYAiABKAkSDAoEcG9ydBgDIAEoBRIRCgl0cmFuc3BvcnQYBCABKAkSEgoKd2VicnRjX3VybBgFIAEoCRIqCgtpY2Vfc2VydmVycxgGIAMoCzIVLmF0c2FwYngudjEuSWNlU2VydmVyIscCCg5PdXRib3VuZFBvbGljeRIeChZkYWlseV9zcGVuZF9jYXBfbWljcm9zGAEgASgDEiAKGG1vbnRobHlfc3BlbmRfY2FwX21pY3JvcxgCIAEoAxIYChBibG9ja2VkX3ByZWZpeGVzGAMgAygJEh4KFmFub21hbHlfY2FsbF90aHJlc2hvbGQYBCABKAUSHgoWYW5vbWFseV93aW5kb3dfc2Vjb25kcxgFIAEoBRIdChVidXNpbmVzc19zdGFydF9taW51dGUYBiABKAUSGwoTYnVzaW5lc3NfZW5kX21pbnV0ZRgHIAEoBRIRCglzdXNwZW5kZWQYCCABKAgSMAoMc3VzcGVuZGVkX2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIYChBzdXNwZW5kZWRfcmVhc29uGAogASgJIi0KGEdldE91dGJvdW5kUG9saWN5UmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkiRwoZR2V0T3V0Ym91bmRQb2xpY3lSZXNwb25zZRIqCgZwb2xpY3kYASABKAsyGi5hdHNhcGJ4LnYxLk91dGJvdW5kUG9saWN5IogCChtVcGRhdGVPdXRib3VuZFBvbGljeVJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEh4KFmRhaWx5X3NwZW5kX2NhcF9taWNyb3MYAiABKAMSIAoYbW9udGhseV9zcGVuZF9jYXBfbWljcm9zGAMgASgDEhgKEGJsb2NrZWRfcHJlZml4ZXMYBCADKAkSHgoWYW5vbWFseV9jYWxsX3RocmVzaG9sZBgFIAEoBRIeChZhbm9tYWx5X3dpbmRvd19zZWNvbmRzGAYgASgFEh0KFWJ1c2luZXNzX3N0YXJ0X21pbnV0ZRgHIAEoBRIbChNidXNpbmVzc19lbmRfbWludXRlGAggASgFIkoKHFVwZGF0ZU91dGJvdW5kUG9saWN5UmVzcG9uc2USKgoGcG9saWN5GAEgASgLMhouYXRzYXBieC52MS5PdXRib3VuZFBvbGljeSIqChVSZXN1bWVPdXRib3VuZFJlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJIkQKFlJlc3VtZU91dGJvdW5kUmVzcG9uc2USKgoGcG9saWN5GAEgASgLMhouYXRzYXBieC52MS5PdXRib3VuZFBvbGljeSI/CglJY2VTZXJ2ZXISDAoEdXJscxgBIAMoCRIQCgh1c2VybmFtZRgCIAEoCRISCgpjcmVkZW50aWFsGAMgASgJIskCCgVUcnVuaxIQCgh0cnVua19pZBgBIAEoCRIMCgRuYW1lGAIgASgJEgwKBGhvc3QYAyABKAkSDAoEcG9ydBgEIAEoBRIVCg1hdXRoX3VzZXJuYW1lGAUgASgJEhIKCmhhc19zZWNyZXQYBiABKAgSFQoNY2hhbm5lbF9saW1pdBgHIAEoBRIQCghwcmlvcml0eRgIIAEoBRInCgZoZWFsdGgYCSABKA4yFy5hdHNhcGJ4LnYxLlRydW5rSGVhbHRoEjQKDWhlYWx0aF9yZWFzb24YCiABKA4yHS5hdHNhcGJ4LnYxLlRydW5rSGVhbHRoUmVhc29uEjYKEmhlYWx0aF9vYnNlcnZlZF9hdBgLIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGQoRaW5ib3VuZF9hZGRyZXNzZXMYDCADKAkivAEKEkNyZWF0ZVRydW5rUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDAoEbmFtZRgCIAEoCRIMCgRob3N0GAMgASgJEgwKBHBvcnQYBCABKAUSFQoNYXV0aF91c2VybmFtZRgFIAEoCRIOCgZzZWNyZXQYBiABKAkSFQoNY2hhbm5lbF9saW1pdBgHIAEoBRIQCghwcmlvcml0eRgIIAEoBRIZChFpbmJvdW5kX2FkZHJlc3NlcxgJIAMoCSI3ChNDcmVhdGVUcnVua1Jlc3BvbnNlEiAKBXRydW5rGAEgASgLMhEuYXRzYXBieC52MS5UcnVuayJFChFMaXN0VHJ1bmtzUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDQoFbGltaXQYAiABKAUSDgoGb2Zmc2V0GAMgASgFIjcKEkxpc3RUcnVua3NSZXNwb25zZRIhCgZ0cnVua3MYASADKAsyES5hdHNhcGJ4LnYxLlRydW5rIs4BChJVcGRhdGVUcnVua1JlcXVlc3QSEQoJdGVuYW50X2lkGAEgASgJEhAKCHRydW5rX2lkGAIgASgJEgwKBG5hbWUYAyABKAkSDAoEaG9zdBgEIAEoCRIMCgRwb3J0GAUgASgFEhUKDWF1dGhfdXNlcm5hbWUYBiABKAkSDgoGc2VjcmV0GAcgASgJEhUKDWNoYW5uZWxfbGltaXQYCCABKAUSEAoIcHJpb3JpdHkYCSABKAUSGQoRaW5ib3VuZF9hZGRyZXNzZXMYCiADKAkiNwoTVXBkYXRlVHJ1bmtSZXNwb25zZRIgCgV0cnVuaxgBIAEoCzIRLmF0c2FwYngudjEuVHJ1bmsiOQoSRGVsZXRlVHJ1bmtSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIQCgh0cnVua19pZBgCIAEoCSIVChNEZWxldGVUcnVua1Jlc3BvbnNlInUKBVJvdXRlEhAKCHJvdXRlX2lkGAEgASgJEhYKDnByZWZpeF9wYXR0ZXJuGAIgASgJEhAKCHRydW5rX2lkGAMgASgJEh4KFmNvc3RfcGVyX21pbnV0ZV9taWNyb3MYBCABKAMSEAoIcHJpb3JpdHkYBSABKAUigwEKEkNyZWF0ZVJvdXRlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSFgoOcHJlZml4X3BhdHRlcm4YAiABKAkSEAoIdHJ1bmtfaWQYAyABKAkSHgoWY29zdF9wZXJfbWludXRlX21pY3JvcxgEIAEoAxIQCghwcmlvcml0eRgFIAEoBSI3ChNDcmVhdGVSb3V0ZVJlc3BvbnNlEiAKBXJvdXRlGAEgASgLMhEuYXRzYXBieC52MS5Sb3V0ZSJFChFMaXN0Um91dGVzUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDQoFbGltaXQYAiABKAUSDgoGb2Zmc2V0GAMgASgFIjcKEkxpc3RSb3V0ZXNSZXNwb25zZRIhCgZyb3V0ZXMYASADKAsyES5hdHNhcGJ4LnYxLlJvdXRlIjkKEkRlbGV0ZVJvdXRlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSEAoIcm91dGVfaWQYAiABKAkiFQoTRGVsZXRlUm91dGVSZXNwb25zZSJQChBQbGFjZUNhbGxSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIUCgxleHRlbnNpb25faWQYAiABKAkSEwoLZGVzdGluYXRpb24YAyABKAkiJAoRUGxhY2VDYWxsUmVzcG9uc2USDwoHY2FsbF9pZBgBIAEoCSI3ChFIYW5ndXBDYWxsUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSDwoHY2FsbF9pZBgCIAEoCSIUChJIYW5ndXBDYWxsUmVzcG9uc2UiMwoPRW1lcmdlbmN5TnVtYmVyEg4KBm51bWJlchgBIAEoCRIQCghidWlsdF9pbhgCIAEoCCJFChpTZXRFbWVyZ2VuY3lQcm9maWxlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkSFAoMY291bnRyeV9jb2RlGAIgASgJIh0KG1NldEVtZXJnZW5jeVByb2ZpbGVSZXNwb25zZSIvChpHZXRFbWVyZ2VuY3lQcm9maWxlUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkijAEKG0dldEVtZXJnZW5jeVByb2ZpbGVSZXNwb25zZRIUCgxjb3VudHJ5X2NvZGUYASABKAkSEwoLY291bnRyeV9zZXQYAiABKAgSFAoMaW5fY2F0YWxvZ3VlGAMgASgIEiwKB251bWJlcnMYBCADKAsyGy5hdHNhcGJ4LnYxLkVtZXJnZW5jeU51bWJlciJBChxDcmVhdGVFbWVyZ2VuY3lOdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkiHwodQ3JlYXRlRW1lcmdlbmN5TnVtYmVyUmVzcG9uc2UiMAobTGlzdEVtZXJnZW5jeU51bWJlcnNSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCSJMChxMaXN0RW1lcmdlbmN5TnVtYmVyc1Jlc3BvbnNlEiwKB251bWJlcnMYASADKAsyGy5hdHNhcGJ4LnYxLkVtZXJnZW5jeU51bWJlciJBChxEZWxldGVFbWVyZ2VuY3lOdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkiHwodRGVsZXRlRW1lcmdlbmN5TnVtYmVyUmVzcG9uc2UiUAoNSW5ib3VuZE51bWJlchIZChFpbmJvdW5kX251bWJlcl9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkSFAoMZXh0ZW5zaW9uX2lkGAMgASgJIlUKGkNyZWF0ZUluYm91bmROdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIOCgZudW1iZXIYAiABKAkSFAoMZXh0ZW5zaW9uX2lkGAMgASgJIlAKG0NyZWF0ZUluYm91bmROdW1iZXJSZXNwb25zZRIxCg5pbmJvdW5kX251bWJlchgBIAEoCzIZLmF0c2FwYngudjEuSW5ib3VuZE51bWJlciIuChlMaXN0SW5ib3VuZE51bWJlcnNSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCSJIChpMaXN0SW5ib3VuZE51bWJlcnNSZXNwb25zZRIqCgdudW1iZXJzGAEgAygLMhkuYXRzYXBieC52MS5JbmJvdW5kTnVtYmVyIkoKGkRlbGV0ZUluYm91bmROdW1iZXJSZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCRIZChFpbmJvdW5kX251bWJlcl9pZBgCIAEoCSIdChtEZWxldGVJbmJvdW5kTnVtYmVyUmVzcG9uc2UqVgoKRGV2aWNlVHlwZRIbChdERVZJQ0VfVFlQRV9VTlNQRUNJRklFRBAAEhYKEkRFVklDRV9UWVBFX1dFQlJUQxABEhMKD0RFVklDRV9UWVBFX1NJUBACKosBCg1PdXRib3VuZENsYXNzEh4KGk9VVEJPVU5EX0NMQVNTX1VOU1BFQ0lGSUVEEAASGwoXT1VUQk9VTkRfQ0xBU1NfSU5URVJOQUwQARIbChdPVVRCT1VORF9DTEFTU19OQVRJT05BTBACEiAKHE9VVEJPVU5EX0NMQVNTX0lOVEVSTkFUSU9OQUwQAyqFAQoSUmVnaXN0cmF0aW9uU3RhdHVzEiMKH1JFR0lTVFJBVElPTl9TVEFUVVNfVU5TUEVDSUZJRUQQABImCiJSRUdJU1RSQVRJT05fU1RBVFVTX05PVF9SRUdJU1RFUkVEEAESIgoeUkVHSVNUUkFUSU9OX1NUQVRVU19SRUdJU1RFUkVEEAIqlgEKC1RydW5rSGVhbHRoEhwKGFRSVU5LX0hFQUxUSF9VTlNQRUNJRklFRBAAEhgKFFRSVU5LX0hFQUxUSF9IRUFMVEhZEAESGQoVVFJVTktfSEVBTFRIX0RFR1JBREVEEAISGgoWVFJVTktfSEVBTFRIX1VOSEVBTFRIWRADEhgKFFRSVU5LX0hFQUxUSF9VTktOT1dOEAQq0AIKEVRydW5rSGVhbHRoUmVhc29uEiMKH1RSVU5LX0hFQUxUSF9SRUFTT05fVU5TUEVDSUZJRUQQABIhCh1UUlVOS19IRUFMVEhfUkVBU09OX0FOU1dFUklORxABEiUKIVRSVU5LX0hFQUxUSF9SRUFTT05fU0xPV19SRVNQT05TRRACEiYKIlRSVU5LX0hFQUxUSF9SRUFTT05fSE9TVF9OT1RfRk9VTkQQAxIjCh9UUlVOS19IRUFMVEhfUkVBU09OX05PX1JFU1BPTlNFEAQSJQohVFJVTktfSEVBTFRIX1JFQVNPTl9DQVJSSUVSX0VSUk9SEAUSKwonVFJVTktfSEVBTFRIX1JFQVNPTl9BRERSRVNTX05PVF9BTExPV0VEEAYSKwonVFJVTktfSEVBTFRIX1JFQVNPTl9DQUxMX1NFVFVQX0ZBSUxVUkVTEAcyuhMKClBieFNlcnZpY2USWgoPQ3JlYXRlRXh0ZW5zaW9uEiIuYXRzYXBieC52MS5DcmVhdGVFeHRlbnNpb25SZXF1ZXN0GiMuYXRzYXBieC52MS5DcmVhdGVFeHRlbnNpb25SZXNwb25zZRJRCgxHZXRFeHRlbnNpb24SHy5hdHNhcGJ4LnYxLkdldEV4dGVuc2lvblJlcXVlc3QaIC5hdHNhcGJ4LnYxLkdldEV4dGVuc2lvblJlc3BvbnNlElcKDkxpc3RFeHRlbnNpb25zEiEuYXRzYXBieC52MS5MaXN0RXh0ZW5zaW9uc1JlcXVlc3QaIi5hdHNhcGJ4LnYxLkxpc3RFeHRlbnNpb25zUmVzcG9uc2USWgoPVXBkYXRlRXh0ZW5zaW9uEiIuYXRzYXBieC52MS5VcGRhdGVFeHRlbnNpb25SZXF1ZXN0GiMuYXRzYXBieC52MS5VcGRhdGVFeHRlbnNpb25SZXNwb25zZRJaCg9EZWxldGVFeHRlbnNpb24SIi5hdHNhcGJ4LnYxLkRlbGV0ZUV4dGVuc2lvblJlcXVlc3QaIy5hdHNhcGJ4LnYxLkRlbGV0ZUV4dGVuc2lvblJlc3BvbnNlEl0KEFJlZ2VuZXJhdGVTZWNyZXQSIy5hdHNhcGJ4LnYxLlJlZ2VuZXJhdGVTZWNyZXRSZXF1ZXN0GiQuYXRzYXBieC52MS5SZWdlbmVyYXRlU2VjcmV0UmVzcG9uc2USWgoPR2V0U2lwUmVnaXN0cmFyEiIuYXRzYXBieC52MS5HZXRTaXBSZWdpc3RyYXJSZXF1ZXN0GiMuYXRzYXBieC52MS5HZXRTaXBSZWdpc3RyYXJSZXNwb25zZRJgChFHZXRPdXRib3VuZFBvbGljeRIkLmF0c2FwYngudjEuR2V0T3V0Ym91bmRQb2xpY3lSZXF1ZXN0GiUuYXRzYXBieC52MS5HZXRPdXRib3VuZFBvbGljeVJlc3BvbnNlEmkKFFVwZGF0ZU91dGJvdW5kUG9saWN5EicuYXRzYXBieC52MS5VcGRhdGVPdXRib3VuZFBvbGljeVJlcXVlc3QaKC5hdHNhcGJ4LnYxLlVwZGF0ZU91dGJvdW5kUG9saWN5UmVzcG9uc2USVwoOUmVzdW1lT3V0Ym91bmQSIS5hdHNhcGJ4LnYxLlJlc3VtZU91dGJvdW5kUmVxdWVzdBoiLmF0c2FwYngudjEuUmVzdW1lT3V0Ym91bmRSZXNwb25zZRJOCgtDcmVhdGVUcnVuaxIeLmF0c2FwYngudjEuQ3JlYXRlVHJ1bmtSZXF1ZXN0Gh8uYXRzYXBieC52MS5DcmVhdGVUcnVua1Jlc3BvbnNlEksKCkxpc3RUcnVua3MSHS5hdHNhcGJ4LnYxLkxpc3RUcnVua3NSZXF1ZXN0Gh4uYXRzYXBieC52MS5MaXN0VHJ1bmtzUmVzcG9uc2USTgoLVXBkYXRlVHJ1bmsSHi5hdHNhcGJ4LnYxLlVwZGF0ZVRydW5rUmVxdWVzdBofLmF0c2FwYngudjEuVXBkYXRlVHJ1bmtSZXNwb25zZRJOCgtEZWxldGVUcnVuaxIeLmF0c2FwYngudjEuRGVsZXRlVHJ1bmtSZXF1ZXN0Gh8uYXRzYXBieC52MS5EZWxldGVUcnVua1Jlc3BvbnNlEk4KC0NyZWF0ZVJvdXRlEh4uYXRzYXBieC52MS5DcmVhdGVSb3V0ZVJlcXVlc3QaHy5hdHNhcGJ4LnYxLkNyZWF0ZVJvdXRlUmVzcG9uc2USSwoKTGlzdFJvdXRlcxIdLmF0c2FwYngudjEuTGlzdFJvdXRlc1JlcXVlc3QaHi5hdHNhcGJ4LnYxLkxpc3RSb3V0ZXNSZXNwb25zZRJOCgtEZWxldGVSb3V0ZRIeLmF0c2FwYngudjEuRGVsZXRlUm91dGVSZXF1ZXN0Gh8uYXRzYXBieC52MS5EZWxldGVSb3V0ZVJlc3BvbnNlEkgKCVBsYWNlQ2FsbBIcLmF0c2FwYngudjEuUGxhY2VDYWxsUmVxdWVzdBodLmF0c2FwYngudjEuUGxhY2VDYWxsUmVzcG9uc2USSwoKSGFuZ3VwQ2FsbBIdLmF0c2FwYngudjEuSGFuZ3VwQ2FsbFJlcXVlc3QaHi5hdHNhcGJ4LnYxLkhhbmd1cENhbGxSZXNwb25zZRJmChNTZXRFbWVyZ2VuY3lQcm9maWxlEiYuYXRzYXBieC52MS5TZXRFbWVyZ2VuY3lQcm9maWxlUmVxdWVzdBonLmF0c2FwYngudjEuU2V0RW1lcmdlbmN5UHJvZmlsZVJlc3BvbnNlEmYKE0dldEVtZXJnZW5jeVByb2ZpbGUSJi5hdHNhcGJ4LnYxLkdldEVtZXJnZW5jeVByb2ZpbGVSZXF1ZXN0GicuYXRzYXBieC52MS5HZXRFbWVyZ2VuY3lQcm9maWxlUmVzcG9uc2USbAoVQ3JlYXRlRW1lcmdlbmN5TnVtYmVyEiguYXRzYXBieC52MS5DcmVhdGVFbWVyZ2VuY3lOdW1iZXJSZXF1ZXN0GikuYXRzYXBieC52MS5DcmVhdGVFbWVyZ2VuY3lOdW1iZXJSZXNwb25zZRJpChRMaXN0RW1lcmdlbmN5TnVtYmVycxInLmF0c2FwYngudjEuTGlzdEVtZXJnZW5jeU51bWJlcnNSZXF1ZXN0GiguYXRzYXBieC52MS5MaXN0RW1lcmdlbmN5TnVtYmVyc1Jlc3BvbnNlEmwKFURlbGV0ZUVtZXJnZW5jeU51bWJlchIoLmF0c2FwYngudjEuRGVsZXRlRW1lcmdlbmN5TnVtYmVyUmVxdWVzdBopLmF0c2FwYngudjEuRGVsZXRlRW1lcmdlbmN5TnVtYmVyUmVzcG9uc2USZgoTQ3JlYXRlSW5ib3VuZE51bWJlchImLmF0c2FwYngudjEuQ3JlYXRlSW5ib3VuZE51bWJlclJlcXVlc3QaJy5hdHNhcGJ4LnYxLkNyZWF0ZUluYm91bmROdW1iZXJSZXNwb25zZRJjChJMaXN0SW5ib3VuZE51bWJlcnMSJS5hdHNhcGJ4LnYxLkxpc3RJbmJvdW5kTnVtYmVyc1JlcXVlc3QaJi5hdHNhcGJ4LnYxLkxpc3RJbmJvdW5kTnVtYmVyc1Jlc3BvbnNlEmYKE0RlbGV0ZUluYm91bmROdW1iZXISJi5hdHNhcGJ4LnYxLkRlbGV0ZUluYm91bmROdW1iZXJSZXF1ZXN0GicuYXRzYXBieC52MS5EZWxldGVJbmJvdW5kTnVtYmVyUmVzcG9uc2VCMlowYXRzYXAtYXBpL2ludGVybmFsL2dlbnByb3RvL2F0c2FwYngvdjE7YXRzYXBieHYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * Extension is what a caller sees. It carries no credential digest and
@@ -417,6 +417,14 @@ export type GetSipRegistrarResponse = Message<"atsapbx.v1.GetSipRegistrarRespons
    * @generated from field: string webrtc_url = 5;
    */
   webrtcUrl: string;
+
+  /**
+   * STUN/TURN servers for browser media behind NAT (D-84). The
+   * credential is readable by signed-in tenants on purpose.
+   *
+   * @generated from field: repeated atsapbx.v1.IceServer ice_servers = 6;
+   */
+  iceServers: IceServer[];
 };
 
 /**
@@ -425,6 +433,232 @@ export type GetSipRegistrarResponse = Message<"atsapbx.v1.GetSipRegistrarRespons
  */
 export const GetSipRegistrarResponseSchema: GenMessage<GetSipRegistrarResponse> = /*@__PURE__*/
   messageDesc(file_atsapbx_v1_pbx, 14);
+
+/**
+ * @generated from message atsapbx.v1.OutboundPolicy
+ */
+export type OutboundPolicy = Message<"atsapbx.v1.OutboundPolicy"> & {
+  /**
+   * @generated from field: int64 daily_spend_cap_micros = 1;
+   */
+  dailySpendCapMicros: bigint;
+
+  /**
+   * @generated from field: int64 monthly_spend_cap_micros = 2;
+   */
+  monthlySpendCapMicros: bigint;
+
+  /**
+   * @generated from field: repeated string blocked_prefixes = 3;
+   */
+  blockedPrefixes: string[];
+
+  /**
+   * @generated from field: int32 anomaly_call_threshold = 4;
+   */
+  anomalyCallThreshold: number;
+
+  /**
+   * @generated from field: int32 anomaly_window_seconds = 5;
+   */
+  anomalyWindowSeconds: number;
+
+  /**
+   * @generated from field: int32 business_start_minute = 6;
+   */
+  businessStartMinute: number;
+
+  /**
+   * @generated from field: int32 business_end_minute = 7;
+   */
+  businessEndMinute: number;
+
+  /**
+   * @generated from field: bool suspended = 8;
+   */
+  suspended: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp suspended_at = 9;
+   */
+  suspendedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string suspended_reason = 10;
+   */
+  suspendedReason: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.OutboundPolicy.
+ * Use `create(OutboundPolicySchema)` to create a new message.
+ */
+export const OutboundPolicySchema: GenMessage<OutboundPolicy> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 15);
+
+/**
+ * @generated from message atsapbx.v1.GetOutboundPolicyRequest
+ */
+export type GetOutboundPolicyRequest = Message<"atsapbx.v1.GetOutboundPolicyRequest"> & {
+  /**
+   * @generated from field: string tenant_id = 1;
+   */
+  tenantId: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.GetOutboundPolicyRequest.
+ * Use `create(GetOutboundPolicyRequestSchema)` to create a new message.
+ */
+export const GetOutboundPolicyRequestSchema: GenMessage<GetOutboundPolicyRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 16);
+
+/**
+ * @generated from message atsapbx.v1.GetOutboundPolicyResponse
+ */
+export type GetOutboundPolicyResponse = Message<"atsapbx.v1.GetOutboundPolicyResponse"> & {
+  /**
+   * @generated from field: atsapbx.v1.OutboundPolicy policy = 1;
+   */
+  policy?: OutboundPolicy | undefined;
+};
+
+/**
+ * Describes the message atsapbx.v1.GetOutboundPolicyResponse.
+ * Use `create(GetOutboundPolicyResponseSchema)` to create a new message.
+ */
+export const GetOutboundPolicyResponseSchema: GenMessage<GetOutboundPolicyResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 17);
+
+/**
+ * @generated from message atsapbx.v1.UpdateOutboundPolicyRequest
+ */
+export type UpdateOutboundPolicyRequest = Message<"atsapbx.v1.UpdateOutboundPolicyRequest"> & {
+  /**
+   * @generated from field: string tenant_id = 1;
+   */
+  tenantId: string;
+
+  /**
+   * @generated from field: int64 daily_spend_cap_micros = 2;
+   */
+  dailySpendCapMicros: bigint;
+
+  /**
+   * @generated from field: int64 monthly_spend_cap_micros = 3;
+   */
+  monthlySpendCapMicros: bigint;
+
+  /**
+   * @generated from field: repeated string blocked_prefixes = 4;
+   */
+  blockedPrefixes: string[];
+
+  /**
+   * @generated from field: int32 anomaly_call_threshold = 5;
+   */
+  anomalyCallThreshold: number;
+
+  /**
+   * @generated from field: int32 anomaly_window_seconds = 6;
+   */
+  anomalyWindowSeconds: number;
+
+  /**
+   * @generated from field: int32 business_start_minute = 7;
+   */
+  businessStartMinute: number;
+
+  /**
+   * @generated from field: int32 business_end_minute = 8;
+   */
+  businessEndMinute: number;
+};
+
+/**
+ * Describes the message atsapbx.v1.UpdateOutboundPolicyRequest.
+ * Use `create(UpdateOutboundPolicyRequestSchema)` to create a new message.
+ */
+export const UpdateOutboundPolicyRequestSchema: GenMessage<UpdateOutboundPolicyRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 18);
+
+/**
+ * @generated from message atsapbx.v1.UpdateOutboundPolicyResponse
+ */
+export type UpdateOutboundPolicyResponse = Message<"atsapbx.v1.UpdateOutboundPolicyResponse"> & {
+  /**
+   * @generated from field: atsapbx.v1.OutboundPolicy policy = 1;
+   */
+  policy?: OutboundPolicy | undefined;
+};
+
+/**
+ * Describes the message atsapbx.v1.UpdateOutboundPolicyResponse.
+ * Use `create(UpdateOutboundPolicyResponseSchema)` to create a new message.
+ */
+export const UpdateOutboundPolicyResponseSchema: GenMessage<UpdateOutboundPolicyResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 19);
+
+/**
+ * @generated from message atsapbx.v1.ResumeOutboundRequest
+ */
+export type ResumeOutboundRequest = Message<"atsapbx.v1.ResumeOutboundRequest"> & {
+  /**
+   * @generated from field: string tenant_id = 1;
+   */
+  tenantId: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.ResumeOutboundRequest.
+ * Use `create(ResumeOutboundRequestSchema)` to create a new message.
+ */
+export const ResumeOutboundRequestSchema: GenMessage<ResumeOutboundRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 20);
+
+/**
+ * @generated from message atsapbx.v1.ResumeOutboundResponse
+ */
+export type ResumeOutboundResponse = Message<"atsapbx.v1.ResumeOutboundResponse"> & {
+  /**
+   * @generated from field: atsapbx.v1.OutboundPolicy policy = 1;
+   */
+  policy?: OutboundPolicy | undefined;
+};
+
+/**
+ * Describes the message atsapbx.v1.ResumeOutboundResponse.
+ * Use `create(ResumeOutboundResponseSchema)` to create a new message.
+ */
+export const ResumeOutboundResponseSchema: GenMessage<ResumeOutboundResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 21);
+
+/**
+ * @generated from message atsapbx.v1.IceServer
+ */
+export type IceServer = Message<"atsapbx.v1.IceServer"> & {
+  /**
+   * @generated from field: repeated string urls = 1;
+   */
+  urls: string[];
+
+  /**
+   * @generated from field: string username = 2;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string credential = 3;
+   */
+  credential: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.IceServer.
+ * Use `create(IceServerSchema)` to create a new message.
+ */
+export const IceServerSchema: GenMessage<IceServer> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_pbx, 22);
 
 /**
  * Trunk is what a caller sees of a carrier connection. It carries no
@@ -516,7 +750,7 @@ export type Trunk = Message<"atsapbx.v1.Trunk"> & {
  * Use `create(TrunkSchema)` to create a new message.
  */
 export const TrunkSchema: GenMessage<Trunk> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 15);
+  messageDesc(file_atsapbx_v1_pbx, 23);
 
 /**
  * @generated from message atsapbx.v1.CreateTrunkRequest
@@ -585,7 +819,7 @@ export type CreateTrunkRequest = Message<"atsapbx.v1.CreateTrunkRequest"> & {
  * Use `create(CreateTrunkRequestSchema)` to create a new message.
  */
 export const CreateTrunkRequestSchema: GenMessage<CreateTrunkRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 16);
+  messageDesc(file_atsapbx_v1_pbx, 24);
 
 /**
  * @generated from message atsapbx.v1.CreateTrunkResponse
@@ -602,7 +836,7 @@ export type CreateTrunkResponse = Message<"atsapbx.v1.CreateTrunkResponse"> & {
  * Use `create(CreateTrunkResponseSchema)` to create a new message.
  */
 export const CreateTrunkResponseSchema: GenMessage<CreateTrunkResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 17);
+  messageDesc(file_atsapbx_v1_pbx, 25);
 
 /**
  * @generated from message atsapbx.v1.ListTrunksRequest
@@ -629,7 +863,7 @@ export type ListTrunksRequest = Message<"atsapbx.v1.ListTrunksRequest"> & {
  * Use `create(ListTrunksRequestSchema)` to create a new message.
  */
 export const ListTrunksRequestSchema: GenMessage<ListTrunksRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 18);
+  messageDesc(file_atsapbx_v1_pbx, 26);
 
 /**
  * @generated from message atsapbx.v1.ListTrunksResponse
@@ -646,7 +880,7 @@ export type ListTrunksResponse = Message<"atsapbx.v1.ListTrunksResponse"> & {
  * Use `create(ListTrunksResponseSchema)` to create a new message.
  */
 export const ListTrunksResponseSchema: GenMessage<ListTrunksResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 19);
+  messageDesc(file_atsapbx_v1_pbx, 27);
 
 /**
  * @generated from message atsapbx.v1.UpdateTrunkRequest
@@ -715,7 +949,7 @@ export type UpdateTrunkRequest = Message<"atsapbx.v1.UpdateTrunkRequest"> & {
  * Use `create(UpdateTrunkRequestSchema)` to create a new message.
  */
 export const UpdateTrunkRequestSchema: GenMessage<UpdateTrunkRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 20);
+  messageDesc(file_atsapbx_v1_pbx, 28);
 
 /**
  * @generated from message atsapbx.v1.UpdateTrunkResponse
@@ -732,7 +966,7 @@ export type UpdateTrunkResponse = Message<"atsapbx.v1.UpdateTrunkResponse"> & {
  * Use `create(UpdateTrunkResponseSchema)` to create a new message.
  */
 export const UpdateTrunkResponseSchema: GenMessage<UpdateTrunkResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 21);
+  messageDesc(file_atsapbx_v1_pbx, 29);
 
 /**
  * @generated from message atsapbx.v1.DeleteTrunkRequest
@@ -754,7 +988,7 @@ export type DeleteTrunkRequest = Message<"atsapbx.v1.DeleteTrunkRequest"> & {
  * Use `create(DeleteTrunkRequestSchema)` to create a new message.
  */
 export const DeleteTrunkRequestSchema: GenMessage<DeleteTrunkRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 22);
+  messageDesc(file_atsapbx_v1_pbx, 30);
 
 /**
  * @generated from message atsapbx.v1.DeleteTrunkResponse
@@ -767,7 +1001,7 @@ export type DeleteTrunkResponse = Message<"atsapbx.v1.DeleteTrunkResponse"> & {
  * Use `create(DeleteTrunkResponseSchema)` to create a new message.
  */
 export const DeleteTrunkResponseSchema: GenMessage<DeleteTrunkResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 23);
+  messageDesc(file_atsapbx_v1_pbx, 31);
 
 /**
  * Route sends dialled numbers matching prefix_pattern to trunk_id.
@@ -814,7 +1048,7 @@ export type Route = Message<"atsapbx.v1.Route"> & {
  * Use `create(RouteSchema)` to create a new message.
  */
 export const RouteSchema: GenMessage<Route> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 24);
+  messageDesc(file_atsapbx_v1_pbx, 32);
 
 /**
  * @generated from message atsapbx.v1.CreateRouteRequest
@@ -851,7 +1085,7 @@ export type CreateRouteRequest = Message<"atsapbx.v1.CreateRouteRequest"> & {
  * Use `create(CreateRouteRequestSchema)` to create a new message.
  */
 export const CreateRouteRequestSchema: GenMessage<CreateRouteRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 25);
+  messageDesc(file_atsapbx_v1_pbx, 33);
 
 /**
  * @generated from message atsapbx.v1.CreateRouteResponse
@@ -868,7 +1102,7 @@ export type CreateRouteResponse = Message<"atsapbx.v1.CreateRouteResponse"> & {
  * Use `create(CreateRouteResponseSchema)` to create a new message.
  */
 export const CreateRouteResponseSchema: GenMessage<CreateRouteResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 26);
+  messageDesc(file_atsapbx_v1_pbx, 34);
 
 /**
  * @generated from message atsapbx.v1.ListRoutesRequest
@@ -895,7 +1129,7 @@ export type ListRoutesRequest = Message<"atsapbx.v1.ListRoutesRequest"> & {
  * Use `create(ListRoutesRequestSchema)` to create a new message.
  */
 export const ListRoutesRequestSchema: GenMessage<ListRoutesRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 27);
+  messageDesc(file_atsapbx_v1_pbx, 35);
 
 /**
  * @generated from message atsapbx.v1.ListRoutesResponse
@@ -912,7 +1146,7 @@ export type ListRoutesResponse = Message<"atsapbx.v1.ListRoutesResponse"> & {
  * Use `create(ListRoutesResponseSchema)` to create a new message.
  */
 export const ListRoutesResponseSchema: GenMessage<ListRoutesResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 28);
+  messageDesc(file_atsapbx_v1_pbx, 36);
 
 /**
  * @generated from message atsapbx.v1.DeleteRouteRequest
@@ -934,7 +1168,7 @@ export type DeleteRouteRequest = Message<"atsapbx.v1.DeleteRouteRequest"> & {
  * Use `create(DeleteRouteRequestSchema)` to create a new message.
  */
 export const DeleteRouteRequestSchema: GenMessage<DeleteRouteRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 29);
+  messageDesc(file_atsapbx_v1_pbx, 37);
 
 /**
  * @generated from message atsapbx.v1.DeleteRouteResponse
@@ -947,7 +1181,7 @@ export type DeleteRouteResponse = Message<"atsapbx.v1.DeleteRouteResponse"> & {
  * Use `create(DeleteRouteResponseSchema)` to create a new message.
  */
 export const DeleteRouteResponseSchema: GenMessage<DeleteRouteResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 30);
+  messageDesc(file_atsapbx_v1_pbx, 38);
 
 /**
  * @generated from message atsapbx.v1.PlaceCallRequest
@@ -978,7 +1212,7 @@ export type PlaceCallRequest = Message<"atsapbx.v1.PlaceCallRequest"> & {
  * Use `create(PlaceCallRequestSchema)` to create a new message.
  */
 export const PlaceCallRequestSchema: GenMessage<PlaceCallRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 31);
+  messageDesc(file_atsapbx_v1_pbx, 39);
 
 /**
  * @generated from message atsapbx.v1.PlaceCallResponse
@@ -997,7 +1231,7 @@ export type PlaceCallResponse = Message<"atsapbx.v1.PlaceCallResponse"> & {
  * Use `create(PlaceCallResponseSchema)` to create a new message.
  */
 export const PlaceCallResponseSchema: GenMessage<PlaceCallResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 32);
+  messageDesc(file_atsapbx_v1_pbx, 40);
 
 /**
  * @generated from message atsapbx.v1.HangupCallRequest
@@ -1019,7 +1253,7 @@ export type HangupCallRequest = Message<"atsapbx.v1.HangupCallRequest"> & {
  * Use `create(HangupCallRequestSchema)` to create a new message.
  */
 export const HangupCallRequestSchema: GenMessage<HangupCallRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 33);
+  messageDesc(file_atsapbx_v1_pbx, 41);
 
 /**
  * @generated from message atsapbx.v1.HangupCallResponse
@@ -1032,7 +1266,7 @@ export type HangupCallResponse = Message<"atsapbx.v1.HangupCallResponse"> & {
  * Use `create(HangupCallResponseSchema)` to create a new message.
  */
 export const HangupCallResponseSchema: GenMessage<HangupCallResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 34);
+  messageDesc(file_atsapbx_v1_pbx, 42);
 
 /**
  * EmergencyNumber is one effective emergency number and where it comes
@@ -1058,7 +1292,7 @@ export type EmergencyNumber = Message<"atsapbx.v1.EmergencyNumber"> & {
  * Use `create(EmergencyNumberSchema)` to create a new message.
  */
 export const EmergencyNumberSchema: GenMessage<EmergencyNumber> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 35);
+  messageDesc(file_atsapbx_v1_pbx, 43);
 
 /**
  * @generated from message atsapbx.v1.SetEmergencyProfileRequest
@@ -1082,7 +1316,7 @@ export type SetEmergencyProfileRequest = Message<"atsapbx.v1.SetEmergencyProfile
  * Use `create(SetEmergencyProfileRequestSchema)` to create a new message.
  */
 export const SetEmergencyProfileRequestSchema: GenMessage<SetEmergencyProfileRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 36);
+  messageDesc(file_atsapbx_v1_pbx, 44);
 
 /**
  * @generated from message atsapbx.v1.SetEmergencyProfileResponse
@@ -1095,7 +1329,7 @@ export type SetEmergencyProfileResponse = Message<"atsapbx.v1.SetEmergencyProfil
  * Use `create(SetEmergencyProfileResponseSchema)` to create a new message.
  */
 export const SetEmergencyProfileResponseSchema: GenMessage<SetEmergencyProfileResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 37);
+  messageDesc(file_atsapbx_v1_pbx, 45);
 
 /**
  * @generated from message atsapbx.v1.GetEmergencyProfileRequest
@@ -1112,7 +1346,7 @@ export type GetEmergencyProfileRequest = Message<"atsapbx.v1.GetEmergencyProfile
  * Use `create(GetEmergencyProfileRequestSchema)` to create a new message.
  */
 export const GetEmergencyProfileRequestSchema: GenMessage<GetEmergencyProfileRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 38);
+  messageDesc(file_atsapbx_v1_pbx, 46);
 
 /**
  * @generated from message atsapbx.v1.GetEmergencyProfileResponse
@@ -1149,7 +1383,7 @@ export type GetEmergencyProfileResponse = Message<"atsapbx.v1.GetEmergencyProfil
  * Use `create(GetEmergencyProfileResponseSchema)` to create a new message.
  */
 export const GetEmergencyProfileResponseSchema: GenMessage<GetEmergencyProfileResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 39);
+  messageDesc(file_atsapbx_v1_pbx, 47);
 
 /**
  * @generated from message atsapbx.v1.CreateEmergencyNumberRequest
@@ -1173,7 +1407,7 @@ export type CreateEmergencyNumberRequest = Message<"atsapbx.v1.CreateEmergencyNu
  * Use `create(CreateEmergencyNumberRequestSchema)` to create a new message.
  */
 export const CreateEmergencyNumberRequestSchema: GenMessage<CreateEmergencyNumberRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 40);
+  messageDesc(file_atsapbx_v1_pbx, 48);
 
 /**
  * @generated from message atsapbx.v1.CreateEmergencyNumberResponse
@@ -1186,7 +1420,7 @@ export type CreateEmergencyNumberResponse = Message<"atsapbx.v1.CreateEmergencyN
  * Use `create(CreateEmergencyNumberResponseSchema)` to create a new message.
  */
 export const CreateEmergencyNumberResponseSchema: GenMessage<CreateEmergencyNumberResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 41);
+  messageDesc(file_atsapbx_v1_pbx, 49);
 
 /**
  * @generated from message atsapbx.v1.ListEmergencyNumbersRequest
@@ -1203,7 +1437,7 @@ export type ListEmergencyNumbersRequest = Message<"atsapbx.v1.ListEmergencyNumbe
  * Use `create(ListEmergencyNumbersRequestSchema)` to create a new message.
  */
 export const ListEmergencyNumbersRequestSchema: GenMessage<ListEmergencyNumbersRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 42);
+  messageDesc(file_atsapbx_v1_pbx, 50);
 
 /**
  * @generated from message atsapbx.v1.ListEmergencyNumbersResponse
@@ -1220,7 +1454,7 @@ export type ListEmergencyNumbersResponse = Message<"atsapbx.v1.ListEmergencyNumb
  * Use `create(ListEmergencyNumbersResponseSchema)` to create a new message.
  */
 export const ListEmergencyNumbersResponseSchema: GenMessage<ListEmergencyNumbersResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 43);
+  messageDesc(file_atsapbx_v1_pbx, 51);
 
 /**
  * @generated from message atsapbx.v1.DeleteEmergencyNumberRequest
@@ -1242,7 +1476,7 @@ export type DeleteEmergencyNumberRequest = Message<"atsapbx.v1.DeleteEmergencyNu
  * Use `create(DeleteEmergencyNumberRequestSchema)` to create a new message.
  */
 export const DeleteEmergencyNumberRequestSchema: GenMessage<DeleteEmergencyNumberRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 44);
+  messageDesc(file_atsapbx_v1_pbx, 52);
 
 /**
  * @generated from message atsapbx.v1.DeleteEmergencyNumberResponse
@@ -1255,7 +1489,7 @@ export type DeleteEmergencyNumberResponse = Message<"atsapbx.v1.DeleteEmergencyN
  * Use `create(DeleteEmergencyNumberResponseSchema)` to create a new message.
  */
 export const DeleteEmergencyNumberResponseSchema: GenMessage<DeleteEmergencyNumberResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 45);
+  messageDesc(file_atsapbx_v1_pbx, 53);
 
 /**
  * InboundNumber is a public number that rings one of the tenant's
@@ -1287,7 +1521,7 @@ export type InboundNumber = Message<"atsapbx.v1.InboundNumber"> & {
  * Use `create(InboundNumberSchema)` to create a new message.
  */
 export const InboundNumberSchema: GenMessage<InboundNumber> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 46);
+  messageDesc(file_atsapbx_v1_pbx, 54);
 
 /**
  * @generated from message atsapbx.v1.CreateInboundNumberRequest
@@ -1314,7 +1548,7 @@ export type CreateInboundNumberRequest = Message<"atsapbx.v1.CreateInboundNumber
  * Use `create(CreateInboundNumberRequestSchema)` to create a new message.
  */
 export const CreateInboundNumberRequestSchema: GenMessage<CreateInboundNumberRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 47);
+  messageDesc(file_atsapbx_v1_pbx, 55);
 
 /**
  * @generated from message atsapbx.v1.CreateInboundNumberResponse
@@ -1331,7 +1565,7 @@ export type CreateInboundNumberResponse = Message<"atsapbx.v1.CreateInboundNumbe
  * Use `create(CreateInboundNumberResponseSchema)` to create a new message.
  */
 export const CreateInboundNumberResponseSchema: GenMessage<CreateInboundNumberResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 48);
+  messageDesc(file_atsapbx_v1_pbx, 56);
 
 /**
  * @generated from message atsapbx.v1.ListInboundNumbersRequest
@@ -1348,7 +1582,7 @@ export type ListInboundNumbersRequest = Message<"atsapbx.v1.ListInboundNumbersRe
  * Use `create(ListInboundNumbersRequestSchema)` to create a new message.
  */
 export const ListInboundNumbersRequestSchema: GenMessage<ListInboundNumbersRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 49);
+  messageDesc(file_atsapbx_v1_pbx, 57);
 
 /**
  * @generated from message atsapbx.v1.ListInboundNumbersResponse
@@ -1365,7 +1599,7 @@ export type ListInboundNumbersResponse = Message<"atsapbx.v1.ListInboundNumbersR
  * Use `create(ListInboundNumbersResponseSchema)` to create a new message.
  */
 export const ListInboundNumbersResponseSchema: GenMessage<ListInboundNumbersResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 50);
+  messageDesc(file_atsapbx_v1_pbx, 58);
 
 /**
  * @generated from message atsapbx.v1.DeleteInboundNumberRequest
@@ -1387,7 +1621,7 @@ export type DeleteInboundNumberRequest = Message<"atsapbx.v1.DeleteInboundNumber
  * Use `create(DeleteInboundNumberRequestSchema)` to create a new message.
  */
 export const DeleteInboundNumberRequestSchema: GenMessage<DeleteInboundNumberRequest> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 51);
+  messageDesc(file_atsapbx_v1_pbx, 59);
 
 /**
  * @generated from message atsapbx.v1.DeleteInboundNumberResponse
@@ -1400,7 +1634,7 @@ export type DeleteInboundNumberResponse = Message<"atsapbx.v1.DeleteInboundNumbe
  * Use `create(DeleteInboundNumberResponseSchema)` to create a new message.
  */
 export const DeleteInboundNumberResponseSchema: GenMessage<DeleteInboundNumberResponse> = /*@__PURE__*/
-  messageDesc(file_atsapbx_v1_pbx, 52);
+  messageDesc(file_atsapbx_v1_pbx, 60);
 
 /**
  * DeviceType is how a device attaches to an extension.
@@ -1715,6 +1949,33 @@ export const PbxService: GenService<{
     methodKind: "unary";
     input: typeof GetSipRegistrarRequestSchema;
     output: typeof GetSipRegistrarResponseSchema;
+  },
+  /**
+   * Outbound protection: spend caps, blocked prefixes, anomaly detection
+   * and an automatic suspension (D-85, AC-08.1/08.2).
+   *
+   * @generated from rpc atsapbx.v1.PbxService.GetOutboundPolicy
+   */
+  getOutboundPolicy: {
+    methodKind: "unary";
+    input: typeof GetOutboundPolicyRequestSchema;
+    output: typeof GetOutboundPolicyResponseSchema;
+  },
+  /**
+   * @generated from rpc atsapbx.v1.PbxService.UpdateOutboundPolicy
+   */
+  updateOutboundPolicy: {
+    methodKind: "unary";
+    input: typeof UpdateOutboundPolicyRequestSchema;
+    output: typeof UpdateOutboundPolicyResponseSchema;
+  },
+  /**
+   * @generated from rpc atsapbx.v1.PbxService.ResumeOutbound
+   */
+  resumeOutbound: {
+    methodKind: "unary";
+    input: typeof ResumeOutboundRequestSchema;
+    output: typeof ResumeOutboundResponseSchema;
   },
   /**
    * CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier

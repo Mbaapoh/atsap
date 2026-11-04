@@ -278,7 +278,8 @@ func run() int {
 	// the installer knows (pbx-sip-registrar-settings).
 	pbxSvc = pbxSvc.WithRegistrar(pbxports.SipRegistrar{
 		Host: cfg.SIPPublicHost, Port: cfg.SIPPublicPort, Transport: cfg.SIPPublicTransport,
-		WebRTCURL: cfg.SIPWebRTCURL,
+		WebRTCURL:  cfg.SIPWebRTCURL,
+		ICEServers: iceServers(cfg),
 	})
 	pbxSvc = pbxSvc.
 		WithEmergencyStores(pbxpostgres.NewInboundNumberStore(), pbxpostgres.NewEmergencyStore()).
@@ -309,7 +310,7 @@ func run() int {
 		logger.Error("carrier alerts", "error", err)
 		return 1
 	}
-	pbxSvc = pbxSvc.WithCarrierAlerter(carrierAlerter)
+	pbxSvc = wireFraudGuard(pbxSvc.WithCarrierAlerter(carrierAlerter), carrierAlerter)
 	trunkProber := pbxapp.NewTrunkProber(appPool, pbxpostgres.NewTrunkStore(), projector, &sipprobe.Prober{}, cfg.TrunkProbeInterval, logger).
 		WithCarrierAlerter(carrierAlerter)
 	pbxSvc = pbxSvc.WithTrunkChecker(trunkProber)
@@ -380,4 +381,25 @@ func runSubcommand(cfg config.Config) (code int, ran bool) {
 		return runAdmin(cfg), true
 	}
 	return 0, false
+}
+
+// iceServers is the browser's STUN/TURN configuration. Empty TURN URLs
+// falls back to host candidates (and the browser's own STUN default is
+// not used: SIP.js is configured explicitly).
+func iceServers(cfg config.Config) []pbxports.ICEServer {
+	if len(cfg.TURNURLs) == 0 {
+		return nil
+	}
+	return []pbxports.ICEServer{{URLs: cfg.TURNURLs, Username: cfg.TURNUsername, Credential: cfg.TURNCredential}}
+}
+
+// wireFraudGuard attaches the tenant fraud guard when an alerter is
+// available. Kept out of run to keep its cognitive complexity bounded.
+func wireFraudGuard(svc *pbxapp.Service, alerter pbxports.CarrierAlerter) *pbxapp.Service {
+	var fraudAlerter pbxports.FraudAlerter
+	if alerter != nil {
+		fraudAlerter, _ = alerter.(pbxports.FraudAlerter)
+	}
+	return svc.WithFraudGuard(
+		pbxpostgres.NewOutboundPolicyStore(), pbxpostgres.NewSpendStore(), pbxpostgres.NewAttemptStore(), fraudAlerter)
 }

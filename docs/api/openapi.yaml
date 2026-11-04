@@ -1303,6 +1303,114 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.GetSipRegistrarResponse'
+  /atsapbx.v1.PbxService/GetOutboundPolicy:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: GetOutboundPolicy
+      description: |-
+        Outbound protection: spend caps, blocked prefixes, anomaly detection
+         and an automatic suspension (D-85, AC-08.1/08.2).
+      operationId: atsapbx.v1.PbxService.GetOutboundPolicy
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetOutboundPolicyRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetOutboundPolicyResponse'
+  /atsapbx.v1.PbxService/UpdateOutboundPolicy:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: UpdateOutboundPolicy
+      operationId: atsapbx.v1.PbxService.UpdateOutboundPolicy
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.UpdateOutboundPolicyRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.UpdateOutboundPolicyResponse'
+  /atsapbx.v1.PbxService/ResumeOutbound:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ResumeOutbound
+      operationId: atsapbx.v1.PbxService.ResumeOutbound
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ResumeOutboundRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ResumeOutboundResponse'
   /atsapbx.v1.PbxService/CreateTrunk:
     post:
       tags:
@@ -3460,6 +3568,22 @@ components:
           $ref: '#/components/schemas/atsapbx.v1.Extension'
       title: GetExtensionResponse
       additionalProperties: false
+    atsapbx.v1.GetOutboundPolicyRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: GetOutboundPolicyRequest
+      additionalProperties: false
+    atsapbx.v1.GetOutboundPolicyResponse:
+      type: object
+      properties:
+        policy:
+          title: policy
+          $ref: '#/components/schemas/atsapbx.v1.OutboundPolicy'
+      title: GetOutboundPolicyResponse
+      additionalProperties: false
     atsapbx.v1.GetSipRegistrarRequest:
       type: object
       properties:
@@ -3496,6 +3620,14 @@ components:
             The WebRTC signalling endpoint (ws:// for the dev rig, wss:// in
              production); empty when the installation has not configured one. It
              is public configuration, never a secret.
+        iceServers:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.IceServer'
+          title: ice_servers
+          description: |-
+            STUN/TURN servers for browser media behind NAT (D-84). The
+             credential is readable by signed-in tenants on purpose.
       title: GetSipRegistrarResponse
       additionalProperties: false
     atsapbx.v1.HangupCallRequest:
@@ -3512,6 +3644,22 @@ components:
     atsapbx.v1.HangupCallResponse:
       type: object
       title: HangupCallResponse
+      additionalProperties: false
+    atsapbx.v1.IceServer:
+      type: object
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+          title: urls
+        username:
+          type: string
+          title: username
+        credential:
+          type: string
+          title: credential
+      title: IceServer
       additionalProperties: false
     atsapbx.v1.InboundNumber:
       type: object
@@ -3645,6 +3793,53 @@ components:
           title: trunks
       title: ListTrunksResponse
       additionalProperties: false
+    atsapbx.v1.OutboundPolicy:
+      type: object
+      properties:
+        dailySpendCapMicros:
+          type:
+            - integer
+            - string
+          title: daily_spend_cap_micros
+          format: int64
+        monthlySpendCapMicros:
+          type:
+            - integer
+            - string
+          title: monthly_spend_cap_micros
+          format: int64
+        blockedPrefixes:
+          type: array
+          items:
+            type: string
+          title: blocked_prefixes
+        anomalyCallThreshold:
+          type: integer
+          title: anomaly_call_threshold
+          format: int32
+        anomalyWindowSeconds:
+          type: integer
+          title: anomaly_window_seconds
+          format: int32
+        businessStartMinute:
+          type: integer
+          title: business_start_minute
+          format: int32
+        businessEndMinute:
+          type: integer
+          title: business_end_minute
+          format: int32
+        suspended:
+          type: boolean
+          title: suspended
+        suspendedAt:
+          title: suspended_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        suspendedReason:
+          type: string
+          title: suspended_reason
+      title: OutboundPolicy
+      additionalProperties: false
     atsapbx.v1.PlaceCallRequest:
       type: object
       properties:
@@ -3692,6 +3887,22 @@ components:
           title: secret
           description: The new secret, returned exactly once, as at creation.
       title: RegenerateSecretResponse
+      additionalProperties: false
+    atsapbx.v1.ResumeOutboundRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ResumeOutboundRequest
+      additionalProperties: false
+    atsapbx.v1.ResumeOutboundResponse:
+      type: object
+      properties:
+        policy:
+          title: policy
+          $ref: '#/components/schemas/atsapbx.v1.OutboundPolicy'
+      title: ResumeOutboundResponse
       additionalProperties: false
     atsapbx.v1.Route:
       type: object
@@ -3832,6 +4043,55 @@ components:
           title: extension
           $ref: '#/components/schemas/atsapbx.v1.Extension'
       title: UpdateExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.UpdateOutboundPolicyRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        dailySpendCapMicros:
+          type:
+            - integer
+            - string
+          title: daily_spend_cap_micros
+          format: int64
+        monthlySpendCapMicros:
+          type:
+            - integer
+            - string
+          title: monthly_spend_cap_micros
+          format: int64
+        blockedPrefixes:
+          type: array
+          items:
+            type: string
+          title: blocked_prefixes
+        anomalyCallThreshold:
+          type: integer
+          title: anomaly_call_threshold
+          format: int32
+        anomalyWindowSeconds:
+          type: integer
+          title: anomaly_window_seconds
+          format: int32
+        businessStartMinute:
+          type: integer
+          title: business_start_minute
+          format: int32
+        businessEndMinute:
+          type: integer
+          title: business_end_minute
+          format: int32
+      title: UpdateOutboundPolicyRequest
+      additionalProperties: false
+    atsapbx.v1.UpdateOutboundPolicyResponse:
+      type: object
+      properties:
+        policy:
+          title: policy
+          $ref: '#/components/schemas/atsapbx.v1.OutboundPolicy'
+      title: UpdateOutboundPolicyResponse
       additionalProperties: false
     atsapbx.v1.UpdateTrunkRequest:
       type: object

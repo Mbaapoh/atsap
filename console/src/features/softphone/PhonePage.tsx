@@ -43,6 +43,7 @@ export function PhonePage() {
           extensions={extensions}
           webrtcUrl={registrar.data?.webrtcUrl ?? ""}
           domain={registrar.data?.host ?? ""}
+          iceServers={registrar.data?.iceServers ?? []}
           onConnect={phone.connect}
           error={phone.error}
           loading={directory.isPending || registrar.isPending}
@@ -56,6 +57,7 @@ function ConnectForm({
   extensions,
   webrtcUrl,
   domain,
+  iceServers,
   onConnect,
   error,
   loading,
@@ -63,7 +65,8 @@ function ConnectForm({
   extensions: ExtensionEntry[];
   webrtcUrl: string;
   domain: string;
-  onConnect: (c: { url: string; username: string; password: string; domain: string; number: string; displayName: string }) => Promise<void>;
+  iceServers: RTCIceServer[];
+  onConnect: (c: { url: string; username: string; password: string; domain: string; number: string; displayName: string; iceServers: RTCIceServer[] }) => Promise<void>;
   error: string | null;
   loading: boolean;
 }) {
@@ -99,6 +102,7 @@ function ConnectForm({
       domain,
       number: chosen.number,
       displayName: chosen.name || chosen.number,
+      iceServers,
     });
     setPassword("");
     setBusy(false);

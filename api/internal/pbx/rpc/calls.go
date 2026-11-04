@@ -64,6 +64,12 @@ func mapCallErr(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("this extension's outbound class does not permit that destination"))
 	case errors.Is(err, ports.ErrCallRefused):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New(err.Error()))
+	case errors.Is(err, ports.ErrOutboundBlocked):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("this destination is blocked for this tenant"))
+	case errors.Is(err, ports.ErrOutboundSuspended):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("outbound calling is suspended for this tenant; an administrator must resume it"))
+	case errors.Is(err, ports.ErrSpendCapReached):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("the tenant's outbound spend cap is reached"))
 	}
 	return mapConfigErr(err)
 }

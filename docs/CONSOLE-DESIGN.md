@@ -329,6 +329,11 @@ in memory only and cleared on reload, disconnect and Tenant change. The
 installing operator supplies the signalling URL (`SIP_WEBRTC_URL`):
 `ws://…` on the dev rig, `wss://…` in production.
 
+The installer supplies the signalling URL (`SIP_WEBRTC_URL`) and the
+STUN/TURN servers (`TURN_URLS`); the browser receives both through the
+registrar. Host ICE still works on a normal NAT; TURN is required behind
+a symmetric one (D-84).
+
 The page states are: not configured / no WEBRTC extension / connect /
 connecting / registered with dialler / incoming (Answer, Reject) /
 calling / in call (Mute, Hang up) / ended (Dismiss) / connection failure.
@@ -345,6 +350,14 @@ and sign out. Password change states that other sessions will end.
 Linking asks for the current password, then leaves for Google; the
 callback returns to `/account` (D-67). This page does not manage roles or
 extensions in Phase A.
+
+### Outbound protection
+
+**Trunks & routes** includes **Outbound protection**: daily and monthly
+spend caps (micros, 0 unlimited), blocked destination prefixes, anomaly
+threshold/window and UTC business hours, plus the suspension state and a
+**Resume outbound calling** action. A suspension explains its reason;
+calls in progress and emergency numbers are never affected. See D-85.
 
 ## React + TypeScript implementation guide
 

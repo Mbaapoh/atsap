@@ -773,8 +773,12 @@ detection one:
   (D-82, `pbx-outbound-classes`).
 - Per-trunk `channel_limit` caps the blast radius of any single
   compromise.
-- Spend caps are `compliance`'s (LLD-04); this LLD provides the hook and
-  does not fake the verdict.
+- `pbx-fraud-guard` (D-85) adds a tenant policy: rated daily/monthly
+  spend caps from route cost and answered duration, blocked prefixes, and
+  anomaly suspension (too many international attempts outside business
+  hours). Placement refuses before the engine; calls in progress and
+  emergency are never cut off. Draining DNC/calling-hours work remains
+  `compliance`'s (LLD-04).
 
 ### 10.3 Credentials
 

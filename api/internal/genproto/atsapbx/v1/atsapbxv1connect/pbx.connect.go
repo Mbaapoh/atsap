@@ -53,6 +53,15 @@ const (
 	// PbxServiceGetSipRegistrarProcedure is the fully-qualified name of the PbxService's
 	// GetSipRegistrar RPC.
 	PbxServiceGetSipRegistrarProcedure = "/atsapbx.v1.PbxService/GetSipRegistrar"
+	// PbxServiceGetOutboundPolicyProcedure is the fully-qualified name of the PbxService's
+	// GetOutboundPolicy RPC.
+	PbxServiceGetOutboundPolicyProcedure = "/atsapbx.v1.PbxService/GetOutboundPolicy"
+	// PbxServiceUpdateOutboundPolicyProcedure is the fully-qualified name of the PbxService's
+	// UpdateOutboundPolicy RPC.
+	PbxServiceUpdateOutboundPolicyProcedure = "/atsapbx.v1.PbxService/UpdateOutboundPolicy"
+	// PbxServiceResumeOutboundProcedure is the fully-qualified name of the PbxService's ResumeOutbound
+	// RPC.
+	PbxServiceResumeOutboundProcedure = "/atsapbx.v1.PbxService/ResumeOutbound"
 	// PbxServiceCreateTrunkProcedure is the fully-qualified name of the PbxService's CreateTrunk RPC.
 	PbxServiceCreateTrunkProcedure = "/atsapbx.v1.PbxService/CreateTrunk"
 	// PbxServiceListTrunksProcedure is the fully-qualified name of the PbxService's ListTrunks RPC.
@@ -123,6 +132,11 @@ type PbxServiceClient interface {
 	// public host is configured it says so (configured = false) rather than
 	// guess. Authorized like reading the tenant's extensions.
 	GetSipRegistrar(context.Context, *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error)
+	// Outbound protection: spend caps, blocked prefixes, anomaly detection
+	// and an automatic suspension (D-85, AC-08.1/08.2).
+	GetOutboundPolicy(context.Context, *connect.Request[v1.GetOutboundPolicyRequest]) (*connect.Response[v1.GetOutboundPolicyResponse], error)
+	UpdateOutboundPolicy(context.Context, *connect.Request[v1.UpdateOutboundPolicyRequest]) (*connect.Response[v1.UpdateOutboundPolicyResponse], error)
+	ResumeOutbound(context.Context, *connect.Request[v1.ResumeOutboundRequest]) (*connect.Response[v1.ResumeOutboundResponse], error)
 	// CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
 	// secret, if any, is accepted here and on UpdateTrunk and is never
 	// returned by any call — unlike an extension secret, it was chosen by
@@ -241,6 +255,24 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(pbxServiceMethods.ByName("GetSipRegistrar")),
 			connect.WithClientOptions(opts...),
 		),
+		getOutboundPolicy: connect.NewClient[v1.GetOutboundPolicyRequest, v1.GetOutboundPolicyResponse](
+			httpClient,
+			baseURL+PbxServiceGetOutboundPolicyProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("GetOutboundPolicy")),
+			connect.WithClientOptions(opts...),
+		),
+		updateOutboundPolicy: connect.NewClient[v1.UpdateOutboundPolicyRequest, v1.UpdateOutboundPolicyResponse](
+			httpClient,
+			baseURL+PbxServiceUpdateOutboundPolicyProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("UpdateOutboundPolicy")),
+			connect.WithClientOptions(opts...),
+		),
+		resumeOutbound: connect.NewClient[v1.ResumeOutboundRequest, v1.ResumeOutboundResponse](
+			httpClient,
+			baseURL+PbxServiceResumeOutboundProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ResumeOutbound")),
+			connect.WithClientOptions(opts...),
+		),
 		createTrunk: connect.NewClient[v1.CreateTrunkRequest, v1.CreateTrunkResponse](
 			httpClient,
 			baseURL+PbxServiceCreateTrunkProcedure,
@@ -355,6 +387,9 @@ type pbxServiceClient struct {
 	deleteExtension       *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
 	regenerateSecret      *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
 	getSipRegistrar       *connect.Client[v1.GetSipRegistrarRequest, v1.GetSipRegistrarResponse]
+	getOutboundPolicy     *connect.Client[v1.GetOutboundPolicyRequest, v1.GetOutboundPolicyResponse]
+	updateOutboundPolicy  *connect.Client[v1.UpdateOutboundPolicyRequest, v1.UpdateOutboundPolicyResponse]
+	resumeOutbound        *connect.Client[v1.ResumeOutboundRequest, v1.ResumeOutboundResponse]
 	createTrunk           *connect.Client[v1.CreateTrunkRequest, v1.CreateTrunkResponse]
 	listTrunks            *connect.Client[v1.ListTrunksRequest, v1.ListTrunksResponse]
 	updateTrunk           *connect.Client[v1.UpdateTrunkRequest, v1.UpdateTrunkResponse]
@@ -407,6 +442,21 @@ func (c *pbxServiceClient) RegenerateSecret(ctx context.Context, req *connect.Re
 // GetSipRegistrar calls atsapbx.v1.PbxService.GetSipRegistrar.
 func (c *pbxServiceClient) GetSipRegistrar(ctx context.Context, req *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error) {
 	return c.getSipRegistrar.CallUnary(ctx, req)
+}
+
+// GetOutboundPolicy calls atsapbx.v1.PbxService.GetOutboundPolicy.
+func (c *pbxServiceClient) GetOutboundPolicy(ctx context.Context, req *connect.Request[v1.GetOutboundPolicyRequest]) (*connect.Response[v1.GetOutboundPolicyResponse], error) {
+	return c.getOutboundPolicy.CallUnary(ctx, req)
+}
+
+// UpdateOutboundPolicy calls atsapbx.v1.PbxService.UpdateOutboundPolicy.
+func (c *pbxServiceClient) UpdateOutboundPolicy(ctx context.Context, req *connect.Request[v1.UpdateOutboundPolicyRequest]) (*connect.Response[v1.UpdateOutboundPolicyResponse], error) {
+	return c.updateOutboundPolicy.CallUnary(ctx, req)
+}
+
+// ResumeOutbound calls atsapbx.v1.PbxService.ResumeOutbound.
+func (c *pbxServiceClient) ResumeOutbound(ctx context.Context, req *connect.Request[v1.ResumeOutboundRequest]) (*connect.Response[v1.ResumeOutboundResponse], error) {
+	return c.resumeOutbound.CallUnary(ctx, req)
 }
 
 // CreateTrunk calls atsapbx.v1.PbxService.CreateTrunk.
@@ -520,6 +570,11 @@ type PbxServiceHandler interface {
 	// public host is configured it says so (configured = false) rather than
 	// guess. Authorized like reading the tenant's extensions.
 	GetSipRegistrar(context.Context, *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error)
+	// Outbound protection: spend caps, blocked prefixes, anomaly detection
+	// and an automatic suspension (D-85, AC-08.1/08.2).
+	GetOutboundPolicy(context.Context, *connect.Request[v1.GetOutboundPolicyRequest]) (*connect.Response[v1.GetOutboundPolicyResponse], error)
+	UpdateOutboundPolicy(context.Context, *connect.Request[v1.UpdateOutboundPolicyRequest]) (*connect.Response[v1.UpdateOutboundPolicyResponse], error)
+	ResumeOutbound(context.Context, *connect.Request[v1.ResumeOutboundRequest]) (*connect.Response[v1.ResumeOutboundResponse], error)
 	// CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
 	// secret, if any, is accepted here and on UpdateTrunk and is never
 	// returned by any call — unlike an extension secret, it was chosen by
@@ -632,6 +687,24 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		PbxServiceGetSipRegistrarProcedure,
 		svc.GetSipRegistrar,
 		connect.WithSchema(pbxServiceMethods.ByName("GetSipRegistrar")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceGetOutboundPolicyHandler := connect.NewUnaryHandler(
+		PbxServiceGetOutboundPolicyProcedure,
+		svc.GetOutboundPolicy,
+		connect.WithSchema(pbxServiceMethods.ByName("GetOutboundPolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceUpdateOutboundPolicyHandler := connect.NewUnaryHandler(
+		PbxServiceUpdateOutboundPolicyProcedure,
+		svc.UpdateOutboundPolicy,
+		connect.WithSchema(pbxServiceMethods.ByName("UpdateOutboundPolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceResumeOutboundHandler := connect.NewUnaryHandler(
+		PbxServiceResumeOutboundProcedure,
+		svc.ResumeOutbound,
+		connect.WithSchema(pbxServiceMethods.ByName("ResumeOutbound")),
 		connect.WithHandlerOptions(opts...),
 	)
 	pbxServiceCreateTrunkHandler := connect.NewUnaryHandler(
@@ -752,6 +825,12 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServiceRegenerateSecretHandler.ServeHTTP(w, r)
 		case PbxServiceGetSipRegistrarProcedure:
 			pbxServiceGetSipRegistrarHandler.ServeHTTP(w, r)
+		case PbxServiceGetOutboundPolicyProcedure:
+			pbxServiceGetOutboundPolicyHandler.ServeHTTP(w, r)
+		case PbxServiceUpdateOutboundPolicyProcedure:
+			pbxServiceUpdateOutboundPolicyHandler.ServeHTTP(w, r)
+		case PbxServiceResumeOutboundProcedure:
+			pbxServiceResumeOutboundHandler.ServeHTTP(w, r)
 		case PbxServiceCreateTrunkProcedure:
 			pbxServiceCreateTrunkHandler.ServeHTTP(w, r)
 		case PbxServiceListTrunksProcedure:
@@ -821,6 +900,18 @@ func (UnimplementedPbxServiceHandler) RegenerateSecret(context.Context, *connect
 
 func (UnimplementedPbxServiceHandler) GetSipRegistrar(context.Context, *connect.Request[v1.GetSipRegistrarRequest]) (*connect.Response[v1.GetSipRegistrarResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.GetSipRegistrar is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) GetOutboundPolicy(context.Context, *connect.Request[v1.GetOutboundPolicyRequest]) (*connect.Response[v1.GetOutboundPolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.GetOutboundPolicy is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) UpdateOutboundPolicy(context.Context, *connect.Request[v1.UpdateOutboundPolicyRequest]) (*connect.Response[v1.UpdateOutboundPolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.UpdateOutboundPolicy is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ResumeOutbound(context.Context, *connect.Request[v1.ResumeOutboundRequest]) (*connect.Response[v1.ResumeOutboundResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ResumeOutbound is not implemented"))
 }
 
 func (UnimplementedPbxServiceHandler) CreateTrunk(context.Context, *connect.Request[v1.CreateTrunkRequest]) (*connect.Response[v1.CreateTrunkResponse], error) {

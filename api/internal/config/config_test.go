@@ -95,6 +95,21 @@ func TestLoad_Overrides(t *testing.T) {
 	}
 }
 
+func TestLoad_TURNList(t *testing.T) {
+	setRequired(t)
+	t.Setenv("TURN_URLS", " turn:turn.example:3478, turns:turn.example:5349 ,, ")
+	t.Setenv("TURN_USERNAME", "browser")
+	t.Setenv("TURN_CREDENTIAL", "secret")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.TURNURLs, []string{"turn:turn.example:3478", "turns:turn.example:5349"}) ||
+		cfg.TURNUsername != "browser" || cfg.TURNCredential != "secret" {
+		t.Fatalf("TURN config = %+v, want two URLs and the credential", cfg)
+	}
+}
+
 func TestLoad_MissingARIPassword(t *testing.T) {
 	setRequired(t)
 	t.Setenv("ARI_PASSWORD", "")

@@ -44,6 +44,9 @@ export const BEGIN_GOOGLE_LINK_URL = api("AuthService/BeginGoogleLink");
 export const COMPLETE_GOOGLE_LINK_URL = api("AuthService/CompleteGoogleLink");
 export const INBOUND_URL = api("PbxService/ListInboundNumbers");
 export const EMERGENCY_URL = api("PbxService/GetEmergencyProfile");
+export const OUTBOUND_POLICY_URL = api("PbxService/GetOutboundPolicy");
+export const UPDATE_OUTBOUND_POLICY_URL = api("PbxService/UpdateOutboundPolicy");
+export const RESUME_OUTBOUND_URL = api("PbxService/ResumeOutbound");
 
 export const server = setupServer(
   http.post(LICENCE_STATUS_URL, () => HttpResponse.json({ status: validLicence })),
@@ -55,6 +58,7 @@ export const server = setupServer(
   http.post(GET_CALL_URL, () => HttpResponse.json({ callId: "c0", state: "Presenting", participants: [{ role: "CALLER", state: "Invited" }] })),
   http.post(INBOUND_URL, () => HttpResponse.json({})),
   http.post(EMERGENCY_URL, () => HttpResponse.json({ countryCode: "CM", countrySet: true, inCatalogue: true, numbers: [{ number: "112", builtIn: true }] })),
-  http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp", webrtcUrl: "ws://localhost:8089/ws" })),
+  http.post(OUTBOUND_POLICY_URL, () => HttpResponse.json({ policy: { dailySpendCapMicros: "0", monthlySpendCapMicros: "0", blockedPrefixes: [], anomalyCallThreshold: 20, anomalyWindowSeconds: 600, businessStartMinute: 480, businessEndMinute: 1080, suspended: false } })),
+  http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp", webrtcUrl: "ws://localhost:8088/ws", iceServers: [] })),
   http.post(SIGN_IN_OPTIONS_URL, () => HttpResponse.json({ googleEnabled: false })),
 );

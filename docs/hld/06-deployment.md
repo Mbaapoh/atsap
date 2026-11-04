@@ -1,6 +1,12 @@
 <!-- OpenSpec: TRD-HLD-07 -->
 # Deployment, Packaging & Lifecycle
 
+**TURN (D-84).** The deployment runs a TURN service (coturn in the dev
+compose) and sets `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL` in
+its secret store; the registrar API hands them to signed-in browsers.
+Public TURN needs the public address and UDP relay range open; TLS TURN
+uses 5349. Without TURN, browser media works only on non-symmetric NATs.
+
 **Google sign-in (D-67, D-83).** The deployment supplies
 `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` and
 `GOOGLE_OIDC_REDIRECT_URL` (the console's `/auth/google` callback) from

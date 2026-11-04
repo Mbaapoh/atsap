@@ -9,7 +9,11 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-04, after `identity-oidc-google`: one
+**Last updated:** 2026-11-04, after `pbx-turn-media` and
+`pbx-fraud-guard`: browser media uses installation-configured STUN/TURN
+(D-84), and outbound calling has rated spend caps, blocked prefixes,
+anomaly suspension and an explicit resume (D-85). Before that,
+`identity-oidc-google`: one
 installation-wide Google client (D-83), linked only to an existing
 person, with discovery, invitation and account-screen linking, one-time
 state, PKCE and nonce. Before that, `pbx-outbound-classes`: every
@@ -37,9 +41,10 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** the production medium/high gaps: TURN for browser media,
-AC-08.2 anomaly detection and spend caps, then MFA before GA. Phase A's
-pre-pilot list is complete. The Asterisk image scan
+**Next work:** the remaining Phase B items: MFA (TOTP and passkeys,
+required for administrators), company-domain SSO (`identity-oidc`) and
+the compliance dialer (DNC, calling hours, abandonment). The pre-pilot
+list and the recorded production fraud/TURN gaps are closed. The Asterisk image scan
 remains owner-deferred.
 
 ## Keeping it current
@@ -60,7 +65,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 20 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling, T-6 health with alerts, outbound classes and Google sign-in | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 22 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling with TURN, T-6 health with alerts, outbound classes, Google sign-in and the fraud guard | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -200,6 +205,8 @@ that link.
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 | 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
 | 2026-11-03 | `pbx-trunk-health-thresholds` | 12/12 | U I E A; T-6 thresholds and recovery, `trunk_health_samples`, BR-08 email alert in Mailpit (D-80); full pbx integration, full Go e2e, console-check, three phone UATs |
+| 2026-11-04 | `pbx-fraud-guard` | 6/6 | U I E A; rated spend caps, blocked prefixes, anomaly suspension and resume (D-85); full integration, full e2e, race, console-check and phone UATs, docs and SCA |
+| 2026-11-04 | `pbx-turn-media` | 4/4 | U I E A; STUN/TURN config through the registrar and browser, dev coturn, two-browser rig call (D-84) |
 | 2026-11-04 | `identity-oidc-google` | 10/10 | U I E C; installation-wide Google OIDC, linked-only sign-in, invitation and account linking, single-use state/PKCE/nonce (D-83); full integration, full Go e2e, console-check and phone UATs, docs and SCA. Live Google smoke stays in UAT |
 | 2026-11-04 | `pbx-outbound-classes` | 10/10 | U I E A; per-extension INTERNAL/NATIONAL/INTERNATIONAL, NATIONAL default, `+` classification, refusal before the engine, emergency exempt (D-82); full pbx integration, full Go e2e, console-check and UAT, docs and SCA |
 | 2026-11-03 | `console-browser-phone` | 16/16 | U I E A and the console tiers; WEBRTC projection and migration 0018, SIP.js browser phone, two-browser rig call, full Go e2e, console-check, three phone UATs (D-81) |
@@ -220,8 +227,11 @@ design; *accepted* = no fix planned.
 | Gap | Where it came from | Severity |
 |---|---|---|
 | Live Google sign-in is not automated (no client secret/account in CI) | identity-oidc-google G1 | **Medium** — run `docs/uat/google-sign-in.md` before a release |
-| AC-08.2 anomaly detection (a high-volume, high-cost fraud pattern outside business hours) is not built; outbound classes are the configuration control only | pbx-outbound-classes G1 | **Medium** — `compliance` spend caps and detection |
-| No TURN relay for browser media; a browser behind a symmetric NAT cannot connect | console-browser-phone G1 | **High** — production before a NAT pilot: add coturn and configure ICE |
+| ~~AC-08.2 anomaly detection and spend caps~~ | pbx-outbound-classes G1 | Closed: `pbx-fraud-guard` (D-85) adds rated caps, blocked prefixes and anomaly suspension |
+| The fraud anomaly rule is blunt: volume of international-form attempts outside 08:00–18:00 UTC, default 20 in 10 minutes | pbx-fraud-guard G1 | Accepted: a false positive needs an explicit resume; thresholds are per tenant |
+| Spend is rated from route cost and answered duration; calls longer than six hours are not observed | pbx-fraud-guard G2 | Accepted in Phase A; LLD-04 rating replaces it |
+| ~~No TURN relay for browser media~~ | console-browser-phone G1 | Closed: `pbx-turn-media` configures STUN/TURN and dev coturn (D-84); the browser passes it to SIP.js |
+| TURN credentials are static in Phase A and readable by signed-in tenants | pbx-turn-media G1 | Accepted: required for browser allocation; rotate from the secret store |
 | The browser phone needs the SIP password per session; no user↔extension ownership | console-browser-phone G2 | Accepted: Phase B `pbx-extension-assignment` |
 | The engine image has no `codec_opus`; browser endpoints use PCMU/PCMA | console-browser-phone G4 | Accepted; add codec_opus later if desired |
 | Plain WS on the dev rig for browser signalling | console-browser-phone G5 | Accepted: localhost only; production must use WSS |

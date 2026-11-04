@@ -465,3 +465,70 @@ func TestDefaultPlacement_CallerTimeout(t *testing.T) {
 	assert.Equal(t, 12*time.Second, p.CallerTimeout,
 		"a configured caller timeout is kept")
 }
+
+type fraudAlerts struct {
+	fraud []ports.FraudAlert
+	spend int
+}
+
+func (f *fraudAlerts) OutboundSuspended(_ context.Context, a ports.FraudAlert) error {
+	f.fraud = append(f.fraud, a)
+	return nil
+}
+func (f *fraudAlerts) SpendCapReached(context.Context, shareddomain.TenantID, string, time.Time) error {
+	f.spend++
+	return nil
+}
+
+func (p *placer) withFraudGuard(t *testing.T) *fraudAlerts {
+	t.Helper()
+	a := &fraudAlerts{}
+	p.svc = p.svc.WithFraudGuard(pbxpg.NewOutboundPolicyStore(), pbxpg.NewSpendStore(), pbxpg.NewAttemptStore(), a)
+	return a
+}
+
+func (p *placer) setPolicy(t *testing.T, policy domain.OutboundPolicy) {
+	t.Helper()
+	require.NoError(t, p.svc.SetOutboundPolicy(p.ctx, ports.SetOutboundPolicyCommand{TenantID: p.tenant, Policy: policy}))
+}
+
+func TestPlaceCall_FraudGuardBlocksAndSuspends(t *testing.T) {
+	p := newPlacer(t)
+	alerts := p.withFraudGuard(t)
+	p.route(t, "+44", p.trunk(t, "Primary", 5, 0), 0)
+
+	p.setPolicy(t, domain.OutboundPolicy{
+		BlockedPrefixes: []string{"+44"}, AnomalyCallThreshold: 0,
+	})
+	_, err := p.place("+442071234567")
+	assert.ErrorIs(t, err, ports.ErrOutboundBlocked)
+	assert.Empty(t, p.calls.initiated, "a blocked prefix never reaches the engine")
+
+	// Spend cap: a ledger at the cap blocks the next call.
+	now := time.Now().UTC()
+	require.NoError(t, p.pool.WithTenant(context.Background(), p.tenant, func(ctx context.Context, tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO tenant_spend_ledger (tenant_id, day, cost_micros, call_count) VALUES ($1, $2::date, 100, 1)`,
+			p.tenant.String(), now); err != nil {
+			return err
+		}
+		return nil
+	}))
+	p.setPolicy(t, domain.OutboundPolicy{DailySpendCapMicros: 100, AnomalyCallThreshold: 0})
+	_, err = p.place("+442071234567")
+	assert.ErrorIs(t, err, ports.ErrSpendCapReached)
+	assert.Eventually(t, func() bool { return alerts.spend == 1 }, 2*time.Second, 10*time.Millisecond, "the cap alert is sent")
+
+	// Anomaly: the second international attempt outside business hours
+	// suspends the tenant.
+	start := (now.Hour()*60 + now.Minute() + 1) % (24 * 60)
+	end := (now.Hour()*60 + now.Minute() + 2) % (24 * 60)
+	p.setPolicy(t, domain.OutboundPolicy{
+		AnomalyCallThreshold: 2, AnomalyWindow: 10 * time.Minute,
+		BusinessStartMinute: start, BusinessEndMinute: end,
+	})
+	_, err = p.place("+442071234567")
+	assert.NoError(t, err, "the first below-threshold attempt is allowed")
+	_, err = p.place("+442071234567")
+	assert.ErrorIs(t, err, ports.ErrOutboundSuspended)
+	assert.Eventually(t, func() bool { return len(alerts.fraud) == 1 }, 2*time.Second, 10*time.Millisecond)
+}

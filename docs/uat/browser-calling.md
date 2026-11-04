@@ -51,3 +51,14 @@ AC-03.12); HLD-12, HLD-19; specs `pbx-core/endpoint-projection`,
 - `make docs` passes; the production WSS/TURN caveats are in
   `docs/hld/06-deployment.md`.
 - A human pass with the owner's phones is still to be recorded here.
+
+## TURN (D-84)
+
+1. Set `TURN_URLS` to the deployment's TURN URL(s), with `TURN_USERNAME`
+   and `TURN_CREDENTIAL`, and restart the app.
+2. Call from a browser on a network that blocks direct peer-to-peer
+   media (for example a symmetric NAT or a mobile hotspot with client
+   isolation).
+3. Expect the call to connect and audio to flow; the browser's ICE
+   candidate log shows a `relay` candidate. With TURN unset the same call
+   fails on a symmetric NAT and the console does not claim otherwise.

@@ -20,9 +20,9 @@ pilot), in this order:
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **The pre-pilot list is complete.** Next are the recorded production
-gaps: TURN for browser media, AC-08.2 detection and spend caps, then MFA
-before GA.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **The pre-pilot list and the TURN/fraud gaps are complete.** Next are
+Phase B items: MFA before GA, company-domain SSO, and the compliance
+dialer.
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -30,6 +30,17 @@ before GA.
 ---
 
 ## 2. What was done this week
+
+### 2026-11-04 — TURN and the fraud guard (D-84, D-85)
+
+`pbx-turn-media` adds installation-configured STUN/TURN through
+`GetSipRegistrar`, the browser phone's peer connection and a dev coturn
+service; the two-browser call still passes. `pbx-fraud-guard` adds rated
+daily/monthly spend caps from route cost and answered duration, blocked
+prefixes, an anomaly window that suspends outbound and emails the
+administrators, and an explicit resume in Trunks & routes → Outbound
+protection. Emergency and calls in progress are never affected. The
+full integration, e2e, race, console-check and phone UATs pass.
 
 ### 2026-11-04 — Google sign-in (D-83)
 
@@ -203,6 +214,12 @@ Run from the repo root; `mise` pins the toolchain (`.mise.toml`, `console/mise.t
 - **The owner's trunks** in Dev Acme are `test` and `trunk2test` (host `localhost`, now "Address not allowed" by design) and `testwithsteriskhost` (host `asterisk`, Healthy).
 - **Test residue:** about 330 throwaway e2e tenants remain in the rig database. Their cleanup cannot delete a tenant that has call rows. They are harmless; making the cleanup complete is a small to-do.
 - **The machine is unstable under heavy parallel load** (2026-11-01, morning and afternoon). Prebuilt tools (OSV-Scanner, govulncheck, golangci-lint, the Go compiler) and Node and Chrome workers died on internal runtime or V8 faults, and the kernel logged `segfault` and `trap int3`. Every gate passed on rerun or with fewer workers (`npx vitest run --coverage --maxWorkers=2`, `npx playwright test --workers=1`). The owner was advised to run a memory test. **A crash inside a tool is not a test failure: rerun before debugging.**
+- **Docker can wedge after an interrupted `docker restart` (2026-11-04):**
+  `docker start`/`rm` may hang and the container stays `Exited`. Restart
+  the daemon (`sudo systemctl restart docker`), then `docker rm -f` the
+  stuck container and `docker compose ... up -d` it again. The app,
+  Postgres and coturn come back from their restart policies; re-check
+  `pbx reconcile` for orphaned endpoints left by the interrupted run.
 - **Owner phones bind UDP 5070/5071 (2026-11-04):** the owner's baresip
   profiles `/home/mbaapoh/atsap-phones/1001` and `/1002` listen on
   `0.0.0.0:5070` and `0.0.0.0:5071`, the same ports the Go e2e and the

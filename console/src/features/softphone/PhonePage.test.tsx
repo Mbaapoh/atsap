@@ -114,7 +114,7 @@ describe("browser phone", () => {
     await user.type(screen.getByLabelText("SIP password"), "secret");
     await user.click(connect);
     expect(await screen.findByText("Registered as 1001")).toBeInTheDocument();
-    expect(fake.connected).toMatchObject({ url: "ws://localhost:8089/ws", username: "e_1001", password: "secret", number: "1001" });
+    expect(fake.connected).toMatchObject({ url: "ws://localhost:8088/ws", username: "e_1001", password: "secret", number: "1001" });
 
     await user.type(screen.getByLabelText("Number to call"), "1002");
     await user.click(screen.getByRole("button", { name: "Call" }));
@@ -257,4 +257,40 @@ describe("browser phone", () => {
     await user.click(screen.getByRole("button", { name: "Disconnect" }));
     expect(await screen.findByLabelText("SIP password")).toBeInTheDocument();
   });
+});
+
+it("passes the installation's TURN servers to the browser", async () => {
+  const fake = new FakeSoftphone();
+  server.use(
+    extensions([webrtc]),
+    http.post(REGISTRAR_URL, () => HttpResponse.json({
+      configured: true, host: "localhost", port: 5060, transport: "udp", webrtcUrl: "ws://localhost:8088/ws",
+      iceServers: [{ urls: ["turn:turn.example:3478"], username: "browser", credential: "secret" }],
+    })),
+  );
+  const user = userEvent.setup();
+  renderPhone(fake);
+  await user.type(await screen.findByLabelText("SIP password"), "secret");
+  await user.click(screen.getByRole("button", { name: "Connect" }));
+  await screen.findByText("Registered as 1001");
+  expect(fake.connected?.iceServers).toEqual([
+    { urls: "turn:turn.example:3478", username: "browser", credential: "secret" },
+  ]);
+});
+
+it("maps several TURN URLs and leaves empty credentials unset", async () => {
+  const fake = new FakeSoftphone();
+  server.use(
+    extensions([webrtc]),
+    http.post(REGISTRAR_URL, () => HttpResponse.json({
+      configured: true, host: "localhost", port: 5060, transport: "udp", webrtcUrl: "ws://localhost:8088/ws",
+      iceServers: [{ urls: ["turn:one.example:3478", "turns:two.example:5349"], username: "", credential: "" }],
+    })),
+  );
+  const user = userEvent.setup();
+  renderPhone(fake);
+  await user.type(await screen.findByLabelText("SIP password"), "secret");
+  await user.click(screen.getByRole("button", { name: "Connect" }));
+  await screen.findByText("Registered as 1001");
+  expect(fake.connected?.iceServers).toEqual([{ urls: ["turn:one.example:3478", "turns:two.example:5349"] }]);
 });

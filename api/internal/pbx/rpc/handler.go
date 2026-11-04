@@ -20,6 +20,9 @@ package rpc
 import (
 	"context"
 	"errors"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"atsap-api/internal/shared/wire"
 
@@ -181,6 +184,68 @@ func (h *PbxHandler) RegenerateSecret(ctx context.Context, req *connect.Request[
 	}), nil
 }
 
+func (h *PbxHandler) GetOutboundPolicy(ctx context.Context, req *connect.Request[atsapbxv1.GetOutboundPolicyRequest]) (*connect.Response[atsapbxv1.GetOutboundPolicyResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	p, err := h.svc.GetOutboundPolicy(ctx, tenantID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.GetOutboundPolicyResponse{Policy: outboundPolicyToProto(p)}), nil
+}
+
+func (h *PbxHandler) UpdateOutboundPolicy(ctx context.Context, req *connect.Request[atsapbxv1.UpdateOutboundPolicyRequest]) (*connect.Response[atsapbxv1.UpdateOutboundPolicyResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	policy := domain.OutboundPolicy{
+		DailySpendCapMicros: req.Msg.GetDailySpendCapMicros(), MonthlySpendCapMicros: req.Msg.GetMonthlySpendCapMicros(),
+		BlockedPrefixes: req.Msg.GetBlockedPrefixes(), AnomalyCallThreshold: int(req.Msg.GetAnomalyCallThreshold()),
+		AnomalyWindow:       time.Duration(req.Msg.GetAnomalyWindowSeconds()) * time.Second,
+		BusinessStartMinute: int(req.Msg.GetBusinessStartMinute()), BusinessEndMinute: int(req.Msg.GetBusinessEndMinute()),
+	}
+	if err := h.svc.SetOutboundPolicy(ctx, ports.SetOutboundPolicyCommand{TenantID: tenantID, Policy: policy}); err != nil {
+		return nil, mapErr(err)
+	}
+	view, err := h.svc.GetOutboundPolicy(ctx, tenantID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.UpdateOutboundPolicyResponse{Policy: outboundPolicyToProto(view)}), nil
+}
+
+func (h *PbxHandler) ResumeOutbound(ctx context.Context, req *connect.Request[atsapbxv1.ResumeOutboundRequest]) (*connect.Response[atsapbxv1.ResumeOutboundResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.ResumeOutbound(ctx, tenantID); err != nil {
+		return nil, mapErr(err)
+	}
+	view, err := h.svc.GetOutboundPolicy(ctx, tenantID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.ResumeOutboundResponse{Policy: outboundPolicyToProto(view)}), nil
+}
+
+func outboundPolicyToProto(v ports.OutboundPolicyView) *atsapbxv1.OutboundPolicy {
+	out := &atsapbxv1.OutboundPolicy{
+		DailySpendCapMicros: v.DailySpendCapMicros, MonthlySpendCapMicros: v.MonthlySpendCapMicros,
+		BlockedPrefixes: v.BlockedPrefixes, AnomalyCallThreshold: wire.Int32(int64(v.AnomalyCallThreshold)),
+		AnomalyWindowSeconds: wire.Int32(int64(v.AnomalyWindow.Seconds())),
+		BusinessStartMinute:  wire.Int32(int64(v.BusinessStartMinute)), BusinessEndMinute: wire.Int32(int64(v.BusinessEndMinute)),
+		Suspended: v.Suspended, SuspendedReason: v.SuspendedReason,
+	}
+	if v.SuspendedAt != nil {
+		out.SuspendedAt = timestamppb.New(*v.SuspendedAt)
+	}
+	return out
+}
+
 func (h *PbxHandler) GetSipRegistrar(ctx context.Context, req *connect.Request[atsapbxv1.GetSipRegistrarRequest]) (*connect.Response[atsapbxv1.GetSipRegistrarResponse], error) {
 	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
 	if err != nil {
@@ -196,6 +261,7 @@ func (h *PbxHandler) GetSipRegistrar(ctx context.Context, req *connect.Request[a
 		Port:       wire.Int32(r.Port),
 		Transport:  r.Transport,
 		WebrtcUrl:  r.WebRTCURL,
+		IceServers: iceServersToProto(r.ICEServers),
 	}), nil
 }
 
@@ -357,4 +423,12 @@ func outboundToProto(c domain.OutboundClass) atsapbxv1.OutboundClass {
 	default:
 		return atsapbxv1.OutboundClass_OUTBOUND_CLASS_UNSPECIFIED
 	}
+}
+
+func iceServersToProto(in []ports.ICEServer) []*atsapbxv1.IceServer {
+	out := make([]*atsapbxv1.IceServer, 0, len(in))
+	for _, s := range in {
+		out = append(out, &atsapbxv1.IceServer{Urls: s.URLs, Username: s.Username, Credential: s.Credential})
+	}
+	return out
 }

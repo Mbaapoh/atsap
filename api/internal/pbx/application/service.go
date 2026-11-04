@@ -69,6 +69,10 @@ type Service struct {
 	registrar ports.SipRegistrar
 	checker   ports.TrunkChecker
 	alerter   ports.CarrierAlerter
+	policies  ports.OutboundPolicyStore
+	spend     ports.SpendStore
+	attempts  ports.AttemptStore
+	fraud     ports.FraudAlerter
 	rand      io.Reader
 	now       func() time.Time
 }
@@ -104,6 +108,15 @@ func NewService(
 		rand:      rand.Reader,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithFraudGuard wires the outbound fraud guard (D-85). Without it,
+// placement keeps its configuration-only checks; production always wires
+// it.
+func (s *Service) WithFraudGuard(p ports.OutboundPolicyStore, sp ports.SpendStore, a ports.AttemptStore, alerter ports.FraudAlerter) *Service {
+	clone := *s
+	clone.policies, clone.spend, clone.attempts, clone.fraud = p, sp, a, alerter
+	return &clone
 }
 
 // WithCarrierAlerter returns a copy that tells the operator when a

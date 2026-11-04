@@ -154,7 +154,7 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 	// (LLD-03 §10.2). Emergency is exempt: no spend, country or class
 	// rule may block it (AC-08.3), and the dial plan already decided
 	// emergency provenance.
-	if err := checkOutboundClass(caller, res, cmd.Destination); err != nil {
+	if err := s.checkOutbound(ctx, caller, res, cmd); err != nil {
 		return ports.PlacedCall{}, err
 	}
 
@@ -164,7 +164,7 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 			return ports.PlacedCall{}, err
 		}
 		return s.originate(ctx, leg, caller, p.Addresser.ExtensionAddress(*res.Destination.ExtensionID),
-			telephonydomain.Internal, nil)
+			telephonydomain.Internal, nil, 0)
 	}
 
 	for _, c := range res.Candidates {
@@ -178,7 +178,7 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 			continue // at its channel limit: next candidate
 		}
 		return s.originate(ctx, leg, caller, p.Addresser.TrunkAddress(trunkID, cmd.Destination),
-			telephonydomain.Outbound, &trunkID)
+			telephonydomain.Outbound, &trunkID, c.Route.CostPerMinute)
 	}
 	return ports.PlacedCall{}, ports.ErrTrunkCapacity
 }
@@ -267,7 +267,7 @@ func (s *Service) legEnded(ctx context.Context, tenantID shareddomain.TenantID, 
 // BypassScreening is assigned here and only here in shipped code, from
 // the dial plan's emergency match alone (LLD-03 §10.1, archtest).
 func (s *Service) originate(ctx context.Context, leg domain.PlacedCallLeg, caller domain.Extension,
-	destAddress string, direction telephonydomain.Direction, trunkID *shareddomain.TrunkID) (ports.PlacedCall, error) {
+	destAddress string, direction telephonydomain.Direction, trunkID *shareddomain.TrunkID, costPerMinute int64) (ports.PlacedCall, error) {
 	p := s.placement
 	callID, err := p.Calls.InitiateCall(ctx, telephonyports.InitiateCallCommand{
 		TenantID:          leg.TenantID,
@@ -310,6 +310,7 @@ func (s *Service) originate(ctx context.Context, leg domain.PlacedCallLeg, calle
 
 	if trunkID != nil {
 		go s.watchLeg(context.WithoutCancel(ctx), leg.TenantID, *trunkID, callID)
+		go s.watchUsage(context.WithoutCancel(ctx), leg.TenantID, callID, costPerMinute)
 	}
 	return ports.PlacedCall{CallID: callID}, nil
 }
@@ -378,6 +379,13 @@ func (s *Service) HangupCall(ctx context.Context, tenantID shareddomain.TenantID
 	}
 	s.releaseLeg(ctx, leg)
 	return nil
+}
+
+func (s *Service) checkOutbound(ctx context.Context, caller domain.Extension, res domain.Resolution, cmd ports.PlaceCallCommand) error {
+	if err := checkOutboundClass(caller, res, cmd.Destination); err != nil {
+		return err
+	}
+	return s.checkFraudGuard(ctx, cmd.TenantID, res, cmd.Destination)
 }
 
 // checkOutboundClass is the toll-fraud configuration check (LLD-03

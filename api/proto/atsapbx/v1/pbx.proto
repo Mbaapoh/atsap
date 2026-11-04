@@ -58,6 +58,12 @@ service PbxService {
   // guess. Authorized like reading the tenant's extensions.
   rpc GetSipRegistrar(GetSipRegistrarRequest) returns (GetSipRegistrarResponse);
 
+  // Outbound protection: spend caps, blocked prefixes, anomaly detection
+  // and an automatic suspension (D-85, AC-08.1/08.2).
+  rpc GetOutboundPolicy(GetOutboundPolicyRequest) returns (GetOutboundPolicyResponse);
+  rpc UpdateOutboundPolicy(UpdateOutboundPolicyRequest) returns (UpdateOutboundPolicyResponse);
+  rpc ResumeOutbound(ResumeOutboundRequest) returns (ResumeOutboundResponse);
+
   // CreateTrunk connects a partner-owned SIP carrier (BYOT). The carrier
   // secret, if any, is accepted here and on UpdateTrunk and is never
   // returned by any call — unlike an extension secret, it was chosen by
@@ -269,6 +275,46 @@ message GetSipRegistrarResponse {
   // production); empty when the installation has not configured one. It
   // is public configuration, never a secret.
   string webrtc_url = 5;
+  // STUN/TURN servers for browser media behind NAT (D-84). The
+  // credential is readable by signed-in tenants on purpose.
+  repeated IceServer ice_servers = 6;
+}
+
+message OutboundPolicy {
+  int64 daily_spend_cap_micros = 1;
+  int64 monthly_spend_cap_micros = 2;
+  repeated string blocked_prefixes = 3;
+  int32 anomaly_call_threshold = 4;
+  int32 anomaly_window_seconds = 5;
+  int32 business_start_minute = 6;
+  int32 business_end_minute = 7;
+  bool suspended = 8;
+  google.protobuf.Timestamp suspended_at = 9;
+  string suspended_reason = 10;
+}
+
+message GetOutboundPolicyRequest { string tenant_id = 1; }
+message GetOutboundPolicyResponse { OutboundPolicy policy = 1; }
+
+message UpdateOutboundPolicyRequest {
+  string tenant_id = 1;
+  int64 daily_spend_cap_micros = 2;
+  int64 monthly_spend_cap_micros = 3;
+  repeated string blocked_prefixes = 4;
+  int32 anomaly_call_threshold = 5;
+  int32 anomaly_window_seconds = 6;
+  int32 business_start_minute = 7;
+  int32 business_end_minute = 8;
+}
+message UpdateOutboundPolicyResponse { OutboundPolicy policy = 1; }
+
+message ResumeOutboundRequest { string tenant_id = 1; }
+message ResumeOutboundResponse { OutboundPolicy policy = 1; }
+
+message IceServer {
+  repeated string urls = 1;
+  string username = 2;
+  string credential = 3;
 }
 
 // TrunkHealth is what the platform has OBSERVED about a carrier: its own

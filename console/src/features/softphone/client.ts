@@ -16,6 +16,8 @@ export interface SoftphoneConnection {
   displayName?: string;
   // number is the extension's number, for display only.
   number?: string;
+  // iceServers are STUN/TURN servers from the installation (D-84).
+  iceServers?: RTCIceServer[];
 }
 
 export type RegistrationState = "idle" | "connecting" | "registered" | "error";
@@ -72,9 +74,10 @@ export class SipSoftphone implements Softphone {
       authorizationPassword: c.password,
       displayName: c.displayName ?? c.username,
       contactParams: { transport: c.url.startsWith("wss") ? "wss" : "ws" },
-      // Phase A is host candidates only; a production NAT needs TURN,
-      // recorded as a deployment gap (D-81).
-      sessionDescriptionHandlerFactoryOptions: { peerConnectionConfiguration: { iceServers: [] } },
+      // STUN/TURN from the installation. Empty means host candidates only.
+      sessionDescriptionHandlerFactoryOptions: {
+        peerConnectionConfiguration: { iceServers: c.iceServers ?? [] },
+      },
       delegate: { onInvite: (invitation) => this.onInvite(invitation) },
     });
     this.ua = ua;

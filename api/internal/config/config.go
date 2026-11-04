@@ -101,6 +101,12 @@ type Config struct {
 	// ws://localhost:8089/ws on the dev rig or wss://pbx.example.com/ws in
 	// production. Empty disables the browser phone.
 	SIPWebRTCURL string
+	// TURN URLs, username and credential for browser media behind NAT
+	// (D-84). Empty URLs mean host ICE only. The credential is handed to
+	// signed-in tenant users so their browsers can allocate a relay.
+	TURNURLs       []string
+	TURNUsername   string
+	TURNCredential string
 
 	// SIPPublicHost, SIPPublicPort and SIPPublicTransport are the address
 	// devices register to: the installation's public face, which only the
@@ -172,6 +178,9 @@ func Load() (Config, error) {
 		SIPTransport:           getEnv("SIP_TRANSPORT", "transport-udp"),
 		SIPWebRTCTransport:     getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
 		SIPWebRTCURL:           getEnv("SIP_WEBRTC_URL", ""),
+		TURNURLs:               splitList(getEnv("TURN_URLS", "")),
+		TURNUsername:           getEnv("TURN_USERNAME", ""),
+		TURNCredential:         getEnv("TURN_CREDENTIAL", ""),
 		SIPPublicHost:          getEnv("SIP_PUBLIC_HOST", ""),
 		SIPPublicTransport:     getEnv("SIP_PUBLIC_TRANSPORT", "udp"),
 		LicenseToken:           getEnv("ATSAPBX_LICENSE_TOKEN", ""),
@@ -261,6 +270,20 @@ func (c *Config) loadSIPPublic() error {
 		}
 	}
 	return nil
+}
+
+// splitList reads a comma-separated environment value, trimming blanks.
+func splitList(v string) []string {
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

@@ -130,6 +130,10 @@ services:
       # configured with the operator's certificate.
       SIP_WEBRTC_TRANSPORT: transport-ws
       SIP_WEBRTC_URL: ws://localhost:8088/ws
+      # Browser media relay (D-84); the dev coturn below uses these.
+      TURN_URLS: ${TURN_URLS:-turn:localhost:3478}
+      TURN_USERNAME: ${TURN_USERNAME:-atsapbx}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-dev-turn-credential}
       ATSAPBX_SMTP_INSECURE: "true"
       ATSAPBX_COOKIE_INSECURE: "true"
       # Emailed reset and invitation links open the console's dev server
@@ -161,6 +165,25 @@ services:
         condition: service_started
     networks:
       - voip
+
+  # STUN/TURN for browser media behind NAT (D-84). Host networking makes
+  # the relay candidates reachable from a browser on this machine; a real
+  # deployment uses its public address and a secret credential.
+  coturn:
+    image: coturn/coturn:4.6.3
+    network_mode: host
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--lt-cred-mech"
+      - "--fingerprint"
+      - "--realm=atsapbx"
+      - "--user=${TURN_USERNAME:-atsapbx}:${TURN_CREDENTIAL:-dev-turn-credential}"
+      - "--min-port=49160"
+      - "--max-port=49200"
+      - "--no-cli"
+      - "--no-multicast-peers"
+    restart: unless-stopped
 
 networks:
   voip:

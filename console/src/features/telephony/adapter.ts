@@ -2,7 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
-import { TrunkHealth, type TrunkHealthReason } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { create as createMessage } from "@bufbuild/protobuf";
+import { TrunkHealth, UpdateOutboundPolicyRequestSchema, type TrunkHealthReason } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { PAGE_SIZE } from "../../components/Pager";
 import { useSession } from "../auth/adapter";
 
@@ -52,6 +53,7 @@ export const telephonyKeys = {
   routes: (tenantId: string, page: number) => [...telephonyKeys.all(tenantId), "routes", page] as const,
   inbound: (tenantId: string) => [...telephonyKeys.all(tenantId), "inbound"] as const,
   emergency: (tenantId: string) => [...telephonyKeys.all(tenantId), "emergency"] as const,
+  outbound: (tenantId: string) => [...telephonyKeys.all(tenantId), "outbound"] as const,
 };
 
 // healthRefreshMs is how often a trunk list re-reads health: every 2 s
@@ -299,4 +301,80 @@ export function useEmergencyChanges() {
     onSuccess: refetch,
   });
   return { setCountry: setCountry.mutateAsync, add: add.mutateAsync, remove: remove.mutateAsync };
+}
+
+export interface OutboundPolicy {
+  dailySpendCapMicros: number;
+  monthlySpendCapMicros: number;
+  blockedPrefixes: string[];
+  anomalyCallThreshold: number;
+  anomalyWindowSeconds: number;
+  businessStartMinute: number;
+  businessEndMinute: number;
+  suspended: boolean;
+  suspendedAt: Date | null;
+  suspendedReason: string;
+}
+
+export type OutboundPolicyInput = Omit<OutboundPolicy, "suspended" | "suspendedAt" | "suspendedReason">;
+
+function toOutboundPolicy(p: import("../../api/gen/atsapbx/v1/pbx_pb").OutboundPolicy): OutboundPolicy {
+  return {
+    dailySpendCapMicros: Number(p.dailySpendCapMicros),
+    monthlySpendCapMicros: Number(p.monthlySpendCapMicros),
+    blockedPrefixes: [...p.blockedPrefixes],
+    anomalyCallThreshold: p.anomalyCallThreshold,
+    anomalyWindowSeconds: p.anomalyWindowSeconds,
+    businessStartMinute: p.businessStartMinute,
+    businessEndMinute: p.businessEndMinute,
+    suspended: p.suspended,
+    suspendedAt: p.suspendedAt ? timestampDate(p.suspendedAt) : null,
+    suspendedReason: p.suspendedReason,
+  };
+}
+
+export function useOutboundPolicy() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  return useQuery<OutboundPolicy, ApiError>({
+    queryKey: telephonyKeys.outbound(tenantId),
+    queryFn: () =>
+      callApi(async () => {
+        const r = await pbx.getOutboundPolicy({ tenantId });
+        if (!r.policy) throw new Error("no policy returned");
+        return toOutboundPolicy(r.policy);
+      }),
+    enabled: tenantId !== "",
+  });
+}
+
+export function useOutboundPolicyChanges() {
+  const { pbx } = useApiClients();
+  const tenantId = useTenantId();
+  const queryClient = useQueryClient();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: telephonyKeys.outbound(tenantId) });
+  const save = useMutation<void, ApiError, OutboundPolicyInput>({
+    mutationFn: (p) =>
+      callApi(async () => {
+        await pbx.updateOutboundPolicy(createMessage(UpdateOutboundPolicyRequestSchema, {
+          tenantId,
+          dailySpendCapMicros: BigInt(p.dailySpendCapMicros),
+          monthlySpendCapMicros: BigInt(p.monthlySpendCapMicros),
+          blockedPrefixes: p.blockedPrefixes,
+          anomalyCallThreshold: p.anomalyCallThreshold,
+          anomalyWindowSeconds: p.anomalyWindowSeconds,
+          businessStartMinute: p.businessStartMinute,
+          businessEndMinute: p.businessEndMinute,
+        }));
+      }),
+    onSuccess: refetch,
+  });
+  const resume = useMutation<void, ApiError>({
+    mutationFn: () =>
+      callApi(async () => {
+        await pbx.resumeOutbound({ tenantId });
+      }),
+    onSuccess: refetch,
+  });
+  return { save: save.mutateAsync, resume: resume.mutateAsync };
 }

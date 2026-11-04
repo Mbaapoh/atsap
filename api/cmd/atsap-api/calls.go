@@ -39,6 +39,7 @@ func (a callStatusAdapter) Status(ctx context.Context, tenantID shareddomain.Ten
 	return pbxports.CallOutcome{
 		StartedAt:  call.StartedAt,
 		AnsweredAt: call.AnsweredAt,
+		EndedAt:    call.EndedAt,
 		Ended:      call.State == telephonydomain.CallTerminated,
 		Reason:     call.TerminationReason,
 	}, nil

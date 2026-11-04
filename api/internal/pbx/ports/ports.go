@@ -58,6 +58,14 @@ var (
 	// ErrOutboundForbidden is a destination class the caller's extension
 	// does not hold (LLD-03 §10.2). Emergency calls never reach it.
 	ErrOutboundForbidden = errors.New("outbound destination class is not permitted for this extension")
+	// ErrOutboundBlocked is a destination matching a tenant's blocked
+	// prefix (D-85). Emergency never reaches it.
+	ErrOutboundBlocked = errors.New("outbound destination is blocked for this tenant")
+	// ErrOutboundSuspended is a tenant whose outbound calling was
+	// suspended after a fraud pattern (AC-08.2), or manually.
+	ErrOutboundSuspended = errors.New("outbound calling is suspended for this tenant")
+	// ErrSpendCapReached is a tenant's daily or monthly spend cap.
+	ErrSpendCapReached = errors.New("outbound spend cap reached")
 
 	// ErrInboundNumberTaken is a DID already assigned in the tenant.
 	ErrInboundNumberTaken = errors.New("inbound number already assigned in this tenant")
@@ -278,6 +286,85 @@ type SipRegistrar struct {
 	// wss://), empty when not configured. Public configuration, never a
 	// secret (D-81).
 	WebRTCURL string
+	// ICEServers are the STUN/TURN servers a browser uses for media
+	// (D-84). The credential is deliberately readable by the signed-in
+	// tenant so its browser can allocate a relay; it is not an engine or
+	// platform secret.
+	ICEServers []ICEServer
+}
+
+// Spend is a tenant's rated outbound spend for a day and month (micros).
+type Spend struct {
+	DayMicros   int64
+	MonthMicros int64
+}
+
+// OutboundPolicyView is the fraud guard as the console sees it.
+type OutboundPolicyView struct {
+	DailySpendCapMicros   int64
+	MonthlySpendCapMicros int64
+	BlockedPrefixes       []string
+	AnomalyCallThreshold  int
+	AnomalyWindow         time.Duration
+	BusinessStartMinute   int
+	BusinessEndMinute     int
+	Suspended             bool
+	SuspendedAt           *time.Time
+	SuspendedReason       string
+}
+
+// SetOutboundPolicyCommand is an administrator's update. Suspension
+// fields are preserved by the use case, not supplied here.
+type SetOutboundPolicyCommand struct {
+	TenantID shareddomain.TenantID
+	Policy   domain.OutboundPolicy
+}
+
+// OutboundPolicyStore persists a tenant's fraud guard.
+type OutboundPolicyStore interface {
+	Get(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) (domain.OutboundPolicy, error)
+	Set(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, p domain.OutboundPolicy) error
+	Suspend(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, reason string, at time.Time) (bool, error)
+	Resume(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) (bool, error)
+	MarkCapAlerted(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, at time.Time) error
+}
+
+// SpendStore is the rated usage ledger.
+type SpendStore interface {
+	Read(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, at time.Time) (Spend, error)
+	Add(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, at time.Time, costMicros int64) error
+}
+
+// AttemptStore records trunk-bound attempts and counts the fraud window.
+type AttemptStore interface {
+	LockTenant(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) error
+	CountInternationalSince(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, since time.Time) (int, error)
+	Record(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, destination string, international bool, at time.Time) error
+}
+
+// FraudAlert is what the operator is told when outbound is suspended.
+type FraudAlert struct {
+	TenantID    shareddomain.TenantID
+	Destination string
+	RecentCalls int
+	Threshold   int
+	Window      time.Duration
+	At          time.Time
+}
+
+// FraudAlerter tells the operator about a fraud suspension or spend cap.
+// Implementations must never block the call path.
+type FraudAlerter interface {
+	OutboundSuspended(ctx context.Context, alert FraudAlert) error
+	SpendCapReached(ctx context.Context, tenantID shareddomain.TenantID, reason string, at time.Time) error
+}
+
+// ICEServer is one STUN or TURN server as the browser's RTCPeerConnection
+// takes it.
+type ICEServer struct {
+	URLs       []string
+	Username   string
+	Credential string
 }
 
 // ConfigService is pbx-core's inbound port: the configuration API the
@@ -293,6 +380,9 @@ type ConfigService interface {
 	// SipRegistrar returns where the tenant's devices register, to a
 	// caller who may read its extensions.
 	SipRegistrar(ctx context.Context, tenantID shareddomain.TenantID) (SipRegistrar, error)
+	GetOutboundPolicy(ctx context.Context, tenantID shareddomain.TenantID) (OutboundPolicyView, error)
+	SetOutboundPolicy(ctx context.Context, cmd SetOutboundPolicyCommand) error
+	ResumeOutbound(ctx context.Context, tenantID shareddomain.TenantID) error
 
 	// Trunk and route operations mirror the extension ones (LLD-03 §4.4).
 	CreateTrunk(ctx context.Context, cmd CreateTrunkCommand) (TrunkView, error)
@@ -363,6 +453,7 @@ type EmergencyProfile struct {
 type CallOutcome struct {
 	StartedAt  time.Time
 	AnsweredAt *time.Time
+	EndedAt    *time.Time
 	Ended      bool
 	// Reason is why the call ended, as telephony-core records it — for a
 	// call screened out, the refusal (e.g. capacity). Never engine text.

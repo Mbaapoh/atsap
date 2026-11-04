@@ -130,6 +130,8 @@ export interface Registrar {
   // webrtcUrl is the browser phone's signalling endpoint, empty when the
   // installation has not configured one (D-81).
   webrtcUrl: string;
+  // iceServers are STUN/TURN servers for browser media (D-84).
+  iceServers: RTCIceServer[];
 }
 
 export function useRegistrar() {
@@ -141,7 +143,19 @@ export function useRegistrar() {
       callApi(async () => {
         const r = await pbx.getSipRegistrar({ tenantId });
         return r.configured
-          ? { host: r.host, port: r.port, transport: r.transport, webrtcUrl: r.webrtcUrl }
+          ? {
+              host: r.host,
+              port: r.port,
+              transport: r.transport,
+              webrtcUrl: r.webrtcUrl,
+              iceServers: r.iceServers
+                .filter((s) => s.urls.length > 0)
+                .map((s) => ({
+                  urls: s.urls.length === 1 ? (s.urls[0] ?? "") : [...s.urls],
+                  username: s.username || undefined,
+                  credential: s.credential || undefined,
+                })),
+            }
           : null;
       }),
     enabled: tenantId !== "",

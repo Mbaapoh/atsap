@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -52,7 +53,18 @@ type fakeService struct {
 	placed          ports.PlacedCall
 	lastPlaceCall   ports.PlaceCallCommand
 	lastCallID      shareddomain.CallID
+	outboundPolicy  ports.OutboundPolicyView
+	lastOutbound    ports.SetOutboundPolicyCommand
 }
+
+func (f *fakeService) GetOutboundPolicy(context.Context, shareddomain.TenantID) (ports.OutboundPolicyView, error) {
+	return f.outboundPolicy, f.err
+}
+func (f *fakeService) SetOutboundPolicy(_ context.Context, cmd ports.SetOutboundPolicyCommand) error {
+	f.lastOutbound = cmd
+	return f.err
+}
+func (f *fakeService) ResumeOutbound(context.Context, shareddomain.TenantID) error { return f.err }
 
 func (f *fakeService) SipRegistrar(_ context.Context, tenantID shareddomain.TenantID) (ports.SipRegistrar, error) {
 	f.lastTenID = tenantID
@@ -575,4 +587,42 @@ func TestGetSipRegistrar_PermissionRefusalMaps(t *testing.T) {
 	e.svc.err = identityports.ErrPermissionDenied
 	_, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{}))
 	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+}
+
+func TestGetSipRegistrar_ReportsICEServers(t *testing.T) {
+	e := newEnv(t)
+	e.svc.registrar = ports.SipRegistrar{
+		Configured: true, Host: "pbx.example.test", Port: 5060, Transport: "udp",
+		ICEServers: []ports.ICEServer{{URLs: []string{"turn:turn.example.test:3478"}, Username: "browser", Credential: "secret"}},
+	}
+	got, err := e.h.GetSipRegistrar(e.ctx, connect.NewRequest(&atsapbxv1.GetSipRegistrarRequest{TenantId: e.tenant.String()}))
+	require.NoError(t, err)
+	require.Len(t, got.Msg.GetIceServers(), 1)
+	assert.Equal(t, []string{"turn:turn.example.test:3478"}, got.Msg.GetIceServers()[0].GetUrls())
+	assert.Equal(t, "browser", got.Msg.GetIceServers()[0].GetUsername())
+}
+
+func TestOutboundPolicy_RoundTrip(t *testing.T) {
+	e := newEnv(t)
+	e.svc.outboundPolicy = ports.OutboundPolicyView{
+		DailySpendCapMicros: 500, BlockedPrefixes: []string{"+1900"},
+		AnomalyCallThreshold: 20, AnomalyWindow: 10 * time.Minute,
+		BusinessStartMinute: 480, BusinessEndMinute: 1080,
+	}
+	got, err := e.h.GetOutboundPolicy(e.ctx, connect.NewRequest(&atsapbxv1.GetOutboundPolicyRequest{TenantId: e.tenant.String()}))
+	require.NoError(t, err)
+	assert.Equal(t, int64(500), got.Msg.GetPolicy().GetDailySpendCapMicros())
+	assert.Equal(t, []string{"+1900"}, got.Msg.GetPolicy().GetBlockedPrefixes())
+
+	_, err = e.h.UpdateOutboundPolicy(e.ctx, connect.NewRequest(&atsapbxv1.UpdateOutboundPolicyRequest{
+		TenantId: e.tenant.String(), DailySpendCapMicros: 9000, MonthlySpendCapMicros: 10000,
+		BlockedPrefixes: []string{"+239"}, AnomalyCallThreshold: 5, AnomalyWindowSeconds: 300,
+		BusinessStartMinute: 60, BusinessEndMinute: 120,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, int64(9000), e.svc.lastOutbound.Policy.DailySpendCapMicros)
+	assert.Equal(t, 5*time.Minute, e.svc.lastOutbound.Policy.AnomalyWindow)
+
+	_, err = e.h.ResumeOutbound(e.ctx, connect.NewRequest(&atsapbxv1.ResumeOutboundRequest{TenantId: e.tenant.String()}))
+	require.NoError(t, err)
 }

@@ -2859,6 +2859,86 @@ Phase A; webhooks remain LLD-05.
 
 ---
 
+**D-85 · Outbound fraud is guarded by a per-tenant policy: rated spend
+caps, blocked prefixes, and anomaly suspension with explicit resume
+(2026-11-04).**
+
+**Decision:** A tenant outbound policy (`tenant_outbound_policies`) holds
+daily and monthly spend caps, blocked destination prefixes, an anomaly
+threshold and window, and business hours (UTC). Every trunk-bound,
+non-emergency attempt is checked under a per-tenant lock; an attempt over
+the anomaly threshold outside business hours suspends outbound and alerts
+the administrators. Answered calls are rated from
+`carrier_routes.cost_per_minute` and their answered duration into a daily
+ledger; reaching a cap blocks the next call and alerts at most hourly.
+- New calls are refused; calls in progress are never cut off (AC-08.1).
+- Emergency calls bypass every guard (AC-08.3).
+- Suspension is state with a reason and timestamp; an administrator
+  resumes explicitly, the one-click reactivation HLD 05 §4.2 asks for.
+- Defaults: no cap, no blocked prefix, anomaly at 20 international calls
+  in 10 minutes outside 08:00–18:00 UTC.
+
+**Context:** D-82 confines one extension; AC-08.1/08.2 need a tenant
+control and a detection rule before a pilot. A full `compliance` context
+(DNC, calling hours, dialer abandonment) is LLD-04 work and not needed
+for manual Phase A calls.
+
+**Alternatives:**
+- *Prepay/balance rating.* Rejected for Phase A: there is no billing
+  currency or rated CDR yet; route cost and answered duration are the
+  facts the platform actually has.
+- *A timer that auto-resumes.* Rejected: HLD 05 requires an operator to
+  review the destination analysis before reactivation.
+- *Detect with call history only.* Rejected: concurrent attempts would
+  all read an under-threshold count; the attempt log is locked and
+  transactional.
+
+**Consequences:** Caps are enforced on the next call after usage is
+recorded, not mid-call. The anomaly rule is deliberately blunt (volume,
+international form, outside hours) and a false positive needs a manual
+resume. Company SSO, MFA and the compliance dialer remain separate.
+
+**Traceability:** HLD 05 §4.2, LLD-03 §10.2; change `pbx-fraud-guard`
+
+---
+
+**D-84 · Browser media uses installation-configured STUN/TURN, exposed
+only to signed-in tenants (2026-11-04).**
+
+**Decision:** Add STUN/TURN configuration (`TURN_URLS`,
+`TURN_USERNAME`, `TURN_CREDENTIAL`) and return it from
+`GetSipRegistrar` with the signalling URL. The browser phone passes the
+servers to SIP.js's `RTCPeerConnection`; no public STUN server is
+invented.
+- The credential is installation-wide, stored in the deployment secret
+  store, and readable by signed-in tenant users because a browser cannot
+  allocate a relay without it. Rotating it is a deployment change.
+- Empty URLs keep host candidates and change nothing.
+- The dev compose runs coturn with host networking; production runs a
+  public TURN service (TLS where required) and the console is given its
+  URLs.
+
+**Context:** D-81 shipped host ICE only and recorded symmetric NAT as a
+High production gap. TURN is the standard remedy and is not a platform
+protocol dependency.
+
+**Alternatives:**
+- *Bundle coturn into the app image.* Rejected: the app is stateless;
+  media relaying is a separate, independently scalable service.
+- *Issue short-lived TURN credentials.* Deferred: static credentials are
+  enough for Phase A; the API shape allows a future credential service.
+- *Use a public STUN server.* Rejected: a default installation must not
+  depend on a third party and must not imply TURN where there is none.
+
+**Consequences:** A tenant can read the installation's TURN credential;
+it is not a tenant or platform secret. A production deployment without
+TURN still fails behind symmetric NAT, and the UAT/release checklist
+covers it.
+
+**Traceability:** HLD 06 §2; LLD-03 §7.1; change `pbx-turn-media`
+
+---
+
 **D-83 · "Sign in with Google" ships as generic OIDC with an
 installation-wide client, one-time state, PKCE and explicit linking
 (2026-11-04).**
