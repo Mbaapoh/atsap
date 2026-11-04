@@ -311,7 +311,7 @@ nothing in A1–A5 needs one.
 |---|---|---|
 | Sign in | Email, password, tenant choice, change and forgot password (`identity-accounts-and-sessions`) | SSO button per tenant IdP (`identity-oidc`); MFA |
 | Users | Email, name, status, roles; add, disable, grant, revoke, reset password | "Extensions" column; agent toggle and queues (`pbx-queues`) |
-| Extensions | Number, name, registration status, credentials shown once | "Assigned to" (`pbx-extension-assignment`) |
+| Extensions | Number, name, registration status, credentials shown once | "Assigned to" (`pbx-extension-ownership`, delivered) |
 | Trunks and routes | As built | Health latency (`Degraded`) |
 | Call history | Time, direction, from and to (extension numbers joined to names client-side), state, duration, end reason; filters; Place a call from a registered extension, the shell call session (ringing the caller, calling the destination, connected duration, ended reason) and a one-click Hang up | Person per call, "my calls", agent-scoped visibility, recordings and quality (`pbx-extension-assignment`, LLD-09) |
 | Licence | Status and activation | — |

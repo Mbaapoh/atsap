@@ -276,6 +276,7 @@ func run() int {
 	// (LLD-03 §4.2). pbx-core is constructed before telephony needs it.
 	// Where devices register: the installation's public face, which only
 	// the installer knows (pbx-sip-registrar-settings).
+	pbxSvc = pbxSvc.WithAssignments(pbxpostgres.NewAssignmentStore(), identityStore)
 	pbxSvc = pbxSvc.WithRegistrar(pbxports.SipRegistrar{
 		Host: cfg.SIPPublicHost, Port: cfg.SIPPublicPort, Transport: cfg.SIPPublicTransport,
 		WebRTCURL:  cfg.SIPWebRTCURL,

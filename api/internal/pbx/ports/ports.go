@@ -133,6 +133,27 @@ type ExtensionView struct {
 	DeviceType   domain.DeviceType
 	Outbound     domain.OutboundClass
 	Registration domain.RegistrationStatus
+	// Assignment is the owning membership, when there is one (D-65).
+	AssignedPrincipalID    shareddomain.PrincipalID
+	AssignedPrincipalName  string
+	AssignedPrincipalEmail string
+}
+
+// AssignExtensionCommand names the extension and the membership that owns
+// it.
+type AssignExtensionCommand struct {
+	TenantID    shareddomain.TenantID
+	ExtensionID shareddomain.ExtensionID
+	PrincipalID shareddomain.PrincipalID
+}
+
+// AssignmentStore persists extension ownership (D-65).
+type AssignmentStore interface {
+	Get(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, extensionID shareddomain.ExtensionID) (domain.ExtensionAssignment, error)
+	Put(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, a domain.ExtensionAssignment) error
+	Delete(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, extensionID shareddomain.ExtensionID) error
+	// List returns assignments for a page's extensions, keyed by extension.
+	List(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, extensionIDs []shareddomain.ExtensionID) (map[shareddomain.ExtensionID]domain.ExtensionAssignment, error)
 }
 
 // CreatedExtension is the create/regenerate result. Secret is the
@@ -380,6 +401,8 @@ type ConfigService interface {
 	// SipRegistrar returns where the tenant's devices register, to a
 	// caller who may read its extensions.
 	SipRegistrar(ctx context.Context, tenantID shareddomain.TenantID) (SipRegistrar, error)
+	AssignExtension(ctx context.Context, cmd AssignExtensionCommand) error
+	UnassignExtension(ctx context.Context, tenantID shareddomain.TenantID, extensionID shareddomain.ExtensionID) error
 	GetOutboundPolicy(ctx context.Context, tenantID shareddomain.TenantID) (OutboundPolicyView, error)
 	SetOutboundPolicy(ctx context.Context, cmd SetOutboundPolicyCommand) error
 	ResumeOutbound(ctx context.Context, tenantID shareddomain.TenantID) error

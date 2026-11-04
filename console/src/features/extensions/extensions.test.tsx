@@ -1,4 +1,5 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import userEventLib from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
@@ -268,5 +269,140 @@ describe("editing, rotating and deleting", () => {
     await user.click(screen.getByRole("menuitem", { name: "Delete extension…" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete extension" }));
     expect(await screen.findByText("This extension no longer exists. It may have been removed.")).toBeInTheDocument();
+  });
+});
+
+describe("assigning an owner", () => {
+  const ASSIGN = "http://localhost:3000/atsapbx.v1.PbxService/AssignExtension";
+  const UNASSIGN = "http://localhost:3000/atsapbx.v1.PbxService/UnassignExtension";
+
+  it("shows the owner and assigns a membership", async () => {
+    let body: unknown;
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [{ ...ext1001, assignedPrincipalId: "p1", assignedPrincipalName: "Ana", assignedPrincipalEmail: "ana@example.test" }] })),
+      http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [{ principal: { principalId: "p1", displayName: "Ana", email: "ana@example.test", status: "PRINCIPAL_STATUS_ACTIVE" }, roleBindings: [] }] })),
+      http.post(ASSIGN, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+    const user = userEventLib.setup();
+    renderApp(routes, "/extensions");
+    const row = await screen.findByRole("row", { name: /1001/ });
+    expect(row).toHaveTextContent("Ana · ana@example.test");
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: "Change owner…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Assign extension 1001" }));
+    await screen.findByRole("option", { name: /Ana/ });
+    await user.selectOptions(dialog.getByLabelText("Assigned to"), "p1");
+    await user.click(dialog.getByRole("button", { name: "Save assignment" }));
+    await waitFor(() => expect(body).toMatchObject({ tenantId: tenantA.tenantId, extensionId: "x1", principalId: "p1" }));
+  });
+
+  it("removes an owner by choosing no owner", async () => {
+    let called = false;
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [{ ...ext1001, assignedPrincipalId: "p1", assignedPrincipalName: "Ana", assignedPrincipalEmail: "ana@example.test" }] })),
+      http.post(UNASSIGN, () => {
+        called = true;
+        return HttpResponse.json({});
+      }),
+    );
+    const user = userEventLib.setup();
+    renderApp(routes, "/extensions");
+    const row = await screen.findByRole("row", { name: /1001/ });
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: "Change owner…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Assign extension 1001" }));
+    await user.selectOptions(dialog.getByLabelText("Assigned to"), "");
+    await user.click(dialog.getByRole("button", { name: "Save assignment" }));
+    await waitFor(() => expect(called).toBe(true));
+  });
+});
+
+describe("assignment edges", () => {
+  const ASSIGN = "http://localhost:3000/atsapbx.v1.PbxService/AssignExtension";
+  it("shows Unassigned and offers Assign…", async () => {
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [ext1001] })),
+      http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [{ principal: { principalId: "p2", displayName: "Disabled", email: "off@example.test", status: "PRINCIPAL_STATUS_DISABLED" }, roleBindings: [] }] })),
+    );
+    const user = userEventLib.setup();
+    renderApp(routes, "/extensions");
+    const row = await screen.findByRole("row", { name: /1001/ });
+    expect(row).toHaveTextContent("Unassigned");
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: "Assign…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Assign extension 1001" }));
+    expect(dialog.queryByRole("option", { name: /Disabled/ })).not.toBeInTheDocument();
+  });
+
+  it("explains an invalid assignment and can cancel", async () => {
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [ext1001] })),
+      http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [{ principal: { principalId: "p1", displayName: "Ana", email: "ana@example.test", status: "PRINCIPAL_STATUS_ACTIVE" }, roleBindings: [] }] })),
+      http.post(ASSIGN, () => HttpResponse.json({ code: "invalid_argument", message: "no" }, { status: 400 })),
+    );
+    const user = userEventLib.setup();
+    renderApp(routes, "/extensions");
+    const row = await screen.findByRole("row", { name: /1001/ });
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: "Assign…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Assign extension 1001" }));
+    await screen.findByRole("option", { name: /Ana/ });
+    await user.selectOptions(dialog.getByLabelText("Assigned to"), "p1");
+    await user.click(dialog.getByRole("button", { name: "Save assignment" }));
+    expect(await screen.findByText("Choose an active member of this tenant.")).toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Assign extension 1001" })).not.toBeInTheDocument();
+  });
+});
+
+describe("assignment fallbacks", () => {
+  const ASSIGN = "http://localhost:3000/atsapbx.v1.PbxService/AssignExtension";
+  it("handles a principal without a name and a generic save failure", async () => {
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [ext1001] })),
+      http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [{ principal: { principalId: "p9", status: "PRINCIPAL_STATUS_ACTIVE" }, roleBindings: [] }] })),
+      http.post(ASSIGN, () => HttpResponse.json({ code: "internal", message: "no" }, { status: 500 })),
+    );
+    const user = userEventLib.setup();
+    renderApp(routes, "/extensions");
+    const row = await screen.findByRole("row", { name: /1001/ });
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: "Assign…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Assign extension 1001" }));
+    const option = await screen.findByRole("option", { name: "" });
+    expect(option).toHaveValue("p9");
+    await user.selectOptions(dialog.getByLabelText("Assigned to"), "p9");
+    await user.click(dialog.getByRole("button", { name: "Save assignment" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("assignment modal close", () => {
+  it("closes when idle and stays while busy", async () => {
+    server.use(
+      http.post(OVERVIEW_URLS.extensions, () => HttpResponse.json({ extensions: [{ ...ext1001, assignedPrincipalId: "p1", assignedPrincipalName: "Ana", assignedPrincipalEmail: "ana@example.test" }] })),
+      http.post(OVERVIEW_URLS.principals, () => HttpResponse.json({ principals: [{ principal: { principalId: "p1", displayName: "Ana", email: "ana@example.test", status: "PRINCIPAL_STATUS_ACTIVE" }, roleBindings: [] }] })),
+      http.post("http://localhost:3000/atsapbx.v1.PbxService/AssignExtension", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return HttpResponse.json({});
+      }),
+    );
+    const user = userEventLib.setup();
+    renderApp(routes, "/extensions");
+    const row = await screen.findByRole("row", { name: /1001/ });
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: /Assign…|Change owner…/ }));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Assign extension 1001" })).not.toBeInTheDocument());
+
+    await user.click(within(row).getByRole("button", { name: "Actions for extension 1001" }));
+    await user.click(screen.getByRole("menuitem", { name: /Assign…|Change owner…/ }));
+    await user.click(screen.getByRole("button", { name: "Save assignment" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Assign extension 1001" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Assign extension 1001" })).not.toBeInTheDocument());
   });
 });

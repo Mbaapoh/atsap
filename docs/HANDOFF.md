@@ -20,9 +20,10 @@ pilot), in this order:
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **The pre-pilot list and the TURN/fraud gaps are complete.** Next are
-Phase B items: MFA before GA, company-domain SSO, and the compliance
-dialer.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Phase B has opened with extension ownership** (D-87). Next is
+`pbx-ivr-flows`, then `pbx-queues`; LLD-09 reporting carries participant
+attribution and person-scoped history. MFA and company-domain SSO remain
+before GA.
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -30,6 +31,18 @@ dialer.
 ---
 
 ## 2. What was done this week
+
+### 2026-11-04 — image scan closed and Phase B opened (D-86, D-87)
+
+The Asterisk image is now a multi-stage runtime (~0.8 GB) with no build
+toolchain or Python. `make image-scan` passes: the API image is strict,
+the Asterisk runtime fails on fixable HIGH/CRITICAL and ignores unfixed
+Debian base CVEs, with the full SARIF retained; both SBOMs are produced.
+`pbx-extension-ownership` opens Phase B: an extension has at most one
+active owner, the console shows "Assigned to" and assigns/unassigns, the
+change is audited, and deleting an extension removes the link. The full
+integration, e2e on the hardened image, race, console-check and phone
+UATs pass. Participant attribution and "my calls" follow with LLD-09.
 
 ### 2026-11-04 — TURN and the fraud guard (D-84, D-85)
 

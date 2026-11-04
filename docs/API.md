@@ -56,6 +56,8 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
 | `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |
 | `UpdateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console rename, device-type and outbound-class change |
+| `AssignExtension` | `atsapbx.v1.PbxService` | `pbx-extension-ownership` (D-65, D-87) | Makes an active membership the extension's owner; one owner per extension, several extensions per person |
+| `UnassignExtension` | `atsapbx.v1.PbxService` | `pbx-extension-ownership` (D-65, D-87) | Removes the owner; unassigned lines still work |
 | `DeleteExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console deprovisioning |
 | `RegenerateSecret` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Credential rotation; the second and last place a secret appears |
 | `GetSipRegistrar` | `atsapbx.v1.PbxService` | `pbx-sip-registrar-settings` (LLD-03); widened by `console-browser-phone` and `pbx-turn-media` | Console extension credential panel and browser phone: where a phone registers (host, port, transport), the WebRTC signalling URL, and STUN/TURN servers when configured; authorized as reading extensions |

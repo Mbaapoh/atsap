@@ -184,6 +184,50 @@ func (h *PbxHandler) RegenerateSecret(ctx context.Context, req *connect.Request[
 	}), nil
 }
 
+func (h *PbxHandler) AssignExtension(ctx context.Context, req *connect.Request[atsapbxv1.AssignExtensionRequest]) (*connect.Response[atsapbxv1.AssignExtensionResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	extensionID, err := parseExtensionID(req.Msg.GetExtensionId())
+	if err != nil {
+		return nil, err
+	}
+	principalID, err := shareddomain.ParsePrincipalID(req.Msg.GetPrincipalId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid principal_id"))
+	}
+	if err := h.svc.AssignExtension(ctx, ports.AssignExtensionCommand{
+		TenantID: tenantID, ExtensionID: extensionID, PrincipalID: principalID,
+	}); err != nil {
+		return nil, mapErr(err)
+	}
+	view, err := h.svc.GetExtension(ctx, tenantID, extensionID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.AssignExtensionResponse{Extension: toProtoExtension(view)}), nil
+}
+
+func (h *PbxHandler) UnassignExtension(ctx context.Context, req *connect.Request[atsapbxv1.UnassignExtensionRequest]) (*connect.Response[atsapbxv1.UnassignExtensionResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	extensionID, err := parseExtensionID(req.Msg.GetExtensionId())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.UnassignExtension(ctx, tenantID, extensionID); err != nil {
+		return nil, mapErr(err)
+	}
+	view, err := h.svc.GetExtension(ctx, tenantID, extensionID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.UnassignExtensionResponse{Extension: toProtoExtension(view)}), nil
+}
+
 func (h *PbxHandler) GetOutboundPolicy(ctx context.Context, req *connect.Request[atsapbxv1.GetOutboundPolicyRequest]) (*connect.Response[atsapbxv1.GetOutboundPolicyResponse], error) {
 	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
 	if err != nil {
@@ -347,13 +391,16 @@ func mapErr(err error) error {
 
 func toProtoExtension(v ports.ExtensionView) *atsapbxv1.Extension {
 	return &atsapbxv1.Extension{
-		ExtensionId:   v.ID.String(),
-		Number:        v.Number,
-		DisplayName:   v.DisplayName,
-		AuthUsername:  v.AuthUsername,
-		DeviceType:    deviceTypeToProto(v.DeviceType),
-		OutboundClass: outboundToProto(v.Outbound),
-		Registration:  registrationToProto(v.Registration),
+		ExtensionId:            v.ID.String(),
+		Number:                 v.Number,
+		DisplayName:            v.DisplayName,
+		AuthUsername:           v.AuthUsername,
+		DeviceType:             deviceTypeToProto(v.DeviceType),
+		OutboundClass:          outboundToProto(v.Outbound),
+		AssignedPrincipalId:    v.AssignedPrincipalID.String(),
+		AssignedPrincipalName:  v.AssignedPrincipalName,
+		AssignedPrincipalEmail: v.AssignedPrincipalEmail,
+		Registration:           registrationToProto(v.Registration),
 	}
 }
 

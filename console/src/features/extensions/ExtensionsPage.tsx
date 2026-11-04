@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { usePermissions } from "../auth/permissions";
 import { AddExtensionDialog } from "./AddExtensionDialog";
+import { AssignExtensionDialog } from "./AssignExtensionDialog";
 import { CredentialsPanel } from "./CredentialsPanel";
 import { DeleteExtensionDialog, EditExtensionDialog, RotateSecretDialog } from "./ExtensionDialogs";
 import { RowActions } from "../../components/RowActions";
@@ -18,6 +19,7 @@ export const extensionColumns: Column<ExtensionRow>[] = [
   { key: "name", header: "Name", render: (e) => e.name },
   { key: "device", header: "Device", render: (e) => deviceLabel[e.device] },
   { key: "outbound", header: "Outbound", render: (e) => outboundLabel[e.outbound] },
+  { key: "assigned", header: "Assigned to", render: (e) => (e.assignedPrincipalEmail ? `${e.assignedPrincipalName ? `${e.assignedPrincipalName} · ` : ""}${e.assignedPrincipalEmail}` : "Unassigned") },
   { key: "registration", header: "Registration", render: (e) => <StatusBadge {...registrationBadge[e.registration]} /> },
 ];
 
@@ -36,6 +38,7 @@ export function ExtensionsPage() {
   const [editing, setEditing] = useState<ExtensionRow | null>(null);
   const [rotating, setRotating] = useState<ExtensionRow | null>(null);
   const [deleting, setDeleting] = useState<ExtensionRow | null>(null);
+  const [assigning, setAssigning] = useState<ExtensionRow | null>(null);
 
   function show(title: string) {
     return (c: Credentials) => {
@@ -61,6 +64,7 @@ export function ExtensionsPage() {
       <EditExtensionDialog extension={editing} onClose={() => setEditing(null)} />
       <RotateSecretDialog extension={rotating} onClose={() => setRotating(null)} onRotated={show("New SIP password for extension {number}")} />
       <DeleteExtensionDialog extension={deleting} onClose={() => setDeleting(null)} />
+      <AssignExtensionDialog extension={assigning} onClose={() => setAssigning(null)} />
       <CredentialsPanel credentials={credentials} title={credentialsTitle} onDone={() => setCredentials(null)} />
       {extensions.isPending ? <p role="status">Loading extensions…</p> : null}
       {extensions.isError ? (
@@ -83,6 +87,7 @@ export function ExtensionsPage() {
                       label={`extension ${e.number}`}
                       actions={[
                         { label: "Edit…", onSelect: () => setEditing(e) },
+                        { label: e.assignedPrincipalId ? "Change owner…" : "Assign…", onSelect: () => setAssigning(e) },
                         { label: "Rotate SIP password…", onSelect: () => setRotating(e), destructive: true },
                         { label: "Delete extension…", onSelect: () => setDeleting(e), destructive: true },
                       ]}

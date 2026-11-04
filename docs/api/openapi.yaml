@@ -1224,6 +1224,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.DeleteExtensionResponse'
+  /atsapbx.v1.PbxService/AssignExtension:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: AssignExtension
+      description: |-
+        AssignExtension makes a membership the owner of an extension (D-65).
+         An extension has at most one owner; a person may own several.
+      operationId: atsapbx.v1.PbxService.AssignExtension
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.AssignExtensionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.AssignExtensionResponse'
+  /atsapbx.v1.PbxService/UnassignExtension:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: UnassignExtension
+      operationId: atsapbx.v1.PbxService.UnassignExtension
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.UnassignExtensionRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.UnassignExtensionResponse'
   /atsapbx.v1.PbxService/RegenerateSecret:
     post:
       tags:
@@ -3225,6 +3298,28 @@ components:
         - TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED
         - TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES
       description: TrunkHealthReason says why a trunk has its health.
+    atsapbx.v1.AssignExtensionRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        extensionId:
+          type: string
+          title: extension_id
+        principalId:
+          type: string
+          title: principal_id
+      title: AssignExtensionRequest
+      additionalProperties: false
+    atsapbx.v1.AssignExtensionResponse:
+      type: object
+      properties:
+        extension:
+          title: extension
+          $ref: '#/components/schemas/atsapbx.v1.Extension'
+      title: AssignExtensionResponse
+      additionalProperties: false
     atsapbx.v1.CreateEmergencyNumberRequest:
       type: object
       properties:
@@ -3513,6 +3608,16 @@ components:
             How far this extension may dial. A new extension is NATIONAL unless
              the caller chose otherwise.
           $ref: '#/components/schemas/atsapbx.v1.OutboundClass'
+        assignedPrincipalId:
+          type: string
+          title: assigned_principal_id
+          description: The owning membership, empty when the extension has no owner (D-65).
+        assignedPrincipalName:
+          type: string
+          title: assigned_principal_name
+        assignedPrincipalEmail:
+          type: string
+          title: assigned_principal_email
       title: Extension
       additionalProperties: false
       description: |-
@@ -4016,6 +4121,25 @@ components:
       description: |-
         Trunk is what a caller sees of a carrier connection. It carries no
          secret and no engine object of any kind.
+    atsapbx.v1.UnassignExtensionRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        extensionId:
+          type: string
+          title: extension_id
+      title: UnassignExtensionRequest
+      additionalProperties: false
+    atsapbx.v1.UnassignExtensionResponse:
+      type: object
+      properties:
+        extension:
+          title: extension
+          $ref: '#/components/schemas/atsapbx.v1.Extension'
+      title: UnassignExtensionResponse
+      additionalProperties: false
     atsapbx.v1.UpdateExtensionRequest:
       type: object
       properties:

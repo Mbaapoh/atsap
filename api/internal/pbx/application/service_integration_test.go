@@ -87,6 +87,7 @@ type harness struct {
 	svc       *application.Service
 	authz     *fakeAuthorizer
 	projector *failingProjector
+	identity  *identitypg.Store
 	extCap    *atomic.Int64 // the licence's extension cap; 0 = unlimited
 	tenant    shareddomain.TenantID
 	ctx       context.Context
@@ -124,14 +125,15 @@ func newHarness(t *testing.T) *harness {
 
 	extCap := &atomic.Int64{}
 	capSource := ports.ExtensionCapFunc(func(context.Context) (int, error) { return int(extCap.Load()), nil })
-	svc := application.NewService(pool, pbxpg.NewStore(), pbxpg.NewTrunkStore(), pbxpg.NewRouteStore(), capSource, projector, authz, identityStore, testRealm)
+	svc := application.NewService(pool, pbxpg.NewStore(), pbxpg.NewTrunkStore(), pbxpg.NewRouteStore(), capSource, projector, authz, identityStore, testRealm).
+		WithAssignments(pbxpg.NewAssignmentStore(), identityStore)
 
 	ctx := identityapp.WithTenantContext(context.Background(), &identityports.TenantContext{
 		TenantID:    tenant.ID,
 		PrincipalID: shareddomain.NewPrincipalID(),
 	})
 
-	return &harness{pool: pool, svc: svc, authz: authz, projector: projector, extCap: extCap, tenant: tenant.ID, ctx: ctx}
+	return &harness{pool: pool, svc: svc, authz: authz, projector: projector, identity: identityStore, extCap: extCap, tenant: tenant.ID, ctx: ctx}
 }
 
 func (h *harness) create(t *testing.T, number string) ports.CreatedExtension {

@@ -27,14 +27,22 @@ import (
 // not who may do it — the role bindings decide that (LLD-02 §10.1,
 // deny-by-default).
 const (
-	actionCreateExtension = "extension.create"
-	actionUpdateExtension = "extension.update"
-	actionDeleteExtension = "extension.delete"
-	actionReadExtension   = "extension.read"
-	actionRotateSecret    = "extension.rotate_secret"
+	actionCreateExtension   = "extension.create"
+	actionUpdateExtension   = "extension.update"
+	actionDeleteExtension   = "extension.delete"
+	actionReadExtension     = "extension.read"
+	actionRotateSecret      = "extension.rotate_secret"
+	actionAssignExtension   = "extension.assign"
+	actionUnassignExtension = "extension.unassign"
 
 	auditResourceType = "extension"
 )
+
+// PrincipalReader resolves a membership for an assignment. Identity's
+// store implements it; pbx reads only the id, name and email it needs.
+type PrincipalReader interface {
+	GetPrincipal(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.PrincipalID) (identitydomain.Principal, error)
+}
 
 // Authorizer is the slice of identity this context needs: permission
 // checks and audit writes. Narrower than the full IdentityService on
@@ -53,28 +61,30 @@ type AuditAppender interface {
 
 // Service implements ports.ConfigService.
 type Service struct {
-	pool      *corepostgres.Pool
-	store     ports.ExtensionStore
-	trunks    ports.TrunkStore
-	routes    ports.RouteStore
-	numbers   ports.InboundNumberStore
-	emergency ports.EmergencyStore
-	extCap    ports.ExtensionCap
-	projector ports.EndpointProjector
-	authz     Authorizer
-	audit     AuditAppender
-	realm     string
-	placement *Placement
-	inbound   *Inbound
-	registrar ports.SipRegistrar
-	checker   ports.TrunkChecker
-	alerter   ports.CarrierAlerter
-	policies  ports.OutboundPolicyStore
-	spend     ports.SpendStore
-	attempts  ports.AttemptStore
-	fraud     ports.FraudAlerter
-	rand      io.Reader
-	now       func() time.Time
+	pool        *corepostgres.Pool
+	store       ports.ExtensionStore
+	trunks      ports.TrunkStore
+	routes      ports.RouteStore
+	numbers     ports.InboundNumberStore
+	emergency   ports.EmergencyStore
+	extCap      ports.ExtensionCap
+	projector   ports.EndpointProjector
+	authz       Authorizer
+	audit       AuditAppender
+	realm       string
+	placement   *Placement
+	inbound     *Inbound
+	registrar   ports.SipRegistrar
+	checker     ports.TrunkChecker
+	alerter     ports.CarrierAlerter
+	policies    ports.OutboundPolicyStore
+	spend       ports.SpendStore
+	attempts    ports.AttemptStore
+	fraud       ports.FraudAlerter
+	assignments ports.AssignmentStore
+	principals  PrincipalReader
+	rand        io.Reader
+	now         func() time.Time
 }
 
 var _ ports.ConfigService = (*Service)(nil)
@@ -108,6 +118,13 @@ func NewService(
 		rand:      rand.Reader,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithAssignments wires extension ownership (D-65).
+func (s *Service) WithAssignments(a ports.AssignmentStore, p PrincipalReader) *Service {
+	clone := *s
+	clone.assignments, clone.principals = a, p
+	return &clone
 }
 
 // WithFraudGuard wires the outbound fraud guard (D-85). Without it,
@@ -330,7 +347,11 @@ func (s *Service) GetExtension(ctx context.Context, tenantID shareddomain.Tenant
 	if err != nil {
 		return ports.ExtensionView{}, err
 	}
-	return viewOf(ext, statusOr(status, ext.ID)), nil
+	view := viewOf(ext, statusOr(status, ext.ID))
+	if err := s.attachAssignment(ctx, tenantID, &view); err != nil {
+		return ports.ExtensionView{}, err
+	}
+	return view, nil
 }
 
 // ListExtensions returns one page of the tenant's extensions.
@@ -371,6 +392,9 @@ func (s *Service) ListExtensions(ctx context.Context, tenantID shareddomain.Tena
 	views := make([]ports.ExtensionView, 0, len(extensions))
 	for _, e := range extensions {
 		views = append(views, viewOf(e, statusOr(status, e.ID)))
+	}
+	if err := s.attachAssignments(ctx, tenantID, views); err != nil {
+		return nil, err
 	}
 	return views, nil
 }

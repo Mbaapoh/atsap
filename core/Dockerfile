@@ -17,7 +17,7 @@
 # the asterisk/asterisk GitHub release page for the tag lists the digest.
 # Older point releases live under releases/, the -current alias does not.)
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS builder
 
 ARG ASTERISK_VERSION=22.11.0
 # Verified 2026-09-09 against the official releases/asterisk-22.11.0.tar.gz
@@ -71,7 +71,49 @@ RUN ./configure --with-pjproject-bundled --with-jansson-bundled \
 
 RUN rm -rf /usr/src/asterisk
 
-RUN groupadd -r asterisk && useradd -r -g asterisk -d /var/lib/asterisk asterisk \
+# The runtime image must not ship the compiler, Python or the -dev
+# packages install_prereq pulls in (the image scan gap in D-86). Gather
+# only the installed tree and the shared libraries the binary and every
+# module actually link.
+RUN set -eux; \
+    mkdir -p /runtime/root; \
+    { ldd /usr/sbin/asterisk; for m in /usr/lib/asterisk/modules/*.so; do ldd "$m" || true; done; } 2>/dev/null \
+      | awk '/=> \// {print $3} /^\// {print $1}' | sort -u > /tmp/runtime-libs; \
+    while read -r lib; do \
+      [ -e "$lib" ] || continue; \
+      case "$lib" in \
+        /lib/*) dest="/usr/lib/${lib#/lib/}" ;; \
+        /lib64/*) dest="/usr/lib64/${lib#/lib64/}" ;; \
+        *) dest="$lib" ;; \
+      esac; \
+      mkdir -p "/runtime/root$(dirname "$dest")"; \
+      cp -L "$lib" "/runtime/root$dest"; \
+    done < /tmp/runtime-libs; \
+    mkdir -p /runtime/root/usr/sbin /runtime/root/usr/lib /runtime/root/usr/share \
+      /runtime/root/var/lib /runtime/root/var/spool /runtime/root/var/log /runtime/root/etc; \
+    cp -a /usr/sbin/asterisk /runtime/root/usr/sbin/; \
+    cp -a /usr/lib/asterisk /runtime/root/usr/lib/; \
+    cp -a /usr/share/asterisk /runtime/root/usr/share/ 2>/dev/null || true; \
+    cp -a /var/lib/asterisk /runtime/root/var/lib/; \
+    cp -a /var/spool/asterisk /runtime/root/var/spool/; \
+    cp -a /var/log/asterisk /runtime/root/var/log/; \
+    cp -a /etc/asterisk /runtime/root/etc/; \
+    if ls /usr/lib/x86_64-linux-gnu/libasterisk*.so >/dev/null 2>&1; then \
+      mkdir -p /runtime/root/usr/lib/x86_64-linux-gnu; \
+      cp -aL /usr/lib/x86_64-linux-gnu/libasterisk*.so /runtime/root/usr/lib/x86_64-linux-gnu/; \
+    fi
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      libsrtp2-1 \
+      libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /runtime/root/ /
+RUN ldconfig \
+    && groupadd -r asterisk && useradd -r -g asterisk -d /var/lib/asterisk asterisk \
     && mkdir -p /var/run/asterisk \
     && chown -R asterisk:asterisk \
       /etc/asterisk \

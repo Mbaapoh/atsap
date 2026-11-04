@@ -917,7 +917,8 @@ after the Phase A console slice exists, per D-46.
 | `pbx-trunks-routes` | A | Trunk and route domain, health observation, CRUD RPCs, `SelectRoutes` | Second: needs the projector from the first change |
 | `pbx-call-placement` | A | `PlaceCall`/`HangupCall` RPCs, outbound path into `telephony-core`, `Outbound` class enforcement | Third: needs routes to route to |
 | `pbx-inbound-and-emergency` | A | `InboundRouter` port on `telephony-core`, Stasis inbound wiring, `emergency_numbers`, `BypassScreening`, SIP `503` (plain — `Retry-After` is a recorded engine gap) | Fourth, and the only change that edits `telephony-core`. Isolated deliberately: it is the riskiest slice and the one a reviewer must look at hardest |
-| `pbx-extension-assignment` | B | §3.1 `ExtensionAssignment`; `call_participants.extension_id`/`principal_id`; `GetCall` stops exposing `endpoint_uri`; "assigned to" in the console; agent-scoped call visibility, with LLD-09 | **Phase B opens here** (D-65): small, and every later Phase B slice (voicemail, queues, reporting) needs "whose extension is this" |
+| `pbx-extension-ownership` | B | §3.1 `ExtensionAssignment`; "assigned to" in the console; assign/unassign API (D-87) | **Implemented and archived 2026-11-04.** Phase B opens here; participant attribution and person-scoped history move to LLD-09 as D-87 records |
+| `pbx-extension-assignment` | B | The remainder of D-65: `call_participants.extension_id`/`principal_id`, person-aware `GetCall`, agent-scoped visibility | With LLD-09 reporting (D-87) |
 | `pbx-ivr-flows` | B | `FlowInterpreter`, flow-as-data execution, publish/version/rollback (AC-03.7, AC-03.8), business hours and holidays | After assignment |
 | `pbx-queues` | B | ACD queues, §3.1 `Agent` (state, queue membership, hot-desk device), wrap-up | After IVR |
 | `pbx-voicemail` | B | Voicemail to an owned extension, voicemail to email (US-03.5) | Needs assignment and recording governance |

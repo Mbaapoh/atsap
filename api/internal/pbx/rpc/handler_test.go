@@ -55,6 +55,16 @@ type fakeService struct {
 	lastCallID      shareddomain.CallID
 	outboundPolicy  ports.OutboundPolicyView
 	lastOutbound    ports.SetOutboundPolicyCommand
+	lastAssign      ports.AssignExtensionCommand
+}
+
+func (f *fakeService) AssignExtension(_ context.Context, cmd ports.AssignExtensionCommand) error {
+	f.lastTenID, f.lastAssign = cmd.TenantID, cmd
+	return f.err
+}
+func (f *fakeService) UnassignExtension(_ context.Context, tenantID shareddomain.TenantID, _ shareddomain.ExtensionID) error {
+	f.lastTenID = tenantID
+	return f.err
 }
 
 func (f *fakeService) GetOutboundPolicy(context.Context, shareddomain.TenantID) (ports.OutboundPolicyView, error) {
@@ -625,4 +635,26 @@ func TestOutboundPolicy_RoundTrip(t *testing.T) {
 
 	_, err = e.h.ResumeOutbound(e.ctx, connect.NewRequest(&atsapbxv1.ResumeOutboundRequest{TenantId: e.tenant.String()}))
 	require.NoError(t, err)
+}
+
+func TestAssignExtension_Wire(t *testing.T) {
+	e := newEnv(t)
+	extID, principalID := shareddomain.NewExtensionID(), shareddomain.NewPrincipalID()
+	e.svc.view = ports.ExtensionView{ID: extID, Number: "1001"}
+	_, err := e.h.AssignExtension(e.ctx, connect.NewRequest(&atsapbxv1.AssignExtensionRequest{
+		TenantId: e.tenant.String(), ExtensionId: extID.String(), PrincipalId: principalID.String(),
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, principalID, e.svc.lastAssign.PrincipalID)
+
+	_, err = e.h.UnassignExtension(e.ctx, connect.NewRequest(&atsapbxv1.UnassignExtensionRequest{
+		TenantId: e.tenant.String(), ExtensionId: extID.String(),
+	}))
+	require.NoError(t, err)
+
+	_, err = e.h.AssignExtension(e.ctx, connect.NewRequest(&atsapbxv1.AssignExtensionRequest{
+		TenantId: e.tenant.String(), ExtensionId: extID.String(), PrincipalId: "not-a-uuid",
+	}))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

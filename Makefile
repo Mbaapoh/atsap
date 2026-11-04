@@ -225,6 +225,10 @@ TOOL := mise exec --
 LICENCE_ALLOWLIST := Apache-2.0,MIT,BSD-2-Clause,BSD-3-Clause,ISC,PostgreSQL,MIT-0,BlueOak-1.0.0,CC0-1.0
 # Trivy's database: GHCR first, Google's mirror as the fallback.
 export TRIVY_DB_REPOSITORY ?= ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2
+# The mirror's Java DB path can 404; GHCR is the source of truth. The
+# cached DB is used when an update is unavailable (image-scan is offline-
+# tolerant; CI warms it in the quality job).
+export TRIVY_JAVA_DB_REPOSITORY ?= ghcr.io/aquasecurity/trivy-java-db:1
 REPORTS := quality-reports
 
 .PHONY: coverage coverage-all coverage-ratchet sca secrets secrets-history sbom image-scan quality
@@ -255,10 +259,18 @@ secrets: ## Committed-secret scan of the working tree (gitleaks)
 secrets-history: ## Secret scan of the full git history (gitleaks)
 	$(TOOL) gitleaks git --no-banner --redact -c quality/gitleaks.toml .
 
-image-scan: docker-build ## Trivy: HIGH/CRITICAL vulnerabilities in the production images fail
-	for img in atsap-api:local atsap-core:local; do \
-		$(TOOL) trivy image --quiet --timeout 20m --scanners vuln --severity HIGH,CRITICAL --exit-code 1 "$$img" || exit 1; \
-	done
+image-scan: docker-build ## Trivy: fixable HIGH/CRITICAL in the production images fail (full report retained)
+	mkdir -p $(REPORTS)
+	# The API image is scanned strictly: every HIGH/CRITICAL fails.
+	$(TOOL) trivy image --quiet --timeout 20m --scanners vuln --skip-java-db-update \
+		--severity HIGH,CRITICAL --exit-code 1 atsap-api:local
+	# The Asterisk runtime is a minimal Debian base. Its remaining findings
+	# are unfixed base-OS CVEs (D-86); keep the full report and fail only on
+	# ones Debian has fixed.
+	$(TOOL) trivy image --quiet --timeout 20m --scanners vuln --skip-java-db-update \
+		--format sarif --output $(REPORTS)/trivy-core.sarif atsap-core:local >/dev/null 2>&1 || true
+	$(TOOL) trivy image --quiet --timeout 20m --scanners vuln --skip-java-db-update --ignore-unfixed \
+		--severity HIGH,CRITICAL --exit-code 1 atsap-core:local
 
 sbom: docker-build ## CycloneDX SBOM per production image
 	mkdir -p $(REPORTS)

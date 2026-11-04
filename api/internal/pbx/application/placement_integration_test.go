@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	identitydomain "atsap-api/internal/identity/domain"
 	identityports "atsap-api/internal/identity/ports"
 	"atsap-api/internal/pbx/acl/asterisk"
 	"atsap-api/internal/pbx/application"
@@ -531,4 +532,44 @@ func TestPlaceCall_FraudGuardBlocksAndSuspends(t *testing.T) {
 	_, err = p.place("+442071234567")
 	assert.ErrorIs(t, err, ports.ErrOutboundSuspended)
 	assert.Eventually(t, func() bool { return len(alerts.fraud) == 1 }, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestExtensionAssignment_OwnerLifecycle(t *testing.T) {
+	h := newHarness(t)
+	ext := h.create(t, "1200")
+	user := identitydomain.User{ID: identitydomain.NewUserID(), Email: "owner@example.test", DisplayName: "Owner", Status: identitydomain.UserActive, CreatedAt: time.Now().UTC()}
+	require.NoError(t, h.identity.CreateUser(context.Background(), user))
+	principal := identitydomain.Principal{ID: shareddomain.NewPrincipalID(), TenantID: h.tenant, UserID: user.ID, Role: "AGENT", Status: identitydomain.PrincipalActive, CreatedAt: time.Now().UTC()}
+	require.NoError(t, h.identity.CreatePrincipal(context.Background(), principal))
+
+	require.NoError(t, h.svc.AssignExtension(h.ctx, ports.AssignExtensionCommand{
+		TenantID: h.tenant, ExtensionID: ext.Extension.ID, PrincipalID: principal.ID,
+	}))
+	views, err := h.svc.ListExtensions(h.ctx, h.tenant, ports.Page{Limit: 50})
+	require.NoError(t, err)
+	var got ports.ExtensionView
+	for _, v := range views {
+		if v.ID == ext.Extension.ID {
+			got = v
+		}
+	}
+	require.Equal(t, principal.ID, got.AssignedPrincipalID)
+	assert.Equal(t, "Owner", got.AssignedPrincipalName)
+	assert.Equal(t, "owner@example.test", got.AssignedPrincipalEmail)
+
+	require.NoError(t, h.svc.UnassignExtension(h.ctx, h.tenant, ext.Extension.ID))
+	view, err := h.svc.GetExtension(h.ctx, h.tenant, ext.Extension.ID)
+	require.NoError(t, err)
+	assert.True(t, view.AssignedPrincipalID.IsZero())
+
+	require.NoError(t, h.svc.AssignExtension(h.ctx, ports.AssignExtensionCommand{
+		TenantID: h.tenant, ExtensionID: ext.Extension.ID, PrincipalID: principal.ID,
+	}))
+	require.NoError(t, h.identity.SetPrincipalStatus(context.Background(), h.tenant, principal.ID, identitydomain.PrincipalDisabled))
+	require.Error(t, h.svc.AssignExtension(h.ctx, ports.AssignExtensionCommand{
+		TenantID: h.tenant, ExtensionID: ext.Extension.ID, PrincipalID: principal.ID,
+	}), "a disabled membership cannot own an extension")
+
+	require.NoError(t, h.svc.DeleteExtension(h.ctx, h.tenant, ext.Extension.ID))
+	assert.Zero(t, h.countTenantRow(t, `SELECT count(*) FROM extension_assignments WHERE extension_id = $1`, ext.Extension.ID.String()))
 }

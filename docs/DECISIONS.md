@@ -2859,6 +2859,89 @@ Phase A; webhooks remain LLD-05.
 
 ---
 
+**D-86 · The Asterisk runtime is a minimal multi-stage image; the image
+gate fails on fixable HIGH/CRITICAL and ignores unfixed base-OS CVEs,
+with the full report retained (2026-11-04).**
+
+**Decision:** Build Asterisk in a builder stage and copy only the
+installed tree and the shared libraries its binary and modules link into
+a clean `debian:bookworm-slim` runtime. The compiler, Python and the
+`-dev` packages no longer ship, and the image is ~0.8 GB instead of
+~3.3 GB.
+- Trivy fails a production image on **fixable** HIGH/CRITICAL
+  vulnerabilities. The API image is scanned strictly. The Asterisk
+  runtime is scanned with `--ignore-unfixed`, because its remaining
+  findings are Debian base-OS CVEs with no fixed version; the unfiltered
+  SARIF report is written to `quality-reports/trivy-core.sarif` for
+  review and the SBOM remains attached.
+- `TRIVY_JAVA_DB_REPOSITORY` prefers GHCR; a cached Java DB is used when
+  an update is unreachable, so the scan does not depend on a mirror that
+  can 404.
+
+**Context:** The previous single-stage image shipped its whole build
+toolchain, and its scan could not pass: 20 fixable HIGH Python 3.11
+findings plus unfixed base CVEs. The discrepancy was recorded as the
+last open item in `quality-and-supply-chain-gates`.
+
+**Alternatives:**
+- *Ignore every unfixed finding on both images.* Rejected: the API image
+  is clean and should stay strict.
+- *Use a non-Debian runtime.* Rejected for now: the Asterisk build and
+  its modules expect the Debian glibc and library layout; a distroless
+  runtime would need a full module audit.
+- *Keep the single stage and purge packages.* Rejected: `install_prereq`
+  and `make install` leave too many paths to prove; a fresh runtime
+  stage is the smaller, inspectable artifact.
+
+**Consequences:** Fixable CVEs still fail CI. Unfixed base CVEs are
+visible in the retained report but do not block a release; re-check them
+on each Debian base bump. The runtime image must be rebuilt when a
+module gains a new shared library (the gather step is automatic).
+
+**Traceability:** `quality-and-supply-chain-gates` task 5.3; LLD-01 §9;
+change `quality-and-supply-chain-gates`
+
+---
+
+**D-87 · Phase B opens with extension ownership; per-person call
+attribution follows with reporting (2026-11-04).**
+
+**Decision:** Ship `pbx-extension-ownership` first: the audited
+`ExtensionAssignment` link, "assigned to" in the console, and the API to
+assign/unassign. The call-participant attribution (`extension_id` and
+`principal_id` on `call_participants`) and person-scoped history land
+with LLD-09 `reporting`, where the immutable CDR and the per-second
+usage ledger already read those columns.
+- An extension has 0..1 owner; a membership may own several.
+- Assignment is a tenant-scoped pbx-core aggregate keyed by principal;
+  identity is untouched and its store is read only for the member's
+  display name/email.
+- Deleting an extension removes its assignment (FK cascade); assigning a
+  disabled membership is refused.
+- An unassigned line keeps working exactly as in Phase A.
+
+**Context:** D-65 put both ownership and participant attribution in one
+change. Ownership is small, unblocks voicemail/IVR/queues, and can ship
+without touching telephony; participant attribution needs the telephony
+participant columns and belongs with the reporting slice that consumes
+them. Splitting avoids a large cross-context change for no Phase B
+blocker.
+
+**Alternatives:**
+- *One large assignment change including telephony participant columns.*
+  Deferred: it would touch every call path and its tests without a
+  Phase B consumer yet.
+- *Keep ownership in identity.* Rejected by D-65: identity does not know
+  extensions exist.
+
+**Consequences:** "Assigned to" is available now. "My calls" and
+person-scoped history wait for LLD-09. The D-65 invariant remains: the
+link lives in pbx-core and is keyed by the membership.
+
+**Traceability:** D-65; LLD-03 §3.1/§12; change `pbx-extension-ownership`
+
+---
+
 **D-85 · Outbound fraud is guarded by a per-tenant policy: rated spend
 caps, blocked prefixes, and anomaly suspension with explicit resume
 (2026-11-04).**

@@ -2,7 +2,16 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCallback } from "react";
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
-import { DeviceType, OutboundClass, RegistrationStatus, type Extension } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { PrincipalStatus } from "../../api/gen/atsapbx/v1/identity_pb";
+import { create as createMessage } from "@bufbuild/protobuf";
+import {
+  AssignExtensionRequestSchema,
+  DeviceType,
+  OutboundClass,
+  RegistrationStatus,
+  UnassignExtensionRequestSchema,
+  type Extension,
+} from "../../api/gen/atsapbx/v1/pbx_pb";
 import { PAGE_SIZE } from "../../components/Pager";
 import { useSession } from "../auth/adapter";
 
@@ -21,6 +30,9 @@ export interface ExtensionRow {
   outbound: OutboundClass;
   registration: Registration;
   sipUsername: string;
+  assignedPrincipalId: string;
+  assignedPrincipalName: string;
+  assignedPrincipalEmail: string;
 }
 
 function registrationOf(r: RegistrationStatus): Registration {
@@ -38,6 +50,9 @@ export function toExtensionRow(e: Extension): ExtensionRow {
     outbound: e.outboundClass === OutboundClass.UNSPECIFIED ? OutboundClass.NATIONAL : e.outboundClass,
     registration: registrationOf(e.registration),
     sipUsername: e.authUsername,
+    assignedPrincipalId: e.assignedPrincipalId,
+    assignedPrincipalName: e.assignedPrincipalName,
+    assignedPrincipalEmail: e.assignedPrincipalEmail,
   };
 }
 
@@ -250,5 +265,48 @@ export function useExtensionChanges() {
     },
     [rotateAsync, resetRotation],
   );
-  return { update: update.mutateAsync, remove: remove.mutateAsync, rotate };
+  const assign = useMutation<void, ApiError, { id: string; principalId: string }>({
+    mutationFn: ({ id, principalId }) =>
+      callApi(async () => {
+        await pbx.assignExtension(createMessage(AssignExtensionRequestSchema, { tenantId, extensionId: id, principalId }));
+      }),
+    onSuccess: refetch,
+  });
+  const unassign = useMutation<void, ApiError, string>({
+    mutationFn: (id) =>
+      callApi(async () => {
+        await pbx.unassignExtension(createMessage(UnassignExtensionRequestSchema, { tenantId, extensionId: id }));
+      }),
+    onSuccess: refetch,
+  });
+  return { update: update.mutateAsync, remove: remove.mutateAsync, rotate, assign: assign.mutateAsync, unassign: unassign.mutateAsync };
+}
+
+// AssignablePrincipal is one active membership an extension may be
+// assigned to.
+export interface AssignablePrincipal {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export function useAssignablePrincipals() {
+  const { identity } = useApiClients();
+  const tenantId = useTenantId();
+  return useQuery<AssignablePrincipal[], ApiError>({
+    queryKey: [...extensionKeys.all(tenantId), "assignable"],
+    queryFn: () =>
+      callApi(async () => {
+        const { principals } = await identity.listPrincipals({ tenantId, limit: 200, offset: 0 });
+        const out: AssignablePrincipal[] = [];
+        for (const p of principals) {
+          const principal = p.principal;
+          if (principal && principal.status === PrincipalStatus.ACTIVE) {
+            out.push({ id: principal.principalId, name: principal.displayName, email: principal.email });
+          }
+        }
+        return out;
+      }),
+    enabled: tenantId !== "",
+  });
 }

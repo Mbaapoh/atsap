@@ -47,6 +47,12 @@ const (
 	// PbxServiceDeleteExtensionProcedure is the fully-qualified name of the PbxService's
 	// DeleteExtension RPC.
 	PbxServiceDeleteExtensionProcedure = "/atsapbx.v1.PbxService/DeleteExtension"
+	// PbxServiceAssignExtensionProcedure is the fully-qualified name of the PbxService's
+	// AssignExtension RPC.
+	PbxServiceAssignExtensionProcedure = "/atsapbx.v1.PbxService/AssignExtension"
+	// PbxServiceUnassignExtensionProcedure is the fully-qualified name of the PbxService's
+	// UnassignExtension RPC.
+	PbxServiceUnassignExtensionProcedure = "/atsapbx.v1.PbxService/UnassignExtension"
 	// PbxServiceRegenerateSecretProcedure is the fully-qualified name of the PbxService's
 	// RegenerateSecret RPC.
 	PbxServiceRegenerateSecretProcedure = "/atsapbx.v1.PbxService/RegenerateSecret"
@@ -123,6 +129,10 @@ type PbxServiceClient interface {
 	// DeleteExtension removes an extension and deprovisions it. A device
 	// holding its former credential can no longer register, immediately.
 	DeleteExtension(context.Context, *connect.Request[v1.DeleteExtensionRequest]) (*connect.Response[v1.DeleteExtensionResponse], error)
+	// AssignExtension makes a membership the owner of an extension (D-65).
+	// An extension has at most one owner; a person may own several.
+	AssignExtension(context.Context, *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error)
+	UnassignExtension(context.Context, *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error)
 	// RegenerateSecret issues a new credential. The previous one stops
 	// working the moment this returns — two live credentials for one
 	// extension is the state a rotation exists to end.
@@ -241,6 +251,18 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+PbxServiceDeleteExtensionProcedure,
 			connect.WithSchema(pbxServiceMethods.ByName("DeleteExtension")),
+			connect.WithClientOptions(opts...),
+		),
+		assignExtension: connect.NewClient[v1.AssignExtensionRequest, v1.AssignExtensionResponse](
+			httpClient,
+			baseURL+PbxServiceAssignExtensionProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("AssignExtension")),
+			connect.WithClientOptions(opts...),
+		),
+		unassignExtension: connect.NewClient[v1.UnassignExtensionRequest, v1.UnassignExtensionResponse](
+			httpClient,
+			baseURL+PbxServiceUnassignExtensionProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("UnassignExtension")),
 			connect.WithClientOptions(opts...),
 		),
 		regenerateSecret: connect.NewClient[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse](
@@ -385,6 +407,8 @@ type pbxServiceClient struct {
 	listExtensions        *connect.Client[v1.ListExtensionsRequest, v1.ListExtensionsResponse]
 	updateExtension       *connect.Client[v1.UpdateExtensionRequest, v1.UpdateExtensionResponse]
 	deleteExtension       *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
+	assignExtension       *connect.Client[v1.AssignExtensionRequest, v1.AssignExtensionResponse]
+	unassignExtension     *connect.Client[v1.UnassignExtensionRequest, v1.UnassignExtensionResponse]
 	regenerateSecret      *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
 	getSipRegistrar       *connect.Client[v1.GetSipRegistrarRequest, v1.GetSipRegistrarResponse]
 	getOutboundPolicy     *connect.Client[v1.GetOutboundPolicyRequest, v1.GetOutboundPolicyResponse]
@@ -432,6 +456,16 @@ func (c *pbxServiceClient) UpdateExtension(ctx context.Context, req *connect.Req
 // DeleteExtension calls atsapbx.v1.PbxService.DeleteExtension.
 func (c *pbxServiceClient) DeleteExtension(ctx context.Context, req *connect.Request[v1.DeleteExtensionRequest]) (*connect.Response[v1.DeleteExtensionResponse], error) {
 	return c.deleteExtension.CallUnary(ctx, req)
+}
+
+// AssignExtension calls atsapbx.v1.PbxService.AssignExtension.
+func (c *pbxServiceClient) AssignExtension(ctx context.Context, req *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error) {
+	return c.assignExtension.CallUnary(ctx, req)
+}
+
+// UnassignExtension calls atsapbx.v1.PbxService.UnassignExtension.
+func (c *pbxServiceClient) UnassignExtension(ctx context.Context, req *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error) {
+	return c.unassignExtension.CallUnary(ctx, req)
 }
 
 // RegenerateSecret calls atsapbx.v1.PbxService.RegenerateSecret.
@@ -561,6 +595,10 @@ type PbxServiceHandler interface {
 	// DeleteExtension removes an extension and deprovisions it. A device
 	// holding its former credential can no longer register, immediately.
 	DeleteExtension(context.Context, *connect.Request[v1.DeleteExtensionRequest]) (*connect.Response[v1.DeleteExtensionResponse], error)
+	// AssignExtension makes a membership the owner of an extension (D-65).
+	// An extension has at most one owner; a person may own several.
+	AssignExtension(context.Context, *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error)
+	UnassignExtension(context.Context, *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error)
 	// RegenerateSecret issues a new credential. The previous one stops
 	// working the moment this returns — two live credentials for one
 	// extension is the state a rotation exists to end.
@@ -675,6 +713,18 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		PbxServiceDeleteExtensionProcedure,
 		svc.DeleteExtension,
 		connect.WithSchema(pbxServiceMethods.ByName("DeleteExtension")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceAssignExtensionHandler := connect.NewUnaryHandler(
+		PbxServiceAssignExtensionProcedure,
+		svc.AssignExtension,
+		connect.WithSchema(pbxServiceMethods.ByName("AssignExtension")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceUnassignExtensionHandler := connect.NewUnaryHandler(
+		PbxServiceUnassignExtensionProcedure,
+		svc.UnassignExtension,
+		connect.WithSchema(pbxServiceMethods.ByName("UnassignExtension")),
 		connect.WithHandlerOptions(opts...),
 	)
 	pbxServiceRegenerateSecretHandler := connect.NewUnaryHandler(
@@ -821,6 +871,10 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServiceUpdateExtensionHandler.ServeHTTP(w, r)
 		case PbxServiceDeleteExtensionProcedure:
 			pbxServiceDeleteExtensionHandler.ServeHTTP(w, r)
+		case PbxServiceAssignExtensionProcedure:
+			pbxServiceAssignExtensionHandler.ServeHTTP(w, r)
+		case PbxServiceUnassignExtensionProcedure:
+			pbxServiceUnassignExtensionHandler.ServeHTTP(w, r)
 		case PbxServiceRegenerateSecretProcedure:
 			pbxServiceRegenerateSecretHandler.ServeHTTP(w, r)
 		case PbxServiceGetSipRegistrarProcedure:
@@ -892,6 +946,14 @@ func (UnimplementedPbxServiceHandler) UpdateExtension(context.Context, *connect.
 
 func (UnimplementedPbxServiceHandler) DeleteExtension(context.Context, *connect.Request[v1.DeleteExtensionRequest]) (*connect.Response[v1.DeleteExtensionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteExtension is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) AssignExtension(context.Context, *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.AssignExtension is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) UnassignExtension(context.Context, *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.UnassignExtension is not implemented"))
 }
 
 func (UnimplementedPbxServiceHandler) RegenerateSecret(context.Context, *connect.Request[v1.RegenerateSecretRequest]) (*connect.Response[v1.RegenerateSecretResponse], error) {

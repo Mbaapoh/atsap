@@ -47,6 +47,11 @@ service PbxService {
   // holding its former credential can no longer register, immediately.
   rpc DeleteExtension(DeleteExtensionRequest) returns (DeleteExtensionResponse);
 
+  // AssignExtension makes a membership the owner of an extension (D-65).
+  // An extension has at most one owner; a person may own several.
+  rpc AssignExtension(AssignExtensionRequest) returns (AssignExtensionResponse);
+  rpc UnassignExtension(UnassignExtensionRequest) returns (UnassignExtensionResponse);
+
   // RegenerateSecret issues a new credential. The previous one stops
   // working the moment this returns — two live credentials for one
   // extension is the state a rotation exists to end.
@@ -187,6 +192,10 @@ message Extension {
   // How far this extension may dial. A new extension is NATIONAL unless
   // the caller chose otherwise.
   OutboundClass outbound_class = 7;
+  // The owning membership, empty when the extension has no owner (D-65).
+  string assigned_principal_id = 8;
+  string assigned_principal_name = 9;
+  string assigned_principal_email = 10;
 }
 
 message CreateExtensionRequest {
@@ -246,6 +255,19 @@ message DeleteExtensionRequest {
 }
 
 message DeleteExtensionResponse {}
+
+message AssignExtensionRequest {
+  string tenant_id = 1;
+  string extension_id = 2;
+  string principal_id = 3;
+}
+message AssignExtensionResponse { Extension extension = 1; }
+
+message UnassignExtensionRequest {
+  string tenant_id = 1;
+  string extension_id = 2;
+}
+message UnassignExtensionResponse { Extension extension = 1; }
 
 message RegenerateSecretRequest {
   string tenant_id = 1;
