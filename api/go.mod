@@ -4,7 +4,9 @@ go 1.26.0
 
 require (
 	connectrpc.com/connect v1.17.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/emiago/sipgo v1.6.0
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -13,6 +15,7 @@ require (
 	github.com/nats-io/nats.go v1.38.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.56.0
+	golang.org/x/oauth2 v0.37.0
 	google.golang.org/protobuf v1.36.7
 )
 

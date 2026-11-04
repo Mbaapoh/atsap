@@ -480,6 +480,7 @@ const (
 	// within its grace window (a lost response, retried).
 	EventSessionRefreshRetried AuthEventKind = "session.refresh_retried"
 	EventInvitationAccepted    AuthEventKind = "invitation.accepted"
+	EventGoogleLinked          AuthEventKind = "google.linked"
 )
 
 // AuthEvent is one entry in a person's authentication history. UserID is
@@ -489,4 +490,20 @@ type AuthEvent struct {
 	Kind          AuthEventKind
 	SourceAddress string
 	At            time.Time
+}
+
+// publicEmailDomains are consumer mailbox domains that no tenant may
+// claim as its identity-provider domain (D-67). Otherwise one tenant
+// could route every Gmail user to itself.
+var publicEmailDomains = map[string]bool{
+	"gmail.com": true, "googlemail.com": true, "outlook.com": true,
+	"hotmail.com": true, "live.com": true, "msn.com": true,
+	"yahoo.com": true, "yahoo.co.uk": true, "aol.com": true,
+	"icloud.com": true, "me.com": true, "proton.me": true,
+	"protonmail.com": true, "gmx.com": true, "mail.com": true, "zoho.com": true,
+}
+
+// IsPublicEmailDomain reports whether name is a consumer mailbox domain.
+func IsPublicEmailDomain(name string) bool {
+	return publicEmailDomains[strings.ToLower(strings.TrimSpace(name))]
 }

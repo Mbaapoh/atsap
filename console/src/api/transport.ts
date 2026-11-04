@@ -33,7 +33,7 @@ function bearer(source: AccessTokenSource): Interceptor {
 // person typed, not the token: refreshing and resending would repeat a
 // wrong current password, and count it twice against the throttle. The
 // session feature renews a nearly expired token before calling them.
-const NO_REFRESH = new Set(["RefreshSession", "ChangePassword"]);
+const NO_REFRESH = new Set(["RefreshSession", "ChangePassword", "BeginGoogleLink"]);
 
 // refreshOnce handles an access token the server no longer accepts: it
 // asks the session to refresh, then repeats the call once with the new

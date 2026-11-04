@@ -41,6 +41,8 @@ type Store struct {
 	providers  map[domain.IdentityProviderID]domain.IdentityProvider
 	claims     map[string]domain.DomainClaim
 	externals  map[string]domain.ExternalIdentity
+	federated  map[string]ports.FederatedIdentity
+	oauth      map[string]ports.OAuthState
 	throttle   map[string]*throttleRow
 
 	// Audit and Events are appended in order; tests read them.
@@ -87,6 +89,8 @@ func New() *Store {
 		providers:  map[domain.IdentityProviderID]domain.IdentityProvider{},
 		claims:     map[string]domain.DomainClaim{},
 		externals:  map[string]domain.ExternalIdentity{},
+		federated:  map[string]ports.FederatedIdentity{},
+		oauth:      map[string]ports.OAuthState{},
 		throttle:   map[string]*throttleRow{},
 	}
 }
@@ -609,6 +613,9 @@ func (s *Store) CreateProvider(_ context.Context, p domain.IdentityProvider) err
 }
 
 func (s *Store) ClaimDomain(_ context.Context, c domain.DomainClaim) error {
+	if domain.IsPublicEmailDomain(c.Domain) {
+		return ports.ErrPublicDomain
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	d := strings.ToLower(c.Domain)
@@ -802,3 +809,86 @@ var _ interface {
 } = (*Store)(nil)
 
 var _ ports.Mailer = (*Outbox)(nil)
+
+// --- federated identities and OAuth state (D-67) ---------------------------
+
+func fedKey(issuer, subject string) string { return issuer + "\x00" + subject }
+
+func (s *Store) LinkFederatedIdentity(_ context.Context, e ports.FederatedIdentity) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.federated[fedKey(e.Issuer, e.Subject)]; ok {
+		return ports.ErrAlreadyLinked
+	}
+	for _, v := range s.federated {
+		if v.Issuer == e.Issuer && v.UserID == e.UserID {
+			return ports.ErrAlreadyLinked
+		}
+	}
+	s.federated[fedKey(e.Issuer, e.Subject)] = e
+	return nil
+}
+
+func (s *Store) UserForFederatedIdentity(_ context.Context, issuer, subject string) (domain.UserID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.federated[fedKey(issuer, subject)]
+	if !ok {
+		return domain.UserID{}, ports.ErrNotFound
+	}
+	return e.UserID, nil
+}
+
+func (s *Store) FederatedIdentityForUser(_ context.Context, issuer string, user domain.UserID) (ports.FederatedIdentity, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.federated {
+		if e.Issuer == issuer && e.UserID == user {
+			return e, nil
+		}
+	}
+	return ports.FederatedIdentity{}, ports.ErrNotFound
+}
+
+func (s *Store) CreateOAuthState(_ context.Context, st ports.OAuthState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.oauth[st.StateDigest] = st
+	return nil
+}
+
+func (s *Store) ConsumeOAuthState(_ context.Context, digest string, at time.Time) (ports.OAuthState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.oauth[digest]
+	if !ok || !at.Before(st.ExpiresAt) {
+		return ports.OAuthState{}, ports.ErrNotFound
+	}
+	delete(s.oauth, digest)
+	return st, nil
+}
+
+func (s *Store) TicketUser(_ context.Context, digest string, at time.Time) (domain.UserID, domain.TicketPurpose, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.tickets {
+		if t.Digest == digest && t.usedAt == nil && at.Before(t.ExpiresAt) {
+			return t.UserID, t.Purpose, nil
+		}
+	}
+	return domain.UserID{}, "", ports.ErrNotFound
+}
+
+func (s *Store) ConsumeTicket(_ context.Context, digest string, at time.Time) (domain.UserID, domain.TicketPurpose, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, t := range s.tickets {
+		if t.Digest != digest || t.usedAt != nil || !at.Before(t.ExpiresAt) {
+			continue
+		}
+		used := at
+		s.tickets[i].usedAt = &used
+		return t.UserID, t.Purpose, nil
+	}
+	return domain.UserID{}, "", ports.ErrNotFound
+}

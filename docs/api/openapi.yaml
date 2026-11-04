@@ -267,6 +267,199 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.CompletePasswordResetResponse'
+  /atsapbx.v1.AuthService/GetSignInOptions:
+    post:
+      tags:
+        - atsapbx.v1.AuthService
+      summary: GetSignInOptions
+      description: |-
+        GetSignInOptions reports installation-wide sign-in methods that do
+         not depend on an email, so the console can offer "Sign in with
+         Google" before one is typed (D-67).
+      operationId: atsapbx.v1.AuthService.GetSignInOptions
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetSignInOptionsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.GetSignInOptionsResponse'
+  /atsapbx.v1.AuthService/BeginGoogleSignIn:
+    post:
+      tags:
+        - atsapbx.v1.AuthService
+      summary: BeginGoogleSignIn
+      description: |-
+        BeginGoogleSignIn returns the Google redirect URL. invite_secret, when
+         set, makes the callback accept the invitation instead of only signing
+         in (D-67).
+      operationId: atsapbx.v1.AuthService.BeginGoogleSignIn
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.BeginGoogleSignInRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.BeginGoogleSignInResponse'
+  /atsapbx.v1.AuthService/CompleteGoogleSignIn:
+    post:
+      tags:
+        - atsapbx.v1.AuthService
+      summary: CompleteGoogleSignIn
+      description: |-
+        CompleteGoogleSignIn exchanges the callback code, verifies the ID
+         token, and starts the linked person's session. An unlinked account is
+         refused like a wrong password.
+      operationId: atsapbx.v1.AuthService.CompleteGoogleSignIn
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CompleteGoogleSignInRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.SignInResponse'
+  /atsapbx.v1.AuthService/BeginGoogleLink:
+    post:
+      tags:
+        - atsapbx.v1.AuthService
+      summary: BeginGoogleLink
+      description: |-
+        BeginGoogleLink starts linking Google to the signed-in person after
+         the current password is re-entered (D-67).
+      operationId: atsapbx.v1.AuthService.BeginGoogleLink
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.BeginGoogleLinkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.BeginGoogleLinkResponse'
+  /atsapbx.v1.AuthService/CompleteGoogleLink:
+    post:
+      tags:
+        - atsapbx.v1.AuthService
+      summary: CompleteGoogleLink
+      description: |-
+        CompleteGoogleLink finishes that link. It does not start a session:
+         the caller is already signed in.
+      operationId: atsapbx.v1.AuthService.CompleteGoogleLink
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CompleteGoogleLinkRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.CompleteGoogleLinkResponse'
   /atsapbx.v1.IdentityService/AuthenticateUser:
     post:
       tags:
@@ -1867,6 +2060,46 @@ components:
       title: AccessToken
       additionalProperties: false
       description: 'AccessToken is credential material: never log it, never store it.'
+    atsapbx.v1.BeginGoogleLinkRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          title: current_password
+        returnTo:
+          type: string
+          title: return_to
+      title: BeginGoogleLinkRequest
+      additionalProperties: false
+    atsapbx.v1.BeginGoogleLinkResponse:
+      type: object
+      properties:
+        redirectUrl:
+          type: string
+          title: redirect_url
+      title: BeginGoogleLinkResponse
+      additionalProperties: false
+    atsapbx.v1.BeginGoogleSignInRequest:
+      type: object
+      properties:
+        returnTo:
+          type: string
+          title: return_to
+          description: A local console path; an absolute URL is refused.
+        inviteSecret:
+          type: string
+          title: invite_secret
+          description: The invitation link's fragment secret, when accepting an invitation.
+      title: BeginGoogleSignInRequest
+      additionalProperties: false
+    atsapbx.v1.BeginGoogleSignInResponse:
+      type: object
+      properties:
+        redirectUrl:
+          type: string
+          title: redirect_url
+      title: BeginGoogleSignInResponse
+      additionalProperties: false
     atsapbx.v1.ChangePasswordRequest:
       type: object
       properties:
@@ -1881,6 +2114,36 @@ components:
     atsapbx.v1.ChangePasswordResponse:
       type: object
       title: ChangePasswordResponse
+      additionalProperties: false
+    atsapbx.v1.CompleteGoogleLinkRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          title: code
+        state:
+          type: string
+          title: state
+      title: CompleteGoogleLinkRequest
+      additionalProperties: false
+    atsapbx.v1.CompleteGoogleLinkResponse:
+      type: object
+      properties:
+        email:
+          type: string
+          title: email
+      title: CompleteGoogleLinkResponse
+      additionalProperties: false
+    atsapbx.v1.CompleteGoogleSignInRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          title: code
+        state:
+          type: string
+          title: state
+      title: CompleteGoogleSignInRequest
       additionalProperties: false
     atsapbx.v1.CompletePasswordResetRequest:
       type: object
@@ -1919,7 +2182,25 @@ components:
         providerDisplayName:
           type: string
           title: provider_display_name
+        googleEnabled:
+          type: boolean
+          title: google_enabled
+          description: |-
+            Installation-wide Google is configured; shown regardless of email
+             (D-67).
       title: DiscoverSignInResponse
+      additionalProperties: false
+    atsapbx.v1.GetSignInOptionsRequest:
+      type: object
+      title: GetSignInOptionsRequest
+      additionalProperties: false
+    atsapbx.v1.GetSignInOptionsResponse:
+      type: object
+      properties:
+        googleEnabled:
+          type: boolean
+          title: google_enabled
+      title: GetSignInOptionsResponse
       additionalProperties: false
     atsapbx.v1.Membership:
       type: object

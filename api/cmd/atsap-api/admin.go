@@ -42,7 +42,7 @@ func runAdmin(cfg config.Config) int {
 // once to out and nowhere else — the logger never sees it.
 func adminResetPassword(ctx context.Context, cfg config.Config, pool *corepostgres.Pool, email string, out, errOut io.Writer) int {
 	logger := logging.New(cfg.LogLevel)
-	svc, _, err := newIdentity(cfg, pool, noTenantCap, logger)
+	svc, _, err := newIdentity(ctx, cfg, pool, noTenantCap, logger)
 	if err != nil {
 		_, _ = fmt.Fprintln(errOut, "cannot start identity:", err)
 		return 1

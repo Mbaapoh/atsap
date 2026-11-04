@@ -5,7 +5,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApiClients } from "../../api/clients";
 import { createApiTransport } from "../../api/transport";
 import { routes } from "../../app/routes";
-import { server } from "../../test/msw";
+import {
+  BEGIN_GOOGLE_LINK_URL,
+  BEGIN_GOOGLE_SIGN_IN_URL,
+  COMPLETE_GOOGLE_LINK_URL,
+  COMPLETE_GOOGLE_SIGN_IN_URL,
+  server,
+  SIGN_IN_OPTIONS_URL,
+} from "../../test/msw";
 import { renderApp, signedIn, tenantA, tenantB, TEST_BASE } from "../../test/session";
 import { passwordProblem, SessionController } from "./adapter";
 import { SessionProvider } from "./SessionProvider";
@@ -459,5 +466,51 @@ describe("password recovery", () => {
     window.history.replaceState(null, "", "/invite#welcome");
     renderApp(routes, "/invite", signedOut);
     expect(await screen.findByRole("heading", { level: 1, name: "Set up your account" })).toBeInTheDocument();
+  });
+});
+
+describe("Google sign-in", () => {
+  it("shows the button when configured and sends the browser to Google", async () => {
+    let body: unknown;
+    server.use(
+      http.post(SIGN_IN_OPTIONS_URL, () => HttpResponse.json({ googleEnabled: true })),
+      http.post(BEGIN_GOOGLE_SIGN_IN_URL, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ redirectUrl: "https://accounts.google.test/auth" });
+      }),
+    );
+    renderApp(routes, "/sign-in", signedOut);
+    const button = await screen.findByRole("button", { name: "Continue with Google" });
+    await userEvent.setup().click(button);
+    await waitFor(() => expect(body).toEqual({ returnTo: "/" }));
+    expect(body).toEqual({ returnTo: "/" });
+  });
+
+  it("adopts the session a Google callback starts", async () => {
+    server.use(http.post(COMPLETE_GOOGLE_SIGN_IN_URL, () =>
+      HttpResponse.json({ access: access(tenantA, "google-tok"), memberships: [wireMember(tenantA)] })));
+    const { router, store } = renderApp(routes, "/auth/google?code=c&state=s", signedOut);
+    expect(await screen.findByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/");
+    expect(store.accessToken()).toBe("google-tok");
+  });
+
+  it("links a Google account from the account screen and reports it", async () => {
+    let begun: unknown;
+    server.use(
+      http.post(BEGIN_GOOGLE_LINK_URL, async ({ request }) => {
+        begun = await request.json();
+        return HttpResponse.json({ redirectUrl: "https://accounts.google.test/link" });
+      }),
+      http.post(COMPLETE_GOOGLE_LINK_URL, () => HttpResponse.json({ email: "ana@example.com" })),
+    );
+    const linked = renderApp(routes, "/account", signedIn());
+    await userEvent.setup().type(screen.getByLabelText("Your password"), PASSWORD);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Link Google account" }));
+    await waitFor(() => expect(begun).toBeDefined());
+    linked.unmount();
+
+    renderApp(routes, "/auth/google?code=c&state=s", signedIn());
+    expect(await screen.findByText("Google account linked")).toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router";
 import { AccountPage } from "../features/auth/AccountPage";
 import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
+import { GoogleCallbackPage } from "../features/auth/GoogleCallbackPage";
 import { RequireSession } from "../features/auth/RequireSession";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { SelectTenantPage } from "../features/auth/SelectTenantPage";
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
   { path: "/sign-in", element: <SignInPage /> },
   { path: "/select-tenant", element: <SelectTenantPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/auth/google", element: <GoogleCallbackPage /> },
   { path: "/reset", element: <ResetPasswordPage purpose="reset" /> },
   { path: "/invite", element: <ResetPasswordPage purpose="invite" /> },
   {

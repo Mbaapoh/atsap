@@ -47,6 +47,11 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `ChangePassword` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console account screen; ends the person's other sessions; the one call a must-change token may make besides `SignOut` |
 | `RequestPasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console "forgot password": a single-use emailed link; the same answer for every email |
 | `CompletePasswordReset` | `atsapbx.v1.AuthService` | `identity-accounts-and-sessions` | Console reset and invitation pages: redeems the link and ends every session. An unusable link and an out-of-bounds password are both `INVALID_ARGUMENT`; check the length (8–64 code points) first |
+| `GetSignInOptions` | `atsapbx.v1.AuthService` | `identity-oidc-google` | Public: installation-wide sign-in methods, currently `googleEnabled`, shown before an email is typed (D-67) |
+| `BeginGoogleSignIn` | `atsapbx.v1.AuthService` | `identity-oidc-google` | Public: returns the Google redirect URL; an optional invitation secret lets the callback accept an invitation (D-67) |
+| `CompleteGoogleSignIn` | `atsapbx.v1.AuthService` | `identity-oidc-google` | Public: verifies the callback and starts the linked person's session; an unlinked account is refused like a wrong password |
+| `BeginGoogleLink` | `atsapbx.v1.AuthService` | `identity-oidc-google` | Authenticated: starts linking Google after re-entering the current password (D-67) |
+| `CompleteGoogleLink` | `atsapbx.v1.AuthService` | `identity-oidc-google` | Authenticated: completes the link and returns the linked email |
 | `CreateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions screen; the only response carrying a generated secret |
 | `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
 | `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |
@@ -100,7 +105,8 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 **`AuthService` (since `identity-accounts-and-sessions`)** exempts
 exactly the five calls a person needs before holding a token, or after
 losing one — `DiscoverSignIn`, `SignIn`, `RefreshSession`,
-`RequestPasswordReset`, `CompletePasswordReset` — each by its exact
+`RequestPasswordReset`, `CompletePasswordReset`, `GetSignInOptions`,
+`BeginGoogleSignIn`, `CompleteGoogleSignIn` — each by its exact
 procedure name. `SignOut` and `ChangePassword` need a bearer token. The
 refresh secret travels only in the `atsa_refresh` cookie (`HttpOnly`,
 `SameSite=Strict`, scoped to `AuthService`), never in a body. A token

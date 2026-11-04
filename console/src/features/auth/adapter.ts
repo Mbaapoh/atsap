@@ -113,6 +113,37 @@ export class SessionController {
       : { kind: "password" };
   }
 
+  // googleEnabled is installation-wide and independent of an email, so
+  // the Google button is shown before one is typed (D-67).
+  async googleEnabled(): Promise<boolean> {
+    try {
+      return (await callApi(() => this.auth.getSignInOptions({}))).googleEnabled;
+    } catch {
+      return false;
+    }
+  }
+
+  async googleSignInURL(returnTo: string, inviteSecret = ""): Promise<string> {
+    const res = await callApi(() => this.auth.beginGoogleSignIn({ returnTo, inviteSecret }));
+    return res.redirectUrl;
+  }
+
+  // completeGoogle adopts the session the server started at the callback.
+  async completeGoogle(state: string, code: string): Promise<void> {
+    const res = await callApi(() => this.auth.completeGoogleSignIn({ state, code }));
+    this.scopeChanged();
+    this.store.set(toState(res));
+  }
+
+  async googleLinkURL(currentPassword: string, returnTo = "/account"): Promise<string> {
+    const res = await callApi(() => this.auth.beginGoogleLink({ currentPassword, returnTo }));
+    return res.redirectUrl;
+  }
+
+  async completeGoogleLink(state: string, code: string): Promise<string> {
+    return (await callApi(() => this.auth.completeGoogleLink({ state, code }))).email;
+  }
+
   async signIn(email: string, password: string): Promise<void> {
     const res = await callApi(() => this.auth.signIn({ email, password }));
     this.scopeChanged();

@@ -215,6 +215,14 @@ document may require a specific provider, only the contract.
 
 ---
 
+### Google OpenID Connect (D-67, D-83)
+
+`github.com/coreos/go-oidc/v3` (Apache-2.0) and
+`golang.org/x/oauth2` (BSD-3-Clause) implement the installation-wide
+Google client. `github.com/go-jose/go-jose/v4` (Apache-2.0) is their
+transitive JOSE dependency; it is pinned at the fixed release selected
+by OSV-Scanner.
+
 ## 6. Dependency Addition Protocol
 
 If an engineer or AI agent identifies a genuine need for a new external Go package:

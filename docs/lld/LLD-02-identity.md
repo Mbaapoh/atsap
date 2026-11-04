@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `identity` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Implemented & archived, revision 2 included** (user accounts, sessions, credential recovery, SSO readiness, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, change `identity-accounts-and-sessions`, archived 2026-10-11). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| **Status** | **Implemented & archived, revision 3 included** (user accounts, sessions, credential recovery, SSO readiness, Google OIDC, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, D-67, D-83; `identity-accounts-and-sessions` archived 2026-10-11, `identity-oidc-google` archived 2026-11-04). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | **Traces to** | BRD FBR-R1-04/§10; PRD EPIC-01 (US-01.1–01.7, AC-01.1–01.7), INV-01/INV-10/INV-11; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §7, [05-security.md](../hld/05-security.md) §1; DECISIONS D-24 |
 | **Why this is LLD-02** | LLD-01 proved the media path against stub adapters whose files say, verbatim, "until LLD-02 lands." Every Tier 1 context needs `identity`'s tenant context (§10.1), so D-26 (dependency-first within a release) puts it here. |
 
@@ -17,6 +17,7 @@
 | 2026-09-09 | **§4a.1 added: the `MaxTenants` provisioning cap (D-51).** `CreateTenant` refuses with `FAILED_PRECONDITION` at the cap; reads are never gated; RLS stays mandatory in every mode. The entitlement is passed in through a port `identity` owns, so `identity` still depends on nothing. |
 | 2026-09-08 | **Licensing split out into [LLD-08](LLD-08-licensing.md).** This document was `LLD-02-identity-licensing.md` and covered two bounded contexts. `docs/lld/README.md` states an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts depending on nothing. The merge had been justified as sharing "one cutover (auth + entitlement activate together)"; delivery disproved it — identity shipped in three archived changes while licensing shipped nothing. |
 | 2026-09-08 | Status → implemented. `auth-cutover-connectrpc` landed, closing the unauthenticated-`GetCall` concession §1 deferred; `identity-bootstrap` closed as unnecessary (§5.2, §9). |
+| 2026-11-04 | **Revision 3 (D-67, D-83): "Sign in with Google".** One installation-wide OIDC client (config, not a tenant provider), `federated_identities` by `(issuer, subject)`, one-time state with PKCE and nonce, invitation and account-screen linking, public mailbox domains unclaimable. Generic OIDC; Google is the shipped provider. §4/§8/§9 updated. |
 | 2026-10-11 | **Revision 2 (D-61–D-64), ahead of the console.** A global `User` (one person, one email) with tenant memberships, and the principal reinterpreted as a membership with ids unchanged (§3, §5.4). Revocable rotating refresh sessions replace "no refresh flow" (§5.3, §10.2). Credential recovery: change, email reset link, administrator reset (§6). Login throttling ships in identity, superseding §10.5's edge-proxy stance, and the unknown-username timing difference is closed (§10.5, §10.10). SSO readiness: optional password, `(provider, subject)` external identities, per-tenant providers with verified domains, and two-step sign-in. No protocol is built (§4, §5.4). MFA is deferred (§8). Proposed as `identity-accounts-and-sessions`. |
 
 ## 1. Scope
@@ -33,7 +34,8 @@ middleware that feeds RLS.
 - console sessions (sign in, refresh, sign out, choose tenant);
 - password change, email reset link and administrator reset;
 - login throttling and authentication events;
-- the data model and ports for SSO, with no OIDC or SAML flow yet.
+- the data model and ports for SSO; revision 3 adds the Google OIDC flow
+  in `identity-oidc-google`, while company-domain SSO remains future.
 
 Also in scope, and now landed: the ConnectRPC auth cutover —
 `Authorization: Bearer <JWT>` required on every RPC in every service,
@@ -486,11 +488,12 @@ was pulled ahead as a result.
   immutable and is carried in `TenantContext`; storage routing is a
   deployment-layer concern for a later LLD.
 - ~~No refresh-token flow (§5.3).~~ Revision 2 adds sessions (D-62).
-- **Google sign-in comes first** (D-67): personal Gmail and Workspace,
-  installation-wide, linked to an existing person, never by email.
-- **SSO is modelled, not built** (D-63). No OIDC or SAML flow, no
-  provider-administration RPC, no just-in-time provisioning. The next
-  identity change builds OIDC behind `FederatedAuthenticator`.
+- **Google sign-in is built** (D-67, D-83): one installation-wide OIDC
+  client, linked to an existing person, never by email; invitation and
+  account-screen linking. No self-signup.
+- **Company-domain SSO is still modelled, not built** (D-63): no
+  provider-administration RPC and no just-in-time provisioning. The
+  generic OIDC adapter is the base for `identity-oidc`.
 - **No MFA yet.** SSO and Google users get their provider's. Password
   users get TOTP and passkeys in `identity-mfa`, in **Phase B, before
   general availability**, with MFA enforceable for administrator roles
@@ -513,7 +516,7 @@ was pulled ahead as a result.
 | `console-apis-phase-a` | `ListPrincipals`, `RevokeRole` (with the licence and call-history RPCs of other contexts) | **Archived** 2026-10-11 |
 | `identity-accounts-and-sessions` | Revision 2: users and memberships, sessions, credential recovery, throttling, auth events, SSO-ready model; D-66 credential kinds, key rotation, off-network recovery | **Archived** 2026-10-11 |
 | `identity-refresh-grace` | D-62 amendment: a 30-second grace window for the previous refresh secret, so a lost refresh response does not end the session | **Implemented** 2026-10-12 |
-| *(future)* `identity-oidc-google` | "Sign in with Google" for Gmail and Workspace (D-67): one installation-wide provider, linked on invitation or from the account screen, never by email; public domains unclaimable | Not proposed; after console slice A |
+| `identity-oidc-google` | "Sign in with Google" for Gmail and Workspace (D-67, D-83): one installation-wide provider, linked on invitation or from the account screen, never by email; public domains unclaimable | **Implemented and archived** 2026-11-04 |
 | *(future)* `identity-oidc` | Company-domain SSO (Workspace, Entra ID) with provider administration, on the same OIDC code | Not proposed |
 | *(future)* `identity-mfa` | TOTP and passkeys; required MFA for administrator roles. **Phase B, before GA** (D-66 as amended) | Not proposed |
 | *(future)* `identity-scim` | SCIM 2.0 provisioning and deprovisioning from a tenant's IdP | Not proposed |

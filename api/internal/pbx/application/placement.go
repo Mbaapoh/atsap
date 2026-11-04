@@ -154,11 +154,8 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 	// (LLD-03 §10.2). Emergency is exempt: no spend, country or class
 	// rule may block it (AC-08.3), and the dial plan already decided
 	// emergency provenance.
-	if res.Destination.Kind == domain.DestinationTrunk && !res.Emergency {
-		want := domain.ClassifyDialledDestination(cmd.Destination)
-		if !caller.Outbound.Allows(want) {
-			return ports.PlacedCall{}, fmt.Errorf("%w: %s cannot dial %s", ports.ErrOutboundForbidden, caller.Outbound, want)
-		}
+	if err := checkOutboundClass(caller, res, cmd.Destination); err != nil {
+		return ports.PlacedCall{}, err
 	}
 
 	if res.Destination.Kind == domain.DestinationExtension {
@@ -381,4 +378,19 @@ func (s *Service) HangupCall(ctx context.Context, tenantID shareddomain.TenantID
 	}
 	s.releaseLeg(ctx, leg)
 	return nil
+}
+
+// checkOutboundClass is the toll-fraud configuration check (LLD-03
+// §10.2). It runs only for a trunk-bound, non-emergency destination;
+// emergency is exempt because the dial plan established its provenance
+// (AC-08.3).
+func checkOutboundClass(caller domain.Extension, res domain.Resolution, dialled string) error {
+	if res.Destination.Kind != domain.DestinationTrunk || res.Emergency {
+		return nil
+	}
+	want := domain.ClassifyDialledDestination(dialled)
+	if caller.Outbound.Allows(want) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s cannot dial %s", ports.ErrOutboundForbidden, caller.Outbound, want)
 }

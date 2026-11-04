@@ -30,7 +30,11 @@ import (
 // responses.
 var (
 	ErrNotFound           = errors.New("not found")
+	ErrInvalidInput       = errors.New("invalid input")
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrNotConfigured is an external sign-in method the installation has
+	// not configured (no Google client, for example).
+	ErrNotConfigured      = errors.New("sign-in method is not configured")
 	ErrPrincipalNotActive = errors.New("principal is not active")
 	ErrTenantNotActive    = errors.New("tenant is not active")
 	ErrPermissionDenied   = errors.New("permission denied")
@@ -48,6 +52,9 @@ var (
 	ErrThrottled = errors.New("too many attempts")
 	// ErrDomainClaimed refuses a second provider's claim on a domain.
 	ErrDomainClaimed = errors.New("domain already claimed by another identity provider")
+	// ErrPublicDomain refuses a claim on a consumer mailbox domain, which
+	// no tenant may own (D-67).
+	ErrPublicDomain = errors.New("a public email domain cannot be claimed")
 	// ErrAlreadyLinked refuses linking a (provider, subject) twice.
 	ErrAlreadyLinked = errors.New("external identity already linked")
 	// ErrPasswordChangeRequired is a must-change credential being used
@@ -264,6 +271,15 @@ type ResetTicketStore interface {
 	// the person's password to cred, and revokes every session of theirs.
 	// ErrNotFound for any ticket that cannot be redeemed.
 	RedeemTicket(ctx context.Context, digest string, cred domain.PasswordCredential, at time.Time) (domain.UserID, domain.TicketPurpose, error)
+	// ConsumeTicket marks an unexpired, unused invitation or reset
+	// ticket used without setting a password (Google invitation). It
+	// returns the person and the purpose; ErrNotFound for anything
+	// unusable.
+	ConsumeTicket(ctx context.Context, digest string, at time.Time) (domain.UserID, domain.TicketPurpose, error)
+	// TicketUser reads an unexpired, unused ticket's person and purpose
+	// without consuming it, so a mismatched Google email does not burn
+	// the invitation. ErrNotFound for anything unusable.
+	TicketUser(ctx context.Context, digest string, at time.Time) (domain.UserID, domain.TicketPurpose, error)
 }
 
 // IdentityProviderStore persists the SSO-ready provider model (D-63).
@@ -324,6 +340,70 @@ type LivenessReader interface {
 // secret, so an adapter must never log it.
 type Mailer interface {
 	Send(ctx context.Context, to, subject, body string) error
+}
+
+// FederatedIdentity is one external account linked to a person. It is
+// matched by issuer and subject, never by email (D-63/D-67).
+type FederatedIdentity struct {
+	Issuer   string
+	Subject  string
+	Email    string
+	UserID   domain.UserID
+	LinkedAt time.Time
+}
+
+// FederatedIdentityStore persists external links.
+type FederatedIdentityStore interface {
+	// LinkFederatedIdentity links (issuer, subject) to a person;
+	// ErrAlreadyLinked when either side is already linked.
+	LinkFederatedIdentity(ctx context.Context, e FederatedIdentity) error
+	// UserForFederatedIdentity resolves (issuer, subject); ErrNotFound
+	// when no link exists.
+	UserForFederatedIdentity(ctx context.Context, issuer, subject string) (domain.UserID, error)
+	// FederatedIdentityForUser returns the person's link for issuer;
+	// ErrNotFound when none.
+	FederatedIdentityForUser(ctx context.Context, issuer string, user domain.UserID) (FederatedIdentity, error)
+}
+
+// OAuthStatePurpose is why a state was issued.
+type OAuthStatePurpose string
+
+const (
+	// OAuthStateSignIn starts a normal external sign-in.
+	OAuthStateSignIn OAuthStatePurpose = "SIGN_IN"
+	// OAuthStateLink links Google from the account screen.
+	OAuthStateLink OAuthStatePurpose = "LINK"
+	// OAuthStateInvite accepts an invitation with Google.
+	OAuthStateInvite OAuthStatePurpose = "INVITE"
+)
+
+// OAuthState is the server-side half of an OIDC authorization request.
+// Verifier and digest are credential material and never leave storage.
+type OAuthState struct {
+	StateDigest  string
+	Purpose      OAuthStatePurpose
+	UserID       *domain.UserID
+	InviteDigest string
+	ReturnTo     string
+	Verifier     string
+	Nonce        string
+	ExpiresAt    time.Time
+}
+
+// OAuthStateStore persists one-time OIDC state.
+type OAuthStateStore interface {
+	CreateOAuthState(ctx context.Context, s OAuthState) error
+	// ConsumeOAuthState atomically marks an unexpired, unused state used
+	// and returns it. ErrNotFound for anything unusable.
+	ConsumeOAuthState(ctx context.Context, stateDigest string, at time.Time) (OAuthState, error)
+}
+
+// GoogleAuthenticator is the OIDC protocol adapter for one installation-
+// wide Google client (D-67). It only builds the redirect and validates the
+// callback; the application owns linking and sessions.
+type GoogleAuthenticator interface {
+	AuthCodeURL(state, nonce, verifier, returnTo string) string
+	Exchange(ctx context.Context, code, verifier, nonce string) (FederatedAssertion, error)
 }
 
 // FederatedAssertion is what an identity provider asserts about a

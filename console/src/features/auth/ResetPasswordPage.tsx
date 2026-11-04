@@ -29,7 +29,17 @@ export function ResetPasswordPage({ purpose }: { purpose: "reset" | "invite" }) 
   const [failure, setFailure] = useState<{ title: string; expired: boolean } | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [google, setGoogle] = useState(false);
   const throttle = useThrottle();
+  useEffect(() => {
+    let live = true;
+    void controller.googleEnabled().then((on) => {
+      if (live) setGoogle(on);
+    });
+    return () => {
+      live = false;
+    };
+  }, [controller]);
 
   useEffect(() => {
     if (window.location.hash) {
@@ -63,6 +73,17 @@ export function ResetPasswordPage({ purpose }: { purpose: "reset" | "invite" }) 
         </p>
       </AuthLayout>
     );
+  }
+
+  async function onGoogle() {
+    setBusy(true);
+    try {
+      window.location.assign(await controller.googleSignInURL("/", secret));
+    } catch (err) {
+      const e = toApiError(err);
+      setFailure({ title: e.message, expired: false });
+      setBusy(false);
+    }
   }
 
   async function onSubmit(ev: FormEvent) {
@@ -130,6 +151,13 @@ export function ResetPasswordPage({ purpose }: { purpose: "reset" | "invite" }) 
           </button>
         </div>
       </form>
+      {purpose === "invite" && google ? (
+        <div className="form-actions">
+          <button type="button" className="button" onClick={() => void onGoogle()} disabled={busy}>
+            Accept with Google instead
+          </button>
+        </div>
+      ) : null}
     </AuthLayout>
   );
 }

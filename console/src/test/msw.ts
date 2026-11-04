@@ -37,6 +37,11 @@ export const OVERVIEW_URLS = {
 export const PLACE_CALL_URL = api("PbxService/PlaceCall");
 export const HANGUP_CALL_URL = api("PbxService/HangupCall");
 export const REGISTRAR_URL = api("PbxService/GetSipRegistrar");
+export const SIGN_IN_OPTIONS_URL = api("AuthService/GetSignInOptions");
+export const BEGIN_GOOGLE_SIGN_IN_URL = api("AuthService/BeginGoogleSignIn");
+export const COMPLETE_GOOGLE_SIGN_IN_URL = api("AuthService/CompleteGoogleSignIn");
+export const BEGIN_GOOGLE_LINK_URL = api("AuthService/BeginGoogleLink");
+export const COMPLETE_GOOGLE_LINK_URL = api("AuthService/CompleteGoogleLink");
 export const INBOUND_URL = api("PbxService/ListInboundNumbers");
 export const EMERGENCY_URL = api("PbxService/GetEmergencyProfile");
 
@@ -51,4 +56,5 @@ export const server = setupServer(
   http.post(INBOUND_URL, () => HttpResponse.json({})),
   http.post(EMERGENCY_URL, () => HttpResponse.json({ countryCode: "CM", countrySet: true, inCatalogue: true, numbers: [{ number: "112", builtIn: true }] })),
   http.post(REGISTRAR_URL, () => HttpResponse.json({ configured: true, host: "localhost", port: 5060, transport: "udp", webrtcUrl: "ws://localhost:8089/ws" })),
+  http.post(SIGN_IN_OPTIONS_URL, () => HttpResponse.json({ googleEnabled: false })),
 );

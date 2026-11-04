@@ -4,6 +4,10 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"reflect"
 	"strings"
 	"sync"
@@ -325,4 +329,57 @@ func TestAccounts_AuthEventsAppendOnly(t *testing.T) {
 			assert.NotRegexp(t, `^(Update|Delete|Set|Remove)`, name, "auth events have no update or delete path")
 		}
 	}
+}
+
+func TestAccounts_GoogleLinksAndOAuthState(t *testing.T) {
+	store, tenant, _ := newStore(t)
+	ctx := context.Background()
+	p := newPrincipal(t, store, tenant, "google-person")
+	user, err := store.GetUserByEmail(ctx, "google-person@example.test")
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, p.UserID)
+
+	link := ports.FederatedIdentity{
+		Issuer: "https://accounts.google.com", Subject: "sub-1", Email: user.Email,
+		UserID: user.ID, LinkedAt: time.Now().UTC(),
+	}
+	require.NoError(t, store.LinkFederatedIdentity(ctx, link))
+	assert.ErrorIs(t, store.LinkFederatedIdentity(ctx, link), ports.ErrAlreadyLinked)
+	got, err := store.UserForFederatedIdentity(ctx, link.Issuer, link.Subject)
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, got)
+	byUser, err := store.FederatedIdentityForUser(ctx, link.Issuer, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "sub-1", byUser.Subject)
+
+	raw, digest, err := applicationSecret()
+	require.NoError(t, err)
+	_ = raw
+	require.NoError(t, store.CreateOAuthState(ctx, ports.OAuthState{
+		StateDigest: digest, Purpose: ports.OAuthStateSignIn, ReturnTo: "/calls",
+		Verifier: "verifier", Nonce: "nonce", ExpiresAt: time.Now().Add(5 * time.Minute),
+	}))
+	st, err := store.ConsumeOAuthState(ctx, digest, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, ports.OAuthStateSignIn, st.Purpose)
+	_, err = store.ConsumeOAuthState(ctx, digest, time.Now())
+	assert.ErrorIs(t, err, ports.ErrNotFound, "state is single-use")
+
+	_, expired, _ := applicationSecret()
+	require.NoError(t, store.CreateOAuthState(ctx, ports.OAuthState{
+		StateDigest: expired, Purpose: ports.OAuthStateSignIn, ReturnTo: "/",
+		Verifier: "v", Nonce: "n", ExpiresAt: time.Now().Add(-time.Minute),
+	}))
+	_, err = store.ConsumeOAuthState(ctx, expired, time.Now())
+	assert.ErrorIs(t, err, ports.ErrNotFound, "an expired state cannot be used")
+}
+
+func applicationSecret() (raw, digest string, err error) {
+	b := make([]byte, 32)
+	if _, err = rand.Read(b); err != nil {
+		return "", "", err
+	}
+	raw = base64.RawURLEncoding.EncodeToString(b)
+	sum := sha256.Sum256([]byte(raw))
+	return raw, hex.EncodeToString(sum[:]), nil
 }

@@ -52,6 +52,21 @@ const (
 	// AuthServiceCompletePasswordResetProcedure is the fully-qualified name of the AuthService's
 	// CompletePasswordReset RPC.
 	AuthServiceCompletePasswordResetProcedure = "/atsapbx.v1.AuthService/CompletePasswordReset"
+	// AuthServiceGetSignInOptionsProcedure is the fully-qualified name of the AuthService's
+	// GetSignInOptions RPC.
+	AuthServiceGetSignInOptionsProcedure = "/atsapbx.v1.AuthService/GetSignInOptions"
+	// AuthServiceBeginGoogleSignInProcedure is the fully-qualified name of the AuthService's
+	// BeginGoogleSignIn RPC.
+	AuthServiceBeginGoogleSignInProcedure = "/atsapbx.v1.AuthService/BeginGoogleSignIn"
+	// AuthServiceCompleteGoogleSignInProcedure is the fully-qualified name of the AuthService's
+	// CompleteGoogleSignIn RPC.
+	AuthServiceCompleteGoogleSignInProcedure = "/atsapbx.v1.AuthService/CompleteGoogleSignIn"
+	// AuthServiceBeginGoogleLinkProcedure is the fully-qualified name of the AuthService's
+	// BeginGoogleLink RPC.
+	AuthServiceBeginGoogleLinkProcedure = "/atsapbx.v1.AuthService/BeginGoogleLink"
+	// AuthServiceCompleteGoogleLinkProcedure is the fully-qualified name of the AuthService's
+	// CompleteGoogleLink RPC.
+	AuthServiceCompleteGoogleLinkProcedure = "/atsapbx.v1.AuthService/CompleteGoogleLink"
 )
 
 // AuthServiceClient is a client for the atsapbx.v1.AuthService service.
@@ -78,6 +93,24 @@ type AuthServiceClient interface {
 	// CompletePasswordReset redeems a reset or invitation link's secret,
 	// sets the password, and ends every session of the person.
 	CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error)
+	// GetSignInOptions reports installation-wide sign-in methods that do
+	// not depend on an email, so the console can offer "Sign in with
+	// Google" before one is typed (D-67).
+	GetSignInOptions(context.Context, *connect.Request[v1.GetSignInOptionsRequest]) (*connect.Response[v1.GetSignInOptionsResponse], error)
+	// BeginGoogleSignIn returns the Google redirect URL. invite_secret, when
+	// set, makes the callback accept the invitation instead of only signing
+	// in (D-67).
+	BeginGoogleSignIn(context.Context, *connect.Request[v1.BeginGoogleSignInRequest]) (*connect.Response[v1.BeginGoogleSignInResponse], error)
+	// CompleteGoogleSignIn exchanges the callback code, verifies the ID
+	// token, and starts the linked person's session. An unlinked account is
+	// refused like a wrong password.
+	CompleteGoogleSignIn(context.Context, *connect.Request[v1.CompleteGoogleSignInRequest]) (*connect.Response[v1.SignInResponse], error)
+	// BeginGoogleLink starts linking Google to the signed-in person after
+	// the current password is re-entered (D-67).
+	BeginGoogleLink(context.Context, *connect.Request[v1.BeginGoogleLinkRequest]) (*connect.Response[v1.BeginGoogleLinkResponse], error)
+	// CompleteGoogleLink finishes that link. It does not start a session:
+	// the caller is already signed in.
+	CompleteGoogleLink(context.Context, *connect.Request[v1.CompleteGoogleLinkRequest]) (*connect.Response[v1.CompleteGoogleLinkResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the atsapbx.v1.AuthService service. By default, it
@@ -133,6 +166,36 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("CompletePasswordReset")),
 			connect.WithClientOptions(opts...),
 		),
+		getSignInOptions: connect.NewClient[v1.GetSignInOptionsRequest, v1.GetSignInOptionsResponse](
+			httpClient,
+			baseURL+AuthServiceGetSignInOptionsProcedure,
+			connect.WithSchema(authServiceMethods.ByName("GetSignInOptions")),
+			connect.WithClientOptions(opts...),
+		),
+		beginGoogleSignIn: connect.NewClient[v1.BeginGoogleSignInRequest, v1.BeginGoogleSignInResponse](
+			httpClient,
+			baseURL+AuthServiceBeginGoogleSignInProcedure,
+			connect.WithSchema(authServiceMethods.ByName("BeginGoogleSignIn")),
+			connect.WithClientOptions(opts...),
+		),
+		completeGoogleSignIn: connect.NewClient[v1.CompleteGoogleSignInRequest, v1.SignInResponse](
+			httpClient,
+			baseURL+AuthServiceCompleteGoogleSignInProcedure,
+			connect.WithSchema(authServiceMethods.ByName("CompleteGoogleSignIn")),
+			connect.WithClientOptions(opts...),
+		),
+		beginGoogleLink: connect.NewClient[v1.BeginGoogleLinkRequest, v1.BeginGoogleLinkResponse](
+			httpClient,
+			baseURL+AuthServiceBeginGoogleLinkProcedure,
+			connect.WithSchema(authServiceMethods.ByName("BeginGoogleLink")),
+			connect.WithClientOptions(opts...),
+		),
+		completeGoogleLink: connect.NewClient[v1.CompleteGoogleLinkRequest, v1.CompleteGoogleLinkResponse](
+			httpClient,
+			baseURL+AuthServiceCompleteGoogleLinkProcedure,
+			connect.WithSchema(authServiceMethods.ByName("CompleteGoogleLink")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -145,6 +208,11 @@ type authServiceClient struct {
 	changePassword        *connect.Client[v1.ChangePasswordRequest, v1.ChangePasswordResponse]
 	requestPasswordReset  *connect.Client[v1.RequestPasswordResetRequest, v1.RequestPasswordResetResponse]
 	completePasswordReset *connect.Client[v1.CompletePasswordResetRequest, v1.CompletePasswordResetResponse]
+	getSignInOptions      *connect.Client[v1.GetSignInOptionsRequest, v1.GetSignInOptionsResponse]
+	beginGoogleSignIn     *connect.Client[v1.BeginGoogleSignInRequest, v1.BeginGoogleSignInResponse]
+	completeGoogleSignIn  *connect.Client[v1.CompleteGoogleSignInRequest, v1.SignInResponse]
+	beginGoogleLink       *connect.Client[v1.BeginGoogleLinkRequest, v1.BeginGoogleLinkResponse]
+	completeGoogleLink    *connect.Client[v1.CompleteGoogleLinkRequest, v1.CompleteGoogleLinkResponse]
 }
 
 // DiscoverSignIn calls atsapbx.v1.AuthService.DiscoverSignIn.
@@ -182,6 +250,31 @@ func (c *authServiceClient) CompletePasswordReset(ctx context.Context, req *conn
 	return c.completePasswordReset.CallUnary(ctx, req)
 }
 
+// GetSignInOptions calls atsapbx.v1.AuthService.GetSignInOptions.
+func (c *authServiceClient) GetSignInOptions(ctx context.Context, req *connect.Request[v1.GetSignInOptionsRequest]) (*connect.Response[v1.GetSignInOptionsResponse], error) {
+	return c.getSignInOptions.CallUnary(ctx, req)
+}
+
+// BeginGoogleSignIn calls atsapbx.v1.AuthService.BeginGoogleSignIn.
+func (c *authServiceClient) BeginGoogleSignIn(ctx context.Context, req *connect.Request[v1.BeginGoogleSignInRequest]) (*connect.Response[v1.BeginGoogleSignInResponse], error) {
+	return c.beginGoogleSignIn.CallUnary(ctx, req)
+}
+
+// CompleteGoogleSignIn calls atsapbx.v1.AuthService.CompleteGoogleSignIn.
+func (c *authServiceClient) CompleteGoogleSignIn(ctx context.Context, req *connect.Request[v1.CompleteGoogleSignInRequest]) (*connect.Response[v1.SignInResponse], error) {
+	return c.completeGoogleSignIn.CallUnary(ctx, req)
+}
+
+// BeginGoogleLink calls atsapbx.v1.AuthService.BeginGoogleLink.
+func (c *authServiceClient) BeginGoogleLink(ctx context.Context, req *connect.Request[v1.BeginGoogleLinkRequest]) (*connect.Response[v1.BeginGoogleLinkResponse], error) {
+	return c.beginGoogleLink.CallUnary(ctx, req)
+}
+
+// CompleteGoogleLink calls atsapbx.v1.AuthService.CompleteGoogleLink.
+func (c *authServiceClient) CompleteGoogleLink(ctx context.Context, req *connect.Request[v1.CompleteGoogleLinkRequest]) (*connect.Response[v1.CompleteGoogleLinkResponse], error) {
+	return c.completeGoogleLink.CallUnary(ctx, req)
+}
+
 // AuthServiceHandler is an implementation of the atsapbx.v1.AuthService service.
 type AuthServiceHandler interface {
 	// DiscoverSignIn returns how an email signs in: a password today, or
@@ -206,6 +299,24 @@ type AuthServiceHandler interface {
 	// CompletePasswordReset redeems a reset or invitation link's secret,
 	// sets the password, and ends every session of the person.
 	CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error)
+	// GetSignInOptions reports installation-wide sign-in methods that do
+	// not depend on an email, so the console can offer "Sign in with
+	// Google" before one is typed (D-67).
+	GetSignInOptions(context.Context, *connect.Request[v1.GetSignInOptionsRequest]) (*connect.Response[v1.GetSignInOptionsResponse], error)
+	// BeginGoogleSignIn returns the Google redirect URL. invite_secret, when
+	// set, makes the callback accept the invitation instead of only signing
+	// in (D-67).
+	BeginGoogleSignIn(context.Context, *connect.Request[v1.BeginGoogleSignInRequest]) (*connect.Response[v1.BeginGoogleSignInResponse], error)
+	// CompleteGoogleSignIn exchanges the callback code, verifies the ID
+	// token, and starts the linked person's session. An unlinked account is
+	// refused like a wrong password.
+	CompleteGoogleSignIn(context.Context, *connect.Request[v1.CompleteGoogleSignInRequest]) (*connect.Response[v1.SignInResponse], error)
+	// BeginGoogleLink starts linking Google to the signed-in person after
+	// the current password is re-entered (D-67).
+	BeginGoogleLink(context.Context, *connect.Request[v1.BeginGoogleLinkRequest]) (*connect.Response[v1.BeginGoogleLinkResponse], error)
+	// CompleteGoogleLink finishes that link. It does not start a session:
+	// the caller is already signed in.
+	CompleteGoogleLink(context.Context, *connect.Request[v1.CompleteGoogleLinkRequest]) (*connect.Response[v1.CompleteGoogleLinkResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -257,6 +368,36 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("CompletePasswordReset")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceGetSignInOptionsHandler := connect.NewUnaryHandler(
+		AuthServiceGetSignInOptionsProcedure,
+		svc.GetSignInOptions,
+		connect.WithSchema(authServiceMethods.ByName("GetSignInOptions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceBeginGoogleSignInHandler := connect.NewUnaryHandler(
+		AuthServiceBeginGoogleSignInProcedure,
+		svc.BeginGoogleSignIn,
+		connect.WithSchema(authServiceMethods.ByName("BeginGoogleSignIn")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceCompleteGoogleSignInHandler := connect.NewUnaryHandler(
+		AuthServiceCompleteGoogleSignInProcedure,
+		svc.CompleteGoogleSignIn,
+		connect.WithSchema(authServiceMethods.ByName("CompleteGoogleSignIn")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceBeginGoogleLinkHandler := connect.NewUnaryHandler(
+		AuthServiceBeginGoogleLinkProcedure,
+		svc.BeginGoogleLink,
+		connect.WithSchema(authServiceMethods.ByName("BeginGoogleLink")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceCompleteGoogleLinkHandler := connect.NewUnaryHandler(
+		AuthServiceCompleteGoogleLinkProcedure,
+		svc.CompleteGoogleLink,
+		connect.WithSchema(authServiceMethods.ByName("CompleteGoogleLink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/atsapbx.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthServiceDiscoverSignInProcedure:
@@ -273,6 +414,16 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceRequestPasswordResetHandler.ServeHTTP(w, r)
 		case AuthServiceCompletePasswordResetProcedure:
 			authServiceCompletePasswordResetHandler.ServeHTTP(w, r)
+		case AuthServiceGetSignInOptionsProcedure:
+			authServiceGetSignInOptionsHandler.ServeHTTP(w, r)
+		case AuthServiceBeginGoogleSignInProcedure:
+			authServiceBeginGoogleSignInHandler.ServeHTTP(w, r)
+		case AuthServiceCompleteGoogleSignInProcedure:
+			authServiceCompleteGoogleSignInHandler.ServeHTTP(w, r)
+		case AuthServiceBeginGoogleLinkProcedure:
+			authServiceBeginGoogleLinkHandler.ServeHTTP(w, r)
+		case AuthServiceCompleteGoogleLinkProcedure:
+			authServiceCompleteGoogleLinkHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -308,4 +459,24 @@ func (UnimplementedAuthServiceHandler) RequestPasswordReset(context.Context, *co
 
 func (UnimplementedAuthServiceHandler) CompletePasswordReset(context.Context, *connect.Request[v1.CompletePasswordResetRequest]) (*connect.Response[v1.CompletePasswordResetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.AuthService.CompletePasswordReset is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) GetSignInOptions(context.Context, *connect.Request[v1.GetSignInOptionsRequest]) (*connect.Response[v1.GetSignInOptionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.AuthService.GetSignInOptions is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) BeginGoogleSignIn(context.Context, *connect.Request[v1.BeginGoogleSignInRequest]) (*connect.Response[v1.BeginGoogleSignInResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.AuthService.BeginGoogleSignIn is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) CompleteGoogleSignIn(context.Context, *connect.Request[v1.CompleteGoogleSignInRequest]) (*connect.Response[v1.SignInResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.AuthService.CompleteGoogleSignIn is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) BeginGoogleLink(context.Context, *connect.Request[v1.BeginGoogleLinkRequest]) (*connect.Response[v1.BeginGoogleLinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.AuthService.BeginGoogleLink is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) CompleteGoogleLink(context.Context, *connect.Request[v1.CompleteGoogleLinkRequest]) (*connect.Response[v1.CompleteGoogleLinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.AuthService.CompleteGoogleLink is not implemented"))
 }

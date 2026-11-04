@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -23,6 +24,7 @@ import (
 	"atsap-api/internal/identity/application"
 	"atsap-api/internal/identity/domain"
 	"atsap-api/internal/identity/memstore"
+	"atsap-api/internal/identity/ports"
 	"atsap-api/internal/identity/rpc"
 )
 
@@ -371,4 +373,92 @@ func TestSourceResolver(t *testing.T) {
 	assert.Equal(t, []netip.Prefix{netip.MustParsePrefix("192.0.2.1/32")}, one)
 	_, err = rpc.ParseTrustedProxies("not-an-address")
 	assert.Error(t, err)
+}
+
+func TestGoogle_SignInOptionsAndDisabledRefusal(t *testing.T) {
+	e := newAuthEnv(t)
+	ctx := context.Background()
+
+	opts, err := e.auth.GetSignInOptions(ctx, connect.NewRequest(&atsapbxv1.GetSignInOptionsRequest{}))
+	require.NoError(t, err)
+	assert.False(t, opts.Msg.GetGoogleEnabled(), "no Google client is configured in this env")
+
+	_, err = e.auth.BeginGoogleSignIn(ctx, connect.NewRequest(&atsapbxv1.BeginGoogleSignInRequest{ReturnTo: "/"}))
+	var ce *connect.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, connect.CodeFailedPrecondition, ce.Code())
+
+	for _, p := range []string{
+		atsapbxv1connect.AuthServiceGetSignInOptionsProcedure,
+		atsapbxv1connect.AuthServiceBeginGoogleSignInProcedure,
+		atsapbxv1connect.AuthServiceCompleteGoogleSignInProcedure,
+	} {
+		assert.Contains(t, rpc.AuthPublicProcedures, p, "Google entry points are reachable before a session exists")
+	}
+	assert.NotContains(t, rpc.AuthPublicProcedures, atsapbxv1connect.AuthServiceBeginGoogleLinkProcedure)
+	assert.NotContains(t, rpc.AuthPublicProcedures, atsapbxv1connect.AuthServiceCompleteGoogleLinkProcedure)
+}
+
+type rpcFakeGoogle struct {
+	assertion ports.FederatedAssertion
+}
+
+func (f *rpcFakeGoogle) AuthCodeURL(state, nonce, verifier, _ string) string {
+	return "https://accounts.example.test/auth?state=" + state + "&nonce=" + nonce + "&verifier=" + verifier
+}
+func (f *rpcFakeGoogle) Exchange(context.Context, string, string, string) (ports.FederatedAssertion, error) {
+	return f.assertion, nil
+}
+
+func googleState(t *testing.T, redirect string) string {
+	t.Helper()
+	u, err := url.Parse(redirect)
+	require.NoError(t, err)
+	state := u.Query().Get("state")
+	require.NotEmpty(t, state)
+	return state
+}
+
+func TestGoogle_RPCsStartSessionAndLink(t *testing.T) {
+	e := newAuthEnv(t)
+	tenant := e.seedTenant(t, "Acme")
+	ana := e.seedUser(t, tenant, "ana", "correct horse battery", "AGENT", "")
+	g := &rpcFakeGoogle{assertion: ports.FederatedAssertion{
+		Issuer: "https://accounts.example.test", Subject: "google-sub", Email: "ana@example.test", EmailVerified: true,
+	}}
+	svc := e.svc.WithGoogle(g, "https://accounts.example.test")
+	h := rpc.NewAuthHandler(svc, rpc.SourceResolver{}, false)
+	ctx := context.Background()
+
+	opts, err := h.GetSignInOptions(ctx, connect.NewRequest(&atsapbxv1.GetSignInOptionsRequest{}))
+	require.NoError(t, err)
+	assert.True(t, opts.Msg.GetGoogleEnabled())
+
+	begin, err := h.BeginGoogleSignIn(ctx, connect.NewRequest(&atsapbxv1.BeginGoogleSignInRequest{ReturnTo: "/"}))
+	require.NoError(t, err)
+	state := googleState(t, begin.Msg.GetRedirectUrl())
+
+	// Unlinked: the same neutral refusal as a wrong password.
+	_, err = h.CompleteGoogleSignIn(ctx, connect.NewRequest(&atsapbxv1.CompleteGoogleSignInRequest{Code: "c", State: state}))
+	requireCode(t, err, connect.CodeUnauthenticated)
+
+	// Link the account from the authenticated account context.
+	linkBegin, err := h.BeginGoogleLink(ana.ctx, connect.NewRequest(&atsapbxv1.BeginGoogleLinkRequest{CurrentPassword: "correct horse battery", ReturnTo: "/account"}))
+	require.NoError(t, err)
+	linked, err := h.CompleteGoogleLink(ana.ctx, connect.NewRequest(&atsapbxv1.CompleteGoogleLinkRequest{
+		Code: "c", State: googleState(t, linkBegin.Msg.GetRedirectUrl()),
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "ana@example.test", linked.Msg.GetEmail())
+
+	// Now sign-in succeeds and sets the normal session cookie.
+	signBegin, err := h.BeginGoogleSignIn(ctx, connect.NewRequest(&atsapbxv1.BeginGoogleSignInRequest{ReturnTo: "/"}))
+	require.NoError(t, err)
+	signed, err := h.CompleteGoogleSignIn(ctx, connect.NewRequest(&atsapbxv1.CompleteGoogleSignInRequest{
+		Code: "c", State: googleState(t, signBegin.Msg.GetRedirectUrl()),
+	}))
+	require.NoError(t, err)
+	c := cookieFrom(t, signed.Header())
+	assert.Equal(t, rpc.RefreshCookie, c.Name)
+	require.NotNil(t, signed.Msg.GetAccess())
 }

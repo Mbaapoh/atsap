@@ -2859,6 +2859,56 @@ Phase A; webhooks remain LLD-05.
 
 ---
 
+**D-83 · "Sign in with Google" ships as generic OIDC with an
+installation-wide client, one-time state, PKCE and explicit linking
+(2026-11-04).**
+
+**Decision:** Implement D-67 with `coreos/go-oidc/v3` and
+`golang.org/x/oauth2` (the dependencies D-67 named), one installation-
+wide Google client configured by `GOOGLE_OIDC_CLIENT_ID`,
+`GOOGLE_OIDC_CLIENT_SECRET`, `GOOGLE_OIDC_REDIRECT_URL` and
+`GOOGLE_OIDC_ISSUER`.
+- **The client secret lives in the deployment's encrypted secret store**,
+  not in a database column and never in git or a log. It is installation
+  configuration, not tenant data.
+- Each authorization request carries a 256-bit state, a PKCE verifier and
+  a nonce. Only the state digest is indexed; state is single-use and
+  expires in ten minutes. The ID token is verified for signature,
+  issuer, audience, expiry, nonce and verified email.
+- Links are stored in `federated_identities` by `(issuer, subject)` and
+  found only that way. Sign-in never creates a person.
+- An invitation links only when Google's verified email equals the
+  invited email, and the invitation is not consumed on a mismatch. A
+  signed-in person links from the account screen after re-entering the
+  current password.
+- Consumer mailbox domains remain unclaimable.
+- Discovery failure at startup disables Google with a logged error; it
+  never takes password sign-in down.
+
+**Context:** D-67 chose Google and named the protocol libraries. The
+implementation must be testable without Google credentials, and must not
+turn a normal sign-in into an account-existence oracle.
+
+**Alternatives:**
+- *Store the client secret in Postgres.* Rejected: it is one
+  installation-wide deployment secret, already handled by the secret
+  store; a database copy adds another place to leak it.
+- *Verify only the ID token signature.* Rejected: nonce and PKCE bind
+  the response to this browser's request.
+- *Consume the invitation before comparing email.* Rejected: one wrong
+  Google account would burn the invite.
+
+**Consequences:** Live Google cannot be exercised in CI; the adapter is
+proven against a local OIDC issuer and a real Google smoke test stays on
+the release checklist. A password-less Google user's recovery is the
+administrator reset, and an owner who leaves must be removed by the
+administrator (D-67).
+
+**Related Decisions:** D-61, D-62, D-63, D-66, D-67, D-68
+**Traceability:** LLD-02 §4, §8, §9; change `identity-oidc-google`
+
+---
+
 **D-82 · Toll fraud is confined by a per-extension outbound class, with
 NATIONAL as the default and "+" as the international signal
 (2026-11-03).**

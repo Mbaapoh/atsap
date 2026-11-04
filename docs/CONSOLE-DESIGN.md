@@ -156,8 +156,11 @@ telephony configuration before activation.
 
 Use one neutral failure message for an invalid password, unknown email, or
 disabled account. Respect server-provided throttling and `Retry-After`.
-Do not show Google sign-in until `identity-oidc-google` supplies a
-consumer-ready public API; D-67 is a decision, not a delivered button.
+When `GetSignInOptions` reports Google, show **Continue with Google**
+before and after the email step (D-67). The browser leaves for Google and
+returns to `/auth/google`; the server starts the session and sets the
+normal cookie. An unlinked Google account gets the same neutral failure
+as a wrong password.
 
 ### Licence status and activation
 
@@ -212,7 +215,12 @@ history in Phase A.
 
 ### Extensions
 
-List extension number, display name, device type, and registration status.
+List extension number, display name, device type, outbound class, and
+registration status. Each row shows its **Outbound** class; Add and Edit
+offer Internal only, National (the default) and International. Emergency
+numbers are never blocked by the class. National means numbers dialled
+without a leading `+`; international is the `+` form (D-82).
+
 Registration is device state, not a configuration toggle:
 
 - **Registered:** a device has a current accepted registration.
@@ -332,14 +340,11 @@ transfer, park and conference are Phase B. See D-81.
 
 ### Account
 
-Allow the signed-in user to change their password and sign out. Password change
-states that other sessions will end. This page does not manage roles,
-extensions, or external identities in Phase A.
-
-Each extension row shows its **Outbound** class. Add and Edit offer
-Internal only, National (the default) and International; emergency
-numbers are never blocked by the class. National means numbers dialled
-without a leading `+`; international is the `+` form (D-82).
+Allow the signed-in user to change their password, link a Google account
+and sign out. Password change states that other sessions will end.
+Linking asks for the current password, then leaves for Google; the
+callback returns to `/account` (D-67). This page does not manage roles or
+extensions in Phase A.
 
 ## React + TypeScript implementation guide
 

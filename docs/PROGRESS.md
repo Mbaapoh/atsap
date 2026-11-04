@@ -9,7 +9,10 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-04, after `pbx-outbound-classes`: every
+**Last updated:** 2026-11-04, after `identity-oidc-google`: one
+installation-wide Google client (D-83), linked only to an existing
+person, with discovery, invitation and account-screen linking, one-time
+state, PKCE and nonce. Before that, `pbx-outbound-classes`: every
 extension holds INTERNAL, NATIONAL or INTERNATIONAL; a new one is
 NATIONAL, `+` is the international signal, placement refuses before the
 engine, and emergency is exempt (D-82). Before that, `console-browser-phone`: an
@@ -34,8 +37,9 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** `identity-oidc-google` (Sign in with Google). AC-08.2
-anomaly detection and spend caps remain `compliance` work. The Asterisk image scan
+**Next work:** the production medium/high gaps: TURN for browser media,
+AC-08.2 anomaly detection and spend caps, then MFA before GA. Phase A's
+pre-pilot list is complete. The Asterisk image scan
 remains owner-deferred.
 
 ## Keeping it current
@@ -56,7 +60,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 19 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling, T-6 health with alerts and outbound classes | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 20 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling, T-6 health with alerts, outbound classes and Google sign-in | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -126,9 +130,12 @@ and §5):
 - ~~**Browser calling**~~ **done 2026-11-03** (`console-browser-phone`,
   D-81): SIP.js over WS on the rig / WSS in production, a WEBRTC
   extension, browser dial/answer/mute/hang up.
-8. **Toll-fraud protection**: enforce outbound destination classes.
-9. **`identity-oidc-google`**: Sign in with Google, Gmail and Workspace
-   ([D-67](DECISIONS.md)).
+8. ~~**Toll-fraud protection**~~ **done 2026-11-04**
+   (`pbx-outbound-classes`, D-82): INTERNAL/NATIONAL/INTERNATIONAL, the
+   NATIONAL default, and refusal before the engine; emergency exempt.
+9. ~~**`identity-oidc-google`**~~ **done 2026-11-04** (D-83): one
+   installation-wide Google client, linked-only sign-in, invitation and
+   account-screen linking.
 
 MFA (`identity-mfa`) is Phase B, before GA (D-66 as amended).
 
@@ -193,6 +200,7 @@ that link.
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 | 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
 | 2026-11-03 | `pbx-trunk-health-thresholds` | 12/12 | U I E A; T-6 thresholds and recovery, `trunk_health_samples`, BR-08 email alert in Mailpit (D-80); full pbx integration, full Go e2e, console-check, three phone UATs |
+| 2026-11-04 | `identity-oidc-google` | 10/10 | U I E C; installation-wide Google OIDC, linked-only sign-in, invitation and account linking, single-use state/PKCE/nonce (D-83); full integration, full Go e2e, console-check and phone UATs, docs and SCA. Live Google smoke stays in UAT |
 | 2026-11-04 | `pbx-outbound-classes` | 10/10 | U I E A; per-extension INTERNAL/NATIONAL/INTERNATIONAL, NATIONAL default, `+` classification, refusal before the engine, emergency exempt (D-82); full pbx integration, full Go e2e, console-check and UAT, docs and SCA |
 | 2026-11-03 | `console-browser-phone` | 16/16 | U I E A and the console tiers; WEBRTC projection and migration 0018, SIP.js browser phone, two-browser rig call, full Go e2e, console-check, three phone UATs (D-81) |
 
@@ -211,6 +219,7 @@ design; *accepted* = no fix planned.
 
 | Gap | Where it came from | Severity |
 |---|---|---|
+| Live Google sign-in is not automated (no client secret/account in CI) | identity-oidc-google G1 | **Medium** — run `docs/uat/google-sign-in.md` before a release |
 | AC-08.2 anomaly detection (a high-volume, high-cost fraud pattern outside business hours) is not built; outbound classes are the configuration control only | pbx-outbound-classes G1 | **Medium** — `compliance` spend caps and detection |
 | No TURN relay for browser media; a browser behind a symmetric NAT cannot connect | console-browser-phone G1 | **High** — production before a NAT pilot: add coturn and configure ICE |
 | The browser phone needs the SIP password per session; no user↔extension ownership | console-browser-phone G2 | Accepted: Phase B `pbx-extension-assignment` |
@@ -224,7 +233,7 @@ design; *accepted* = no fix planned.
 | ~~Before activation (Setup), tenant and extension caps read 0 = unlimited~~ | license-provisioning-enforcement | Closed: `phase-a-hardening` task 3.1 (D-72) |
 | `ListCalls`/`GetCall` have no role check (any user of the tenant can read its calls) | console-apis-phase-a D5, G2 | Medium — B (LLD-09): arrives with LLD-09 |
 | ~~`GetCall` returns `Participant.endpoint_uri` (`PJSIP/e_…`), an engine identifier~~ | console-apis-phase-a G3 | Closed: `phase-a-hardening` task 2.1 (deprecated, never filled); person-aware participant fields come with `pbx-extension-assignment` (D-65) |
-| No external sign-in yet; providers can be configured only in the database | D-63, D-67, identity G1 | Planned: `identity-oidc-google` (Gmail and Workspace) before a pilot; company-domain SSO later |
+| Google is the only external sign-in; company-domain SSO and provider administration are not built | D-63, D-67 | Planned: `identity-oidc` on the same OIDC adapter |
 | No RPC for a person to change their own email or display name | identity G2 | Low: with the console's account screen |
 | The per-address login throttle is shared by everyone behind one address | identity G4 | Accepted (D-64): runs reset after 15 quiet minutes |
 | No person ↔ extension link: call history shows numbers and extension names, not people; no per-agent view | D-65 | Phase B by design: `pbx-extension-assignment` |

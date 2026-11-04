@@ -218,3 +218,10 @@ func TestTicketLifetimes(t *testing.T) {
 	assert.Equal(t, 30*time.Minute, TicketReset.Lifetime())
 	assert.Equal(t, 72*time.Hour, TicketInvite.Lifetime())
 }
+
+func TestPublicEmailDomainsCannotBeClaimed(t *testing.T) {
+	for _, d := range []string{"gmail.com", "GMAIL.com", "googlemail.com", "outlook.com", "yahoo.co.uk"} {
+		assert.True(t, IsPublicEmailDomain(d), d)
+	}
+	assert.False(t, IsPublicEmailDomain("acme.com"))
+}

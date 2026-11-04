@@ -1,6 +1,14 @@
 <!-- OpenSpec: TRD-HLD-07 -->
 # Deployment, Packaging & Lifecycle
 
+**Google sign-in (D-67, D-83).** The deployment supplies
+`GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` and
+`GOOGLE_OIDC_REDIRECT_URL` (the console's `/auth/google` callback) from
+its secret store; `GOOGLE_OIDC_ISSUER` defaults to
+`https://accounts.google.com`. With any missing, Google is disabled and
+password sign-in is unaffected. The secret is never committed or logged;
+the redirect URL must be registered exactly with Google and be HTTPS.
+
 ## 1. Container Topology & Network Segmentation
 
 AtsaPBX is distributed as standard container images orchestrated via Docker Compose (for single-node and partner edge sites) or Ansible (for production cluster management).

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import { ApiError, toApiError } from "../../api/errors";
 import { Alert } from "../../components/Alert";
@@ -26,7 +26,17 @@ export function SignInPage() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [google, setGoogle] = useState(false);
   const throttle = useThrottle();
+  useEffect(() => {
+    let live = true;
+    void controller.googleEnabled().then((on) => {
+      if (live) setGoogle(on);
+    });
+    return () => {
+      live = false;
+    };
+  }, [controller]);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   if (session.status === "restoring") {
@@ -80,6 +90,17 @@ export function SignInPage() {
       passwordRef.current?.focus();
     } finally {
       setPassword("");
+      setBusy(false);
+    }
+  }
+
+  async function onGoogle() {
+    setFailure(null);
+    setBusy(true);
+    try {
+      window.location.assign(await controller.googleSignInURL(returnPath(location.state)));
+    } catch (err) {
+      fail(err);
       setBusy(false);
     }
   }
@@ -146,6 +167,13 @@ export function SignInPage() {
             </button>
           </div>
         </form>
+        {google ? (
+          <div className="form-actions">
+            <button type="button" className="button" onClick={() => void onGoogle()} disabled={busy}>
+              Continue with Google
+            </button>
+          </div>
+        ) : null}
         <p className="auth-footer">
           <Link to="/forgot-password">Forgot password?</Link>
         </p>
@@ -174,6 +202,13 @@ export function SignInPage() {
           </button>
         </div>
       </form>
+      {google ? (
+        <div className="form-actions">
+          <button type="button" className="button" onClick={() => void onGoogle()} disabled={busy}>
+            Continue with Google
+          </button>
+        </div>
+      ) : null}
       <p className="auth-footer">
         <Link to="/forgot-password">Forgot password?</Link>
       </p>

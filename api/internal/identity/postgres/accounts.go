@@ -483,6 +483,9 @@ func (s *Store) CreateProvider(ctx context.Context, p domain.IdentityProvider) e
 // ClaimDomain records a claim; the domain is the primary key, so a second
 // provider's claim is refused by the database itself.
 func (s *Store) ClaimDomain(ctx context.Context, c domain.DomainClaim) error {
+	if domain.IsPublicEmailDomain(c.Domain) {
+		return ports.ErrPublicDomain
+	}
 	_, err := s.pool.Unwrap().Exec(ctx, `INSERT INTO identity_provider_domains (domain, provider_id, verified_at)
 		VALUES (lower($1), $2, $3)`, c.Domain, c.ProviderID.String(), c.VerifiedAt)
 	if isUniqueViolation(err) {
@@ -684,4 +687,159 @@ func (s *Store) Clear(ctx context.Context, key string) error {
 		return fmt.Errorf("clear throttle: %w", err)
 	}
 	return nil
+}
+
+// --- federated identities (D-67) ----------------------------------------------
+
+// LinkFederatedIdentity links (issuer, subject) to a person. The unique
+// constraints refuse a second person for the same external account and a
+// second external account for the same person.
+func (s *Store) LinkFederatedIdentity(ctx context.Context, e ports.FederatedIdentity) error {
+	_, err := s.pool.Unwrap().Exec(ctx, `INSERT INTO federated_identities (issuer, subject, user_id, email, linked_at)
+		VALUES ($1, $2, $3, $4, $5)`, e.Issuer, e.Subject, e.UserID.String(), e.Email, e.LinkedAt)
+	if isUniqueViolation(err) {
+		return ports.ErrAlreadyLinked
+	}
+	if err != nil {
+		return fmt.Errorf("link federated identity: %w", err)
+	}
+	return nil
+}
+
+// UserForFederatedIdentity resolves (issuer, subject) to a person.
+func (s *Store) UserForFederatedIdentity(ctx context.Context, issuer, subject string) (domain.UserID, error) {
+	var raw string
+	err := s.pool.Unwrap().QueryRow(ctx, `SELECT user_id FROM federated_identities WHERE issuer = $1 AND subject = $2`,
+		issuer, subject).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserID{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.UserID{}, fmt.Errorf("resolve federated identity: %w", err)
+	}
+	return domain.ParseUserID(raw)
+}
+
+// FederatedIdentityForUser returns the person's link for one issuer.
+func (s *Store) FederatedIdentityForUser(ctx context.Context, issuer string, user domain.UserID) (ports.FederatedIdentity, error) {
+	var e ports.FederatedIdentity
+	var raw string
+	err := s.pool.Unwrap().QueryRow(ctx, `SELECT issuer, subject, email, user_id, linked_at
+		FROM federated_identities WHERE issuer = $1 AND user_id = $2`, issuer, user.String()).
+		Scan(&e.Issuer, &e.Subject, &e.Email, &raw, &e.LinkedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.FederatedIdentity{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return ports.FederatedIdentity{}, fmt.Errorf("read federated identity: %w", err)
+	}
+	if e.UserID, err = domain.ParseUserID(raw); err != nil {
+		return ports.FederatedIdentity{}, err
+	}
+	return e, nil
+}
+
+// --- OIDC state (D-67) --------------------------------------------------------
+
+// CreateOAuthState stores one authorization request's server-side state.
+func (s *Store) CreateOAuthState(ctx context.Context, st ports.OAuthState) error {
+	var user *string
+	if st.UserID != nil {
+		v := st.UserID.String()
+		user = &v
+	}
+	var invite *string
+	if st.InviteDigest != "" {
+		v := st.InviteDigest
+		invite = &v
+	}
+	_, err := s.pool.Unwrap().Exec(ctx, `INSERT INTO oauth_login_states
+		(state_digest, purpose, user_id, invite_digest, return_to, verifier, nonce, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		st.StateDigest, string(st.Purpose), user, invite, st.ReturnTo, st.Verifier, st.Nonce, st.ExpiresAt)
+	if err != nil {
+		return fmt.Errorf("create OAuth state: %w", err)
+	}
+	return nil
+}
+
+// ConsumeOAuthState marks a state used exactly once, if unexpired.
+func (s *Store) ConsumeOAuthState(ctx context.Context, stateDigest string, at time.Time) (ports.OAuthState, error) {
+	var (
+		st      ports.OAuthState
+		purpose string
+		user    *string
+		invite  *string
+	)
+	err := s.pool.Unwrap().QueryRow(ctx, `UPDATE oauth_login_states
+		SET used_at = $2
+		WHERE state_digest = $1 AND used_at IS NULL AND expires_at > $2
+		RETURNING purpose, user_id, invite_digest, return_to, verifier, nonce, expires_at`,
+		stateDigest, at).Scan(&purpose, &user, &invite, &st.ReturnTo, &st.Verifier, &st.Nonce, &st.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.OAuthState{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return ports.OAuthState{}, fmt.Errorf("consume OAuth state: %w", err)
+	}
+	st.StateDigest, st.Purpose = stateDigest, ports.OAuthStatePurpose(purpose)
+	if user != nil {
+		id, err := domain.ParseUserID(*user)
+		if err != nil {
+			return ports.OAuthState{}, err
+		}
+		st.UserID = &id
+	}
+	if invite != nil {
+		st.InviteDigest = *invite
+	}
+	return st, nil
+}
+
+// --- tickets ----------------------------------------------------------------
+
+// TicketUser reads a ticket without consuming it.
+func (s *Store) TicketUser(ctx context.Context, digest string, at time.Time) (domain.UserID, domain.TicketPurpose, error) {
+	var (
+		raw     string
+		purpose string
+	)
+	err := s.pool.Unwrap().QueryRow(ctx, `SELECT user_id, purpose FROM password_reset_tickets
+		WHERE digest = $1 AND used_at IS NULL AND expires_at > $2`, digest, at).Scan(&raw, &purpose)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserID{}, "", ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.UserID{}, "", fmt.Errorf("read ticket: %w", err)
+	}
+	id, err := domain.ParseUserID(raw)
+	if err != nil {
+		return domain.UserID{}, "", err
+	}
+	return id, domain.TicketPurpose(purpose), nil
+}
+
+// ConsumeTicket marks a ticket used without changing a password. It is
+// only reached by an invitation accepted through Google (D-67), which has
+// no password to set.
+func (s *Store) ConsumeTicket(ctx context.Context, digest string, at time.Time) (domain.UserID, domain.TicketPurpose, error) {
+	var (
+		raw     string
+		purpose string
+	)
+	err := s.pool.Unwrap().QueryRow(ctx, `UPDATE password_reset_tickets
+		SET used_at = $2
+		WHERE digest = $1 AND used_at IS NULL AND expires_at > $2
+		RETURNING user_id, purpose`, digest, at).Scan(&raw, &purpose)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserID{}, "", ports.ErrNotFound
+	}
+	if err != nil {
+		return domain.UserID{}, "", fmt.Errorf("consume ticket: %w", err)
+	}
+	id, err := domain.ParseUserID(raw)
+	if err != nil {
+		return domain.UserID{}, "", err
+	}
+	return id, domain.TicketPurpose(purpose), nil
 }

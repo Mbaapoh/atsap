@@ -55,6 +55,14 @@ type Config struct {
 	// ConsoleURL is the console's public base URL, which emailed reset and
 	// invitation links point at (D-64), e.g. https://pbx.example.com.
 	ConsoleURL string
+	// GoogleOIDC configures the installation-wide "Sign in with Google"
+	// client (D-67, D-83). With ClientID, Secret or RedirectURL empty,
+	// Google is disabled; the secret belongs in the deployment's secret
+	// store and is never logged.
+	GoogleOIDCClientID     string
+	GoogleOIDCClientSecret string
+	GoogleOIDCRedirectURL  string
+	GoogleOIDCIssuer       string
 	// SMTPAddr (host:port), SMTPFrom, SMTPUser and SMTPPassword configure
 	// outbound mail. With SMTPAddr empty, mail is not sent and a warning
 	// is logged instead — administrator reset still works without mail.
@@ -160,22 +168,26 @@ func Load() (Config, error) {
 		// "asterisk" is PJSIP's own default realm, so the default here
 		// matches an unconfigured engine rather than silently disagreeing
 		// with one.
-		SIPRealm:           getEnv("SIP_REALM", "asterisk"),
-		SIPTransport:       getEnv("SIP_TRANSPORT", "transport-udp"),
-		SIPWebRTCTransport: getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
-		SIPWebRTCURL:       getEnv("SIP_WEBRTC_URL", ""),
-		SIPPublicHost:      getEnv("SIP_PUBLIC_HOST", ""),
-		SIPPublicTransport: getEnv("SIP_PUBLIC_TRANSPORT", "udp"),
-		LicenseToken:       getEnv("ATSAPBX_LICENSE_TOKEN", ""),
-		JWTPreviousKeysHex: getEnv("ATSAPBX_JWT_PREVIOUS_KEYS", ""),
-		ConsoleURL:         getEnv("ATSAPBX_CONSOLE_URL", "http://localhost:8080"),
-		SMTPAddr:           getEnv("ATSAPBX_SMTP_ADDR", ""),
-		SMTPFrom:           getEnv("ATSAPBX_SMTP_FROM", "AtsaPBX <no-reply@localhost>"),
-		SMTPUser:           getEnv("ATSAPBX_SMTP_USER", ""),
-		SMTPPassword:       getEnv("ATSAPBX_SMTP_PASSWORD", ""),
-		SMTPInsecure:       getEnv("ATSAPBX_SMTP_INSECURE", "") == "true",
-		CookieInsecure:     getEnv("ATSAPBX_COOKIE_INSECURE", "") == "true",
-		TrustedProxies:     getEnv("ATSAPBX_TRUSTED_PROXIES", ""),
+		SIPRealm:               getEnv("SIP_REALM", "asterisk"),
+		SIPTransport:           getEnv("SIP_TRANSPORT", "transport-udp"),
+		SIPWebRTCTransport:     getEnv("SIP_WEBRTC_TRANSPORT", "transport-wss"),
+		SIPWebRTCURL:           getEnv("SIP_WEBRTC_URL", ""),
+		SIPPublicHost:          getEnv("SIP_PUBLIC_HOST", ""),
+		SIPPublicTransport:     getEnv("SIP_PUBLIC_TRANSPORT", "udp"),
+		LicenseToken:           getEnv("ATSAPBX_LICENSE_TOKEN", ""),
+		JWTPreviousKeysHex:     getEnv("ATSAPBX_JWT_PREVIOUS_KEYS", ""),
+		ConsoleURL:             getEnv("ATSAPBX_CONSOLE_URL", "http://localhost:8080"),
+		GoogleOIDCClientID:     getEnv("GOOGLE_OIDC_CLIENT_ID", ""),
+		GoogleOIDCClientSecret: getEnv("GOOGLE_OIDC_CLIENT_SECRET", ""),
+		GoogleOIDCRedirectURL:  getEnv("GOOGLE_OIDC_REDIRECT_URL", ""),
+		GoogleOIDCIssuer:       getEnv("GOOGLE_OIDC_ISSUER", "https://accounts.google.com"),
+		SMTPAddr:               getEnv("ATSAPBX_SMTP_ADDR", ""),
+		SMTPFrom:               getEnv("ATSAPBX_SMTP_FROM", "AtsaPBX <no-reply@localhost>"),
+		SMTPUser:               getEnv("ATSAPBX_SMTP_USER", ""),
+		SMTPPassword:           getEnv("ATSAPBX_SMTP_PASSWORD", ""),
+		SMTPInsecure:           getEnv("ATSAPBX_SMTP_INSECURE", "") == "true",
+		CookieInsecure:         getEnv("ATSAPBX_COOKIE_INSECURE", "") == "true",
+		TrustedProxies:         getEnv("ATSAPBX_TRUSTED_PROXIES", ""),
 	}
 
 	if cfg.ARIPassword == "" {

@@ -50,6 +50,29 @@ service AuthService {
   // CompletePasswordReset redeems a reset or invitation link's secret,
   // sets the password, and ends every session of the person.
   rpc CompletePasswordReset(CompletePasswordResetRequest) returns (CompletePasswordResetResponse);
+
+  // GetSignInOptions reports installation-wide sign-in methods that do
+  // not depend on an email, so the console can offer "Sign in with
+  // Google" before one is typed (D-67).
+  rpc GetSignInOptions(GetSignInOptionsRequest) returns (GetSignInOptionsResponse);
+
+  // BeginGoogleSignIn returns the Google redirect URL. invite_secret, when
+  // set, makes the callback accept the invitation instead of only signing
+  // in (D-67).
+  rpc BeginGoogleSignIn(BeginGoogleSignInRequest) returns (BeginGoogleSignInResponse);
+
+  // CompleteGoogleSignIn exchanges the callback code, verifies the ID
+  // token, and starts the linked person's session. An unlinked account is
+  // refused like a wrong password.
+  rpc CompleteGoogleSignIn(CompleteGoogleSignInRequest) returns (SignInResponse);
+
+  // BeginGoogleLink starts linking Google to the signed-in person after
+  // the current password is re-entered (D-67).
+  rpc BeginGoogleLink(BeginGoogleLinkRequest) returns (BeginGoogleLinkResponse);
+
+  // CompleteGoogleLink finishes that link. It does not start a session:
+  // the caller is already signed in.
+  rpc CompleteGoogleLink(CompleteGoogleLinkRequest) returns (CompleteGoogleLinkResponse);
 }
 
 enum SignInMethod {
@@ -67,6 +90,9 @@ message DiscoverSignInResponse {
   // Set when method is SSO.
   string provider_id = 2;
   string provider_display_name = 3;
+  // Installation-wide Google is configured; shown regardless of email
+  // (D-67).
+  bool google_enabled = 4;
 }
 
 message SignInRequest {
@@ -137,3 +163,43 @@ message CompletePasswordResetRequest {
 }
 
 message CompletePasswordResetResponse {}
+
+message GetSignInOptionsRequest {}
+
+message GetSignInOptionsResponse {
+  bool google_enabled = 1;
+}
+
+message BeginGoogleSignInRequest {
+  // A local console path; an absolute URL is refused.
+  string return_to = 1;
+  // The invitation link's fragment secret, when accepting an invitation.
+  string invite_secret = 2;
+}
+
+message BeginGoogleSignInResponse {
+  string redirect_url = 1;
+}
+
+message CompleteGoogleSignInRequest {
+  string code = 1;
+  string state = 2;
+}
+
+message BeginGoogleLinkRequest {
+  string current_password = 1;
+  string return_to = 2;
+}
+
+message BeginGoogleLinkResponse {
+  string redirect_url = 1;
+}
+
+message CompleteGoogleLinkRequest {
+  string code = 1;
+  string state = 2;
+}
+
+message CompleteGoogleLinkResponse {
+  string email = 1;
+}

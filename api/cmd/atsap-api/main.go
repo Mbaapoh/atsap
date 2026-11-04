@@ -183,7 +183,7 @@ func run() int {
 	// documented concession from LLD-02, made when no wire-level
 	// AuthenticateUser existed to mint the e2e suite a token; it is closed
 	// here (auth-cutover-connectrpc).
-	identitySvc, identityStore, err := newIdentity(cfg, appPool, licenseManager, logger)
+	identitySvc, identityStore, err := newIdentity(ctx, cfg, appPool, licenseManager, logger)
 	if err != nil {
 		logger.Error("failed to start identity", "error", err)
 		return 1

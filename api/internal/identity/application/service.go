@@ -61,6 +61,8 @@ type Stores struct {
 	Events     ports.AuthEventStore
 	Throttle   ports.LoginThrottle
 	Liveness   ports.LivenessReader
+	Federated  ports.FederatedIdentityStore
+	OAuth      ports.OAuthStateStore
 }
 
 // AllStores is one adapter implementing every storage port, as the
@@ -78,35 +80,42 @@ type AllStores interface {
 	ports.AuthEventStore
 	ports.LoginThrottle
 	ports.LivenessReader
+	ports.FederatedIdentityStore
+	ports.OAuthStateStore
 }
 
 // StoresOf fills every port from one adapter.
 func StoresOf(a AllStores) Stores {
 	return Stores{Tenants: a, Principals: a, Bindings: a, APIKeys: a, Audit: a, Users: a, Sessions: a,
-		Tickets: a, Providers: a, Events: a, Throttle: a, Liveness: a}
+		Tickets: a, Providers: a, Events: a, Throttle: a, Liveness: a,
+		Federated: a, OAuth: a}
 }
 
 // Service implements ports.IdentityService, and the console account use
 // cases of revision 2 (accounts.go).
 type Service struct {
-	tenants     ports.TenantStore
-	tenantCap   ports.TenantCap
-	principals  ports.PrincipalStore
-	bindings    ports.RoleBindingStore
-	apiKeys     ports.APIKeyStore
-	audit       ports.AuditStore
-	users       ports.UserStore
-	sessions    ports.SessionStore
-	tickets     ports.ResetTicketStore
-	providers   ports.IdentityProviderStore
-	events      ports.AuthEventStore
-	throttle    ports.LoginThrottle
-	liveness    ports.LivenessReader
-	hasher      *PasswordHasher
-	tokens      *TokenIssuer
-	permissions map[string][]string
-	logger      *slog.Logger
-	now         func() time.Time
+	tenants      ports.TenantStore
+	tenantCap    ports.TenantCap
+	principals   ports.PrincipalStore
+	bindings     ports.RoleBindingStore
+	apiKeys      ports.APIKeyStore
+	audit        ports.AuditStore
+	users        ports.UserStore
+	sessions     ports.SessionStore
+	tickets      ports.ResetTicketStore
+	providers    ports.IdentityProviderStore
+	events       ports.AuthEventStore
+	throttle     ports.LoginThrottle
+	liveness     ports.LivenessReader
+	federated    ports.FederatedIdentityStore
+	oauth        ports.OAuthStateStore
+	google       ports.GoogleAuthenticator
+	googleIssuer string
+	hasher       *PasswordHasher
+	tokens       *TokenIssuer
+	permissions  map[string][]string
+	logger       *slog.Logger
+	now          func() time.Time
 
 	mailer     ports.Mailer
 	consoleURL string
@@ -131,7 +140,8 @@ func NewService(stores Stores, tenantCap ports.TenantCap, hasher *PasswordHasher
 		tenants: stores.Tenants, tenantCap: tenantCap, principals: stores.Principals, bindings: stores.Bindings,
 		apiKeys: stores.APIKeys, audit: stores.Audit, users: stores.Users, sessions: stores.Sessions,
 		tickets: stores.Tickets, providers: stores.Providers, events: stores.Events, throttle: stores.Throttle,
-		liveness: stores.Liveness, hasher: hasher, tokens: tokens,
+		liveness: stores.Liveness, federated: stores.Federated, oauth: stores.OAuth,
+		hasher: hasher, tokens: tokens,
 		permissions: DefaultPermissions, logger: logger, now: time.Now,
 		mailer: logMailer{logger: logger}, policy: domain.DefaultThrottlePolicy, dummyHash: dummy,
 	}

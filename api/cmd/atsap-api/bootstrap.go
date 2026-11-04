@@ -55,7 +55,7 @@ func runBootstrap(cfg config.Config) int {
 	// tenant (zero is unlimited, and every non-zero cap is at least one),
 	// so bootstrap does not consult the licence: a fresh installation is
 	// in Setup and must still be able to create its administrator.
-	svc, store, err := newIdentity(cfg, pool, noTenantCap, logger)
+	svc, store, err := newIdentity(ctx, cfg, pool, noTenantCap, logger)
 	if err != nil {
 		logger.Error("bootstrap failed", "error", err)
 		return 1

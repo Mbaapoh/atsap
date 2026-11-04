@@ -121,8 +121,11 @@ type DiscoverSignInResponse struct {
 	// Set when method is SSO.
 	ProviderId          string `protobuf:"bytes,2,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	ProviderDisplayName string `protobuf:"bytes,3,opt,name=provider_display_name,json=providerDisplayName,proto3" json:"provider_display_name,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Installation-wide Google is configured; shown regardless of email
+	// (D-67).
+	GoogleEnabled bool `protobuf:"varint,4,opt,name=google_enabled,json=googleEnabled,proto3" json:"google_enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DiscoverSignInResponse) Reset() {
@@ -174,6 +177,13 @@ func (x *DiscoverSignInResponse) GetProviderDisplayName() string {
 		return x.ProviderDisplayName
 	}
 	return ""
+}
+
+func (x *DiscoverSignInResponse) GetGoogleEnabled() bool {
+	if x != nil {
+		return x.GoogleEnabled
+	}
+	return false
 }
 
 type SignInRequest struct {
@@ -880,6 +890,428 @@ func (*CompletePasswordResetResponse) Descriptor() ([]byte, []int) {
 	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{15}
 }
 
+type GetSignInOptionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSignInOptionsRequest) Reset() {
+	*x = GetSignInOptionsRequest{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSignInOptionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSignInOptionsRequest) ProtoMessage() {}
+
+func (x *GetSignInOptionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSignInOptionsRequest.ProtoReflect.Descriptor instead.
+func (*GetSignInOptionsRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{16}
+}
+
+type GetSignInOptionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GoogleEnabled bool                   `protobuf:"varint,1,opt,name=google_enabled,json=googleEnabled,proto3" json:"google_enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSignInOptionsResponse) Reset() {
+	*x = GetSignInOptionsResponse{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSignInOptionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSignInOptionsResponse) ProtoMessage() {}
+
+func (x *GetSignInOptionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSignInOptionsResponse.ProtoReflect.Descriptor instead.
+func (*GetSignInOptionsResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetSignInOptionsResponse) GetGoogleEnabled() bool {
+	if x != nil {
+		return x.GoogleEnabled
+	}
+	return false
+}
+
+type BeginGoogleSignInRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// A local console path; an absolute URL is refused.
+	ReturnTo string `protobuf:"bytes,1,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	// The invitation link's fragment secret, when accepting an invitation.
+	InviteSecret  string `protobuf:"bytes,2,opt,name=invite_secret,json=inviteSecret,proto3" json:"invite_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginGoogleSignInRequest) Reset() {
+	*x = BeginGoogleSignInRequest{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginGoogleSignInRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginGoogleSignInRequest) ProtoMessage() {}
+
+func (x *BeginGoogleSignInRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginGoogleSignInRequest.ProtoReflect.Descriptor instead.
+func (*BeginGoogleSignInRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *BeginGoogleSignInRequest) GetReturnTo() string {
+	if x != nil {
+		return x.ReturnTo
+	}
+	return ""
+}
+
+func (x *BeginGoogleSignInRequest) GetInviteSecret() string {
+	if x != nil {
+		return x.InviteSecret
+	}
+	return ""
+}
+
+type BeginGoogleSignInResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RedirectUrl   string                 `protobuf:"bytes,1,opt,name=redirect_url,json=redirectUrl,proto3" json:"redirect_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginGoogleSignInResponse) Reset() {
+	*x = BeginGoogleSignInResponse{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginGoogleSignInResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginGoogleSignInResponse) ProtoMessage() {}
+
+func (x *BeginGoogleSignInResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginGoogleSignInResponse.ProtoReflect.Descriptor instead.
+func (*BeginGoogleSignInResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *BeginGoogleSignInResponse) GetRedirectUrl() string {
+	if x != nil {
+		return x.RedirectUrl
+	}
+	return ""
+}
+
+type CompleteGoogleSignInRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteGoogleSignInRequest) Reset() {
+	*x = CompleteGoogleSignInRequest{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteGoogleSignInRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteGoogleSignInRequest) ProtoMessage() {}
+
+func (x *CompleteGoogleSignInRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteGoogleSignInRequest.ProtoReflect.Descriptor instead.
+func (*CompleteGoogleSignInRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CompleteGoogleSignInRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *CompleteGoogleSignInRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type BeginGoogleLinkRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	CurrentPassword string                 `protobuf:"bytes,1,opt,name=current_password,json=currentPassword,proto3" json:"current_password,omitempty"`
+	ReturnTo        string                 `protobuf:"bytes,2,opt,name=return_to,json=returnTo,proto3" json:"return_to,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *BeginGoogleLinkRequest) Reset() {
+	*x = BeginGoogleLinkRequest{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginGoogleLinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginGoogleLinkRequest) ProtoMessage() {}
+
+func (x *BeginGoogleLinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginGoogleLinkRequest.ProtoReflect.Descriptor instead.
+func (*BeginGoogleLinkRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *BeginGoogleLinkRequest) GetCurrentPassword() string {
+	if x != nil {
+		return x.CurrentPassword
+	}
+	return ""
+}
+
+func (x *BeginGoogleLinkRequest) GetReturnTo() string {
+	if x != nil {
+		return x.ReturnTo
+	}
+	return ""
+}
+
+type BeginGoogleLinkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RedirectUrl   string                 `protobuf:"bytes,1,opt,name=redirect_url,json=redirectUrl,proto3" json:"redirect_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginGoogleLinkResponse) Reset() {
+	*x = BeginGoogleLinkResponse{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginGoogleLinkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginGoogleLinkResponse) ProtoMessage() {}
+
+func (x *BeginGoogleLinkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginGoogleLinkResponse.ProtoReflect.Descriptor instead.
+func (*BeginGoogleLinkResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *BeginGoogleLinkResponse) GetRedirectUrl() string {
+	if x != nil {
+		return x.RedirectUrl
+	}
+	return ""
+}
+
+type CompleteGoogleLinkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteGoogleLinkRequest) Reset() {
+	*x = CompleteGoogleLinkRequest{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteGoogleLinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteGoogleLinkRequest) ProtoMessage() {}
+
+func (x *CompleteGoogleLinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteGoogleLinkRequest.ProtoReflect.Descriptor instead.
+func (*CompleteGoogleLinkRequest) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *CompleteGoogleLinkRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *CompleteGoogleLinkRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type CompleteGoogleLinkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteGoogleLinkResponse) Reset() {
+	*x = CompleteGoogleLinkResponse{}
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteGoogleLinkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteGoogleLinkResponse) ProtoMessage() {}
+
+func (x *CompleteGoogleLinkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atsapbx_v1_auth_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteGoogleLinkResponse.ProtoReflect.Descriptor instead.
+func (*CompleteGoogleLinkResponse) Descriptor() ([]byte, []int) {
+	return file_atsapbx_v1_auth_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *CompleteGoogleLinkResponse) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
 var File_atsapbx_v1_auth_proto protoreflect.FileDescriptor
 
 const file_atsapbx_v1_auth_proto_rawDesc = "" +
@@ -887,12 +1319,13 @@ const file_atsapbx_v1_auth_proto_rawDesc = "" +
 	"\x15atsapbx/v1/auth.proto\x12\n" +
 	"atsapbx.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"-\n" +
 	"\x15DiscoverSignInRequest\x12\x14\n" +
-	"\x05email\x18\x01 \x01(\tR\x05email\"\x9f\x01\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\"\xc6\x01\n" +
 	"\x16DiscoverSignInResponse\x120\n" +
 	"\x06method\x18\x01 \x01(\x0e2\x18.atsapbx.v1.SignInMethodR\x06method\x12\x1f\n" +
 	"\vprovider_id\x18\x02 \x01(\tR\n" +
 	"providerId\x122\n" +
-	"\x15provider_display_name\x18\x03 \x01(\tR\x13providerDisplayName\"A\n" +
+	"\x15provider_display_name\x18\x03 \x01(\tR\x13providerDisplayName\x12%\n" +
+	"\x0egoogle_enabled\x18\x04 \x01(\bR\rgoogleEnabled\"A\n" +
 	"\rSignInRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x83\x01\n" +
@@ -933,11 +1366,32 @@ const file_atsapbx_v1_auth_proto_rawDesc = "" +
 	"\x1cCompletePasswordResetRequest\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12!\n" +
 	"\fnew_password\x18\x02 \x01(\tR\vnewPassword\"\x1f\n" +
-	"\x1dCompletePasswordResetResponse*c\n" +
+	"\x1dCompletePasswordResetResponse\"\x19\n" +
+	"\x17GetSignInOptionsRequest\"A\n" +
+	"\x18GetSignInOptionsResponse\x12%\n" +
+	"\x0egoogle_enabled\x18\x01 \x01(\bR\rgoogleEnabled\"\\\n" +
+	"\x18BeginGoogleSignInRequest\x12\x1b\n" +
+	"\treturn_to\x18\x01 \x01(\tR\breturnTo\x12#\n" +
+	"\rinvite_secret\x18\x02 \x01(\tR\finviteSecret\">\n" +
+	"\x19BeginGoogleSignInResponse\x12!\n" +
+	"\fredirect_url\x18\x01 \x01(\tR\vredirectUrl\"G\n" +
+	"\x1bCompleteGoogleSignInRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\"`\n" +
+	"\x16BeginGoogleLinkRequest\x12)\n" +
+	"\x10current_password\x18\x01 \x01(\tR\x0fcurrentPassword\x12\x1b\n" +
+	"\treturn_to\x18\x02 \x01(\tR\breturnTo\"<\n" +
+	"\x17BeginGoogleLinkResponse\x12!\n" +
+	"\fredirect_url\x18\x01 \x01(\tR\vredirectUrl\"E\n" +
+	"\x19CompleteGoogleLinkRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\"2\n" +
+	"\x1aCompleteGoogleLinkResponse\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email*c\n" +
 	"\fSignInMethod\x12\x1e\n" +
 	"\x1aSIGN_IN_METHOD_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17SIGN_IN_METHOD_PASSWORD\x10\x01\x12\x16\n" +
-	"\x12SIGN_IN_METHOD_SSO\x10\x022\xf6\x04\n" +
+	"\x12SIGN_IN_METHOD_SSO\x10\x022\xd5\b\n" +
 	"\vAuthService\x12W\n" +
 	"\x0eDiscoverSignIn\x12!.atsapbx.v1.DiscoverSignInRequest\x1a\".atsapbx.v1.DiscoverSignInResponse\x12?\n" +
 	"\x06SignIn\x12\x19.atsapbx.v1.SignInRequest\x1a\x1a.atsapbx.v1.SignInResponse\x12W\n" +
@@ -945,7 +1399,12 @@ const file_atsapbx_v1_auth_proto_rawDesc = "" +
 	"\aSignOut\x12\x1a.atsapbx.v1.SignOutRequest\x1a\x1b.atsapbx.v1.SignOutResponse\x12W\n" +
 	"\x0eChangePassword\x12!.atsapbx.v1.ChangePasswordRequest\x1a\".atsapbx.v1.ChangePasswordResponse\x12i\n" +
 	"\x14RequestPasswordReset\x12'.atsapbx.v1.RequestPasswordResetRequest\x1a(.atsapbx.v1.RequestPasswordResetResponse\x12l\n" +
-	"\x15CompletePasswordReset\x12(.atsapbx.v1.CompletePasswordResetRequest\x1a).atsapbx.v1.CompletePasswordResetResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
+	"\x15CompletePasswordReset\x12(.atsapbx.v1.CompletePasswordResetRequest\x1a).atsapbx.v1.CompletePasswordResetResponse\x12]\n" +
+	"\x10GetSignInOptions\x12#.atsapbx.v1.GetSignInOptionsRequest\x1a$.atsapbx.v1.GetSignInOptionsResponse\x12`\n" +
+	"\x11BeginGoogleSignIn\x12$.atsapbx.v1.BeginGoogleSignInRequest\x1a%.atsapbx.v1.BeginGoogleSignInResponse\x12[\n" +
+	"\x14CompleteGoogleSignIn\x12'.atsapbx.v1.CompleteGoogleSignInRequest\x1a\x1a.atsapbx.v1.SignInResponse\x12Z\n" +
+	"\x0fBeginGoogleLink\x12\".atsapbx.v1.BeginGoogleLinkRequest\x1a#.atsapbx.v1.BeginGoogleLinkResponse\x12c\n" +
+	"\x12CompleteGoogleLink\x12%.atsapbx.v1.CompleteGoogleLinkRequest\x1a&.atsapbx.v1.CompleteGoogleLinkResponseB2Z0atsap-api/internal/genproto/atsapbx/v1;atsapbxv1b\x06proto3"
 
 var (
 	file_atsapbx_v1_auth_proto_rawDescOnce sync.Once
@@ -960,7 +1419,7 @@ func file_atsapbx_v1_auth_proto_rawDescGZIP() []byte {
 }
 
 var file_atsapbx_v1_auth_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_atsapbx_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_atsapbx_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_atsapbx_v1_auth_proto_goTypes = []any{
 	(SignInMethod)(0),                     // 0: atsapbx.v1.SignInMethod
 	(*DiscoverSignInRequest)(nil),         // 1: atsapbx.v1.DiscoverSignInRequest
@@ -979,17 +1438,26 @@ var file_atsapbx_v1_auth_proto_goTypes = []any{
 	(*RequestPasswordResetResponse)(nil),  // 14: atsapbx.v1.RequestPasswordResetResponse
 	(*CompletePasswordResetRequest)(nil),  // 15: atsapbx.v1.CompletePasswordResetRequest
 	(*CompletePasswordResetResponse)(nil), // 16: atsapbx.v1.CompletePasswordResetResponse
-	(*timestamppb.Timestamp)(nil),         // 17: google.protobuf.Timestamp
+	(*GetSignInOptionsRequest)(nil),       // 17: atsapbx.v1.GetSignInOptionsRequest
+	(*GetSignInOptionsResponse)(nil),      // 18: atsapbx.v1.GetSignInOptionsResponse
+	(*BeginGoogleSignInRequest)(nil),      // 19: atsapbx.v1.BeginGoogleSignInRequest
+	(*BeginGoogleSignInResponse)(nil),     // 20: atsapbx.v1.BeginGoogleSignInResponse
+	(*CompleteGoogleSignInRequest)(nil),   // 21: atsapbx.v1.CompleteGoogleSignInRequest
+	(*BeginGoogleLinkRequest)(nil),        // 22: atsapbx.v1.BeginGoogleLinkRequest
+	(*BeginGoogleLinkResponse)(nil),       // 23: atsapbx.v1.BeginGoogleLinkResponse
+	(*CompleteGoogleLinkRequest)(nil),     // 24: atsapbx.v1.CompleteGoogleLinkRequest
+	(*CompleteGoogleLinkResponse)(nil),    // 25: atsapbx.v1.CompleteGoogleLinkResponse
+	(*timestamppb.Timestamp)(nil),         // 26: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_auth_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.DiscoverSignInResponse.method:type_name -> atsapbx.v1.SignInMethod
-	17, // 1: atsapbx.v1.AccessToken.expires_at:type_name -> google.protobuf.Timestamp
+	26, // 1: atsapbx.v1.AccessToken.expires_at:type_name -> google.protobuf.Timestamp
 	5,  // 2: atsapbx.v1.SignInResponse.access:type_name -> atsapbx.v1.AccessToken
 	4,  // 3: atsapbx.v1.SignInResponse.memberships:type_name -> atsapbx.v1.Membership
-	17, // 4: atsapbx.v1.SignInResponse.session_expires_at:type_name -> google.protobuf.Timestamp
+	26, // 4: atsapbx.v1.SignInResponse.session_expires_at:type_name -> google.protobuf.Timestamp
 	5,  // 5: atsapbx.v1.RefreshSessionResponse.access:type_name -> atsapbx.v1.AccessToken
 	4,  // 6: atsapbx.v1.RefreshSessionResponse.memberships:type_name -> atsapbx.v1.Membership
-	17, // 7: atsapbx.v1.RefreshSessionResponse.session_expires_at:type_name -> google.protobuf.Timestamp
+	26, // 7: atsapbx.v1.RefreshSessionResponse.session_expires_at:type_name -> google.protobuf.Timestamp
 	1,  // 8: atsapbx.v1.AuthService.DiscoverSignIn:input_type -> atsapbx.v1.DiscoverSignInRequest
 	3,  // 9: atsapbx.v1.AuthService.SignIn:input_type -> atsapbx.v1.SignInRequest
 	7,  // 10: atsapbx.v1.AuthService.RefreshSession:input_type -> atsapbx.v1.RefreshSessionRequest
@@ -997,15 +1465,25 @@ var file_atsapbx_v1_auth_proto_depIdxs = []int32{
 	11, // 12: atsapbx.v1.AuthService.ChangePassword:input_type -> atsapbx.v1.ChangePasswordRequest
 	13, // 13: atsapbx.v1.AuthService.RequestPasswordReset:input_type -> atsapbx.v1.RequestPasswordResetRequest
 	15, // 14: atsapbx.v1.AuthService.CompletePasswordReset:input_type -> atsapbx.v1.CompletePasswordResetRequest
-	2,  // 15: atsapbx.v1.AuthService.DiscoverSignIn:output_type -> atsapbx.v1.DiscoverSignInResponse
-	6,  // 16: atsapbx.v1.AuthService.SignIn:output_type -> atsapbx.v1.SignInResponse
-	8,  // 17: atsapbx.v1.AuthService.RefreshSession:output_type -> atsapbx.v1.RefreshSessionResponse
-	10, // 18: atsapbx.v1.AuthService.SignOut:output_type -> atsapbx.v1.SignOutResponse
-	12, // 19: atsapbx.v1.AuthService.ChangePassword:output_type -> atsapbx.v1.ChangePasswordResponse
-	14, // 20: atsapbx.v1.AuthService.RequestPasswordReset:output_type -> atsapbx.v1.RequestPasswordResetResponse
-	16, // 21: atsapbx.v1.AuthService.CompletePasswordReset:output_type -> atsapbx.v1.CompletePasswordResetResponse
-	15, // [15:22] is the sub-list for method output_type
-	8,  // [8:15] is the sub-list for method input_type
+	17, // 15: atsapbx.v1.AuthService.GetSignInOptions:input_type -> atsapbx.v1.GetSignInOptionsRequest
+	19, // 16: atsapbx.v1.AuthService.BeginGoogleSignIn:input_type -> atsapbx.v1.BeginGoogleSignInRequest
+	21, // 17: atsapbx.v1.AuthService.CompleteGoogleSignIn:input_type -> atsapbx.v1.CompleteGoogleSignInRequest
+	22, // 18: atsapbx.v1.AuthService.BeginGoogleLink:input_type -> atsapbx.v1.BeginGoogleLinkRequest
+	24, // 19: atsapbx.v1.AuthService.CompleteGoogleLink:input_type -> atsapbx.v1.CompleteGoogleLinkRequest
+	2,  // 20: atsapbx.v1.AuthService.DiscoverSignIn:output_type -> atsapbx.v1.DiscoverSignInResponse
+	6,  // 21: atsapbx.v1.AuthService.SignIn:output_type -> atsapbx.v1.SignInResponse
+	8,  // 22: atsapbx.v1.AuthService.RefreshSession:output_type -> atsapbx.v1.RefreshSessionResponse
+	10, // 23: atsapbx.v1.AuthService.SignOut:output_type -> atsapbx.v1.SignOutResponse
+	12, // 24: atsapbx.v1.AuthService.ChangePassword:output_type -> atsapbx.v1.ChangePasswordResponse
+	14, // 25: atsapbx.v1.AuthService.RequestPasswordReset:output_type -> atsapbx.v1.RequestPasswordResetResponse
+	16, // 26: atsapbx.v1.AuthService.CompletePasswordReset:output_type -> atsapbx.v1.CompletePasswordResetResponse
+	18, // 27: atsapbx.v1.AuthService.GetSignInOptions:output_type -> atsapbx.v1.GetSignInOptionsResponse
+	20, // 28: atsapbx.v1.AuthService.BeginGoogleSignIn:output_type -> atsapbx.v1.BeginGoogleSignInResponse
+	6,  // 29: atsapbx.v1.AuthService.CompleteGoogleSignIn:output_type -> atsapbx.v1.SignInResponse
+	23, // 30: atsapbx.v1.AuthService.BeginGoogleLink:output_type -> atsapbx.v1.BeginGoogleLinkResponse
+	25, // 31: atsapbx.v1.AuthService.CompleteGoogleLink:output_type -> atsapbx.v1.CompleteGoogleLinkResponse
+	20, // [20:32] is the sub-list for method output_type
+	8,  // [8:20] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1022,7 +1500,7 @@ func file_atsapbx_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_auth_proto_rawDesc), len(file_atsapbx_v1_auth_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   16,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -154,6 +154,7 @@ These hold in every release, every configuration and every failure mode. A featu
 | US-01.5 | As a tenant administrator, my changes take effect immediately without interrupting calls. |
 | US-01.6 | As a partner engineer, I set concurrent-call and spend limits per tenant. |
 | US-01.7 | As a partner engineer, I suspend one tenant without affecting any other. |
+| US-01.8 | As an invited person or an existing user, I sign in with Google, or link it after proving I am who I say. |
 
 **Acceptance criteria**
 - AC-01.1 A user of one tenant cannot see, reach or infer the existence of another tenant's data — through any interface, including search results and error messages.
@@ -163,6 +164,7 @@ These hold in every release, every configuration and every failure mode. A featu
 - AC-01.5 Disabling a user ends their sessions and their ability to place calls within 10 seconds.
 - AC-01.6 A configuration change applies to the next call within 5 seconds, with no interruption to calls in progress.
 - AC-01.7 Suspending a tenant takes effect within 10 seconds, blocks new calls, leaves active calls running, and is fully reversible.
+- AC-01.8 When Google is configured, a linked person signs in with it; an unlinked Google account is refused like a wrong password, and no account or membership is ever created by a Google sign-in.
 
 ---
 

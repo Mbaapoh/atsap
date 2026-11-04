@@ -59,6 +59,9 @@ func TestLoad_Defaults(t *testing.T) {
 		// server is named (identity-accounts-and-sessions D10).
 		ConsoleURL: "http://localhost:8080",
 		SMTPFrom:   "AtsaPBX <no-reply@localhost>",
+		// Google is off until a client is configured (D-67, D-83); the
+		// issuer default is Google's own.
+		GoogleOIDCIssuer: "https://accounts.google.com",
 		// HLD T-6 (D-80): every trunk is checked every ten seconds.
 		TrunkProbeInterval: 10 * time.Second,
 		// Click-to-call rings the caller for 30 s by default

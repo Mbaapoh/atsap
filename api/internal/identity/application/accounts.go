@@ -128,28 +128,35 @@ type SignInMethod struct {
 	// Provider is set when the email's domain requires SSO through it;
 	// nil means password sign-in.
 	Provider *domain.IdentityProvider
+	// Google says the installation-wide Google client is configured. It
+	// does not depend on the email, so showing the button reveals nothing
+	// (D-67).
+	Google bool
 }
 
 // DiscoverSignIn answers how an email signs in (D-63). The answer depends
 // only on the email's domain, never on whether an account exists, so it is
 // not an account-existence oracle.
 func (s *Service) DiscoverSignIn(ctx context.Context, rawEmail string) (SignInMethod, error) {
+	method := SignInMethod{Google: s.googleEnabled()}
 	email, err := domain.NormalizeEmail(rawEmail)
 	if err != nil {
-		return SignInMethod{}, nil //nolint:nilerr // garbage gets the default answer, like any unknown email (D-63: no account oracle)
+		return method, nil //nolint:nilerr // garbage gets the default answer, like any unknown email (D-63: no account oracle)
 	}
 	claim, provider, err := s.providers.ProviderForDomain(ctx, domain.EmailDomain(email))
 	if errors.Is(err, ports.ErrNotFound) {
-		return SignInMethod{}, nil
+		return method, nil
 	}
 	if err != nil {
-		return SignInMethod{}, err
+		return method, err
 	}
 	if domain.EnforcesSSO(&claim, &provider) {
-		return SignInMethod{Provider: &provider}, nil
+		method.Provider = &provider
 	}
-	return SignInMethod{}, nil
+	return method, nil
 }
+
+func (s *Service) googleEnabled() bool { return s.google != nil }
 
 // --- sessions --------------------------------------------------------------
 
@@ -185,6 +192,13 @@ func (s *Service) SignIn(ctx context.Context, email, password string) (SessionRe
 		return SessionResult{}, ports.ErrInvalidCredentials
 	}
 
+	return s.startSession(ctx, user, memberships)
+}
+
+// startSession creates one session for a person and, when they have
+// exactly one membership, issues its access token. SignIn and federated
+// sign-in share it so the two paths cannot drift.
+func (s *Service) startSession(ctx context.Context, user domain.User, memberships []domain.Membership) (SessionResult, error) {
 	now := s.now().UTC()
 	raw, digest, err := NewSecret()
 	if err != nil {

@@ -480,6 +480,12 @@ func mapErr(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot revoke the last tenant administrator"))
 	case errors.Is(err, ports.ErrAlreadyMember):
 		return connect.NewError(connect.CodeAlreadyExists, errors.New("already a member of this tenant"))
+	case errors.Is(err, ports.ErrAlreadyLinked):
+		return connect.NewError(connect.CodeAlreadyExists, errors.New("this Google account is already linked"))
+	case errors.Is(err, ports.ErrNotConfigured):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("this sign-in method is not configured"))
+	case errors.Is(err, ports.ErrInvalidInput):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid input"))
 	default:
 		// A constant message: an internal error's text can carry table
 		// names or values, and none of it is the caller's business.

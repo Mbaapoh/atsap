@@ -20,7 +20,9 @@ pilot), in this order:
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **`identity-oidc-google` is next**; outbound classes are done (D-82).
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **The pre-pilot list is complete.** Next are the recorded production
+gaps: TURN for browser media, AC-08.2 detection and spend caps, then MFA
+before GA.
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -28,6 +30,19 @@ The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3
 ---
 
 ## 2. What was done this week
+
+### 2026-11-04 — Google sign-in (D-83)
+
+`identity-oidc-google` archived. One installation-wide Google OIDC
+client (config in the deployment secret store) is discoverable before an
+email is typed. Sign-in finds a person by `(issuer, subject)` only and
+never creates one; an invitation links only when Google's verified email
+equals the invited email, and the account screen links after re-entering
+the current password. Authorization requests use one-time state, PKCE
+and a nonce; consumer mailbox domains stay unclaimable. Proven against a
+local OIDC issuer, application and Postgres tests, RPC tests, the
+console tiers, full integration, full e2e and SCA. Live Google is a
+manual release check (`docs/uat/google-sign-in.md`).
 
 ### 2026-11-04 — outbound classes (D-82)
 
@@ -188,6 +203,14 @@ Run from the repo root; `mise` pins the toolchain (`.mise.toml`, `console/mise.t
 - **The owner's trunks** in Dev Acme are `test` and `trunk2test` (host `localhost`, now "Address not allowed" by design) and `testwithsteriskhost` (host `asterisk`, Healthy).
 - **Test residue:** about 330 throwaway e2e tenants remain in the rig database. Their cleanup cannot delete a tenant that has call rows. They are harmless; making the cleanup complete is a small to-do.
 - **The machine is unstable under heavy parallel load** (2026-11-01, morning and afternoon). Prebuilt tools (OSV-Scanner, govulncheck, golangci-lint, the Go compiler) and Node and Chrome workers died on internal runtime or V8 faults, and the kernel logged `segfault` and `trap int3`. Every gate passed on rerun or with fewer workers (`npx vitest run --coverage --maxWorkers=2`, `npx playwright test --workers=1`). The owner was advised to run a memory test. **A crash inside a tool is not a test failure: rerun before debugging.**
+- **Owner phones bind UDP 5070/5071 (2026-11-04):** the owner's baresip
+  profiles `/home/mbaapoh/atsap-phones/1001` and `/1002` listen on
+  `0.0.0.0:5070` and `0.0.0.0:5071`, the same ports the Go e2e and the
+  console phone UAT bind. Stop them (`pkill -x baresip`) before those
+  tiers and restart them afterwards; otherwise calls fail with "call
+  setup did not complete" and UAT refuses to run. Never use
+  `pkill -f baresip` from a shell whose own command line contains it:
+  it kills that shell too.
 - **Host toolchain corruption (2026-11-02):** `/usr/lib/gcc/x86_64-pc-linux-gnu/16/libgcc.a` and `liblto_plugin.so` return `Input/output error` on `stat`, so the host's `go test -race` fails for **every** package with `relocation target __popcountdi2 not defined` — even an empty program. This is the filesystem, not the change. Until it is repaired (fsck / reinstall the toolchain), run the race tier in the local Go image:
   `docker run --rm -v /home/mbaapoh/atsap:/src -v /home/mbaapoh/go/pkg/mod:/gomod:ro -e GOMODCACHE=/gomod -e GOCACHE=/tmp/gocache -e GOPATH=/tmp/gopath -e GOFLAGS=-mod=mod -w /src/api golang:1.26-bookworm go test ./... -race -cover -count=1`
   Non-race `go test`, `make lint`, integration and e2e are unaffected. Ask the owner before running fsck on a mounted filesystem.

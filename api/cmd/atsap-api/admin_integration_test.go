@@ -44,7 +44,7 @@ func TestAdminResetPassword(t *testing.T) {
 	defer pool.Close()
 
 	cfg := config.Config{DatabaseURL: databaseURL, JWTPrivateKeyHex: hex.EncodeToString(bytes.Repeat([]byte{7}, 32)), LogLevel: "debug"}
-	svc, store, err := newIdentity(cfg, pool, noTenantCap, logging.New("error"))
+	svc, store, err := newIdentity(ctx, cfg, pool, noTenantCap, logging.New("error"))
 	require.NoError(t, err)
 	acme, err := svc.ProvisionTenant(ctx, identityapp.SystemActor(), "Acme", "EU")
 	require.NoError(t, err)

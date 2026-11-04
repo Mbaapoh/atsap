@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file atsapbx/v1/auth.proto.
  */
 export const file_atsapbx_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("ChVhdHNhcGJ4L3YxL2F1dGgucHJvdG8SCmF0c2FwYngudjEiJgoVRGlzY292ZXJTaWduSW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJInYKFkRpc2NvdmVyU2lnbkluUmVzcG9uc2USKAoGbWV0aG9kGAEgASgOMhguYXRzYXBieC52MS5TaWduSW5NZXRob2QSEwoLcHJvdmlkZXJfaWQYAiABKAkSHQoVcHJvdmlkZXJfZGlzcGxheV9uYW1lGAMgASgJIjAKDVNpZ25JblJlcXVlc3QSDQoFZW1haWwYASABKAkSEAoIcGFzc3dvcmQYAiABKAkiWQoKTWVtYmVyc2hpcBIRCgl0ZW5hbnRfaWQYASABKAkSEwoLdGVuYW50X25hbWUYAiABKAkSFAoMcHJpbmNpcGFsX2lkGAMgASgJEg0KBXJvbGVzGAQgAygJInUKC0FjY2Vzc1Rva2VuEg0KBXRva2VuGAEgASgJEi4KCmV4cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhEKCXRlbmFudF9pZBgDIAEoCRIUCgxwcmluY2lwYWxfaWQYBCABKAkiwAEKDlNpZ25JblJlc3BvbnNlEicKBmFjY2VzcxgBIAEoCzIXLmF0c2FwYngudjEuQWNjZXNzVG9rZW4SKwoLbWVtYmVyc2hpcHMYAiADKAsyFi5hdHNhcGJ4LnYxLk1lbWJlcnNoaXASIAoYcGFzc3dvcmRfY2hhbmdlX3JlcXVpcmVkGAMgASgIEjYKEnNlc3Npb25fZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiKgoVUmVmcmVzaFNlc3Npb25SZXF1ZXN0EhEKCXRlbmFudF9pZBgBIAEoCSLIAQoWUmVmcmVzaFNlc3Npb25SZXNwb25zZRInCgZhY2Nlc3MYASABKAsyFy5hdHNhcGJ4LnYxLkFjY2Vzc1Rva2VuEisKC21lbWJlcnNoaXBzGAIgAygLMhYuYXRzYXBieC52MS5NZW1iZXJzaGlwEiAKGHBhc3N3b3JkX2NoYW5nZV9yZXF1aXJlZBgDIAEoCBI2ChJzZXNzaW9uX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhAKDlNpZ25PdXRSZXF1ZXN0IhEKD1NpZ25PdXRSZXNwb25zZSJHChVDaGFuZ2VQYXNzd29yZFJlcXVlc3QSGAoQY3VycmVudF9wYXNzd29yZBgBIAEoCRIUCgxuZXdfcGFzc3dvcmQYAiABKAkiGAoWQ2hhbmdlUGFzc3dvcmRSZXNwb25zZSIsChtSZXF1ZXN0UGFzc3dvcmRSZXNldFJlcXVlc3QSDQoFZW1haWwYASABKAkiHgocUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXNwb25zZSJEChxDb21wbGV0ZVBhc3N3b3JkUmVzZXRSZXF1ZXN0Eg4KBnNlY3JldBgBIAEoCRIUCgxuZXdfcGFzc3dvcmQYAiABKAkiHwodQ29tcGxldGVQYXNzd29yZFJlc2V0UmVzcG9uc2UqYwoMU2lnbkluTWV0aG9kEh4KGlNJR05fSU5fTUVUSE9EX1VOU1BFQ0lGSUVEEAASGwoXU0lHTl9JTl9NRVRIT0RfUEFTU1dPUkQQARIWChJTSUdOX0lOX01FVEhPRF9TU08QAjL2BAoLQXV0aFNlcnZpY2USVwoORGlzY292ZXJTaWduSW4SIS5hdHNhcGJ4LnYxLkRpc2NvdmVyU2lnbkluUmVxdWVzdBoiLmF0c2FwYngudjEuRGlzY292ZXJTaWduSW5SZXNwb25zZRI/CgZTaWduSW4SGS5hdHNhcGJ4LnYxLlNpZ25JblJlcXVlc3QaGi5hdHNhcGJ4LnYxLlNpZ25JblJlc3BvbnNlElcKDlJlZnJlc2hTZXNzaW9uEiEuYXRzYXBieC52MS5SZWZyZXNoU2Vzc2lvblJlcXVlc3QaIi5hdHNhcGJ4LnYxLlJlZnJlc2hTZXNzaW9uUmVzcG9uc2USQgoHU2lnbk91dBIaLmF0c2FwYngudjEuU2lnbk91dFJlcXVlc3QaGy5hdHNhcGJ4LnYxLlNpZ25PdXRSZXNwb25zZRJXCg5DaGFuZ2VQYXNzd29yZBIhLmF0c2FwYngudjEuQ2hhbmdlUGFzc3dvcmRSZXF1ZXN0GiIuYXRzYXBieC52MS5DaGFuZ2VQYXNzd29yZFJlc3BvbnNlEmkKFFJlcXVlc3RQYXNzd29yZFJlc2V0EicuYXRzYXBieC52MS5SZXF1ZXN0UGFzc3dvcmRSZXNldFJlcXVlc3QaKC5hdHNhcGJ4LnYxLlJlcXVlc3RQYXNzd29yZFJlc2V0UmVzcG9uc2USbAoVQ29tcGxldGVQYXNzd29yZFJlc2V0EiguYXRzYXBieC52MS5Db21wbGV0ZVBhc3N3b3JkUmVzZXRSZXF1ZXN0GikuYXRzYXBieC52MS5Db21wbGV0ZVBhc3N3b3JkUmVzZXRSZXNwb25zZUIyWjBhdHNhcC1hcGkvaW50ZXJuYWwvZ2VucHJvdG8vYXRzYXBieC92MTthdHNhcGJ4djFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("ChVhdHNhcGJ4L3YxL2F1dGgucHJvdG8SCmF0c2FwYngudjEiJgoVRGlzY292ZXJTaWduSW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJIo4BChZEaXNjb3ZlclNpZ25JblJlc3BvbnNlEigKBm1ldGhvZBgBIAEoDjIYLmF0c2FwYngudjEuU2lnbkluTWV0aG9kEhMKC3Byb3ZpZGVyX2lkGAIgASgJEh0KFXByb3ZpZGVyX2Rpc3BsYXlfbmFtZRgDIAEoCRIWCg5nb29nbGVfZW5hYmxlZBgEIAEoCCIwCg1TaWduSW5SZXF1ZXN0Eg0KBWVtYWlsGAEgASgJEhAKCHBhc3N3b3JkGAIgASgJIlkKCk1lbWJlcnNoaXASEQoJdGVuYW50X2lkGAEgASgJEhMKC3RlbmFudF9uYW1lGAIgASgJEhQKDHByaW5jaXBhbF9pZBgDIAEoCRINCgVyb2xlcxgEIAMoCSJ1CgtBY2Nlc3NUb2tlbhINCgV0b2tlbhgBIAEoCRIuCgpleHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIRCgl0ZW5hbnRfaWQYAyABKAkSFAoMcHJpbmNpcGFsX2lkGAQgASgJIsABCg5TaWduSW5SZXNwb25zZRInCgZhY2Nlc3MYASABKAsyFy5hdHNhcGJ4LnYxLkFjY2Vzc1Rva2VuEisKC21lbWJlcnNoaXBzGAIgAygLMhYuYXRzYXBieC52MS5NZW1iZXJzaGlwEiAKGHBhc3N3b3JkX2NoYW5nZV9yZXF1aXJlZBgDIAEoCBI2ChJzZXNzaW9uX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIioKFVJlZnJlc2hTZXNzaW9uUmVxdWVzdBIRCgl0ZW5hbnRfaWQYASABKAkiyAEKFlJlZnJlc2hTZXNzaW9uUmVzcG9uc2USJwoGYWNjZXNzGAEgASgLMhcuYXRzYXBieC52MS5BY2Nlc3NUb2tlbhIrCgttZW1iZXJzaGlwcxgCIAMoCzIWLmF0c2FwYngudjEuTWVtYmVyc2hpcBIgChhwYXNzd29yZF9jaGFuZ2VfcmVxdWlyZWQYAyABKAgSNgoSc2Vzc2lvbl9leHBpcmVzX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIQCg5TaWduT3V0UmVxdWVzdCIRCg9TaWduT3V0UmVzcG9uc2UiRwoVQ2hhbmdlUGFzc3dvcmRSZXF1ZXN0EhgKEGN1cnJlbnRfcGFzc3dvcmQYASABKAkSFAoMbmV3X3Bhc3N3b3JkGAIgASgJIhgKFkNoYW5nZVBhc3N3b3JkUmVzcG9uc2UiLAobUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXF1ZXN0Eg0KBWVtYWlsGAEgASgJIh4KHFJlcXVlc3RQYXNzd29yZFJlc2V0UmVzcG9uc2UiRAocQ29tcGxldGVQYXNzd29yZFJlc2V0UmVxdWVzdBIOCgZzZWNyZXQYASABKAkSFAoMbmV3X3Bhc3N3b3JkGAIgASgJIh8KHUNvbXBsZXRlUGFzc3dvcmRSZXNldFJlc3BvbnNlIhkKF0dldFNpZ25Jbk9wdGlvbnNSZXF1ZXN0IjIKGEdldFNpZ25Jbk9wdGlvbnNSZXNwb25zZRIWCg5nb29nbGVfZW5hYmxlZBgBIAEoCCJEChhCZWdpbkdvb2dsZVNpZ25JblJlcXVlc3QSEQoJcmV0dXJuX3RvGAEgASgJEhUKDWludml0ZV9zZWNyZXQYAiABKAkiMQoZQmVnaW5Hb29nbGVTaWduSW5SZXNwb25zZRIUCgxyZWRpcmVjdF91cmwYASABKAkiOgobQ29tcGxldGVHb29nbGVTaWduSW5SZXF1ZXN0EgwKBGNvZGUYASABKAkSDQoFc3RhdGUYAiABKAkiRQoWQmVnaW5Hb29nbGVMaW5rUmVxdWVzdBIYChBjdXJyZW50X3Bhc3N3b3JkGAEgASgJEhEKCXJldHVybl90bxgCIAEoCSIvChdCZWdpbkdvb2dsZUxpbmtSZXNwb25zZRIUCgxyZWRpcmVjdF91cmwYASABKAkiOAoZQ29tcGxldGVHb29nbGVMaW5rUmVxdWVzdBIMCgRjb2RlGAEgASgJEg0KBXN0YXRlGAIgASgJIisKGkNvbXBsZXRlR29vZ2xlTGlua1Jlc3BvbnNlEg0KBWVtYWlsGAEgASgJKmMKDFNpZ25Jbk1ldGhvZBIeChpTSUdOX0lOX01FVEhPRF9VTlNQRUNJRklFRBAAEhsKF1NJR05fSU5fTUVUSE9EX1BBU1NXT1JEEAESFgoSU0lHTl9JTl9NRVRIT0RfU1NPEAIy1QgKC0F1dGhTZXJ2aWNlElcKDkRpc2NvdmVyU2lnbkluEiEuYXRzYXBieC52MS5EaXNjb3ZlclNpZ25JblJlcXVlc3QaIi5hdHNhcGJ4LnYxLkRpc2NvdmVyU2lnbkluUmVzcG9uc2USPwoGU2lnbkluEhkuYXRzYXBieC52MS5TaWduSW5SZXF1ZXN0GhouYXRzYXBieC52MS5TaWduSW5SZXNwb25zZRJXCg5SZWZyZXNoU2Vzc2lvbhIhLmF0c2FwYngudjEuUmVmcmVzaFNlc3Npb25SZXF1ZXN0GiIuYXRzYXBieC52MS5SZWZyZXNoU2Vzc2lvblJlc3BvbnNlEkIKB1NpZ25PdXQSGi5hdHNhcGJ4LnYxLlNpZ25PdXRSZXF1ZXN0GhsuYXRzYXBieC52MS5TaWduT3V0UmVzcG9uc2USVwoOQ2hhbmdlUGFzc3dvcmQSIS5hdHNhcGJ4LnYxLkNoYW5nZVBhc3N3b3JkUmVxdWVzdBoiLmF0c2FwYngudjEuQ2hhbmdlUGFzc3dvcmRSZXNwb25zZRJpChRSZXF1ZXN0UGFzc3dvcmRSZXNldBInLmF0c2FwYngudjEuUmVxdWVzdFBhc3N3b3JkUmVzZXRSZXF1ZXN0GiguYXRzYXBieC52MS5SZXF1ZXN0UGFzc3dvcmRSZXNldFJlc3BvbnNlEmwKFUNvbXBsZXRlUGFzc3dvcmRSZXNldBIoLmF0c2FwYngudjEuQ29tcGxldGVQYXNzd29yZFJlc2V0UmVxdWVzdBopLmF0c2FwYngudjEuQ29tcGxldGVQYXNzd29yZFJlc2V0UmVzcG9uc2USXQoQR2V0U2lnbkluT3B0aW9ucxIjLmF0c2FwYngudjEuR2V0U2lnbkluT3B0aW9uc1JlcXVlc3QaJC5hdHNhcGJ4LnYxLkdldFNpZ25Jbk9wdGlvbnNSZXNwb25zZRJgChFCZWdpbkdvb2dsZVNpZ25JbhIkLmF0c2FwYngudjEuQmVnaW5Hb29nbGVTaWduSW5SZXF1ZXN0GiUuYXRzYXBieC52MS5CZWdpbkdvb2dsZVNpZ25JblJlc3BvbnNlElsKFENvbXBsZXRlR29vZ2xlU2lnbkluEicuYXRzYXBieC52MS5Db21wbGV0ZUdvb2dsZVNpZ25JblJlcXVlc3QaGi5hdHNhcGJ4LnYxLlNpZ25JblJlc3BvbnNlEloKD0JlZ2luR29vZ2xlTGluaxIiLmF0c2FwYngudjEuQmVnaW5Hb29nbGVMaW5rUmVxdWVzdBojLmF0c2FwYngudjEuQmVnaW5Hb29nbGVMaW5rUmVzcG9uc2USYwoSQ29tcGxldGVHb29nbGVMaW5rEiUuYXRzYXBieC52MS5Db21wbGV0ZUdvb2dsZUxpbmtSZXF1ZXN0GiYuYXRzYXBieC52MS5Db21wbGV0ZUdvb2dsZUxpbmtSZXNwb25zZUIyWjBhdHNhcC1hcGkvaW50ZXJuYWwvZ2VucHJvdG8vYXRzYXBieC92MTthdHNhcGJ4djFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message atsapbx.v1.DiscoverSignInRequest
@@ -51,6 +51,14 @@ export type DiscoverSignInResponse = Message<"atsapbx.v1.DiscoverSignInResponse"
    * @generated from field: string provider_display_name = 3;
    */
   providerDisplayName: string;
+
+  /**
+   * Installation-wide Google is configured; shown regardless of email
+   * (D-67).
+   *
+   * @generated from field: bool google_enabled = 4;
+   */
+  googleEnabled: boolean;
 };
 
 /**
@@ -368,6 +376,179 @@ export const CompletePasswordResetResponseSchema: GenMessage<CompletePasswordRes
   messageDesc(file_atsapbx_v1_auth, 15);
 
 /**
+ * @generated from message atsapbx.v1.GetSignInOptionsRequest
+ */
+export type GetSignInOptionsRequest = Message<"atsapbx.v1.GetSignInOptionsRequest"> & {
+};
+
+/**
+ * Describes the message atsapbx.v1.GetSignInOptionsRequest.
+ * Use `create(GetSignInOptionsRequestSchema)` to create a new message.
+ */
+export const GetSignInOptionsRequestSchema: GenMessage<GetSignInOptionsRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 16);
+
+/**
+ * @generated from message atsapbx.v1.GetSignInOptionsResponse
+ */
+export type GetSignInOptionsResponse = Message<"atsapbx.v1.GetSignInOptionsResponse"> & {
+  /**
+   * @generated from field: bool google_enabled = 1;
+   */
+  googleEnabled: boolean;
+};
+
+/**
+ * Describes the message atsapbx.v1.GetSignInOptionsResponse.
+ * Use `create(GetSignInOptionsResponseSchema)` to create a new message.
+ */
+export const GetSignInOptionsResponseSchema: GenMessage<GetSignInOptionsResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 17);
+
+/**
+ * @generated from message atsapbx.v1.BeginGoogleSignInRequest
+ */
+export type BeginGoogleSignInRequest = Message<"atsapbx.v1.BeginGoogleSignInRequest"> & {
+  /**
+   * A local console path; an absolute URL is refused.
+   *
+   * @generated from field: string return_to = 1;
+   */
+  returnTo: string;
+
+  /**
+   * The invitation link's fragment secret, when accepting an invitation.
+   *
+   * @generated from field: string invite_secret = 2;
+   */
+  inviteSecret: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.BeginGoogleSignInRequest.
+ * Use `create(BeginGoogleSignInRequestSchema)` to create a new message.
+ */
+export const BeginGoogleSignInRequestSchema: GenMessage<BeginGoogleSignInRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 18);
+
+/**
+ * @generated from message atsapbx.v1.BeginGoogleSignInResponse
+ */
+export type BeginGoogleSignInResponse = Message<"atsapbx.v1.BeginGoogleSignInResponse"> & {
+  /**
+   * @generated from field: string redirect_url = 1;
+   */
+  redirectUrl: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.BeginGoogleSignInResponse.
+ * Use `create(BeginGoogleSignInResponseSchema)` to create a new message.
+ */
+export const BeginGoogleSignInResponseSchema: GenMessage<BeginGoogleSignInResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 19);
+
+/**
+ * @generated from message atsapbx.v1.CompleteGoogleSignInRequest
+ */
+export type CompleteGoogleSignInRequest = Message<"atsapbx.v1.CompleteGoogleSignInRequest"> & {
+  /**
+   * @generated from field: string code = 1;
+   */
+  code: string;
+
+  /**
+   * @generated from field: string state = 2;
+   */
+  state: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.CompleteGoogleSignInRequest.
+ * Use `create(CompleteGoogleSignInRequestSchema)` to create a new message.
+ */
+export const CompleteGoogleSignInRequestSchema: GenMessage<CompleteGoogleSignInRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 20);
+
+/**
+ * @generated from message atsapbx.v1.BeginGoogleLinkRequest
+ */
+export type BeginGoogleLinkRequest = Message<"atsapbx.v1.BeginGoogleLinkRequest"> & {
+  /**
+   * @generated from field: string current_password = 1;
+   */
+  currentPassword: string;
+
+  /**
+   * @generated from field: string return_to = 2;
+   */
+  returnTo: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.BeginGoogleLinkRequest.
+ * Use `create(BeginGoogleLinkRequestSchema)` to create a new message.
+ */
+export const BeginGoogleLinkRequestSchema: GenMessage<BeginGoogleLinkRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 21);
+
+/**
+ * @generated from message atsapbx.v1.BeginGoogleLinkResponse
+ */
+export type BeginGoogleLinkResponse = Message<"atsapbx.v1.BeginGoogleLinkResponse"> & {
+  /**
+   * @generated from field: string redirect_url = 1;
+   */
+  redirectUrl: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.BeginGoogleLinkResponse.
+ * Use `create(BeginGoogleLinkResponseSchema)` to create a new message.
+ */
+export const BeginGoogleLinkResponseSchema: GenMessage<BeginGoogleLinkResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 22);
+
+/**
+ * @generated from message atsapbx.v1.CompleteGoogleLinkRequest
+ */
+export type CompleteGoogleLinkRequest = Message<"atsapbx.v1.CompleteGoogleLinkRequest"> & {
+  /**
+   * @generated from field: string code = 1;
+   */
+  code: string;
+
+  /**
+   * @generated from field: string state = 2;
+   */
+  state: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.CompleteGoogleLinkRequest.
+ * Use `create(CompleteGoogleLinkRequestSchema)` to create a new message.
+ */
+export const CompleteGoogleLinkRequestSchema: GenMessage<CompleteGoogleLinkRequest> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 23);
+
+/**
+ * @generated from message atsapbx.v1.CompleteGoogleLinkResponse
+ */
+export type CompleteGoogleLinkResponse = Message<"atsapbx.v1.CompleteGoogleLinkResponse"> & {
+  /**
+   * @generated from field: string email = 1;
+   */
+  email: string;
+};
+
+/**
+ * Describes the message atsapbx.v1.CompleteGoogleLinkResponse.
+ * Use `create(CompleteGoogleLinkResponseSchema)` to create a new message.
+ */
+export const CompleteGoogleLinkResponseSchema: GenMessage<CompleteGoogleLinkResponse> = /*@__PURE__*/
+  messageDesc(file_atsapbx_v1_auth, 24);
+
+/**
  * @generated from enum atsapbx.v1.SignInMethod
  */
 export enum SignInMethod {
@@ -490,6 +671,64 @@ export const AuthService: GenService<{
     methodKind: "unary";
     input: typeof CompletePasswordResetRequestSchema;
     output: typeof CompletePasswordResetResponseSchema;
+  },
+  /**
+   * GetSignInOptions reports installation-wide sign-in methods that do
+   * not depend on an email, so the console can offer "Sign in with
+   * Google" before one is typed (D-67).
+   *
+   * @generated from rpc atsapbx.v1.AuthService.GetSignInOptions
+   */
+  getSignInOptions: {
+    methodKind: "unary";
+    input: typeof GetSignInOptionsRequestSchema;
+    output: typeof GetSignInOptionsResponseSchema;
+  },
+  /**
+   * BeginGoogleSignIn returns the Google redirect URL. invite_secret, when
+   * set, makes the callback accept the invitation instead of only signing
+   * in (D-67).
+   *
+   * @generated from rpc atsapbx.v1.AuthService.BeginGoogleSignIn
+   */
+  beginGoogleSignIn: {
+    methodKind: "unary";
+    input: typeof BeginGoogleSignInRequestSchema;
+    output: typeof BeginGoogleSignInResponseSchema;
+  },
+  /**
+   * CompleteGoogleSignIn exchanges the callback code, verifies the ID
+   * token, and starts the linked person's session. An unlinked account is
+   * refused like a wrong password.
+   *
+   * @generated from rpc atsapbx.v1.AuthService.CompleteGoogleSignIn
+   */
+  completeGoogleSignIn: {
+    methodKind: "unary";
+    input: typeof CompleteGoogleSignInRequestSchema;
+    output: typeof SignInResponseSchema;
+  },
+  /**
+   * BeginGoogleLink starts linking Google to the signed-in person after
+   * the current password is re-entered (D-67).
+   *
+   * @generated from rpc atsapbx.v1.AuthService.BeginGoogleLink
+   */
+  beginGoogleLink: {
+    methodKind: "unary";
+    input: typeof BeginGoogleLinkRequestSchema;
+    output: typeof BeginGoogleLinkResponseSchema;
+  },
+  /**
+   * CompleteGoogleLink finishes that link. It does not start a session:
+   * the caller is already signed in.
+   *
+   * @generated from rpc atsapbx.v1.AuthService.CompleteGoogleLink
+   */
+  completeGoogleLink: {
+    methodKind: "unary";
+    input: typeof CompleteGoogleLinkRequestSchema;
+    output: typeof CompleteGoogleLinkResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_atsapbx_v1_auth, 0);

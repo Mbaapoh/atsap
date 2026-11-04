@@ -56,7 +56,10 @@ func (h *AuthHandler) DiscoverSignIn(ctx context.Context, req *connect.Request[a
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	out := &atsapbxv1.DiscoverSignInResponse{Method: atsapbxv1.SignInMethod_SIGN_IN_METHOD_PASSWORD}
+	out := &atsapbxv1.DiscoverSignInResponse{
+		Method:        atsapbxv1.SignInMethod_SIGN_IN_METHOD_PASSWORD,
+		GoogleEnabled: m.Google,
+	}
 	if m.Provider != nil {
 		out.Method = atsapbxv1.SignInMethod_SIGN_IN_METHOD_SSO
 		out.ProviderId = m.Provider.ID.String()
@@ -70,14 +73,73 @@ func (h *AuthHandler) SignIn(ctx context.Context, req *connect.Request[atsapbxv1
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	resp := connect.NewResponse(&atsapbxv1.SignInResponse{
+	resp := connect.NewResponse(signInResponse(res))
+	h.setCookie(resp.Header(), res.RefreshSecret, res.ExpiresAt)
+	return resp, nil
+}
+
+// GetSignInOptions reports installation-wide methods (Google), shown
+// before an email is typed (D-67).
+func (h *AuthHandler) GetSignInOptions(_ context.Context, _ *connect.Request[atsapbxv1.GetSignInOptionsRequest]) (*connect.Response[atsapbxv1.GetSignInOptionsResponse], error) {
+	return connect.NewResponse(&atsapbxv1.GetSignInOptionsResponse{GoogleEnabled: h.svc.GoogleEnabled()}), nil
+}
+
+func (h *AuthHandler) BeginGoogleSignIn(ctx context.Context, req *connect.Request[atsapbxv1.BeginGoogleSignInRequest]) (*connect.Response[atsapbxv1.BeginGoogleSignInResponse], error) {
+	r, err := h.svc.BeginGoogleSignIn(h.withSource(ctx, req), req.Msg.GetReturnTo(), req.Msg.GetInviteSecret())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.BeginGoogleSignInResponse{RedirectUrl: r.URL}), nil
+}
+
+func (h *AuthHandler) CompleteGoogleSignIn(ctx context.Context, req *connect.Request[atsapbxv1.CompleteGoogleSignInRequest]) (*connect.Response[atsapbxv1.SignInResponse], error) {
+	res, err := h.svc.CompleteGoogleSignIn(h.withSource(ctx, req), req.Msg.GetState(), req.Msg.GetCode())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	resp := connect.NewResponse(signInResponse(res.Session))
+	h.setCookie(resp.Header(), res.Session.RefreshSecret, res.Session.ExpiresAt)
+	return resp, nil
+}
+
+func (h *AuthHandler) BeginGoogleLink(ctx context.Context, req *connect.Request[atsapbxv1.BeginGoogleLinkRequest]) (*connect.Response[atsapbxv1.BeginGoogleLinkResponse], error) {
+	tc, err := requireContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r, err := h.svc.BeginGoogleLink(ctx, tc, req.Msg.GetCurrentPassword(), req.Msg.GetReturnTo())
+	if errors.Is(err, ports.ErrInvalidCredentials) {
+		// INVALID_ARGUMENT, not UNAUTHENTICATED: the person is signed in;
+		// their confirmation password is what is wrong. UNAUTHENTICATED
+		// would make the console treat the access token as expired.
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("current password is not correct"))
+	}
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.BeginGoogleLinkResponse{RedirectUrl: r.URL}), nil
+}
+
+func (h *AuthHandler) CompleteGoogleLink(ctx context.Context, req *connect.Request[atsapbxv1.CompleteGoogleLinkRequest]) (*connect.Response[atsapbxv1.CompleteGoogleLinkResponse], error) {
+	tc, err := requireContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	email, err := h.svc.CompleteGoogleLink(ctx, tc, req.Msg.GetState(), req.Msg.GetCode())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.CompleteGoogleLinkResponse{Email: email}), nil
+}
+
+// signInResponse is the one shape SignIn and CompleteGoogleSignIn return.
+func signInResponse(res application.SessionResult) *atsapbxv1.SignInResponse {
+	return &atsapbxv1.SignInResponse{
 		Access:                 toProtoAccess(res.Access),
 		Memberships:            toProtoMemberships(res.Memberships),
 		PasswordChangeRequired: res.PasswordChangeOnly,
 		SessionExpiresAt:       timestamppb.New(res.ExpiresAt),
-	})
-	h.setCookie(resp.Header(), res.RefreshSecret, res.ExpiresAt)
-	return resp, nil
+	}
 }
 
 // RefreshSession is authenticated by its cookie alone. Any secret that
@@ -232,6 +294,9 @@ var AuthPublicProcedures = []string{
 	atsapbxv1connect.AuthServiceRefreshSessionProcedure,
 	atsapbxv1connect.AuthServiceRequestPasswordResetProcedure,
 	atsapbxv1connect.AuthServiceCompletePasswordResetProcedure,
+	atsapbxv1connect.AuthServiceGetSignInOptionsProcedure,
+	atsapbxv1connect.AuthServiceBeginGoogleSignInProcedure,
+	atsapbxv1connect.AuthServiceCompleteGoogleSignInProcedure,
 }
 
 // PasswordChangeProcedures are the only procedures a must-change token may
