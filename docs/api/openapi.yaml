@@ -2788,6 +2788,20 @@ components:
         - DEVICE_TYPE_WEBRTC
         - DEVICE_TYPE_SIP
       description: DeviceType is how a device attaches to an extension.
+    atsapbx.v1.OutboundClass:
+      type: string
+      title: OutboundClass
+      enum:
+        - OUTBOUND_CLASS_UNSPECIFIED
+        - OUTBOUND_CLASS_INTERNAL
+        - OUTBOUND_CLASS_NATIONAL
+        - OUTBOUND_CLASS_INTERNATIONAL
+      description: |-
+        RegistrationStatus describes the DEVICE, not the configuration. An
+         extension is configured and live from the moment it is created,
+         whether or not anything has registered to it — there is no "pending"
+         state, because there is nothing to apply.
+         OutboundClass is how far an extension may dial (LLD-03 §10.2).
     atsapbx.v1.RegistrationStatus:
       type: string
       title: RegistrationStatus
@@ -2795,11 +2809,6 @@ components:
         - REGISTRATION_STATUS_UNSPECIFIED
         - REGISTRATION_STATUS_NOT_REGISTERED
         - REGISTRATION_STATUS_REGISTERED
-      description: |-
-        RegistrationStatus describes the DEVICE, not the configuration. An
-         extension is configured and live from the moment it is created,
-         whether or not anything has registered to it — there is no "pending"
-         state, because there is nothing to apply.
     atsapbx.v1.TrunkHealth:
       type: string
       title: TrunkHealth
@@ -2857,11 +2866,15 @@ components:
           title: display_name
         deviceType:
           title: device_type
+          $ref: '#/components/schemas/atsapbx.v1.DeviceType'
+        outboundClass:
+          title: outbound_class
           description: |-
-            Note there is no secret field. The platform generates the
+            Optional; NATIONAL when unspecified. INTERNAL dials extensions only,
+             NATIONAL adds numbers without a leading "+", INTERNATIONAL adds all. Note there is no secret field. The platform generates the
              credential; a caller cannot choose one, because a chosen secret
              would be the weak link in a digest that is offline-crackable.
-          $ref: '#/components/schemas/atsapbx.v1.DeviceType'
+          $ref: '#/components/schemas/atsapbx.v1.OutboundClass'
       title: CreateExtensionRequest
       additionalProperties: false
     atsapbx.v1.CreateExtensionResponse:
@@ -3105,6 +3118,12 @@ components:
         registration:
           title: registration
           $ref: '#/components/schemas/atsapbx.v1.RegistrationStatus'
+        outboundClass:
+          title: outbound_class
+          description: |-
+            How far this extension may dial. A new extension is NATIONAL unless
+             the caller chose otherwise.
+          $ref: '#/components/schemas/atsapbx.v1.OutboundClass'
       title: Extension
       additionalProperties: false
       description: |-
@@ -3520,6 +3539,9 @@ components:
         deviceType:
           title: device_type
           $ref: '#/components/schemas/atsapbx.v1.DeviceType'
+        outboundClass:
+          title: outbound_class
+          $ref: '#/components/schemas/atsapbx.v1.OutboundClass'
       title: UpdateExtensionRequest
       additionalProperties: false
     atsapbx.v1.UpdateExtensionResponse:

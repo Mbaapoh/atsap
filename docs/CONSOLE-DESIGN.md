@@ -336,6 +336,11 @@ Allow the signed-in user to change their password and sign out. Password change
 states that other sessions will end. This page does not manage roles,
 extensions, or external identities in Phase A.
 
+Each extension row shows its **Outbound** class. Add and Edit offer
+Internal only, National (the default) and International; emergency
+numbers are never blocked by the class. National means numbers dialled
+without a leading `+`; international is the `+` form (D-82).
+
 ## React + TypeScript implementation guide
 
 ### Boundaries

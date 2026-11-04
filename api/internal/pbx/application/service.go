@@ -148,6 +148,7 @@ func (s *Service) CreateExtension(ctx context.Context, cmd ports.CreateExtension
 		Number:      cmd.Number,
 		DisplayName: cmd.DisplayName,
 		DeviceType:  cmd.DeviceType,
+		Outbound:    domain.NormalizeOutboundClass(cmd.Outbound),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -225,6 +226,7 @@ func (s *Service) UpdateExtension(ctx context.Context, cmd ports.UpdateExtension
 		after := before
 		after.DisplayName = cmd.DisplayName
 		after.DeviceType = cmd.DeviceType
+		after.Outbound = domain.NormalizeOutboundClass(cmd.Outbound)
 		after.UpdatedAt = s.now()
 		if err := after.Validate(); err != nil {
 			return fmt.Errorf("%w: %v", ports.ErrInvalidInput, err)
@@ -478,6 +480,7 @@ func viewOf(e domain.Extension, status domain.RegistrationStatus) ports.Extensio
 		DisplayName:  e.DisplayName,
 		AuthUsername: e.AuthUsername,
 		DeviceType:   e.DeviceType,
+		Outbound:     e.Outbound,
 		Registration: status,
 	}
 }

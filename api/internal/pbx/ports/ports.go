@@ -55,6 +55,9 @@ var (
 	// ErrCallRefused is a call telephony-core's Screening refused —
 	// licensed capacity or compliance. Wrapped with the refusal reason.
 	ErrCallRefused = errors.New("call refused")
+	// ErrOutboundForbidden is a destination class the caller's extension
+	// does not hold (LLD-03 §10.2). Emergency calls never reach it.
+	ErrOutboundForbidden = errors.New("outbound destination class is not permitted for this extension")
 
 	// ErrInboundNumberTaken is a DID already assigned in the tenant.
 	ErrInboundNumberTaken = errors.New("inbound number already assigned in this tenant")
@@ -94,6 +97,8 @@ type CreateExtensionCommand struct {
 	Number      string
 	DisplayName string
 	DeviceType  domain.DeviceType
+	// Outbound is empty when omitted; the application supplies NATIONAL.
+	Outbound domain.OutboundClass
 }
 
 // UpdateExtensionCommand changes the mutable fields of an extension.
@@ -105,6 +110,7 @@ type UpdateExtensionCommand struct {
 	ID          shareddomain.ExtensionID
 	DisplayName string
 	DeviceType  domain.DeviceType
+	Outbound    domain.OutboundClass
 }
 
 // ExtensionView is what a caller sees. It carries no SecretDigest and no
@@ -117,6 +123,7 @@ type ExtensionView struct {
 	DisplayName  string
 	AuthUsername string
 	DeviceType   domain.DeviceType
+	Outbound     domain.OutboundClass
 	Registration domain.RegistrationStatus
 }
 

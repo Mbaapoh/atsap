@@ -252,6 +252,7 @@ func (r *rig) createExtension(t *testing.T, number string) (extension, string) {
 	r.call(t, "PbxService/CreateExtension", r.token, map[string]any{
 		"tenantId": r.tenant.String(), "number": number,
 		"displayName": "G1 " + number, "deviceType": "DEVICE_TYPE_SIP",
+		"outboundClass": "OUTBOUND_CLASS_INTERNATIONAL",
 	}, &out, http.StatusOK)
 	require.NotEmpty(t, out.Secret, "the generated secret is returned exactly once, here")
 	return out.Extension, out.Secret

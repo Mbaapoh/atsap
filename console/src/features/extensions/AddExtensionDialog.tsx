@@ -1,11 +1,11 @@
 import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
-import { DeviceType } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { DeviceType, OutboundClass } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { Alert } from "../../components/Alert";
 import { Modal } from "../../components/Modal";
 import { TextField } from "../../components/TextField";
 import { useCreateExtension, type Credentials } from "./adapter";
-import { deviceLabel } from "./copy";
+import { deviceLabel, outboundLabel } from "./copy";
 
 // The server's own bounds (pbx/domain/extension.go), checked here first so
 // the form can say what is wrong; the server still decides.
@@ -15,10 +15,12 @@ const NAME_MAX = 100;
 export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (c: Credentials) => void }) {
   const titleId = useId();
   const deviceId = useId();
+  const outboundId = useId();
   const { create } = useCreateExtension();
   const [number, setNumber] = useState("");
   const [name, setName] = useState("");
   const [device, setDevice] = useState<DeviceType>(DeviceType.SIP);
+  const [outbound, setOutbound] = useState<OutboundClass>(OutboundClass.NATIONAL);
   const [errors, setErrors] = useState<{ number?: string; name?: string }>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,6 +29,7 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
     setNumber("");
     setName("");
     setDevice(DeviceType.SIP);
+    setOutbound(OutboundClass.NATIONAL);
     setErrors({});
     setFailure(null);
     onClose();
@@ -43,7 +46,7 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
     if (found.number || found.name) return;
     setBusy(true);
     try {
-      const credentials = await create({ number, name: name.trim(), device });
+      const credentials = await create({ number, name: name.trim(), device, outbound });
       close();
       onCreated(credentials);
     } catch (err) {
@@ -76,6 +79,17 @@ export function AddExtensionDialog({ open, onClose, onCreated }: { open: boolean
               <option value={DeviceType.SIP}>{deviceLabel[DeviceType.SIP]}</option>
               <option value={DeviceType.WEBRTC}>{deviceLabel[DeviceType.WEBRTC]}</option>
             </select>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor={outboundId}>
+              Outbound calling
+            </label>
+            <select id={outboundId} className="input" value={outbound} onChange={(e) => setOutbound(Number(e.target.value))}>
+              <option value={OutboundClass.INTERNAL}>{outboundLabel[OutboundClass.INTERNAL]}</option>
+              <option value={OutboundClass.NATIONAL}>{outboundLabel[OutboundClass.NATIONAL]}</option>
+              <option value={OutboundClass.INTERNATIONAL}>{outboundLabel[OutboundClass.INTERNATIONAL]}</option>
+            </select>
+            <p className="field-hint">National allows numbers without a leading +; international allows every destination. Emergency numbers are never blocked.</p>
           </div>
         </div>
         <div className="modal-actions">

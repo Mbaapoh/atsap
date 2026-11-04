@@ -1,4 +1,4 @@
-import { DeviceType } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { DeviceType, OutboundClass } from "../../api/gen/atsapbx/v1/pbx_pb";
 import type { Tone } from "../../components/icons";
 import type { Registration } from "./adapter";
 
@@ -6,6 +6,13 @@ export const deviceLabel: Record<DeviceType, string> = {
   [DeviceType.UNSPECIFIED]: "Unknown",
   [DeviceType.SIP]: "Desk or soft phone (SIP)",
   [DeviceType.WEBRTC]: "Browser phone (WebRTC)",
+};
+
+export const outboundLabel: Record<OutboundClass, string> = {
+  [OutboundClass.UNSPECIFIED]: "National",
+  [OutboundClass.INTERNAL]: "Internal only",
+  [OutboundClass.NATIONAL]: "National",
+  [OutboundClass.INTERNATIONAL]: "International",
 };
 
 // Registration is observed device state, never a setting (CONSOLE-DESIGN

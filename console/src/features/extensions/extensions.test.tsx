@@ -13,13 +13,14 @@ export const ENGINE_ID = "e_0123456789abcdef0123456789abcdef";
 export const ext1001 = { extensionId: "x1", number: "1001", displayName: "Reception", authUsername: ENGINE_ID, deviceType: "DEVICE_TYPE_SIP", registration: "REGISTRATION_STATUS_REGISTERED" };
 export const ext1002 = { extensionId: "x2", number: "1002", displayName: "Kitchen", authUsername: "e_fedcba9876543210fedcba9876543210", deviceType: "DEVICE_TYPE_WEBRTC", registration: "REGISTRATION_STATUS_NOT_REGISTERED" };
 export const ext1003 = { extensionId: "x3", number: "1003", displayName: "Spare", authUsername: "e_00000000000000000000000000000003", deviceType: "DEVICE_TYPE_SIP" };
+export const ext1004 = { extensionId: "x4", number: "1004", displayName: "Sales", authUsername: "e_00000000000000000000000000000004", deviceType: "DEVICE_TYPE_SIP", outboundClass: "OUTBOUND_CLASS_INTERNATIONAL" };
 
 describe("extensions list", () => {
   it("shows number, name, device and observed registration, for the session's tenant", async () => {
     const bodies: unknown[] = [];
     server.use(http.post(OVERVIEW_URLS.extensions, async ({ request }) => {
       bodies.push(await request.json());
-      return HttpResponse.json({ extensions: [ext1001, ext1002, ext1003] });
+      return HttpResponse.json({ extensions: [ext1001, ext1002, ext1003, ext1004] });
     }));
     renderApp(routes, "/extensions");
     const table = within(await screen.findByRole("table", { name: "Extensions of this tenant" }));
@@ -29,6 +30,8 @@ describe("extensions list", () => {
     expect(table.getByRole("row", { name: /1002/ })).toHaveTextContent("Browser phone (WebRTC)");
     // A status the server did not report is Unknown, never "Not registered".
     expect(table.getByRole("row", { name: /1003/ })).toHaveTextContent("Unknown");
+    expect(table.getByRole("row", { name: /1001/ })).toHaveTextContent("National", { normalizeWhitespace: true });
+    expect(table.getByRole("row", { name: /1004/ })).toHaveTextContent("International", { normalizeWhitespace: true });
     expect(bodies[0]).toEqual({ tenantId: tenantA.tenantId, limit: PAGE_SIZE });
   });
 
@@ -97,10 +100,11 @@ describe("creating an extension", () => {
     const user = userEvent.setup();
     const { queryClient } = renderApp(routes, "/extensions");
     const dialog = await openAndFill(user);
+    await user.selectOptions(dialog.getByLabelText("Outbound calling"), dialog.getByRole("option", { name: "International" }));
     await user.click(dialog.getByRole("button", { name: "Add extension" }));
 
     const panel = within(await screen.findByRole("dialog", { name: "Extension 1004 created" }));
-    expect(body).toEqual({ tenantId: tenantA.tenantId, number: "1004", displayName: "Lobby", deviceType: "DEVICE_TYPE_SIP" });
+    expect(body).toEqual({ tenantId: tenantA.tenantId, number: "1004", displayName: "Lobby", deviceType: "DEVICE_TYPE_SIP", outboundClass: "OUTBOUND_CLASS_INTERNATIONAL" });
     expect(panel.getByText("localhost")).toBeInTheDocument();
     expect(panel.getByText("5060")).toBeInTheDocument();
     expect(panel.getByText("UDP")).toBeInTheDocument();
@@ -115,6 +119,17 @@ describe("creating an extension", () => {
     expect(JSON.stringify(queryClient.getMutationCache().getAll().map((m) => m.state.data))).not.toContain(SECRET);
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data))).not.toContain(SECRET);
     expect(window.location.href).not.toContain(SECRET);
+  });
+
+  it("refuses an over-long name before calling the server", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    renderApp(routes, "/extensions");
+    const dialog = await openAndFill(user);
+    await user.clear(dialog.getByLabelText("Name"));
+    await user.type(dialog.getByLabelText("Name"), "x".repeat(101));
+    await user.click(dialog.getByRole("button", { name: "Add extension" }));
+    expect(screen.getByText("Use at most 100 characters.")).toBeInTheDocument();
   });
 
   it("says when the SIP server address is not configured", async () => {
@@ -210,9 +225,10 @@ describe("editing, rotating and deleting", () => {
     await user.clear(dialog.getByLabelText("Name"));
     await user.type(dialog.getByLabelText("Name"), "Front desk");
     await user.selectOptions(dialog.getByLabelText("Device"), dialog.getByRole("option", { name: "Browser phone (WebRTC)" }));
+    await user.selectOptions(dialog.getByLabelText("Outbound calling"), dialog.getByRole("option", { name: "International" }));
     await user.click(dialog.getByRole("button", { name: "Save changes" }));
     expect(await screen.findByText("Extension 1001 updated.")).toBeInTheDocument();
-    expect(body).toEqual({ tenantId: tenantA.tenantId, extensionId: "x1", displayName: "Front desk", deviceType: "DEVICE_TYPE_WEBRTC" });
+    expect(body).toEqual({ tenantId: tenantA.tenantId, extensionId: "x1", displayName: "Front desk", deviceType: "DEVICE_TYPE_WEBRTC", outboundClass: "OUTBOUND_CLASS_INTERNATIONAL" });
   });
 
   it("rotates after confirmation and shows the new password once", async () => {

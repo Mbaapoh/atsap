@@ -150,6 +150,14 @@ enum DeviceType {
 // extension is configured and live from the moment it is created,
 // whether or not anything has registered to it — there is no "pending"
 // state, because there is nothing to apply.
+// OutboundClass is how far an extension may dial (LLD-03 §10.2).
+enum OutboundClass {
+  OUTBOUND_CLASS_UNSPECIFIED = 0;
+  OUTBOUND_CLASS_INTERNAL = 1;
+  OUTBOUND_CLASS_NATIONAL = 2;
+  OUTBOUND_CLASS_INTERNATIONAL = 3;
+}
+
 enum RegistrationStatus {
   REGISTRATION_STATUS_UNSPECIFIED = 0;
   REGISTRATION_STATUS_NOT_REGISTERED = 1;
@@ -170,6 +178,9 @@ message Extension {
   string auth_username = 4;
   DeviceType device_type = 5;
   RegistrationStatus registration = 6;
+  // How far this extension may dial. A new extension is NATIONAL unless
+  // the caller chose otherwise.
+  OutboundClass outbound_class = 7;
 }
 
 message CreateExtensionRequest {
@@ -177,6 +188,9 @@ message CreateExtensionRequest {
   string number = 2;
   string display_name = 3;
   DeviceType device_type = 4;
+  // Optional; NATIONAL when unspecified. INTERNAL dials extensions only,
+  // NATIONAL adds numbers without a leading "+", INTERNATIONAL adds all.
+  OutboundClass outbound_class = 5;
   // Note there is no secret field. The platform generates the
   // credential; a caller cannot choose one, because a chosen secret
   // would be the weak link in a digest that is offline-crackable.
@@ -213,6 +227,7 @@ message UpdateExtensionRequest {
   string extension_id = 2;
   string display_name = 3;
   DeviceType device_type = 4;
+  OutboundClass outbound_class = 5;
 }
 
 message UpdateExtensionResponse {

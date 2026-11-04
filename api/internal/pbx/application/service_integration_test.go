@@ -138,6 +138,7 @@ func (h *harness) create(t *testing.T, number string) ports.CreatedExtension {
 	t.Helper()
 	got, err := h.svc.CreateExtension(h.ctx, ports.CreateExtensionCommand{
 		TenantID: h.tenant, Number: number, DisplayName: "Ext " + number, DeviceType: domain.DeviceSIP,
+		Outbound: domain.OutboundInternational,
 	})
 	require.NoError(t, err)
 	return got

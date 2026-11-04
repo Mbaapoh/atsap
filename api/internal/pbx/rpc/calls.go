@@ -60,6 +60,8 @@ func mapCallErr(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("trunk capacity: every trunk for this destination is at its channel limit"))
 	case errors.Is(err, ports.ErrCallerNotRegistered):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("the calling extension has no registered device"))
+	case errors.Is(err, ports.ErrOutboundForbidden):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("this extension's outbound class does not permit that destination"))
 	case errors.Is(err, ports.ErrCallRefused):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New(err.Error()))
 	}

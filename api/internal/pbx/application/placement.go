@@ -150,6 +150,17 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 		return ports.PlacedCall{}, ports.ErrCallerNotRegistered
 	}
 
+	// The outbound class is the toll-fraud configuration control
+	// (LLD-03 §10.2). Emergency is exempt: no spend, country or class
+	// rule may block it (AC-08.3), and the dial plan already decided
+	// emergency provenance.
+	if res.Destination.Kind == domain.DestinationTrunk && !res.Emergency {
+		want := domain.ClassifyDialledDestination(cmd.Destination)
+		if !caller.Outbound.Allows(want) {
+			return ports.PlacedCall{}, fmt.Errorf("%w: %s cannot dial %s", ports.ErrOutboundForbidden, caller.Outbound, want)
+		}
+	}
+
 	if res.Destination.Kind == domain.DestinationExtension {
 		leg := s.newLeg(cmd, caller, nil, nil, res.Emergency)
 		if err := s.reserve(ctx, cmd.TenantID, leg); err != nil {

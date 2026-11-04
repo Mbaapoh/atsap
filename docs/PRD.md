@@ -349,6 +349,7 @@ These hold in every release, every configuration and every failure mode. A featu
 | US-08.3 | As a partner engineer, I am alerted to unusual calling patterns before the carrier bill arrives. |
 | US-08.4 | As a partner engineer, I suspend outbound calling for one tenant instantly. |
 | US-08.5 | As a security officer, the deployment presents the minimum possible surface to the internet. |
+| US-08.6 | As an administrator, I set how far each extension may dial, so a compromised phone cannot run up an international bill. |
 
 **Acceptance criteria**
 - AC-08.1 Exceeding a cap blocks new outbound calls and alerts within 60 seconds. **Calls in progress are never cut off.**
@@ -356,6 +357,7 @@ These hold in every release, every configuration and every failure mode. A featu
 - AC-08.3 Emergency numbers are never blocked by any spend, country or capacity rule.
 - AC-08.4 Anonymous inbound signalling is refused. No default credentials exist anywhere in a shipped deployment.
 - AC-08.5 An external scan of a default installation shows only the documented ingress points.
+- AC-08.6 A new extension dials national numbers only; an international number in `+` form is refused before any channel is taken until an administrator widens the extension. Emergency numbers are never refused by this rule.
 
 ---
 

@@ -66,6 +66,7 @@ func (h *PbxHandler) CreateExtension(ctx context.Context, req *connect.Request[a
 		Number:      req.Msg.GetNumber(),
 		DisplayName: req.Msg.GetDisplayName(),
 		DeviceType:  deviceTypeFromProto(req.Msg.GetDeviceType()),
+		Outbound:    outboundFromProto(req.Msg.GetOutboundClass()),
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -132,6 +133,7 @@ func (h *PbxHandler) UpdateExtension(ctx context.Context, req *connect.Request[a
 		ID:          id,
 		DisplayName: req.Msg.GetDisplayName(),
 		DeviceType:  deviceTypeFromProto(req.Msg.GetDeviceType()),
+		Outbound:    outboundFromProto(req.Msg.GetOutboundClass()),
 	}); err != nil {
 		return nil, mapErr(err)
 	}
@@ -279,12 +281,13 @@ func mapErr(err error) error {
 
 func toProtoExtension(v ports.ExtensionView) *atsapbxv1.Extension {
 	return &atsapbxv1.Extension{
-		ExtensionId:  v.ID.String(),
-		Number:       v.Number,
-		DisplayName:  v.DisplayName,
-		AuthUsername: v.AuthUsername,
-		DeviceType:   deviceTypeToProto(v.DeviceType),
-		Registration: registrationToProto(v.Registration),
+		ExtensionId:   v.ID.String(),
+		Number:        v.Number,
+		DisplayName:   v.DisplayName,
+		AuthUsername:  v.AuthUsername,
+		DeviceType:    deviceTypeToProto(v.DeviceType),
+		OutboundClass: outboundToProto(v.Outbound),
+		Registration:  registrationToProto(v.Registration),
 	}
 }
 
@@ -322,5 +325,36 @@ func registrationToProto(s domain.RegistrationStatus) atsapbxv1.RegistrationStat
 		return atsapbxv1.RegistrationStatus_REGISTRATION_STATUS_NOT_REGISTERED
 	default:
 		return atsapbxv1.RegistrationStatus_REGISTRATION_STATUS_UNSPECIFIED
+	}
+}
+
+// outboundFromProto maps the wire enum onto the domain type. An
+// unspecified value becomes empty, and the application supplies the safe
+// NATIONAL default; an unknown non-zero value is refused by the domain.
+func outboundFromProto(c atsapbxv1.OutboundClass) domain.OutboundClass {
+	switch c {
+	case atsapbxv1.OutboundClass_OUTBOUND_CLASS_UNSPECIFIED:
+		return ""
+	case atsapbxv1.OutboundClass_OUTBOUND_CLASS_INTERNAL:
+		return domain.OutboundInternal
+	case atsapbxv1.OutboundClass_OUTBOUND_CLASS_NATIONAL:
+		return domain.OutboundNational
+	case atsapbxv1.OutboundClass_OUTBOUND_CLASS_INTERNATIONAL:
+		return domain.OutboundInternational
+	default:
+		return domain.OutboundClass(c.String())
+	}
+}
+
+func outboundToProto(c domain.OutboundClass) atsapbxv1.OutboundClass {
+	switch c {
+	case domain.OutboundInternal:
+		return atsapbxv1.OutboundClass_OUTBOUND_CLASS_INTERNAL
+	case domain.OutboundNational:
+		return atsapbxv1.OutboundClass_OUTBOUND_CLASS_NATIONAL
+	case domain.OutboundInternational:
+		return atsapbxv1.OutboundClass_OUTBOUND_CLASS_INTERNATIONAL
+	default:
+		return atsapbxv1.OutboundClass_OUTBOUND_CLASS_UNSPECIFIED
 	}
 }

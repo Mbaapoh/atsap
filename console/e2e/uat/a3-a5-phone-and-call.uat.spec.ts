@@ -66,6 +66,7 @@ test("A3–A5: a phone registers with the console's credentials, and its real ca
   const add = page.getByRole("dialog", { name: "Add an extension" });
   await add.getByLabel("Number").fill(number);
   await add.getByLabel("Name").fill("Front desk");
+  await add.getByLabel("Outbound calling").selectOption("International");
   await add.getByRole("button", { name: "Add extension" }).click();
 
   const panel = page.getByRole("dialog", { name: `Extension ${number} created` });

@@ -20,7 +20,7 @@ pilot), in this order:
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Toll-fraud outbound classes, then `identity-oidc-google`, are next.**
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **`identity-oidc-google` is next**; outbound classes are done (D-82).
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -28,6 +28,16 @@ The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3
 ---
 
 ## 2. What was done this week
+
+### 2026-11-04 — outbound classes (D-82)
+
+`pbx-outbound-classes` archived. Every extension holds INTERNAL,
+NATIONAL or INTERNATIONAL, a new one is NATIONAL, and a trunk-bound
+destination with a leading `+` is INTERNATIONAL. Placement refuses a
+class the extension does not hold before reserving a channel or touching
+the engine; emergency is exempt. The console shows and edits the class.
+Proven by domain, RPC, integration and full e2e, console-check and the
+phone UAT. AC-08.2 detection remains `compliance` work.
 
 ### 2026-11-03 — browser phone (D-81)
 

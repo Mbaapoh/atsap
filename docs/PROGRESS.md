@@ -9,7 +9,10 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-03, after `console-browser-phone`: an
+**Last updated:** 2026-11-04, after `pbx-outbound-classes`: every
+extension holds INTERNAL, NATIONAL or INTERNATIONAL; a new one is
+NATIONAL, `+` is the international signal, placement refuses before the
+engine, and emergency is exempt (D-82). Before that, `console-browser-phone`: an
 administrator can register a WEBRTC extension in the browser and make,
 answer, mute and end real calls over WebSocket/DTLS (D-81). Before that,
 the same day, `pbx-trunk-health-thresholds`: trunk health follows HLD T-6
@@ -31,8 +34,8 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** toll-fraud protection (outbound destination classes), then
-`identity-oidc-google` (Sign in with Google). The Asterisk image scan
+**Next work:** `identity-oidc-google` (Sign in with Google). AC-08.2
+anomaly detection and spend caps remain `compliance` work. The Asterisk image scan
 remains owner-deferred.
 
 ## Keeping it current
@@ -53,7 +56,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 18 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling and T-6 health with alerts | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 19 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling, T-6 health with alerts and outbound classes | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -190,6 +193,7 @@ that link.
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 | 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
 | 2026-11-03 | `pbx-trunk-health-thresholds` | 12/12 | U I E A; T-6 thresholds and recovery, `trunk_health_samples`, BR-08 email alert in Mailpit (D-80); full pbx integration, full Go e2e, console-check, three phone UATs |
+| 2026-11-04 | `pbx-outbound-classes` | 10/10 | U I E A; per-extension INTERNAL/NATIONAL/INTERNATIONAL, NATIONAL default, `+` classification, refusal before the engine, emergency exempt (D-82); full pbx integration, full Go e2e, console-check and UAT, docs and SCA |
 | 2026-11-03 | `console-browser-phone` | 16/16 | U I E A and the console tiers; WEBRTC projection and migration 0018, SIP.js browser phone, two-browser rig call, full Go e2e, console-check, three phone UATs (D-81) |
 
 ## Active changes
@@ -207,6 +211,7 @@ design; *accepted* = no fix planned.
 
 | Gap | Where it came from | Severity |
 |---|---|---|
+| AC-08.2 anomaly detection (a high-volume, high-cost fraud pattern outside business hours) is not built; outbound classes are the configuration control only | pbx-outbound-classes G1 | **Medium** — `compliance` spend caps and detection |
 | No TURN relay for browser media; a browser behind a symmetric NAT cannot connect | console-browser-phone G1 | **High** — production before a NAT pilot: add coturn and configure ICE |
 | The browser phone needs the SIP password per session; no user↔extension ownership | console-browser-phone G2 | Accepted: Phase B `pbx-extension-assignment` |
 | The engine image has no `codec_opus`; browser endpoints use PCMU/PCMA | console-browser-phone G4 | Accepted; add codec_opus later if desired |

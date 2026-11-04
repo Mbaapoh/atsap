@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCallback } from "react";
 import { useApiClients } from "../../api/ApiProvider";
 import { callApi, type ApiError } from "../../api/errors";
-import { DeviceType, RegistrationStatus, type Extension } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { DeviceType, OutboundClass, RegistrationStatus, type Extension } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { PAGE_SIZE } from "../../components/Pager";
 import { useSession } from "../auth/adapter";
 
@@ -18,6 +18,7 @@ export interface ExtensionRow {
   number: string;
   name: string;
   device: DeviceType;
+  outbound: OutboundClass;
   registration: Registration;
   sipUsername: string;
 }
@@ -34,6 +35,7 @@ export function toExtensionRow(e: Extension): ExtensionRow {
     number: e.number,
     name: e.displayName,
     device: e.deviceType,
+    outbound: e.outboundClass === OutboundClass.UNSPECIFIED ? OutboundClass.NATIONAL : e.outboundClass,
     registration: registrationOf(e.registration),
     sipUsername: e.authUsername,
   };
@@ -78,6 +80,7 @@ export interface ExtensionEntry {
   // device is how a device attaches: the browser phone offers WEBRTC
   // extensions only.
   device: DeviceType;
+  outbound: OutboundClass;
   // sipUsername is the engine endpoint id the browser phone registers
   // with. It is used by the softphone, never rendered outside the marked
   // credential surface (console brief §6 rule 8).
@@ -107,6 +110,7 @@ export function useExtensionDirectory(enabled = true) {
               name: e.displayName,
               registration: registrationOf(e.registration),
               device: e.deviceType,
+              outbound: e.outboundClass === OutboundClass.UNSPECIFIED ? OutboundClass.NATIONAL : e.outboundClass,
               sipUsername: e.authUsername,
             })),
           );
@@ -155,6 +159,7 @@ export interface NewExtension {
   number: string;
   name: string;
   device: DeviceType;
+  outbound: OutboundClass;
 }
 
 // useCreateExtension creates an extension and returns its credentials
@@ -167,7 +172,7 @@ export function useCreateExtension() {
   const mutation = useMutation<Credentials, ApiError, NewExtension>({
     mutationFn: (e) =>
       callApi(async () => {
-        const res = await pbx.createExtension({ tenantId, number: e.number, displayName: e.name, deviceType: e.device });
+        const res = await pbx.createExtension({ tenantId, number: e.number, displayName: e.name, deviceType: e.device, outboundClass: e.outbound });
         if (!res.extension) throw new Error("no extension returned");
         return { extension: toExtensionRow(res.extension), secret: res.secret };
       }),
@@ -196,10 +201,10 @@ export function useExtensionChanges() {
   const tenantId = useTenantId();
   const queryClient = useQueryClient();
   const refetch = () => queryClient.invalidateQueries({ queryKey: extensionKeys.all(tenantId) });
-  const update = useMutation<void, ApiError, { id: string; name: string; device: DeviceType }>({
-    mutationFn: ({ id, name, device }) =>
+  const update = useMutation<void, ApiError, { id: string; name: string; device: DeviceType; outbound: OutboundClass }>({
+    mutationFn: ({ id, name, device, outbound }) =>
       callApi(async () => {
-        await pbx.updateExtension({ tenantId, extensionId: id, displayName: name, deviceType: device });
+        await pbx.updateExtension({ tenantId, extensionId: id, displayName: name, deviceType: device, outboundClass: outbound });
       }),
     onSuccess: refetch,
   });

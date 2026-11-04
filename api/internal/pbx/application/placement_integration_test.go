@@ -204,6 +204,33 @@ func TestPlaceCall_OutboundOverATrunk(t *testing.T) {
 		"the matched route and trunk are on record, and the channel is held")
 }
 
+func TestPlaceCall_OutboundClassRefusesBeforeTheEngine(t *testing.T) {
+	p := newPlacer(t)
+	p.route(t, "+44", p.trunk(t, "Primary", 5, 0), 0)
+	p.route(t, "44", p.trunk(t, "Primary", 5, 0), 1)
+
+	national, err := p.svc.CreateExtension(p.ctx, ports.CreateExtensionCommand{
+		TenantID: p.tenant, Number: "1010", DisplayName: "National", DeviceType: domain.DeviceSIP,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.OutboundNational, national.Extension.Outbound, "omitting the class is NATIONAL")
+	p.register(t, national.Extension.ID)
+
+	_, err = p.svc.PlaceCall(p.ctx, ports.PlaceCallCommand{TenantID: p.tenant, ExtensionID: national.Extension.ID, Destination: "+442071234567"})
+	assert.ErrorIs(t, err, ports.ErrOutboundForbidden)
+	assert.Empty(t, p.calls.initiated, "a refused class never reaches the engine")
+
+	_, err = p.svc.PlaceCall(p.ctx, ports.PlaceCallCommand{TenantID: p.tenant, ExtensionID: national.Extension.ID, Destination: "442071234567"})
+	require.NoError(t, err, "a national extension may dial national form")
+
+	require.NoError(t, p.svc.UpdateExtension(p.ctx, ports.UpdateExtensionCommand{
+		TenantID: p.tenant, ID: national.Extension.ID, DisplayName: "National", DeviceType: domain.DeviceSIP,
+		Outbound: domain.OutboundInternational,
+	}))
+	_, err = p.svc.PlaceCall(p.ctx, ports.PlaceCallCommand{TenantID: p.tenant, ExtensionID: national.Extension.ID, Destination: "+442071234567"})
+	require.NoError(t, err, "the administrator can widen the class")
+}
+
 func TestPlaceCall_InternalCallUsesNoTrunk(t *testing.T) {
 	p := newPlacer(t)
 	callee := p.create(t, "1005")

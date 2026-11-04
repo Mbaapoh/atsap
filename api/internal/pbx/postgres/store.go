@@ -62,10 +62,10 @@ func NewStore() *Store {
 func (s *Store) Insert(ctx context.Context, tx pgx.Tx, ext domain.Extension) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO extensions
-			(id, tenant_id, extension_number, display_name, auth_username, secret_digest, device_type, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			(id, tenant_id, extension_number, display_name, auth_username, secret_digest, device_type, outbound_class, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`, ext.ID.String(), ext.TenantID.String(), ext.Number, ext.DisplayName,
-		ext.AuthUsername, ext.SecretDigest, string(ext.DeviceType), ext.CreatedAt, ext.UpdatedAt)
+		ext.AuthUsername, ext.SecretDigest, string(ext.DeviceType), string(domain.NormalizeOutboundClass(ext.Outbound)), ext.CreatedAt, ext.UpdatedAt)
 	if isUniqueViolation(err) {
 		return fmt.Errorf("extension number %q: %w", ext.Number, ports.ErrNumberTaken)
 	}
@@ -115,10 +115,11 @@ func (s *Store) Update(ctx context.Context, tx pgx.Tx, ext domain.Extension) err
 			auth_username    = $4,
 			secret_digest    = $5,
 			device_type      = $6,
-			updated_at       = $7
+			outbound_class   = $7,
+			updated_at       = $8
 		WHERE id = $1
 	`, ext.ID.String(), ext.Number, ext.DisplayName, ext.AuthUsername,
-		ext.SecretDigest, string(ext.DeviceType), ext.UpdatedAt)
+		ext.SecretDigest, string(ext.DeviceType), string(domain.NormalizeOutboundClass(ext.Outbound)), ext.UpdatedAt)
 	if isUniqueViolation(err) {
 		return fmt.Errorf("extension number %q: %w", ext.Number, ports.ErrNumberTaken)
 	}
@@ -173,13 +174,14 @@ func (s *Store) Get(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, id 
 		rawID      string
 		rawTenant  string
 		deviceType string
+		outbound   string
 	)
 	err := tx.QueryRow(ctx, `
 		SELECT id, tenant_id, extension_number, display_name, auth_username,
-		       secret_digest, device_type, created_at, updated_at
+		       secret_digest, device_type, outbound_class, created_at, updated_at
 		FROM extensions WHERE id = $1
 	`, id.String()).Scan(&rawID, &rawTenant, &ext.Number, &ext.DisplayName,
-		&ext.AuthUsername, &ext.SecretDigest, &deviceType, &ext.CreatedAt, &ext.UpdatedAt)
+		&ext.AuthUsername, &ext.SecretDigest, &deviceType, &outbound, &ext.CreatedAt, &ext.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Extension{}, fmt.Errorf("extension %s: %w", id, ports.ErrNotFound)
 	}
@@ -194,6 +196,7 @@ func (s *Store) Get(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, id 
 		return domain.Extension{}, fmt.Errorf("decode tenant id: %w", err)
 	}
 	ext.DeviceType = domain.DeviceType(deviceType)
+	ext.Outbound = domain.OutboundClass(outbound)
 	return ext, nil
 }
 
@@ -222,7 +225,7 @@ func (s *Store) FindByNumber(ctx context.Context, tx pgx.Tx, number string) (dom
 func (s *Store) List(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, page ports.Page) ([]domain.Extension, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT id, tenant_id, extension_number, display_name, auth_username,
-		       secret_digest, device_type, created_at, updated_at
+		       secret_digest, device_type, outbound_class, created_at, updated_at
 		FROM extensions
 		ORDER BY extension_number, id
 		LIMIT $1 OFFSET $2
@@ -239,9 +242,10 @@ func (s *Store) List(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, pa
 			rawID      string
 			rawTenant  string
 			deviceType string
+			outbound   string
 		)
 		if err := rows.Scan(&rawID, &rawTenant, &ext.Number, &ext.DisplayName,
-			&ext.AuthUsername, &ext.SecretDigest, &deviceType, &ext.CreatedAt, &ext.UpdatedAt); err != nil {
+			&ext.AuthUsername, &ext.SecretDigest, &deviceType, &outbound, &ext.CreatedAt, &ext.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan extension: %w", err)
 		}
 		if ext.ID, err = shareddomain.ParseExtensionID(rawID); err != nil {
@@ -251,6 +255,7 @@ func (s *Store) List(ctx context.Context, tx pgx.Tx, _ shareddomain.TenantID, pa
 			return nil, fmt.Errorf("decode tenant id: %w", err)
 		}
 		ext.DeviceType = domain.DeviceType(deviceType)
+		ext.Outbound = domain.OutboundClass(outbound)
 		extensions = append(extensions, ext)
 	}
 	if err := rows.Err(); err != nil {

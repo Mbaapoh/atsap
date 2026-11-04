@@ -2859,6 +2859,46 @@ Phase A; webhooks remain LLD-05.
 
 ---
 
+**D-82 · Toll fraud is confined by a per-extension outbound class, with
+NATIONAL as the default and "+" as the international signal
+(2026-11-03).**
+
+**Decision:** Every extension holds one of INTERNAL, NATIONAL or
+INTERNATIONAL. Placement refuses a trunk-bound destination the class
+does not cover before reserving a channel or touching the engine.
+- A new extension, and every existing extension at migration, is
+  NATIONAL.
+- A leading `+` classifies a dialled destination INTERNATIONAL;
+  otherwise it is NATIONAL. Internal destinations are always allowed.
+- Emergency is exempt from the class rule (AC-08.3); the dial plan has
+  already established emergency provenance.
+- The console shows the class and lets an administrator choose it; the
+  change is audited like any other extension edit.
+- The engine does not enforce the class. Placement is the only path to a
+  trunk, so a second enforcement point would only create drift.
+
+**Context:** LLD-03 §10.2 calls toll fraud a configuration control, not
+a detection one. A compromised extension dialling premium international
+numbers is the classic PBX loss; the safe default must be the narrowest
+one that still lets a normal phone work.
+
+**Alternatives:**
+- *A country table to decide national.* Deferred: it needs a trusted
+  home-country source per tenant, and the dialled form already gives a
+  deterministic signal.
+- *Enforce in Asterisk.* Rejected: it duplicates the rule in engine
+  vocabulary and creates a second place to get it wrong.
+- *Default INTERNATIONAL to avoid support calls.* Rejected: it removes
+  the control exactly when it matters.
+
+**Consequences:** An extension must be widened deliberately before it
+can dial international form. Anomaly detection (AC-08.2) and spend caps
+remain `compliance` work; this decision does not claim them.
+
+**Traceability:** LLD-03 §10.2; change `pbx-outbound-classes`
+
+---
+
 **D-81 · Browser calling uses SIP.js over WebSocket, with a WEBRTC extension the administrator connects (2026-11-02).**
 
 **Decision:** The console has a browser phone. It uses **SIP.js 0.21.2**

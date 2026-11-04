@@ -11,12 +11,13 @@ import { PageHeader } from "../../components/PageHeader";
 import { Pager } from "../../components/Pager";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useExtensions, type Credentials, type ExtensionRow } from "./adapter";
-import { deviceLabel, registrationBadge } from "./copy";
+import { deviceLabel, outboundLabel, registrationBadge } from "./copy";
 
 export const extensionColumns: Column<ExtensionRow>[] = [
   { key: "number", header: "Number", render: (e) => e.number, numeric: true },
   { key: "name", header: "Name", render: (e) => e.name },
   { key: "device", header: "Device", render: (e) => deviceLabel[e.device] },
+  { key: "outbound", header: "Outbound", render: (e) => outboundLabel[e.outbound] },
   { key: "registration", header: "Registration", render: (e) => <StatusBadge {...registrationBadge[e.registration]} /> },
 ];
 

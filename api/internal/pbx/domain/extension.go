@@ -77,8 +77,13 @@ type Extension struct {
 	AuthUsername string
 	SecretDigest string
 	DeviceType   DeviceType
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// Outbound is how far this extension may dial. It is configuration,
+	// never observed: a compromised extension is confined to it (LLD-03
+	// §10.2). The zero value means the caller did not choose, and the
+	// application supplies the safe NATIONAL default.
+	Outbound  OutboundClass
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // ValidateNumber reports whether a caller-supplied extension number may

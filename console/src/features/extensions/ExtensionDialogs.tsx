@@ -1,13 +1,13 @@
 import { useId, useState, type FormEvent } from "react";
 import { toApiError } from "../../api/errors";
-import { DeviceType } from "../../api/gen/atsapbx/v1/pbx_pb";
+import { DeviceType, OutboundClass } from "../../api/gen/atsapbx/v1/pbx_pb";
 import { Alert } from "../../components/Alert";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { TextField } from "../../components/TextField";
 import { useToast } from "../../components/Toast";
 import { useExtensionChanges, type Credentials, type ExtensionRow } from "./adapter";
-import { deviceLabel } from "./copy";
+import { deviceLabel, outboundLabel } from "./copy";
 
 function failureText(err: unknown, action: string): string {
   const e = toApiError(err);
@@ -29,10 +29,12 @@ export function EditExtensionDialog({ extension, onClose }: { extension: Extensi
 function EditExtensionForm({ extension, onClose }: { extension: ExtensionRow; onClose: () => void }) {
   const titleId = useId();
   const deviceId = useId();
+  const outboundId = useId();
   const { update } = useExtensionChanges();
   const toast = useToast();
   const [name, setName] = useState(extension.name);
   const [device, setDevice] = useState<DeviceType>(extension.device === DeviceType.UNSPECIFIED ? DeviceType.SIP : extension.device);
+  const [outbound, setOutbound] = useState<OutboundClass>(extension.outbound);
   const [nameError, setNameError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +51,7 @@ function EditExtensionForm({ extension, onClose }: { extension: ExtensionRow; on
     setBusy(true);
     setFailure(null);
     try {
-      await update({ id: extension.id, name: trimmed, device });
+      await update({ id: extension.id, name: trimmed, device, outbound });
       toast.show(`Extension ${extension.number} updated.`);
       onClose();
     } catch (err) {
@@ -75,6 +77,16 @@ function EditExtensionForm({ extension, onClose }: { extension: ExtensionRow; on
             <select id={deviceId} className="input" value={device} onChange={(e) => setDevice(Number(e.target.value))}>
               <option value={DeviceType.SIP}>{deviceLabel[DeviceType.SIP]}</option>
               <option value={DeviceType.WEBRTC}>{deviceLabel[DeviceType.WEBRTC]}</option>
+            </select>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor={outboundId}>
+              Outbound calling
+            </label>
+            <select id={outboundId} className="input" value={outbound} onChange={(e) => setOutbound(Number(e.target.value))}>
+              <option value={OutboundClass.INTERNAL}>{outboundLabel[OutboundClass.INTERNAL]}</option>
+              <option value={OutboundClass.NATIONAL}>{outboundLabel[OutboundClass.NATIONAL]}</option>
+              <option value={OutboundClass.INTERNATIONAL}>{outboundLabel[OutboundClass.INTERNATIONAL]}</option>
             </select>
           </div>
         </div>

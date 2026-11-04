@@ -769,6 +769,8 @@ detection one:
 - `Extension.Outbound` classifies each extension as internal, national or
   international, and routing refuses a class the extension does not hold.
   The default for a new extension is **national**, not international.
+  A leading `+` is the international signal; emergency is exempt
+  (D-82, `pbx-outbound-classes`).
 - Per-trunk `channel_limit` caps the blast radius of any single
   compromise.
 - Spend caps are `compliance`'s (LLD-04); this LLD provides the hook and

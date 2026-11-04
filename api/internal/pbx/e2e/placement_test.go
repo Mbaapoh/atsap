@@ -372,6 +372,26 @@ func TestPlaceCall_OutboundOverATrunkConnectsAndHangsUp(t *testing.T) {
 
 // --- 6.2 -------------------------------------------------------------------
 
+func TestPlaceCall_NationalExtensionCannotDialInternationalForm(t *testing.T) {
+	p := newPlacementRig(t, true, 4)
+
+	p.call(t, "PbxService/UpdateExtension", p.token, map[string]any{
+		"tenantId": p.tenant.String(), "extensionId": p.ext.ExtensionID,
+		"displayName": "G1 " + p.ext.Number, "deviceType": "DEVICE_TYPE_SIP",
+		"outboundClass": "OUTBOUND_CLASS_NATIONAL",
+	}, nil, http.StatusOK)
+
+	_, body := p.place(t, p.ext, "+442071234567", http.StatusForbidden)
+	assert.Contains(t, body, "outbound class", "the refusal names the control")
+	assert.Empty(t, p.carrier.invited(), "no refused call reaches the carrier")
+
+	p.call(t, "PbxService/UpdateExtension", p.token, map[string]any{
+		"tenantId": p.tenant.String(), "extensionId": p.ext.ExtensionID,
+		"displayName": "G1 " + p.ext.Number, "deviceType": "DEVICE_TYPE_SIP",
+		"outboundClass": "OUTBOUND_CLASS_INTERNATIONAL",
+	}, nil, http.StatusOK)
+}
+
 func TestPlaceCall_InternalCallConnectsWithoutATrunk(t *testing.T) {
 	p := newPlacementRig(t, false, 4)
 	callee, secret := p.createExtension(t, uniqueNumber())
