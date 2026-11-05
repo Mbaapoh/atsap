@@ -50,6 +50,19 @@ service PbxService {
   // AssignExtension makes a membership the owner of an extension (D-65).
   // An extension has at most one owner; a person may own several.
   rpc AssignExtension(AssignExtensionRequest) returns (AssignExtensionResponse);
+
+  // IVR flows (D-89): a DID routes through a versioned flow that chooses
+  // its open/closed destination by business hours and holidays.
+  rpc CreateFlow(CreateFlowRequest) returns (FlowResponse);
+  rpc GetFlow(GetFlowRequest) returns (FlowResponse);
+  rpc ListFlows(ListFlowsRequest) returns (ListFlowsResponse);
+  rpc PublishFlow(PublishFlowRequest) returns (FlowResponse);
+  rpc RollbackFlow(RollbackFlowRequest) returns (FlowResponse);
+  rpc DeleteFlow(DeleteFlowRequest) returns (DeleteFlowResponse);
+  rpc ListFlowVersions(ListFlowVersionsRequest) returns (ListFlowVersionsResponse);
+  rpc ListHolidays(ListHolidaysRequest) returns (HolidaysResponse);
+  rpc AddHoliday(AddHolidayRequest) returns (HolidaysResponse);
+  rpc DeleteHoliday(DeleteHolidayRequest) returns (HolidaysResponse);
   rpc UnassignExtension(UnassignExtensionRequest) returns (UnassignExtensionResponse);
 
   // RegenerateSecret issues a new credential. The previous one stops
@@ -255,6 +268,45 @@ message DeleteExtensionRequest {
 }
 
 message DeleteExtensionResponse {}
+
+message FlowConfig {
+  string open_extension_id = 1;
+  string closed_extension_id = 2;
+  int32 business_start_minute = 3;
+  int32 business_end_minute = 4;
+  string prompt = 5;
+}
+
+message Flow {
+  string flow_id = 1;
+  string number = 2;
+  string name = 3;
+  int32 active_version = 4;
+  FlowConfig config = 5;
+}
+
+message FlowResponse { Flow flow = 1; }
+message CreateFlowRequest { string tenant_id = 1; string number = 2; string name = 3; FlowConfig config = 4; }
+message GetFlowRequest { string tenant_id = 1; string flow_id = 2; }
+message ListFlowsRequest { string tenant_id = 1; }
+message ListFlowsResponse { repeated Flow flows = 1; }
+message PublishFlowRequest { string tenant_id = 1; string flow_id = 2; FlowConfig config = 3; }
+message RollbackFlowRequest { string tenant_id = 1; string flow_id = 2; int32 version = 3; }
+message DeleteFlowRequest { string tenant_id = 1; string flow_id = 2; }
+message DeleteFlowResponse {}
+message FlowVersion {
+  int32 version = 1;
+  FlowConfig config = 2;
+  google.protobuf.Timestamp published_at = 3;
+  string published_by = 4;
+}
+message ListFlowVersionsRequest { string tenant_id = 1; string flow_id = 2; }
+message ListFlowVersionsResponse { repeated FlowVersion versions = 1; }
+message Holiday { string day = 1; string name = 2; }
+message HolidaysResponse { repeated Holiday holidays = 1; }
+message ListHolidaysRequest { string tenant_id = 1; }
+message AddHolidayRequest { string tenant_id = 1; string day = 2; string name = 3; }
+message DeleteHolidayRequest { string tenant_id = 1; string day = 2; }
 
 message AssignExtensionRequest {
   string tenant_id = 1;

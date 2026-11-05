@@ -85,13 +85,37 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 	notFound := telephonyports.InboundDecision{Refuse: telephonyports.RefusalNotFound}
 	in := s.inbound
 
-	var extID shareddomain.ExtensionID
+	var (
+		extID      shareddomain.ExtensionID
+		flowRoute  *domain.FlowRoute
+		flowLooked bool
+		now        = s.now()
+	)
+	number := domain.NormalizeDialled(req.Dialled)
 	err := s.pool.WithTenant(ctx, req.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		number, err := in.Numbers.FindByNumber(ctx, tx, domain.NormalizeDialled(req.Dialled))
+		if s.flows != nil {
+			_, version, err := s.flows.FindByNumber(ctx, tx, req.TenantID, number)
+			if err == nil {
+				holiday, err := s.flows.IsHoliday(ctx, tx, req.TenantID, now.UTC().Format("2006-01-02"))
+				if err != nil {
+					return err
+				}
+				route, ok := domain.RouteFlow(version.Config, now, holiday)
+				if !ok {
+					return ports.ErrNotFound
+				}
+				flowRoute, flowLooked = &route, true
+				return nil
+			}
+			if !errors.Is(err, ports.ErrNotFound) {
+				return err
+			}
+		}
+		inboundNumber, err := in.Numbers.FindByNumber(ctx, tx, number)
 		if err != nil {
 			return err
 		}
-		ext, err := s.store.Get(ctx, tx, req.TenantID, number.ExtensionID)
+		ext, err := s.store.Get(ctx, tx, req.TenantID, inboundNumber.ExtensionID)
 		if err != nil {
 			return err
 		}
@@ -104,7 +128,12 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 	if err != nil {
 		return telephonyports.InboundDecision{}, err
 	}
-
+	if flowLooked {
+		if flowRoute.ExtensionID == nil {
+			return notFound, nil
+		}
+		extID = *flowRoute.ExtensionID
+	}
 	return telephonyports.InboundDecision{
 		DestinationURI:         in.Addresser.ExtensionAddress(extID),
 		Direction:              telephonydomain.Inbound,

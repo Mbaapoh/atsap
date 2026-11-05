@@ -15,7 +15,7 @@ test.describe("desktop", () => {
     await page.goto("/");
     // The session restores before the shell renders.
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    const expected = ["Skip to content", "Overview", "Users", "Extensions", "Trunks & routes", "Call history", "Reports", "Account"];
+    const expected = ["Skip to content", "Overview", "Users", "Extensions", "Trunks & routes", "Call flows", "Call history", "Reports", "Account"];
     for (const name of expected) {
       await page.keyboard.press("Tab");
       const focused = page.locator(":focus");

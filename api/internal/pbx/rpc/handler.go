@@ -184,6 +184,192 @@ func (h *PbxHandler) RegenerateSecret(ctx context.Context, req *connect.Request[
 	}), nil
 }
 
+func (h *PbxHandler) CreateFlow(ctx context.Context, req *connect.Request[atsapbxv1.CreateFlowRequest]) (*connect.Response[atsapbxv1.FlowResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := flowConfigFromProto(req.Msg.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	view, err := h.svc.CreateFlow(ctx, ports.CreateFlowCommand{TenantID: tenantID, Number: req.Msg.GetNumber(), Name: req.Msg.GetName(), Config: cfg})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.FlowResponse{Flow: toProtoFlow(view)}), nil
+}
+
+func (h *PbxHandler) GetFlow(ctx context.Context, req *connect.Request[atsapbxv1.GetFlowRequest]) (*connect.Response[atsapbxv1.FlowResponse], error) {
+	tenantID, id, err := h.flowOf(ctx, req.Msg.GetTenantId(), req.Msg.GetFlowId())
+	if err != nil {
+		return nil, err
+	}
+	view, err := h.svc.GetFlow(ctx, tenantID, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.FlowResponse{Flow: toProtoFlow(view)}), nil
+}
+
+func (h *PbxHandler) ListFlows(ctx context.Context, req *connect.Request[atsapbxv1.ListFlowsRequest]) (*connect.Response[atsapbxv1.ListFlowsResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	views, err := h.svc.ListFlows(ctx, tenantID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*atsapbxv1.Flow, 0, len(views))
+	for _, v := range views {
+		out = append(out, toProtoFlow(v))
+	}
+	return connect.NewResponse(&atsapbxv1.ListFlowsResponse{Flows: out}), nil
+}
+
+func (h *PbxHandler) PublishFlow(ctx context.Context, req *connect.Request[atsapbxv1.PublishFlowRequest]) (*connect.Response[atsapbxv1.FlowResponse], error) {
+	tenantID, id, err := h.flowOf(ctx, req.Msg.GetTenantId(), req.Msg.GetFlowId())
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := flowConfigFromProto(req.Msg.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	view, err := h.svc.PublishFlow(ctx, tenantID, id, cfg)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.FlowResponse{Flow: toProtoFlow(view)}), nil
+}
+
+func (h *PbxHandler) RollbackFlow(ctx context.Context, req *connect.Request[atsapbxv1.RollbackFlowRequest]) (*connect.Response[atsapbxv1.FlowResponse], error) {
+	tenantID, id, err := h.flowOf(ctx, req.Msg.GetTenantId(), req.Msg.GetFlowId())
+	if err != nil {
+		return nil, err
+	}
+	view, err := h.svc.RollbackFlow(ctx, tenantID, id, int(req.Msg.GetVersion()))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.FlowResponse{Flow: toProtoFlow(view)}), nil
+}
+
+func (h *PbxHandler) DeleteFlow(ctx context.Context, req *connect.Request[atsapbxv1.DeleteFlowRequest]) (*connect.Response[atsapbxv1.DeleteFlowResponse], error) {
+	tenantID, id, err := h.flowOf(ctx, req.Msg.GetTenantId(), req.Msg.GetFlowId())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.DeleteFlow(ctx, tenantID, id); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&atsapbxv1.DeleteFlowResponse{}), nil
+}
+
+func (h *PbxHandler) ListFlowVersions(ctx context.Context, req *connect.Request[atsapbxv1.ListFlowVersionsRequest]) (*connect.Response[atsapbxv1.ListFlowVersionsResponse], error) {
+	tenantID, id, err := h.flowOf(ctx, req.Msg.GetTenantId(), req.Msg.GetFlowId())
+	if err != nil {
+		return nil, err
+	}
+	versions, err := h.svc.ListFlowVersions(ctx, tenantID, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*atsapbxv1.FlowVersion, 0, len(versions))
+	for _, v := range versions {
+		out = append(out, &atsapbxv1.FlowVersion{Version: wire.Int32(int64(v.Version)), Config: flowConfigToProto(v.Config), PublishedAt: timestamppb.New(v.PublishedAt), PublishedBy: v.PublishedBy.String()})
+	}
+	return connect.NewResponse(&atsapbxv1.ListFlowVersionsResponse{Versions: out}), nil
+}
+
+func (h *PbxHandler) ListHolidays(ctx context.Context, req *connect.Request[atsapbxv1.ListHolidaysRequest]) (*connect.Response[atsapbxv1.HolidaysResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	holidays, err := h.svc.ListHolidays(ctx, tenantID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*atsapbxv1.Holiday, 0, len(holidays))
+	for day, name := range holidays {
+		out = append(out, &atsapbxv1.Holiday{Day: day, Name: name})
+	}
+	return connect.NewResponse(&atsapbxv1.HolidaysResponse{Holidays: out}), nil
+}
+
+func (h *PbxHandler) AddHoliday(ctx context.Context, req *connect.Request[atsapbxv1.AddHolidayRequest]) (*connect.Response[atsapbxv1.HolidaysResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.AddHoliday(ctx, tenantID, req.Msg.GetDay(), req.Msg.GetName()); err != nil {
+		return nil, mapErr(err)
+	}
+	return h.ListHolidays(ctx, connect.NewRequest(&atsapbxv1.ListHolidaysRequest{TenantId: tenantID.String()}))
+}
+
+func (h *PbxHandler) DeleteHoliday(ctx context.Context, req *connect.Request[atsapbxv1.DeleteHolidayRequest]) (*connect.Response[atsapbxv1.HolidaysResponse], error) {
+	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.DeleteHoliday(ctx, tenantID, req.Msg.GetDay()); err != nil {
+		return nil, mapErr(err)
+	}
+	return h.ListHolidays(ctx, connect.NewRequest(&atsapbxv1.ListHolidaysRequest{TenantId: tenantID.String()}))
+}
+
+func (h *PbxHandler) flowOf(ctx context.Context, requested, rawID string) (shareddomain.TenantID, shareddomain.FlowID, error) {
+	tenantID, err := h.tenantOf(ctx, requested)
+	if err != nil {
+		return shareddomain.TenantID{}, shareddomain.FlowID{}, err
+	}
+	id, err := shareddomain.ParseFlowID(rawID)
+	if err != nil {
+		return shareddomain.TenantID{}, shareddomain.FlowID{}, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid flow_id"))
+	}
+	return tenantID, id, nil
+}
+
+func flowConfigFromProto(c *atsapbxv1.FlowConfig) (domain.FlowConfig, error) {
+	if c == nil {
+		return domain.FlowConfig{}, connect.NewError(connect.CodeInvalidArgument, errors.New("config is required"))
+	}
+	out := domain.FlowConfig{BusinessStartMinute: int(c.GetBusinessStartMinute()), BusinessEndMinute: int(c.GetBusinessEndMinute()), Prompt: c.GetPrompt()}
+	if c.GetOpenExtensionId() != "" {
+		id, err := shareddomain.ParseExtensionID(c.GetOpenExtensionId())
+		if err != nil {
+			return out, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid open_extension_id"))
+		}
+		out.OpenExtensionID = &id
+	}
+	if c.GetClosedExtensionId() != "" {
+		id, err := shareddomain.ParseExtensionID(c.GetClosedExtensionId())
+		if err != nil {
+			return out, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid closed_extension_id"))
+		}
+		out.ClosedExtensionID = &id
+	}
+	return out, nil
+}
+
+func flowConfigToProto(c domain.FlowConfig) *atsapbxv1.FlowConfig {
+	out := &atsapbxv1.FlowConfig{BusinessStartMinute: wire.Int32(int64(c.BusinessStartMinute)), BusinessEndMinute: wire.Int32(int64(c.BusinessEndMinute)), Prompt: c.Prompt}
+	if c.OpenExtensionID != nil {
+		out.OpenExtensionId = c.OpenExtensionID.String()
+	}
+	if c.ClosedExtensionID != nil {
+		out.ClosedExtensionId = c.ClosedExtensionID.String()
+	}
+	return out
+}
+
+func toProtoFlow(v ports.FlowView) *atsapbxv1.Flow {
+	return &atsapbxv1.Flow{FlowId: v.ID.String(), Number: v.Number, Name: v.Name, ActiveVersion: wire.Int32(int64(v.ActiveVersion)), Config: flowConfigToProto(v.Config)}
+}
+
 func (h *PbxHandler) AssignExtension(ctx context.Context, req *connect.Request[atsapbxv1.AssignExtensionRequest]) (*connect.Response[atsapbxv1.AssignExtensionResponse], error) {
 	tenantID, err := h.tenantOf(ctx, req.Msg.GetTenantId())
 	if err != nil {

@@ -13,6 +13,7 @@ import { LicencePage } from "../features/licence/LicencePage";
 import { RequireLicence } from "../features/licence/RequireLicence";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { ReportsPage } from "../features/reports/ReportsPage";
+import { FlowsPage } from "../features/flows/FlowsPage";
 import { UsersPage } from "../features/users/UsersPage";
 import { ExtensionsPage } from "../features/extensions/ExtensionsPage";
 import { CallsPage } from "../features/calls/CallsPage";
@@ -71,6 +72,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireLicence area="Trunks and routes">
             <TrunksRoutesPage />
+          </RequireLicence>
+        ),
+      },
+      {
+        path: "flows",
+        element: (
+          <RequireLicence area="Call flows">
+            <FlowsPage />
           </RequireLicence>
         ),
       },

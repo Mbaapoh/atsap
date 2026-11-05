@@ -140,3 +140,18 @@ func TestRouteID(t *testing.T) {
 	var zero domain.RouteID
 	assert.True(t, zero.IsZero())
 }
+
+func TestFlowID(t *testing.T) {
+	id := domain.NewFlowID()
+	assert.False(t, id.IsZero(), "NewFlowID() should not be zero")
+
+	parsed, err := domain.ParseFlowID(id.String())
+	require.NoError(t, err)
+	assert.Equal(t, id, parsed)
+
+	_, err = domain.ParseFlowID("not-a-uuid")
+	assert.Error(t, err)
+
+	var zero domain.FlowID
+	assert.True(t, zero.IsZero())
+}

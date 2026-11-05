@@ -47,7 +47,8 @@ func newInboundHarness(t *testing.T) *inboundHarness {
 	t.Helper()
 	h := newHarness(t)
 	ih := &inboundHarness{harness: h, calls: newFakeCalls(), status: &stubStatus{}}
-	svc := h.svc.WithEmergencyStores(pbxpg.NewInboundNumberStore(), pbxpg.NewEmergencyStore())
+	svc := h.svc.WithEmergencyStores(pbxpg.NewInboundNumberStore(), pbxpg.NewEmergencyStore()).
+		WithFlows(pbxpg.NewFlowStore())
 	svc = svc.WithPlacement(application.Placement{
 		Calls: ih.calls, Status: ih.calls, Addresser: asterisk.Addresser{},
 		Legs: pbxpg.NewCallLegStore(), WatchInterval: 10 * time.Millisecond, WatchTimeout: 3 * time.Second,
@@ -488,4 +489,64 @@ func TestRouter_HealthWatcherOnConnect(t *testing.T) {
 		defer h.mu.Unlock()
 		return len(h.health) == 1 && h.health[0] == trunk.ID
 	}, 5*time.Second, 20*time.Millisecond, "an answered inbound leg reports its trunk healthy")
+}
+
+func TestInboundFlow_RoutesOpenClosedAndHoliday(t *testing.T) {
+	h := newInboundHarness(t)
+	open := h.createExtension(t, "1001")
+	closed := h.createExtension(t, "1002")
+	_, err := h.svc.CreateFlow(h.ctx, ports.CreateFlowCommand{
+		TenantID: h.tenant, Number: "4420", Name: "Main line",
+		Config: domain.FlowConfig{OpenExtensionID: &open.Extension.ID, ClosedExtensionID: &closed.Extension.ID,
+			BusinessStartMinute: 0, BusinessEndMinute: 0},
+	})
+	require.NoError(t, err)
+	listed, err := h.svc.ListFlows(h.ctx, h.tenant)
+	require.NoError(t, err)
+	require.Len(t, listed, 1, "flow exists before routing")
+	source := domain.TrunkEndpointIdentifier(shareddomain.NewTrunkID())
+
+	decision, err := h.svc.ResolveInbound(h.ctx, telephonyports.InboundRequest{
+		TenantID: h.tenant, CallID: shareddomain.NewCallID(), SourceEndpoint: source, Dialled: "4420",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, decision.DestinationExtensionID)
+	assert.Equal(t, open.Extension.ID, *decision.DestinationExtensionID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	require.NoError(t, h.svc.AddHoliday(h.ctx, h.tenant, today, "Holiday"))
+	decision, err = h.svc.ResolveInbound(h.ctx, telephonyports.InboundRequest{
+		TenantID: h.tenant, CallID: shareddomain.NewCallID(), SourceEndpoint: source, Dialled: "4420",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, decision.DestinationExtensionID)
+	assert.Equal(t, closed.Extension.ID, *decision.DestinationExtensionID)
+
+	require.NoError(t, h.svc.DeleteHoliday(h.ctx, h.tenant, today))
+	now := time.Now().UTC()
+	start := (now.Hour()*60 + now.Minute() + 1) % (24 * 60)
+	end := (now.Hour()*60 + now.Minute() + 2) % (24 * 60)
+	_, err = h.svc.PublishFlow(h.ctx, h.tenant, mustFlowID(t, h, "4420"), domain.FlowConfig{
+		OpenExtensionID: &open.Extension.ID, ClosedExtensionID: &closed.Extension.ID,
+		BusinessStartMinute: start, BusinessEndMinute: end,
+	})
+	require.NoError(t, err)
+	decision, err = h.svc.ResolveInbound(h.ctx, telephonyports.InboundRequest{
+		TenantID: h.tenant, CallID: shareddomain.NewCallID(), SourceEndpoint: source, Dialled: "4420",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, closed.Extension.ID, *decision.DestinationExtensionID, "outside business hours uses the closed destination")
+}
+
+func mustFlowID(t *testing.T, h *inboundHarness, number string) shareddomain.FlowID {
+	t.Helper()
+	flows, err := h.svc.ListFlows(h.ctx, h.tenant)
+	require.NoError(t, err)
+	for _, f := range flows {
+		if f.Number == number {
+			return f.ID
+		}
+	}
+	t.Fatalf("flow %s not found", number)
+	return shareddomain.FlowID{}
 }

@@ -12,6 +12,7 @@ export const primaryNav: NavItem[] = [
   { path: "/users", label: "Users" },
   { path: "/extensions", label: "Extensions" },
   { path: "/trunks", label: "Trunks & routes" },
+  { path: "/flows", label: "Call flows" },
   { path: "/calls", label: "Call history" },
   { path: "/reports", label: "Reports" },
 ];

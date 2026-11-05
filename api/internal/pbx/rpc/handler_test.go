@@ -56,6 +56,43 @@ type fakeService struct {
 	outboundPolicy  ports.OutboundPolicyView
 	lastOutbound    ports.SetOutboundPolicyCommand
 	lastAssign      ports.AssignExtensionCommand
+	flowView        ports.FlowView
+	flowViews       []ports.FlowView
+	flowVersions    []ports.FlowVersionView
+	holidays        map[string]string
+	lastFlow        ports.CreateFlowCommand
+}
+
+func (f *fakeService) CreateFlow(_ context.Context, cmd ports.CreateFlowCommand) (ports.FlowView, error) {
+	f.lastFlow = cmd
+	return f.flowView, f.err
+}
+func (f *fakeService) GetFlow(context.Context, shareddomain.TenantID, shareddomain.FlowID) (ports.FlowView, error) {
+	return f.flowView, f.err
+}
+func (f *fakeService) ListFlows(context.Context, shareddomain.TenantID) ([]ports.FlowView, error) {
+	return f.flowViews, f.err
+}
+func (f *fakeService) PublishFlow(context.Context, shareddomain.TenantID, shareddomain.FlowID, domain.FlowConfig) (ports.FlowView, error) {
+	return f.flowView, f.err
+}
+func (f *fakeService) RollbackFlow(context.Context, shareddomain.TenantID, shareddomain.FlowID, int) (ports.FlowView, error) {
+	return f.flowView, f.err
+}
+func (f *fakeService) DeleteFlow(context.Context, shareddomain.TenantID, shareddomain.FlowID) error {
+	return f.err
+}
+func (f *fakeService) ListFlowVersions(context.Context, shareddomain.TenantID, shareddomain.FlowID) ([]ports.FlowVersionView, error) {
+	return f.flowVersions, f.err
+}
+func (f *fakeService) ListHolidays(context.Context, shareddomain.TenantID) (map[string]string, error) {
+	return f.holidays, f.err
+}
+func (f *fakeService) AddHoliday(context.Context, shareddomain.TenantID, string, string) error {
+	return f.err
+}
+func (f *fakeService) DeleteHoliday(context.Context, shareddomain.TenantID, string) error {
+	return f.err
 }
 
 func (f *fakeService) AssignExtension(_ context.Context, cmd ports.AssignExtensionCommand) error {
@@ -657,4 +694,58 @@ func TestAssignExtension_Wire(t *testing.T) {
 	}))
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestFlows_Wire(t *testing.T) {
+	e := newEnv(t)
+	flowID, extID := shareddomain.NewFlowID(), shareddomain.NewExtensionID()
+	e.svc.flowView = ports.FlowView{ID: flowID, Number: "4420", Name: "Main", ActiveVersion: 2,
+		Config: domain.FlowConfig{OpenExtensionID: &extID, BusinessStartMinute: 480, BusinessEndMinute: 1080}}
+	e.svc.flowViews = []ports.FlowView{e.svc.flowView}
+	e.svc.flowVersions = []ports.FlowVersionView{{Version: 2, Config: e.svc.flowView.Config, PublishedAt: time.Now(), PublishedBy: shareddomain.NewPrincipalID()}}
+	e.svc.holidays = map[string]string{"2026-12-25": "Christmas"}
+
+	created, err := e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{
+		TenantId: e.tenant.String(), Number: "4420", Name: "Main",
+		Config: &atsapbxv1.FlowConfig{OpenExtensionId: extID.String(), BusinessStartMinute: 480, BusinessEndMinute: 1080},
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "4420", created.Msg.GetFlow().GetNumber())
+	assert.Equal(t, extID.String(), e.svc.lastFlow.Config.OpenExtensionID.String())
+
+	got, err := e.h.GetFlow(e.ctx, connect.NewRequest(&atsapbxv1.GetFlowRequest{TenantId: e.tenant.String(), FlowId: flowID.String()}))
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), got.Msg.GetFlow().GetActiveVersion())
+
+	listed, err := e.h.ListFlows(e.ctx, connect.NewRequest(&atsapbxv1.ListFlowsRequest{TenantId: e.tenant.String()}))
+	require.NoError(t, err)
+	require.Len(t, listed.Msg.GetFlows(), 1)
+
+	_, err = e.h.PublishFlow(e.ctx, connect.NewRequest(&atsapbxv1.PublishFlowRequest{
+		TenantId: e.tenant.String(), FlowId: flowID.String(), Config: &atsapbxv1.FlowConfig{OpenExtensionId: extID.String()},
+	}))
+	require.NoError(t, err)
+
+	_, err = e.h.RollbackFlow(e.ctx, connect.NewRequest(&atsapbxv1.RollbackFlowRequest{TenantId: e.tenant.String(), FlowId: flowID.String(), Version: 1}))
+	require.NoError(t, err)
+
+	versions, err := e.h.ListFlowVersions(e.ctx, connect.NewRequest(&atsapbxv1.ListFlowVersionsRequest{TenantId: e.tenant.String(), FlowId: flowID.String()}))
+	require.NoError(t, err)
+	require.Len(t, versions.Msg.GetVersions(), 1)
+
+	holidays, err := e.h.ListHolidays(e.ctx, connect.NewRequest(&atsapbxv1.ListHolidaysRequest{TenantId: e.tenant.String()}))
+	require.NoError(t, err)
+	require.Len(t, holidays.Msg.GetHolidays(), 1)
+	_, err = e.h.AddHoliday(e.ctx, connect.NewRequest(&atsapbxv1.AddHolidayRequest{TenantId: e.tenant.String(), Day: "2026-12-25", Name: "Christmas"}))
+	require.NoError(t, err)
+	_, err = e.h.DeleteHoliday(e.ctx, connect.NewRequest(&atsapbxv1.DeleteHolidayRequest{TenantId: e.tenant.String(), Day: "2026-12-25"}))
+	require.NoError(t, err)
+
+	_, err = e.h.DeleteFlow(e.ctx, connect.NewRequest(&atsapbxv1.DeleteFlowRequest{TenantId: e.tenant.String(), FlowId: flowID.String()}))
+	require.NoError(t, err)
+
+	_, err = e.h.GetFlow(e.ctx, connect.NewRequest(&atsapbxv1.GetFlowRequest{TenantId: e.tenant.String(), FlowId: "bad"}))
+	require.Error(t, err)
+	_, err = e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{TenantId: e.tenant.String(), Config: &atsapbxv1.FlowConfig{OpenExtensionId: "bad"}}))
+	require.Error(t, err)
 }

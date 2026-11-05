@@ -2903,6 +2903,39 @@ change `quality-and-supply-chain-gates`
 
 ---
 
+**D-89 · IVR ships in two slices: time-based flow routing first, the
+DTMF menu next (2026-11-04).**
+
+**Decision:** `pbx-ivr-routing` ships the routing half of an
+auto-attendant: a DID-owned flow with immutable revisions, an open and a
+closed destination, UTC business hours and a holiday calendar. Publish
+and rollback move the active pointer. The DTMF menu/prompt execution is
+`pbx-ivr-menu`, built on ARI answer/play/DTMF.
+- The prompt field is reserved and stored but not played in this slice.
+- A DID cannot be both a flow and a direct inbound number.
+- Closed with no destination refuses rather than leaving the caller in
+  silence.
+- Revisions are immutable; only the active pointer changes.
+
+**Context:** D-65/LLD-03 put flow execution with a menu in one change.
+The routing model is independently useful (after-hours routing), small
+enough to prove end-to-end, and does not need ARI event-state changes. A
+menu needs playback/DTMF state and is a separate risk surface.
+
+**Alternatives:**
+- *One change with the menu.* Deferred: it would mix routing with ARI
+  media state and delay after-hours routing for every tenant.
+- *Use the dialplan for IVR.* Rejected: the platform controls calls over
+  ARI, and generated dialplan would split call control across two planes.
+
+**Consequences:** Customers can route by hours/holiday today. A caller
+hears no prompt yet; the menu follows. Prompt storage is forward-
+compatible.
+
+**Traceability:** PRD US-03, D-65; LLD-03 §12; change `pbx-ivr-routing`
+
+---
+
 **D-88 · Reporting ships as a read-only service over terminated calls,
 with participant attribution and audited CSV export (2026-11-04).**
 

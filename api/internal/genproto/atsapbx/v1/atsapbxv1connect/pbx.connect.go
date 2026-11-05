@@ -50,6 +50,28 @@ const (
 	// PbxServiceAssignExtensionProcedure is the fully-qualified name of the PbxService's
 	// AssignExtension RPC.
 	PbxServiceAssignExtensionProcedure = "/atsapbx.v1.PbxService/AssignExtension"
+	// PbxServiceCreateFlowProcedure is the fully-qualified name of the PbxService's CreateFlow RPC.
+	PbxServiceCreateFlowProcedure = "/atsapbx.v1.PbxService/CreateFlow"
+	// PbxServiceGetFlowProcedure is the fully-qualified name of the PbxService's GetFlow RPC.
+	PbxServiceGetFlowProcedure = "/atsapbx.v1.PbxService/GetFlow"
+	// PbxServiceListFlowsProcedure is the fully-qualified name of the PbxService's ListFlows RPC.
+	PbxServiceListFlowsProcedure = "/atsapbx.v1.PbxService/ListFlows"
+	// PbxServicePublishFlowProcedure is the fully-qualified name of the PbxService's PublishFlow RPC.
+	PbxServicePublishFlowProcedure = "/atsapbx.v1.PbxService/PublishFlow"
+	// PbxServiceRollbackFlowProcedure is the fully-qualified name of the PbxService's RollbackFlow RPC.
+	PbxServiceRollbackFlowProcedure = "/atsapbx.v1.PbxService/RollbackFlow"
+	// PbxServiceDeleteFlowProcedure is the fully-qualified name of the PbxService's DeleteFlow RPC.
+	PbxServiceDeleteFlowProcedure = "/atsapbx.v1.PbxService/DeleteFlow"
+	// PbxServiceListFlowVersionsProcedure is the fully-qualified name of the PbxService's
+	// ListFlowVersions RPC.
+	PbxServiceListFlowVersionsProcedure = "/atsapbx.v1.PbxService/ListFlowVersions"
+	// PbxServiceListHolidaysProcedure is the fully-qualified name of the PbxService's ListHolidays RPC.
+	PbxServiceListHolidaysProcedure = "/atsapbx.v1.PbxService/ListHolidays"
+	// PbxServiceAddHolidayProcedure is the fully-qualified name of the PbxService's AddHoliday RPC.
+	PbxServiceAddHolidayProcedure = "/atsapbx.v1.PbxService/AddHoliday"
+	// PbxServiceDeleteHolidayProcedure is the fully-qualified name of the PbxService's DeleteHoliday
+	// RPC.
+	PbxServiceDeleteHolidayProcedure = "/atsapbx.v1.PbxService/DeleteHoliday"
 	// PbxServiceUnassignExtensionProcedure is the fully-qualified name of the PbxService's
 	// UnassignExtension RPC.
 	PbxServiceUnassignExtensionProcedure = "/atsapbx.v1.PbxService/UnassignExtension"
@@ -132,6 +154,18 @@ type PbxServiceClient interface {
 	// AssignExtension makes a membership the owner of an extension (D-65).
 	// An extension has at most one owner; a person may own several.
 	AssignExtension(context.Context, *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error)
+	// IVR flows (D-89): a DID routes through a versioned flow that chooses
+	// its open/closed destination by business hours and holidays.
+	CreateFlow(context.Context, *connect.Request[v1.CreateFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	GetFlow(context.Context, *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error)
+	PublishFlow(context.Context, *connect.Request[v1.PublishFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	RollbackFlow(context.Context, *connect.Request[v1.RollbackFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	DeleteFlow(context.Context, *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error)
+	ListFlowVersions(context.Context, *connect.Request[v1.ListFlowVersionsRequest]) (*connect.Response[v1.ListFlowVersionsResponse], error)
+	ListHolidays(context.Context, *connect.Request[v1.ListHolidaysRequest]) (*connect.Response[v1.HolidaysResponse], error)
+	AddHoliday(context.Context, *connect.Request[v1.AddHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error)
+	DeleteHoliday(context.Context, *connect.Request[v1.DeleteHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error)
 	UnassignExtension(context.Context, *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error)
 	// RegenerateSecret issues a new credential. The previous one stops
 	// working the moment this returns — two live credentials for one
@@ -257,6 +291,66 @@ func NewPbxServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			httpClient,
 			baseURL+PbxServiceAssignExtensionProcedure,
 			connect.WithSchema(pbxServiceMethods.ByName("AssignExtension")),
+			connect.WithClientOptions(opts...),
+		),
+		createFlow: connect.NewClient[v1.CreateFlowRequest, v1.FlowResponse](
+			httpClient,
+			baseURL+PbxServiceCreateFlowProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("CreateFlow")),
+			connect.WithClientOptions(opts...),
+		),
+		getFlow: connect.NewClient[v1.GetFlowRequest, v1.FlowResponse](
+			httpClient,
+			baseURL+PbxServiceGetFlowProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("GetFlow")),
+			connect.WithClientOptions(opts...),
+		),
+		listFlows: connect.NewClient[v1.ListFlowsRequest, v1.ListFlowsResponse](
+			httpClient,
+			baseURL+PbxServiceListFlowsProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListFlows")),
+			connect.WithClientOptions(opts...),
+		),
+		publishFlow: connect.NewClient[v1.PublishFlowRequest, v1.FlowResponse](
+			httpClient,
+			baseURL+PbxServicePublishFlowProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("PublishFlow")),
+			connect.WithClientOptions(opts...),
+		),
+		rollbackFlow: connect.NewClient[v1.RollbackFlowRequest, v1.FlowResponse](
+			httpClient,
+			baseURL+PbxServiceRollbackFlowProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("RollbackFlow")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteFlow: connect.NewClient[v1.DeleteFlowRequest, v1.DeleteFlowResponse](
+			httpClient,
+			baseURL+PbxServiceDeleteFlowProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("DeleteFlow")),
+			connect.WithClientOptions(opts...),
+		),
+		listFlowVersions: connect.NewClient[v1.ListFlowVersionsRequest, v1.ListFlowVersionsResponse](
+			httpClient,
+			baseURL+PbxServiceListFlowVersionsProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListFlowVersions")),
+			connect.WithClientOptions(opts...),
+		),
+		listHolidays: connect.NewClient[v1.ListHolidaysRequest, v1.HolidaysResponse](
+			httpClient,
+			baseURL+PbxServiceListHolidaysProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("ListHolidays")),
+			connect.WithClientOptions(opts...),
+		),
+		addHoliday: connect.NewClient[v1.AddHolidayRequest, v1.HolidaysResponse](
+			httpClient,
+			baseURL+PbxServiceAddHolidayProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("AddHoliday")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteHoliday: connect.NewClient[v1.DeleteHolidayRequest, v1.HolidaysResponse](
+			httpClient,
+			baseURL+PbxServiceDeleteHolidayProcedure,
+			connect.WithSchema(pbxServiceMethods.ByName("DeleteHoliday")),
 			connect.WithClientOptions(opts...),
 		),
 		unassignExtension: connect.NewClient[v1.UnassignExtensionRequest, v1.UnassignExtensionResponse](
@@ -408,6 +502,16 @@ type pbxServiceClient struct {
 	updateExtension       *connect.Client[v1.UpdateExtensionRequest, v1.UpdateExtensionResponse]
 	deleteExtension       *connect.Client[v1.DeleteExtensionRequest, v1.DeleteExtensionResponse]
 	assignExtension       *connect.Client[v1.AssignExtensionRequest, v1.AssignExtensionResponse]
+	createFlow            *connect.Client[v1.CreateFlowRequest, v1.FlowResponse]
+	getFlow               *connect.Client[v1.GetFlowRequest, v1.FlowResponse]
+	listFlows             *connect.Client[v1.ListFlowsRequest, v1.ListFlowsResponse]
+	publishFlow           *connect.Client[v1.PublishFlowRequest, v1.FlowResponse]
+	rollbackFlow          *connect.Client[v1.RollbackFlowRequest, v1.FlowResponse]
+	deleteFlow            *connect.Client[v1.DeleteFlowRequest, v1.DeleteFlowResponse]
+	listFlowVersions      *connect.Client[v1.ListFlowVersionsRequest, v1.ListFlowVersionsResponse]
+	listHolidays          *connect.Client[v1.ListHolidaysRequest, v1.HolidaysResponse]
+	addHoliday            *connect.Client[v1.AddHolidayRequest, v1.HolidaysResponse]
+	deleteHoliday         *connect.Client[v1.DeleteHolidayRequest, v1.HolidaysResponse]
 	unassignExtension     *connect.Client[v1.UnassignExtensionRequest, v1.UnassignExtensionResponse]
 	regenerateSecret      *connect.Client[v1.RegenerateSecretRequest, v1.RegenerateSecretResponse]
 	getSipRegistrar       *connect.Client[v1.GetSipRegistrarRequest, v1.GetSipRegistrarResponse]
@@ -461,6 +565,56 @@ func (c *pbxServiceClient) DeleteExtension(ctx context.Context, req *connect.Req
 // AssignExtension calls atsapbx.v1.PbxService.AssignExtension.
 func (c *pbxServiceClient) AssignExtension(ctx context.Context, req *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error) {
 	return c.assignExtension.CallUnary(ctx, req)
+}
+
+// CreateFlow calls atsapbx.v1.PbxService.CreateFlow.
+func (c *pbxServiceClient) CreateFlow(ctx context.Context, req *connect.Request[v1.CreateFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return c.createFlow.CallUnary(ctx, req)
+}
+
+// GetFlow calls atsapbx.v1.PbxService.GetFlow.
+func (c *pbxServiceClient) GetFlow(ctx context.Context, req *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return c.getFlow.CallUnary(ctx, req)
+}
+
+// ListFlows calls atsapbx.v1.PbxService.ListFlows.
+func (c *pbxServiceClient) ListFlows(ctx context.Context, req *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error) {
+	return c.listFlows.CallUnary(ctx, req)
+}
+
+// PublishFlow calls atsapbx.v1.PbxService.PublishFlow.
+func (c *pbxServiceClient) PublishFlow(ctx context.Context, req *connect.Request[v1.PublishFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return c.publishFlow.CallUnary(ctx, req)
+}
+
+// RollbackFlow calls atsapbx.v1.PbxService.RollbackFlow.
+func (c *pbxServiceClient) RollbackFlow(ctx context.Context, req *connect.Request[v1.RollbackFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return c.rollbackFlow.CallUnary(ctx, req)
+}
+
+// DeleteFlow calls atsapbx.v1.PbxService.DeleteFlow.
+func (c *pbxServiceClient) DeleteFlow(ctx context.Context, req *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error) {
+	return c.deleteFlow.CallUnary(ctx, req)
+}
+
+// ListFlowVersions calls atsapbx.v1.PbxService.ListFlowVersions.
+func (c *pbxServiceClient) ListFlowVersions(ctx context.Context, req *connect.Request[v1.ListFlowVersionsRequest]) (*connect.Response[v1.ListFlowVersionsResponse], error) {
+	return c.listFlowVersions.CallUnary(ctx, req)
+}
+
+// ListHolidays calls atsapbx.v1.PbxService.ListHolidays.
+func (c *pbxServiceClient) ListHolidays(ctx context.Context, req *connect.Request[v1.ListHolidaysRequest]) (*connect.Response[v1.HolidaysResponse], error) {
+	return c.listHolidays.CallUnary(ctx, req)
+}
+
+// AddHoliday calls atsapbx.v1.PbxService.AddHoliday.
+func (c *pbxServiceClient) AddHoliday(ctx context.Context, req *connect.Request[v1.AddHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error) {
+	return c.addHoliday.CallUnary(ctx, req)
+}
+
+// DeleteHoliday calls atsapbx.v1.PbxService.DeleteHoliday.
+func (c *pbxServiceClient) DeleteHoliday(ctx context.Context, req *connect.Request[v1.DeleteHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error) {
+	return c.deleteHoliday.CallUnary(ctx, req)
 }
 
 // UnassignExtension calls atsapbx.v1.PbxService.UnassignExtension.
@@ -598,6 +752,18 @@ type PbxServiceHandler interface {
 	// AssignExtension makes a membership the owner of an extension (D-65).
 	// An extension has at most one owner; a person may own several.
 	AssignExtension(context.Context, *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error)
+	// IVR flows (D-89): a DID routes through a versioned flow that chooses
+	// its open/closed destination by business hours and holidays.
+	CreateFlow(context.Context, *connect.Request[v1.CreateFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	GetFlow(context.Context, *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error)
+	PublishFlow(context.Context, *connect.Request[v1.PublishFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	RollbackFlow(context.Context, *connect.Request[v1.RollbackFlowRequest]) (*connect.Response[v1.FlowResponse], error)
+	DeleteFlow(context.Context, *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error)
+	ListFlowVersions(context.Context, *connect.Request[v1.ListFlowVersionsRequest]) (*connect.Response[v1.ListFlowVersionsResponse], error)
+	ListHolidays(context.Context, *connect.Request[v1.ListHolidaysRequest]) (*connect.Response[v1.HolidaysResponse], error)
+	AddHoliday(context.Context, *connect.Request[v1.AddHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error)
+	DeleteHoliday(context.Context, *connect.Request[v1.DeleteHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error)
 	UnassignExtension(context.Context, *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error)
 	// RegenerateSecret issues a new credential. The previous one stops
 	// working the moment this returns — two live credentials for one
@@ -719,6 +885,66 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 		PbxServiceAssignExtensionProcedure,
 		svc.AssignExtension,
 		connect.WithSchema(pbxServiceMethods.ByName("AssignExtension")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceCreateFlowHandler := connect.NewUnaryHandler(
+		PbxServiceCreateFlowProcedure,
+		svc.CreateFlow,
+		connect.WithSchema(pbxServiceMethods.ByName("CreateFlow")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceGetFlowHandler := connect.NewUnaryHandler(
+		PbxServiceGetFlowProcedure,
+		svc.GetFlow,
+		connect.WithSchema(pbxServiceMethods.ByName("GetFlow")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListFlowsHandler := connect.NewUnaryHandler(
+		PbxServiceListFlowsProcedure,
+		svc.ListFlows,
+		connect.WithSchema(pbxServiceMethods.ByName("ListFlows")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServicePublishFlowHandler := connect.NewUnaryHandler(
+		PbxServicePublishFlowProcedure,
+		svc.PublishFlow,
+		connect.WithSchema(pbxServiceMethods.ByName("PublishFlow")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceRollbackFlowHandler := connect.NewUnaryHandler(
+		PbxServiceRollbackFlowProcedure,
+		svc.RollbackFlow,
+		connect.WithSchema(pbxServiceMethods.ByName("RollbackFlow")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceDeleteFlowHandler := connect.NewUnaryHandler(
+		PbxServiceDeleteFlowProcedure,
+		svc.DeleteFlow,
+		connect.WithSchema(pbxServiceMethods.ByName("DeleteFlow")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListFlowVersionsHandler := connect.NewUnaryHandler(
+		PbxServiceListFlowVersionsProcedure,
+		svc.ListFlowVersions,
+		connect.WithSchema(pbxServiceMethods.ByName("ListFlowVersions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceListHolidaysHandler := connect.NewUnaryHandler(
+		PbxServiceListHolidaysProcedure,
+		svc.ListHolidays,
+		connect.WithSchema(pbxServiceMethods.ByName("ListHolidays")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceAddHolidayHandler := connect.NewUnaryHandler(
+		PbxServiceAddHolidayProcedure,
+		svc.AddHoliday,
+		connect.WithSchema(pbxServiceMethods.ByName("AddHoliday")),
+		connect.WithHandlerOptions(opts...),
+	)
+	pbxServiceDeleteHolidayHandler := connect.NewUnaryHandler(
+		PbxServiceDeleteHolidayProcedure,
+		svc.DeleteHoliday,
+		connect.WithSchema(pbxServiceMethods.ByName("DeleteHoliday")),
 		connect.WithHandlerOptions(opts...),
 	)
 	pbxServiceUnassignExtensionHandler := connect.NewUnaryHandler(
@@ -873,6 +1099,26 @@ func NewPbxServiceHandler(svc PbxServiceHandler, opts ...connect.HandlerOption) 
 			pbxServiceDeleteExtensionHandler.ServeHTTP(w, r)
 		case PbxServiceAssignExtensionProcedure:
 			pbxServiceAssignExtensionHandler.ServeHTTP(w, r)
+		case PbxServiceCreateFlowProcedure:
+			pbxServiceCreateFlowHandler.ServeHTTP(w, r)
+		case PbxServiceGetFlowProcedure:
+			pbxServiceGetFlowHandler.ServeHTTP(w, r)
+		case PbxServiceListFlowsProcedure:
+			pbxServiceListFlowsHandler.ServeHTTP(w, r)
+		case PbxServicePublishFlowProcedure:
+			pbxServicePublishFlowHandler.ServeHTTP(w, r)
+		case PbxServiceRollbackFlowProcedure:
+			pbxServiceRollbackFlowHandler.ServeHTTP(w, r)
+		case PbxServiceDeleteFlowProcedure:
+			pbxServiceDeleteFlowHandler.ServeHTTP(w, r)
+		case PbxServiceListFlowVersionsProcedure:
+			pbxServiceListFlowVersionsHandler.ServeHTTP(w, r)
+		case PbxServiceListHolidaysProcedure:
+			pbxServiceListHolidaysHandler.ServeHTTP(w, r)
+		case PbxServiceAddHolidayProcedure:
+			pbxServiceAddHolidayHandler.ServeHTTP(w, r)
+		case PbxServiceDeleteHolidayProcedure:
+			pbxServiceDeleteHolidayHandler.ServeHTTP(w, r)
 		case PbxServiceUnassignExtensionProcedure:
 			pbxServiceUnassignExtensionHandler.ServeHTTP(w, r)
 		case PbxServiceRegenerateSecretProcedure:
@@ -950,6 +1196,46 @@ func (UnimplementedPbxServiceHandler) DeleteExtension(context.Context, *connect.
 
 func (UnimplementedPbxServiceHandler) AssignExtension(context.Context, *connect.Request[v1.AssignExtensionRequest]) (*connect.Response[v1.AssignExtensionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.AssignExtension is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) CreateFlow(context.Context, *connect.Request[v1.CreateFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.CreateFlow is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) GetFlow(context.Context, *connect.Request[v1.GetFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.GetFlow is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListFlows(context.Context, *connect.Request[v1.ListFlowsRequest]) (*connect.Response[v1.ListFlowsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListFlows is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) PublishFlow(context.Context, *connect.Request[v1.PublishFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.PublishFlow is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) RollbackFlow(context.Context, *connect.Request[v1.RollbackFlowRequest]) (*connect.Response[v1.FlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.RollbackFlow is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) DeleteFlow(context.Context, *connect.Request[v1.DeleteFlowRequest]) (*connect.Response[v1.DeleteFlowResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteFlow is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListFlowVersions(context.Context, *connect.Request[v1.ListFlowVersionsRequest]) (*connect.Response[v1.ListFlowVersionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListFlowVersions is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) ListHolidays(context.Context, *connect.Request[v1.ListHolidaysRequest]) (*connect.Response[v1.HolidaysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.ListHolidays is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) AddHoliday(context.Context, *connect.Request[v1.AddHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.AddHoliday is not implemented"))
+}
+
+func (UnimplementedPbxServiceHandler) DeleteHoliday(context.Context, *connect.Request[v1.DeleteHolidayRequest]) (*connect.Response[v1.HolidaysResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("atsapbx.v1.PbxService.DeleteHoliday is not implemented"))
 }
 
 func (UnimplementedPbxServiceHandler) UnassignExtension(context.Context, *connect.Request[v1.UnassignExtensionRequest]) (*connect.Response[v1.UnassignExtensionResponse], error) {

@@ -320,6 +320,47 @@ type Spend struct {
 	MonthMicros int64
 }
 
+// FlowView is one IVR flow with its active configuration.
+type FlowView struct {
+	ID            shareddomain.FlowID
+	Number        string
+	Name          string
+	ActiveVersion int
+	Config        domain.FlowConfig
+}
+
+// FlowVersionView is one published revision.
+type FlowVersionView struct {
+	Version     int
+	Config      domain.FlowConfig
+	PublishedAt time.Time
+	PublishedBy shareddomain.PrincipalID
+}
+
+// CreateFlowCommand supplies the first published revision.
+type CreateFlowCommand struct {
+	TenantID shareddomain.TenantID
+	Number   string
+	Name     string
+	Config   domain.FlowConfig
+}
+
+// FlowStore persists IVR flows, revisions and holidays.
+type FlowStore interface {
+	Create(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, flow domain.Flow, v domain.FlowVersion) error
+	Get(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.FlowID) (domain.Flow, domain.FlowVersion, error)
+	FindByNumber(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, number string) (domain.Flow, domain.FlowVersion, error)
+	List(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) ([]FlowView, error)
+	Publish(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.FlowID, config domain.FlowConfig, by shareddomain.PrincipalID, at time.Time) (int, error)
+	Rollback(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.FlowID, version int) error
+	Versions(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.FlowID) ([]FlowVersionView, error)
+	Delete(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.FlowID) error
+	ListHolidays(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID) (map[string]string, error)
+	AddHoliday(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, day, name string) error
+	DeleteHoliday(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, day string) error
+	IsHoliday(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, day string) (bool, error)
+}
+
 // OutboundPolicyView is the fraud guard as the console sees it.
 type OutboundPolicyView struct {
 	DailySpendCapMicros   int64
@@ -401,6 +442,16 @@ type ConfigService interface {
 	// SipRegistrar returns where the tenant's devices register, to a
 	// caller who may read its extensions.
 	SipRegistrar(ctx context.Context, tenantID shareddomain.TenantID) (SipRegistrar, error)
+	CreateFlow(ctx context.Context, cmd CreateFlowCommand) (FlowView, error)
+	GetFlow(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.FlowID) (FlowView, error)
+	ListFlows(ctx context.Context, tenantID shareddomain.TenantID) ([]FlowView, error)
+	PublishFlow(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.FlowID, config domain.FlowConfig) (FlowView, error)
+	RollbackFlow(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.FlowID, version int) (FlowView, error)
+	DeleteFlow(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.FlowID) error
+	ListFlowVersions(ctx context.Context, tenantID shareddomain.TenantID, id shareddomain.FlowID) ([]FlowVersionView, error)
+	ListHolidays(ctx context.Context, tenantID shareddomain.TenantID) (map[string]string, error)
+	AddHoliday(ctx context.Context, tenantID shareddomain.TenantID, day, name string) error
+	DeleteHoliday(ctx context.Context, tenantID shareddomain.TenantID, day string) error
 	AssignExtension(ctx context.Context, cmd AssignExtensionCommand) error
 	UnassignExtension(ctx context.Context, tenantID shareddomain.TenantID, extensionID shareddomain.ExtensionID) error
 	GetOutboundPolicy(ctx context.Context, tenantID shareddomain.TenantID) (OutboundPolicyView, error)

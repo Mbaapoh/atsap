@@ -58,6 +58,11 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `GetExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extension detail, with live registration state |
 | `ListExtensions` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console extensions list (flow A3) |
 | `UpdateExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console rename, device-type and outbound-class change |
+| `CreateFlow` | `atsapbx.v1.PbxService` | `pbx-ivr-routing` (D-89) | Creates a DID flow and its first published revision; the DID cannot also be a direct inbound number |
+| `GetFlow`, `ListFlows` | `atsapbx.v1.PbxService` | `pbx-ivr-routing` (D-89) | Reads flows and their active configuration |
+| `PublishFlow`, `RollbackFlow` | `atsapbx.v1.PbxService` | `pbx-ivr-routing` (D-89) | Appends an immutable revision or activates an older one; both audited |
+| `DeleteFlow`, `ListFlowVersions` | `atsapbx.v1.PbxService` | `pbx-ivr-routing` (D-89) | Removes a flow or lists its published revisions |
+| `ListHolidays`, `AddHoliday`, `DeleteHoliday` | `atsapbx.v1.PbxService` | `pbx-ivr-routing` (D-89) | The tenant's closed-day calendar, always taking the closed branch |
 | `AssignExtension` | `atsapbx.v1.PbxService` | `pbx-extension-ownership` (D-65, D-87) | Makes an active membership the extension's owner; one owner per extension, several extensions per person |
 | `UnassignExtension` | `atsapbx.v1.PbxService` | `pbx-extension-ownership` (D-65, D-87) | Removes the owner; unassigned lines still work |
 | `DeleteExtension` | `atsapbx.v1.PbxService` | `pbx-extensions-projection` (LLD-03) | Console deprovisioning |

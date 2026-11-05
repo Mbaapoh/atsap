@@ -351,6 +351,14 @@ Linking asks for the current password, then leaves for Google; the
 callback returns to `/account` (D-67). This page does not manage roles or
 extensions in Phase A.
 
+### Call flows
+
+**Call flows** attaches a DID to a flow with an **open** and **closed**
+destination, a UTC business window and a holiday calendar. Revisions are
+published and rollbackable; the DID cannot also be a direct inbound
+number. This slice routes by time only; the DTMF menu/prompt is the next
+slice (D-89).
+
 ### Reports
 
 **Reports** is LLD-09's call-detail view: terminated calls only, filters

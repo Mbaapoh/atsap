@@ -33,6 +33,7 @@ const (
 	actionReadExtension     = "extension.read"
 	actionRotateSecret      = "extension.rotate_secret"
 	actionAssignExtension   = "extension.assign"
+	actionManageFlows       = "flow.manage"
 	actionUnassignExtension = "extension.unassign"
 
 	auditResourceType = "extension"
@@ -83,6 +84,7 @@ type Service struct {
 	fraud       ports.FraudAlerter
 	assignments ports.AssignmentStore
 	principals  PrincipalReader
+	flows       ports.FlowStore
 	rand        io.Reader
 	now         func() time.Time
 }
@@ -118,6 +120,13 @@ func NewService(
 		rand:      rand.Reader,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithFlows wires IVR flow storage; without it, no DID routes to a flow.
+func (s *Service) WithFlows(f ports.FlowStore) *Service {
+	clone := *s
+	clone.flows = f
+	return &clone
 }
 
 // WithAssignments wires extension ownership (D-65).

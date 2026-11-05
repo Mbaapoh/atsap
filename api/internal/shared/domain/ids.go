@@ -239,3 +239,24 @@ func (id RouteID) String() string {
 func (id RouteID) IsZero() bool {
 	return id == RouteID{}
 }
+
+// FlowID identifies one IVR flow.
+type FlowID uuid.UUID
+
+// NewFlowID generates a random FlowID.
+func NewFlowID() FlowID { return FlowID(uuid.New()) }
+
+// String returns the canonical UUID form.
+func (id FlowID) String() string { return uuid.UUID(id).String() }
+
+// IsZero reports whether id is the zero value.
+func (id FlowID) IsZero() bool { return uuid.UUID(id) == uuid.Nil }
+
+// ParseFlowID parses s as a FlowID.
+func ParseFlowID(s string) (FlowID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return FlowID{}, fmt.Errorf("parse flow id: %w", err)
+	}
+	return FlowID(id), nil
+}

@@ -44,6 +44,13 @@ func (s *Service) CreateInboundNumber(ctx context.Context, cmd ports.CreateInbou
 		if _, err := s.store.Get(ctx, tx, cmd.TenantID, cmd.ExtensionID); err != nil {
 			return err
 		}
+		if s.flows != nil {
+			if _, _, err := s.flows.FindByNumber(ctx, tx, cmd.TenantID, normalized); err == nil {
+				return ports.ErrInboundNumberTaken
+			} else if !errors.Is(err, ports.ErrNotFound) {
+				return err
+			}
+		}
 		if err := s.numbers.Insert(ctx, tx, number); err != nil {
 			return err
 		}

@@ -1262,6 +1262,359 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.AssignExtensionResponse'
+  /atsapbx.v1.PbxService/CreateFlow:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: CreateFlow
+      description: |-
+        IVR flows (D-89): a DID routes through a versioned flow that chooses
+         its open/closed destination by business hours and holidays.
+      operationId: atsapbx.v1.PbxService.CreateFlow
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.CreateFlowRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.FlowResponse'
+  /atsapbx.v1.PbxService/GetFlow:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: GetFlow
+      operationId: atsapbx.v1.PbxService.GetFlow
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.GetFlowRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.FlowResponse'
+  /atsapbx.v1.PbxService/ListFlows:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListFlows
+      operationId: atsapbx.v1.PbxService.ListFlows
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListFlowsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListFlowsResponse'
+  /atsapbx.v1.PbxService/PublishFlow:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: PublishFlow
+      operationId: atsapbx.v1.PbxService.PublishFlow
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.PublishFlowRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.FlowResponse'
+  /atsapbx.v1.PbxService/RollbackFlow:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: RollbackFlow
+      operationId: atsapbx.v1.PbxService.RollbackFlow
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.RollbackFlowRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.FlowResponse'
+  /atsapbx.v1.PbxService/DeleteFlow:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteFlow
+      operationId: atsapbx.v1.PbxService.DeleteFlow
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteFlowRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.DeleteFlowResponse'
+  /atsapbx.v1.PbxService/ListFlowVersions:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListFlowVersions
+      operationId: atsapbx.v1.PbxService.ListFlowVersions
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListFlowVersionsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListFlowVersionsResponse'
+  /atsapbx.v1.PbxService/ListHolidays:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: ListHolidays
+      operationId: atsapbx.v1.PbxService.ListHolidays
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListHolidaysRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.HolidaysResponse'
+  /atsapbx.v1.PbxService/AddHoliday:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: AddHoliday
+      operationId: atsapbx.v1.PbxService.AddHoliday
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.AddHolidayRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.HolidaysResponse'
+  /atsapbx.v1.PbxService/DeleteHoliday:
+    post:
+      tags:
+        - atsapbx.v1.PbxService
+      summary: DeleteHoliday
+      operationId: atsapbx.v1.PbxService.DeleteHoliday
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.DeleteHolidayRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.HolidaysResponse'
   /atsapbx.v1.PbxService/UnassignExtension:
     post:
       tags:
@@ -3368,6 +3721,20 @@ components:
         - TRUNK_HEALTH_REASON_ADDRESS_NOT_ALLOWED
         - TRUNK_HEALTH_REASON_CALL_SETUP_FAILURES
       description: TrunkHealthReason says why a trunk has its health.
+    atsapbx.v1.AddHolidayRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        day:
+          type: string
+          title: day
+        name:
+          type: string
+          title: name
+      title: AddHolidayRequest
+      additionalProperties: false
     atsapbx.v1.AssignExtensionRequest:
       type: object
       properties:
@@ -3444,6 +3811,23 @@ components:
             The generated secret, returned exactly once. Never logged, never
              audited, never retrievable by any later call.
       title: CreateExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.CreateFlowRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        number:
+          type: string
+          title: number
+        name:
+          type: string
+          title: name
+        config:
+          title: config
+          $ref: '#/components/schemas/atsapbx.v1.FlowConfig'
+      title: CreateFlowRequest
       additionalProperties: false
     atsapbx.v1.CreateInboundNumberRequest:
       type: object
@@ -3584,6 +3968,32 @@ components:
       type: object
       title: DeleteExtensionResponse
       additionalProperties: false
+    atsapbx.v1.DeleteFlowRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        flowId:
+          type: string
+          title: flow_id
+      title: DeleteFlowRequest
+      additionalProperties: false
+    atsapbx.v1.DeleteFlowResponse:
+      type: object
+      title: DeleteFlowResponse
+      additionalProperties: false
+    atsapbx.v1.DeleteHolidayRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        day:
+          type: string
+          title: day
+      title: DeleteHolidayRequest
+      additionalProperties: false
     atsapbx.v1.DeleteInboundNumberRequest:
       type: object
       properties:
@@ -3693,6 +4103,75 @@ components:
       description: |-
         Extension is what a caller sees. It carries no credential digest and
          no engine object of any kind.
+    atsapbx.v1.Flow:
+      type: object
+      properties:
+        flowId:
+          type: string
+          title: flow_id
+        number:
+          type: string
+          title: number
+        name:
+          type: string
+          title: name
+        activeVersion:
+          type: integer
+          title: active_version
+          format: int32
+        config:
+          title: config
+          $ref: '#/components/schemas/atsapbx.v1.FlowConfig'
+      title: Flow
+      additionalProperties: false
+    atsapbx.v1.FlowConfig:
+      type: object
+      properties:
+        openExtensionId:
+          type: string
+          title: open_extension_id
+        closedExtensionId:
+          type: string
+          title: closed_extension_id
+        businessStartMinute:
+          type: integer
+          title: business_start_minute
+          format: int32
+        businessEndMinute:
+          type: integer
+          title: business_end_minute
+          format: int32
+        prompt:
+          type: string
+          title: prompt
+      title: FlowConfig
+      additionalProperties: false
+    atsapbx.v1.FlowResponse:
+      type: object
+      properties:
+        flow:
+          title: flow
+          $ref: '#/components/schemas/atsapbx.v1.Flow'
+      title: FlowResponse
+      additionalProperties: false
+    atsapbx.v1.FlowVersion:
+      type: object
+      properties:
+        version:
+          type: integer
+          title: version
+          format: int32
+        config:
+          title: config
+          $ref: '#/components/schemas/atsapbx.v1.FlowConfig'
+        publishedAt:
+          title: published_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        publishedBy:
+          type: string
+          title: published_by
+      title: FlowVersion
+      additionalProperties: false
     atsapbx.v1.GetEmergencyProfileRequest:
       type: object
       properties:
@@ -3742,6 +4221,17 @@ components:
           title: extension
           $ref: '#/components/schemas/atsapbx.v1.Extension'
       title: GetExtensionResponse
+      additionalProperties: false
+    atsapbx.v1.GetFlowRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        flowId:
+          type: string
+          title: flow_id
+      title: GetFlowRequest
       additionalProperties: false
     atsapbx.v1.GetOutboundPolicyRequest:
       type: object
@@ -3820,6 +4310,27 @@ components:
       type: object
       title: HangupCallResponse
       additionalProperties: false
+    atsapbx.v1.Holiday:
+      type: object
+      properties:
+        day:
+          type: string
+          title: day
+        name:
+          type: string
+          title: name
+      title: Holiday
+      additionalProperties: false
+    atsapbx.v1.HolidaysResponse:
+      type: object
+      properties:
+        holidays:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.Holiday'
+          title: holidays
+      title: HolidaysResponse
+      additionalProperties: false
     atsapbx.v1.IceServer:
       type: object
       properties:
@@ -3897,6 +4408,53 @@ components:
             $ref: '#/components/schemas/atsapbx.v1.Extension'
           title: extensions
       title: ListExtensionsResponse
+      additionalProperties: false
+    atsapbx.v1.ListFlowVersionsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        flowId:
+          type: string
+          title: flow_id
+      title: ListFlowVersionsRequest
+      additionalProperties: false
+    atsapbx.v1.ListFlowVersionsResponse:
+      type: object
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.FlowVersion'
+          title: versions
+      title: ListFlowVersionsResponse
+      additionalProperties: false
+    atsapbx.v1.ListFlowsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ListFlowsRequest
+      additionalProperties: false
+    atsapbx.v1.ListFlowsResponse:
+      type: object
+      properties:
+        flows:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.Flow'
+          title: flows
+      title: ListFlowsResponse
+      additionalProperties: false
+    atsapbx.v1.ListHolidaysRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ListHolidaysRequest
       additionalProperties: false
     atsapbx.v1.ListInboundNumbersRequest:
       type: object
@@ -4040,6 +4598,20 @@ components:
           description: Read the call's progress with TelephonyService.GetCall.
       title: PlaceCallResponse
       additionalProperties: false
+    atsapbx.v1.PublishFlowRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        flowId:
+          type: string
+          title: flow_id
+        config:
+          title: config
+          $ref: '#/components/schemas/atsapbx.v1.FlowConfig'
+      title: PublishFlowRequest
+      additionalProperties: false
     atsapbx.v1.RegenerateSecretRequest:
       type: object
       properties:
@@ -4078,6 +4650,21 @@ components:
           title: policy
           $ref: '#/components/schemas/atsapbx.v1.OutboundPolicy'
       title: ResumeOutboundResponse
+      additionalProperties: false
+    atsapbx.v1.RollbackFlowRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        flowId:
+          type: string
+          title: flow_id
+        version:
+          type: integer
+          title: version
+          format: int32
+      title: RollbackFlowRequest
       additionalProperties: false
     atsapbx.v1.Route:
       type: object

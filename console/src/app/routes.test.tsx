@@ -18,6 +18,7 @@ describe("Phase A route tree", () => {
     ["/users", "Users"],
     ["/extensions", "Extensions"],
     ["/trunks", "Trunks & routes"],
+    ["/flows", "Call flows"],
     ["/calls", "Call history"],
     ["/reports", "Reports"],
     ["/account", "Account"],
@@ -43,8 +44,8 @@ describe("Phase A route tree", () => {
     const nav = screen.getByRole("navigation", { name: "Main" });
     const labels = Array.from(nav.querySelectorAll("a")).map((a) => a.textContent);
     expect(labels).toEqual([...primaryNav.map((n) => n.label), "Account"]);
-    expect(labels).toEqual(["Overview", "Users", "Extensions", "Trunks & routes", "Call history", "Reports", "Account"]);
-    for (const dormant of ["Licence", "IVR", "Queues", "Voicemail", "Recordings", "Agents", "Google"]) {
+    expect(labels).toEqual(["Overview", "Users", "Extensions", "Trunks & routes", "Call flows", "Call history", "Reports", "Account"]);
+    for (const dormant of ["Licence", "Queues", "Voicemail", "Recordings", "Agents", "Google"]) {
       expect(nav).not.toHaveTextContent(dormant);
     }
   });

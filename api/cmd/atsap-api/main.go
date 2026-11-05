@@ -285,6 +285,7 @@ func run() int {
 	// Where devices register: the installation's public face, which only
 	// the installer knows (pbx-sip-registrar-settings).
 	pbxSvc = pbxSvc.WithAssignments(pbxpostgres.NewAssignmentStore(), identityStore)
+	pbxSvc = pbxSvc.WithFlows(pbxpostgres.NewFlowStore())
 	pbxSvc = pbxSvc.WithRegistrar(pbxports.SipRegistrar{
 		Host: cfg.SIPPublicHost, Port: cfg.SIPPublicPort, Transport: cfg.SIPPublicTransport,
 		WebRTCURL:  cfg.SIPWebRTCURL,
