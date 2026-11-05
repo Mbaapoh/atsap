@@ -194,10 +194,12 @@ func (s *Service) InitiateCall(ctx context.Context, cmd ports.InitiateCallComman
 	caller := &domain.CallParticipant{
 		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: cmd.TenantID,
 		Role: domain.RoleCaller, EndpointURI: cmd.SourceEndpointURI, JoinedAt: now,
+		ExtensionID: cmd.SourceExtensionID, PrincipalID: cmd.SourcePrincipalID,
 	}
 	callee := &domain.CallParticipant{
 		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: cmd.TenantID,
 		Role: domain.RoleAgent, EndpointURI: cmd.DestEndpointURI, JoinedAt: now,
+		ExtensionID: cmd.DestExtensionID, PrincipalID: cmd.DestPrincipalID,
 	}
 	if err := call.AddParticipant(caller); err != nil {
 		return shareddomain.CallID{}, fmt.Errorf("add caller participant: %w", err)
@@ -402,6 +404,13 @@ func (s *Service) connectArrived(ctx context.Context, call *domain.Call, decisio
 	destination := &domain.CallParticipant{
 		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: tenantID,
 		Role: domain.RoleAgent, EndpointURI: decision.DestinationURI, JoinedAt: now,
+		ExtensionID: decision.DestinationExtensionID, PrincipalID: decision.DestinationPrincipalID,
+	}
+	for _, p := range call.Participants {
+		if p.Role == domain.RoleCaller {
+			p.ExtensionID, p.PrincipalID = decision.CallerExtensionID, decision.CallerPrincipalID
+			break
+		}
 	}
 	if err := call.AddParticipant(destination); err != nil {
 		return fmt.Errorf("add arrived destination participant: %w", err)

@@ -109,6 +109,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       libsrtp2-1 \
       libasound2 \
+      apt \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /runtime/root/ /

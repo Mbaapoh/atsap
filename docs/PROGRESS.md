@@ -9,8 +9,10 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-04, after the image-scan closure (D-86) and
-`pbx-extension-ownership` (Phase B opens, D-87): the Asterisk runtime is
+**Last updated:** 2026-11-04, after `pbx-reporting` (LLD-09's call-record
+slice, D-88): terminated calls now have participant attribution,
+agent-scoped reads and an audited CSV export. Before that, the image-scan
+closure (D-86) and `pbx-extension-ownership` (Phase B opens, D-87): the Asterisk runtime is
 a minimal multi-stage image and its Trivy gate passes; extensions can
 have an owner and the console shows "Assigned to". Before that,
 `pbx-turn-media` and `pbx-fraud-guard`: browser media uses installation-configured STUN/TURN
@@ -45,9 +47,8 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 and the console linter.
 
 **Next work:** Phase B continues with `pbx-ivr-flows`, then
-`pbx-queues`; LLD-09 reporting carries the participant attribution and
-person-scoped history (D-87). MFA and company-domain SSO remain before
-GA. The Asterisk image scan
+`pbx-queues`, then voicemail/recording and the remaining LLD-09 quality
+and retention work. MFA and company-domain SSO remain before GA. The Asterisk image scan
 remains owner-deferred.
 
 ## Keeping it current
@@ -68,7 +69,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 24 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling with TURN, T-6 health with alerts, outbound classes, Google sign-in, the fraud guard, a hardened scanned Asterisk image and extension ownership | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 25 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling with TURN, T-6 health with alerts, outbound classes, Google sign-in, the fraud guard, a hardened scanned Asterisk image, extension ownership and call-record reporting | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | Designed: D-65, LLD-03 §3.1 | — | Not started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -207,6 +208,7 @@ that link.
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 | 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
 | 2026-11-03 | `pbx-trunk-health-thresholds` | 12/12 | U I E A; T-6 thresholds and recovery, `trunk_health_samples`, BR-08 email alert in Mailpit (D-80); full pbx integration, full Go e2e, console-check, three phone UATs |
+| 2026-11-04 | `pbx-reporting` | 5/5 | U I E A; participant attribution, terminated-call CDRs, agent-scoped reads, audited CSV export and Reports page (D-88); full integration, e2e and race, console-check and phone UATs |
 | 2026-11-04 | `pbx-extension-ownership` | 5/5 | U I E A; audited extension ownership, active-member validation, "assigned to" in the console, assign/unassign API (D-87); full integration, full e2e, race, console-check and phone UATs |
 | 2026-11-04 | `quality-and-supply-chain-gates` | 13/13 | U I E A; multi-stage Asterisk runtime (~0.8 GB), fixable-only image gate with retained SARIF, SBOMs, full quality gate (D-86) |
 | 2026-11-04 | `pbx-fraud-guard` | 6/6 | U I E A; rated spend caps, blocked prefixes, anomaly suspension and resume (D-85); full integration, full e2e, race, console-check and phone UATs, docs and SCA |
@@ -240,7 +242,9 @@ design; *accepted* = no fix planned.
 | The engine image has no `codec_opus`; browser endpoints use PCMU/PCMA | console-browser-phone G4 | Accepted; add codec_opus later if desired |
 | Plain WS on the dev rig for browser signalling | console-browser-phone G5 | Accepted: localhost only; production must use WSS |
 | ~~The Asterisk image is single-stage and cannot pass the Trivy gate~~ | quality-and-supply-chain-gates 5.3 | Closed: multi-stage runtime and fixable-only gate (D-86); unfixed Debian CVEs stay in `quality-reports/trivy-core.sarif` |
-| Per-person call attribution waits for LLD-09 reporting | pbx-extension-ownership / D-87 | Accepted: ownership shipped; participant columns and "my calls" with LLD-09 |
+| ~~Per-person call attribution waits for LLD-09 reporting~~ | pbx-extension-ownership / D-87 | Closed: `pbx-reporting` fills participant extension/owner and exposes agent-scoped records (D-88) |
+| Recording/quality/retention remain later LLD-09 work | pbx-reporting G1 | Planned with recording governance |
+| Reports cap exports at 10,000 rows and do not include quality scores | pbx-reporting G2 | Accepted for the first reporting slice |
 | ~~Trunk health did not follow HLD T-6~~ | Found 2026-11-01 | Closed: `pbx-trunk-health-thresholds` implements T-6 as written (D-80) |
 | ~~BR-08: a failing carrier was not alerted~~ | BRD BR-08 | Closed: `pbx-trunk-health-thresholds` emails tenant administrators and `ATSAPBX_CARRIER_ALERT_EMAILS` on the failure transition (D-80) |
 | The BR-08 alert is email-only; webhooks are LLD-05 | pbx-trunk-health-thresholds G1 | Accepted |

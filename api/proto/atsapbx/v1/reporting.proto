@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package atsapbx.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "atsap-api/internal/genproto/atsapbx/v1;atsapbxv1";
+
+// ReportingService is the read-only call detail reporting surface
+// (LLD-09, D-88). It returns terminated calls only, so every record it
+// returns is final.
+service ReportingService {
+  rpc ListCallRecords(ListCallRecordsRequest) returns (ListCallRecordsResponse);
+  rpc ExportCallRecords(ExportCallRecordsRequest) returns (ExportCallRecordsResponse);
+}
+
+message CallRecordFilter {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+  string direction = 3;
+  string extension_id = 4;
+  string principal_id = 5;
+  string number = 6;
+}
+
+message CallRecordParticipant {
+  string participant_id = 1;
+  string role = 2;
+  string extension_id = 3;
+  string principal_id = 4;
+  int32 billable_seconds = 5;
+  int32 usage_seconds = 6;
+}
+
+message CallRecord {
+  string call_id = 1;
+  string direction = 2;
+  string source_number = 3;
+  string dest_number = 4;
+  google.protobuf.Timestamp started_at = 5;
+  google.protobuf.Timestamp answered_at = 6;
+  google.protobuf.Timestamp ended_at = 7;
+  int32 duration_seconds = 8;
+  string termination_reason = 9;
+  repeated CallRecordParticipant participants = 10;
+}
+
+message ListCallRecordsRequest {
+  string tenant_id = 1;
+  CallRecordFilter filter = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+message ListCallRecordsResponse { repeated CallRecord records = 1; }
+
+message ExportCallRecordsRequest {
+  string tenant_id = 1;
+  CallRecordFilter filter = 2;
+}
+message ExportCallRecordsResponse { bytes csv = 1; }

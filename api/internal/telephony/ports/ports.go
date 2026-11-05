@@ -26,6 +26,12 @@ type InitiateCallCommand struct {
 	// numbers to endpoints in later work (LLD-01 §1).
 	SourceEndpointURI string
 	DestEndpointURI   string
+	// Attribution: the extension and owner behind each leg, when known
+	// (D-65/D-87). Nil for a carrier caller or an external destination.
+	SourceExtensionID *shareddomain.ExtensionID
+	SourcePrincipalID *shareddomain.PrincipalID
+	DestExtensionID   *shareddomain.ExtensionID
+	DestPrincipalID   *shareddomain.PrincipalID
 	// BypassScreening skips capacity, compliance and suspension checks
 	// (INV-01, LLD-03 §4.3). It is set ONLY by pbx-core's application
 	// layer from its own emergency matcher (pbx/domain.IsEmergency): it
@@ -129,6 +135,12 @@ type InboundDecision struct {
 	CallerNumber string
 	// CallerName is the caller's display name, shown to the destination.
 	CallerName string
+	// Attribution for the arriving side (a desk phone) and the destination
+	// extension/owner (D-65/D-87). Empty for a carrier caller.
+	CallerExtensionID      *shareddomain.ExtensionID
+	CallerPrincipalID      *shareddomain.PrincipalID
+	DestinationExtensionID *shareddomain.ExtensionID
+	DestinationPrincipalID *shareddomain.PrincipalID
 	// BypassScreening skips capacity and compliance checks. Assigned only
 	// in pbx-core's application layer from its own emergency matcher,
 	// under the same provenance rule as InitiateCallCommand's field.

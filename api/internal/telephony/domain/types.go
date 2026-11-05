@@ -91,10 +91,16 @@ type Call struct {
 // it at a given moment (D-17) — the Asterisk ACL, not this package, is
 // responsible for that mapping.
 type CallParticipant struct {
-	ID              shareddomain.ParticipantID
-	CallID          shareddomain.CallID
-	TenantID        shareddomain.TenantID
-	Role            ParticipantRole
+	ID       shareddomain.ParticipantID
+	CallID   shareddomain.CallID
+	TenantID shareddomain.TenantID
+	Role     ParticipantRole
+	// ExtensionID and PrincipalID attribute this participant to a line and
+	// the membership that owned it at the time (D-65/D-87). Nil for a
+	// carrier caller or an external destination. They are platform
+	// identities, never engine endpoints.
+	ExtensionID     *shareddomain.ExtensionID
+	PrincipalID     *shareddomain.PrincipalID
 	EndpointURI     string
 	State           ParticipantState
 	JoinedAt        time.Time

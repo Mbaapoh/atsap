@@ -3,6 +3,7 @@ import { AuthService } from "./gen/atsapbx/v1/auth_pb";
 import { IdentityService } from "./gen/atsapbx/v1/identity_pb";
 import { LicensingService } from "./gen/atsapbx/v1/licensing_pb";
 import { PbxService } from "./gen/atsapbx/v1/pbx_pb";
+import { ReportingService } from "./gen/atsapbx/v1/reporting_pb";
 import { TelephonyService } from "./gen/atsapbx/v1/telephony_pb";
 
 // PUBLIC_SERVICES are the documented public API services the console
@@ -14,6 +15,7 @@ export const PUBLIC_SERVICES: readonly DescService[] = [
   IdentityService,
   LicensingService,
   PbxService,
+  ReportingService,
   TelephonyService,
 ];
 

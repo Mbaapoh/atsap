@@ -36,6 +36,9 @@ import (
 	pbxpostgres "atsap-api/internal/pbx/postgres"
 	pbxrpc "atsap-api/internal/pbx/rpc"
 	corepostgres "atsap-api/internal/postgres"
+	reportingapp "atsap-api/internal/reporting/application"
+	reportingpostgres "atsap-api/internal/reporting/postgres"
+	reportingrpc "atsap-api/internal/reporting/rpc"
 	"atsap-api/internal/server"
 	shareddomain "atsap-api/internal/shared/domain"
 	"atsap-api/internal/telephony/acl"
@@ -226,10 +229,15 @@ func run() int {
 	rpcPath, rpcHandler := atsapbxv1connect.NewTelephonyServiceHandler(telephonyHandler,
 		connectrpc.WithInterceptors(telephonyInterceptor))
 
+	reportingHandler := reportingrpc.NewHandler(reportingapp.NewService(appPool, reportingpostgres.NewStore(appPool), identityStore))
+	reportingPath, reportingRPC := atsapbxv1connect.NewReportingServiceHandler(reportingHandler,
+		connectrpc.WithInterceptors(newInterceptor(reportingrpc.TenantID)))
+
 	handlers := map[string]http.Handler{
-		rpcPath:      rpcHandler,
-		identityPath: identityRPC,
-		authPath:     authRPC,
+		rpcPath:       rpcHandler,
+		identityPath:  identityRPC,
+		authPath:      authRPC,
+		reportingPath: reportingRPC,
 	}
 
 	// PbxService: extension configuration. Mounted WITH the same auth

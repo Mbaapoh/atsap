@@ -158,13 +158,15 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 		return ports.PlacedCall{}, err
 	}
 
+	sourcePrincipal := s.principalForExtension(ctx, cmd.TenantID, caller.ID)
 	if res.Destination.Kind == domain.DestinationExtension {
 		leg := s.newLeg(cmd, caller, nil, nil, res.Emergency)
 		if err := s.reserve(ctx, cmd.TenantID, leg); err != nil {
 			return ports.PlacedCall{}, err
 		}
-		return s.originate(ctx, leg, caller, p.Addresser.ExtensionAddress(*res.Destination.ExtensionID),
-			telephonydomain.Internal, nil, 0)
+		destID := *res.Destination.ExtensionID
+		return s.originate(ctx, leg, caller, p.Addresser.ExtensionAddress(destID),
+			telephonydomain.Internal, nil, 0, sourcePrincipal, &destID, s.principalForExtension(ctx, cmd.TenantID, destID))
 	}
 
 	for _, c := range res.Candidates {
@@ -178,7 +180,7 @@ func (s *Service) PlaceCall(ctx context.Context, cmd ports.PlaceCallCommand) (po
 			continue // at its channel limit: next candidate
 		}
 		return s.originate(ctx, leg, caller, p.Addresser.TrunkAddress(trunkID, cmd.Destination),
-			telephonydomain.Outbound, &trunkID, c.Route.CostPerMinute)
+			telephonydomain.Outbound, &trunkID, c.Route.CostPerMinute, sourcePrincipal, nil, nil)
 	}
 	return ports.PlacedCall{}, ports.ErrTrunkCapacity
 }
@@ -267,7 +269,8 @@ func (s *Service) legEnded(ctx context.Context, tenantID shareddomain.TenantID, 
 // BypassScreening is assigned here and only here in shipped code, from
 // the dial plan's emergency match alone (LLD-03 §10.1, archtest).
 func (s *Service) originate(ctx context.Context, leg domain.PlacedCallLeg, caller domain.Extension,
-	destAddress string, direction telephonydomain.Direction, trunkID *shareddomain.TrunkID, costPerMinute int64) (ports.PlacedCall, error) {
+	destAddress string, direction telephonydomain.Direction, trunkID *shareddomain.TrunkID, costPerMinute int64,
+	sourcePrincipal *shareddomain.PrincipalID, destExtensionID *shareddomain.ExtensionID, destPrincipal *shareddomain.PrincipalID) (ports.PlacedCall, error) {
 	p := s.placement
 	callID, err := p.Calls.InitiateCall(ctx, telephonyports.InitiateCallCommand{
 		TenantID:          leg.TenantID,
@@ -276,6 +279,10 @@ func (s *Service) originate(ctx context.Context, leg domain.PlacedCallLeg, calle
 		DestNumber:        leg.Destination,
 		SourceEndpointURI: p.Addresser.ExtensionAddress(caller.ID),
 		DestEndpointURI:   destAddress,
+		SourceExtensionID: &caller.ID,
+		SourcePrincipalID: sourcePrincipal,
+		DestExtensionID:   destExtensionID,
+		DestPrincipalID:   destPrincipal,
 		BypassScreening:   leg.Emergency,
 		// Click-to-call rings the caller's extension first and the
 		// destination only once it answers (console-click-to-call D1).

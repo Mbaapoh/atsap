@@ -148,14 +148,21 @@ func (h *TelephonyHandler) GetCall(ctx context.Context, req *connect.Request[ats
 		resp.EndedAt = timestamppb.New(*call.EndedAt)
 	}
 	for _, p := range call.Participants {
-		resp.Participants = append(resp.Participants, &atsapbxv1.Participant{
+		out := &atsapbxv1.Participant{
 			ParticipantId: p.ID.String(),
 			Role:          string(p.Role),
 			// endpoint_uri is deprecated and never filled: a participant's
 			// engine endpoint is an engine identifier (phase-a-hardening D3).
 			State:           string(p.State),
 			BillableSeconds: wire.Int32(p.BillableSeconds),
-		})
+		}
+		if p.ExtensionID != nil {
+			out.ExtensionId = p.ExtensionID.String()
+		}
+		if p.PrincipalID != nil {
+			out.PrincipalId = p.PrincipalID.String()
+		}
+		resp.Participants = append(resp.Participants, out)
 	}
 	return connect.NewResponse(resp), nil
 }

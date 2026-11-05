@@ -3,6 +3,7 @@ import { AuthService } from "./gen/atsapbx/v1/auth_pb";
 import { IdentityService } from "./gen/atsapbx/v1/identity_pb";
 import { LicensingService } from "./gen/atsapbx/v1/licensing_pb";
 import { PbxService } from "./gen/atsapbx/v1/pbx_pb";
+import { ReportingService } from "./gen/atsapbx/v1/reporting_pb";
 import { TelephonyService } from "./gen/atsapbx/v1/telephony_pb";
 
 // ApiClients are the console's only network boundary (HLD-19 §3): typed
@@ -14,6 +15,7 @@ export interface ApiClients {
   identity: Client<typeof IdentityService>;
   licensing: Client<typeof LicensingService>;
   pbx: Client<typeof PbxService>;
+  reporting: Client<typeof ReportingService>;
   telephony: Client<typeof TelephonyService>;
 }
 
@@ -23,6 +25,7 @@ export function createApiClients(transport: Transport): ApiClients {
     identity: createClient(IdentityService, transport),
     licensing: createClient(LicensingService, transport),
     pbx: createClient(PbxService, transport),
+    reporting: createClient(ReportingService, transport),
     telephony: createClient(TelephonyService, transport),
   };
 }

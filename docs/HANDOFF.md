@@ -20,10 +20,10 @@ pilot), in this order:
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Phase B has opened with extension ownership** (D-87). Next is
-`pbx-ivr-flows`, then `pbx-queues`; LLD-09 reporting carries participant
-attribution and person-scoped history. MFA and company-domain SSO remain
-before GA.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Phase B has ownership and the first reporting slice** (D-87, D-88).
+Next is `pbx-ivr-flows`, then `pbx-queues`, then voicemail/recording and
+the remaining LLD-09 quality/retention work. MFA and company-domain SSO
+remain before GA.
 
 **Deferred by the owner, do not start unasked:**
 - `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
@@ -31,6 +31,14 @@ before GA.
 ---
 
 ## 2. What was done this week
+
+### 2026-11-04 — call-record reporting (D-88)
+
+`pbx-reporting` adds participant attribution at call creation, a
+read-only ReportingService over terminated calls, agent-scoped reads, an
+audited CSV export and the console Reports page. The operational Call
+history remains separate. Quality scores, recordings and retention are
+the remaining LLD-09/recording slices.
 
 ### 2026-11-04 — image scan closed and Phase B opened (D-86, D-87)
 

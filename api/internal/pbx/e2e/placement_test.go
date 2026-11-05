@@ -363,6 +363,31 @@ func TestPlaceCall_OutboundOverATrunkConnectsAndHangsUp(t *testing.T) {
 		"HangupCall must release BOTH legs on the engine: each far end receives a BYE, not just a Terminated record")
 	p.hangup(t, callID) // idempotent
 
+	var report struct {
+		Records []struct {
+			CallID       string `json:"callId"`
+			Participants []struct {
+				Role        string `json:"role"`
+				ExtensionID string `json:"extensionId"`
+			} `json:"participants"`
+		} `json:"records"`
+	}
+	p.call(t, "ReportingService/ListCallRecords", p.token, map[string]any{
+		"tenantId": p.tenant.String(), "filter": map[string]any{"number": p.ext.Number}, "limit": 50,
+	}, &report, http.StatusOK)
+	found := false
+	for _, r := range report.Records {
+		if r.CallID != callID {
+			continue
+		}
+		for _, part := range r.Participants {
+			if part.Role == "CALLER" && part.ExtensionID == p.ext.ExtensionID {
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "the reporting read model attributes the caller to their extension")
+
 	var live int
 	require.NoError(t, p.pool.WithTenant(context.Background(), p.tenant, func(ctx context.Context, tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `SELECT count(*) FROM placed_call_legs WHERE released_at IS NULL`).Scan(&live)

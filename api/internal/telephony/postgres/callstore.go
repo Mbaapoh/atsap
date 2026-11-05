@@ -63,8 +63,8 @@ func (s *CallStore) SaveCall(ctx context.Context, call *domain.Call, events []ev
 
 		for _, p := range call.Participants {
 			_, err := tx.Exec(ctx, `
-				INSERT INTO call_participants (id, tenant_id, call_id, role, endpoint_uri, state, joined_at, answered_at, left_at, billable_seconds)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				INSERT INTO call_participants (id, tenant_id, call_id, role, endpoint_uri, extension_id, principal_id, state, joined_at, answered_at, left_at, billable_seconds)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 				ON CONFLICT (id) DO UPDATE SET
 					state            = EXCLUDED.state,
 					answered_at      = EXCLUDED.answered_at,
@@ -72,6 +72,7 @@ func (s *CallStore) SaveCall(ctx context.Context, call *domain.Call, events []ev
 					billable_seconds = EXCLUDED.billable_seconds
 			`,
 				p.ID.String(), p.TenantID.String(), p.CallID.String(), string(p.Role), p.EndpointURI,
+				nullableUUIDExtension(p.ExtensionID), nullableUUIDPrincipal(p.PrincipalID),
 				string(p.State), p.JoinedAt, p.AnsweredAt, p.LeftAt, p.BillableSeconds,
 			)
 			if err != nil {
@@ -123,7 +124,7 @@ func (s *CallStore) GetCall(ctx context.Context, tenantID shareddomain.TenantID,
 		}
 
 		rows, err := tx.Query(ctx, `
-			SELECT id, role, endpoint_uri, state, joined_at, answered_at, left_at, billable_seconds
+			SELECT id, role, endpoint_uri, extension_id, principal_id, state, joined_at, answered_at, left_at, billable_seconds
 			FROM call_participants WHERE call_id = $1
 		`, id.String())
 		if err != nil {
@@ -133,21 +134,37 @@ func (s *CallStore) GetCall(ctx context.Context, tenantID shareddomain.TenantID,
 
 		for rows.Next() {
 			var idStr, role, endpointURI, pState string
+			var extensionID, principalID *string
 			var joinedAt time.Time
 			var pAnsweredAt, leftAt *time.Time
 			var billableSeconds int
-			if err := rows.Scan(&idStr, &role, &endpointURI, &pState, &joinedAt, &pAnsweredAt, &leftAt, &billableSeconds); err != nil {
+			if err := rows.Scan(&idStr, &role, &endpointURI, &extensionID, &principalID, &pState, &joinedAt, &pAnsweredAt, &leftAt, &billableSeconds); err != nil {
 				return fmt.Errorf("scan participant: %w", err)
 			}
 			pID, err := shareddomain.ParseParticipantID(idStr)
 			if err != nil {
 				return fmt.Errorf("parse participant id: %w", err)
 			}
-			call.Participants = append(call.Participants, &domain.CallParticipant{
+			p := &domain.CallParticipant{
 				ID: pID, CallID: id, TenantID: tenantID, Role: domain.ParticipantRole(role),
 				EndpointURI: endpointURI, State: domain.ParticipantState(pState), JoinedAt: joinedAt,
 				AnsweredAt: pAnsweredAt, LeftAt: leftAt, BillableSeconds: billableSeconds,
-			})
+			}
+			if extensionID != nil {
+				ext, err := shareddomain.ParseExtensionID(*extensionID)
+				if err != nil {
+					return fmt.Errorf("parse participant extension: %w", err)
+				}
+				p.ExtensionID = &ext
+			}
+			if principalID != nil {
+				principal, err := shareddomain.ParsePrincipalID(*principalID)
+				if err != nil {
+					return fmt.Errorf("parse participant principal: %w", err)
+				}
+				p.PrincipalID = &principal
+			}
+			call.Participants = append(call.Participants, p)
 		}
 		return rows.Err()
 	})
@@ -204,6 +221,22 @@ func (s *CallStore) RecordUsageTicks(ctx context.Context, ticks []domain.UsageTi
 		}
 	}
 	return nil
+}
+
+func nullableUUIDExtension(id *shareddomain.ExtensionID) *string {
+	if id == nil {
+		return nil
+	}
+	v := id.String()
+	return &v
+}
+
+func nullableUUIDPrincipal(id *shareddomain.PrincipalID) *string {
+	if id == nil {
+		return nil
+	}
+	v := id.String()
+	return &v
 }
 
 func nullableString(s string) *string {

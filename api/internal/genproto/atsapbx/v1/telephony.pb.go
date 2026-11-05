@@ -227,8 +227,13 @@ type Participant struct {
 	// Disconnected.
 	State           string `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
 	BillableSeconds int32  `protobuf:"varint,5,opt,name=billable_seconds,json=billableSeconds,proto3" json:"billable_seconds,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The extension this participant used and the membership that owned it
+	// at the time, when known (D-65/D-87). Empty for a carrier caller or an
+	// external destination.
+	ExtensionId   string `protobuf:"bytes,6,opt,name=extension_id,json=extensionId,proto3" json:"extension_id,omitempty"`
+	PrincipalId   string `protobuf:"bytes,7,opt,name=principal_id,json=principalId,proto3" json:"principal_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Participant) Reset() {
@@ -295,6 +300,20 @@ func (x *Participant) GetBillableSeconds() int32 {
 		return x.BillableSeconds
 	}
 	return 0
+}
+
+func (x *Participant) GetExtensionId() string {
+	if x != nil {
+		return x.ExtensionId
+	}
+	return ""
+}
+
+func (x *Participant) GetPrincipalId() string {
+	if x != nil {
+		return x.PrincipalId
+	}
+	return ""
 }
 
 type ListCallsRequest struct {
@@ -576,13 +595,15 @@ const file_atsapbx_v1_telephony_proto_rawDesc = "" +
 	"answeredAt\x125\n" +
 	"\bended_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12-\n" +
-	"\x12termination_reason\x18\v \x01(\tR\x11terminationReason\"\xb0\x01\n" +
+	"\x12termination_reason\x18\v \x01(\tR\x11terminationReason\"\xf6\x01\n" +
 	"\vParticipant\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12%\n" +
 	"\fendpoint_uri\x18\x03 \x01(\tB\x02\x18\x01R\vendpointUri\x12\x14\n" +
 	"\x05state\x18\x04 \x01(\tR\x05state\x12)\n" +
-	"\x10billable_seconds\x18\x05 \x01(\x05R\x0fbillableSeconds\"\x8b\x02\n" +
+	"\x10billable_seconds\x18\x05 \x01(\x05R\x0fbillableSeconds\x12!\n" +
+	"\fextension_id\x18\x06 \x01(\tR\vextensionId\x12!\n" +
+	"\fprincipal_id\x18\a \x01(\tR\vprincipalId\"\x8b\x02\n" +
 	"\x10ListCallsRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +

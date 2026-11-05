@@ -159,3 +159,34 @@ func (s *Service) setAssignment(ctx context.Context, tenantID shareddomain.Tenan
 	view.AssignedPrincipalEmail = p.Email
 	return nil
 }
+
+// ownerFor returns the extension's owner, if one is assigned. It is used
+// to attribute call participants (D-65/D-87); call placement never fails
+// because an extension has no owner.
+func (s *Service) ownerFor(ctx context.Context, tenantID shareddomain.TenantID, extensionID shareddomain.ExtensionID) (shareddomain.PrincipalID, bool) {
+	if s.assignments == nil {
+		return shareddomain.PrincipalID{}, false
+	}
+	var owner shareddomain.PrincipalID
+	err := s.pool.WithTenant(ctx, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		a, err := s.assignments.Get(ctx, tx, tenantID, extensionID)
+		if err != nil {
+			return err
+		}
+		owner = a.PrincipalID
+		return nil
+	})
+	if err != nil {
+		return shareddomain.PrincipalID{}, false
+	}
+	return owner, true
+}
+
+// principalForExtension returns the extension's owner as a pointer, or nil.
+func (s *Service) principalForExtension(ctx context.Context, tenantID shareddomain.TenantID, extensionID shareddomain.ExtensionID) *shareddomain.PrincipalID {
+	owner, ok := s.ownerFor(ctx, tenantID, extensionID)
+	if !ok {
+		return nil
+	}
+	return &owner
+}

@@ -2903,6 +2903,46 @@ change `quality-and-supply-chain-gates`
 
 ---
 
+**D-88 · Reporting ships as a read-only service over terminated calls,
+with participant attribution and audited CSV export (2026-11-04).**
+
+**Decision:** Add `ReportingService` (LLD-09's first slice):
+- It reads **terminated calls only**, so every record is final; the
+  caller, participants, duration, outcome and per-participant usage
+  seconds come from `calls`, `call_participants` and `usage_seconds`.
+- `call_participants.extension_id`/`principal_id` are filled at call
+  creation from the extension's owner at that moment. A carrier caller
+  and an external destination have no attribution; a desk phone and an
+  internal destination do.
+- An agent (a membership without an administrator or supervisor role)
+  sees only records where they are a participant; administrators and
+  supervisors see the tenant. The filter cannot widen an agent's scope.
+- CSV export is bounded, same filters, and writes one audit entry naming
+  the person and the range (AC-07.5). Nothing is mutated.
+- Quality scores, retention and recording links remain the rest of
+  LLD-09 / recording governance; this change does not fake them.
+
+**Context:** The existing call history is operational state; reporting
+needs final CDRs, attribution and an export that compliance can use. The
+data already exists (D-65/D-87); this is the read model and its audit.
+
+**Alternatives:**
+- *Export from the calls table directly in the console.* Rejected: role
+  scoping and the export audit belong on the server.
+- *Include in-flight calls.* Rejected: a record that changes after it is
+  read is not a CDR.
+- *Build the full quality/retention slice now.* Deferred: those need
+  recording storage and RTCP-XR data that do not exist yet.
+
+**Consequences:** Reports show terminated calls only. Per-person history
+and agent scoping are now available; recording/quality and immutable
+retention remain in the reporting/recording roadmap.
+
+**Traceability:** HLD 04 §5; PRD EPIC-07/AC-07.5; LLD-09; changes
+`pbx-reporting`, `pbx-extension-ownership` (D-87)
+
+---
+
 **D-87 · Phase B opens with extension ownership; per-person call
 attribution follows with reporting (2026-11-04).**
 

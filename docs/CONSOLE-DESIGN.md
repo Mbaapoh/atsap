@@ -351,6 +351,15 @@ Linking asks for the current password, then leaves for Google; the
 callback returns to `/account` (D-67). This page does not manage roles or
 extensions in Phase A.
 
+### Reports
+
+**Reports** is LLD-09's call-detail view: terminated calls only, filters
+for date range, direction, extension, person and number, participant
+roles with extension/person labels, duration and outcome, and **Export
+CSV**. An agent sees only records where they are a participant;
+administrators and supervisors see the tenant. Every export is audited.
+The page never shows an engine endpoint (D-88).
+
 ### Outbound protection
 
 **Trunks & routes** includes **Outbound protection**: daily and monthly

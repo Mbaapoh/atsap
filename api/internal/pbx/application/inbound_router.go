@@ -106,8 +106,10 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 	}
 
 	return telephonyports.InboundDecision{
-		DestinationURI: in.Addresser.ExtensionAddress(extID),
-		Direction:      telephonydomain.Inbound,
+		DestinationURI:         in.Addresser.ExtensionAddress(extID),
+		Direction:              telephonydomain.Inbound,
+		DestinationExtensionID: &extID,
+		DestinationPrincipalID: s.principalForExtension(ctx, req.TenantID, extID),
 	}, nil
 }
 
@@ -180,13 +182,19 @@ func (s *Service) resolveDeskPhoneCall(ctx context.Context, req telephonyports.I
 	}
 
 	addresser := in.Addresser
+	callerPrincipal := s.principalForExtension(ctx, req.TenantID, caller.ID)
 	if res.Destination.Kind == domain.DestinationExtension {
+		destID := *res.Destination.ExtensionID
 		return telephonyports.InboundDecision{
-			DestinationURI:  addresser.ExtensionAddress(*res.Destination.ExtensionID),
-			Direction:       telephonydomain.Internal,
-			BypassScreening: res.Emergency,
-			CallerNumber:    caller.Number,
-			CallerName:      caller.DisplayName,
+			DestinationURI:         addresser.ExtensionAddress(destID),
+			Direction:              telephonydomain.Internal,
+			BypassScreening:        res.Emergency,
+			CallerNumber:           caller.Number,
+			CallerName:             caller.DisplayName,
+			CallerExtensionID:      &caller.ID,
+			CallerPrincipalID:      callerPrincipal,
+			DestinationExtensionID: &destID,
+			DestinationPrincipalID: s.principalForExtension(ctx, req.TenantID, destID),
 		}, nil
 	}
 
@@ -213,11 +221,13 @@ func (s *Service) resolveDeskPhoneCall(ctx context.Context, req telephonyports.I
 			go s.watchInboundLeg(context.WithoutCancel(ctx), req.TenantID, c.Trunk.ID, req.CallID)
 		}
 		return telephonyports.InboundDecision{
-			DestinationURI:  addresser.TrunkAddress(c.Trunk.ID, req.Dialled),
-			Direction:       telephonydomain.Outbound,
-			BypassScreening: res.Emergency,
-			CallerNumber:    caller.Number,
-			CallerName:      caller.DisplayName,
+			DestinationURI:    addresser.TrunkAddress(c.Trunk.ID, req.Dialled),
+			Direction:         telephonydomain.Outbound,
+			BypassScreening:   res.Emergency,
+			CallerNumber:      caller.Number,
+			CallerName:        caller.DisplayName,
+			CallerExtensionID: &caller.ID,
+			CallerPrincipalID: callerPrincipal,
 		}, nil
 	}
 	return telephonyports.InboundDecision{Refuse: telephonyports.RefusalUnavailable}, nil

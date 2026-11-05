@@ -193,6 +193,9 @@ func TestPlaceCall_OutboundOverATrunk(t *testing.T) {
 	cmd := p.calls.last()
 	assert.Equal(t, "OUTBOUND", string(cmd.Direction))
 	assert.Equal(t, "PJSIP/"+domain.EndpointIdentifier(p.from.Extension.ID), cmd.SourceEndpointURI, "the caller's phone is one leg")
+	require.NotNil(t, cmd.SourceExtensionID)
+	assert.Equal(t, p.from.Extension.ID, *cmd.SourceExtensionID, "the caller is attributed to their extension")
+	assert.Nil(t, cmd.DestExtensionID, "an external destination has no extension")
 	assert.Equal(t, "PJSIP/442071234567@"+domain.TrunkEndpointIdentifier(tr.ID), cmd.DestEndpointURI, "the other leaves via the trunk")
 	assert.False(t, cmd.BypassScreening, "an ordinary call is screened")
 	assert.Equal(t, "1001", cmd.SourceNumber)
@@ -242,6 +245,8 @@ func TestPlaceCall_InternalCallUsesNoTrunk(t *testing.T) {
 	cmd := p.calls.last()
 	assert.Equal(t, "INTERNAL", string(cmd.Direction))
 	assert.Equal(t, "PJSIP/"+domain.EndpointIdentifier(callee.Extension.ID), cmd.DestEndpointURI)
+	require.NotNil(t, cmd.DestExtensionID)
+	assert.Equal(t, callee.Extension.ID, *cmd.DestExtensionID, "the callee is attributed to its extension")
 	assert.Zero(t, p.countTenantRow(t, `SELECT count(*) FROM placed_call_legs WHERE trunk_id IS NOT NULL`))
 }
 

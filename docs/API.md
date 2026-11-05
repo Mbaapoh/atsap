@@ -35,6 +35,8 @@ as gRPC, gRPC-Web, or plain HTTP+JSON at
 | `ListAudit` | `atsapbx.v1.IdentityService` | `identity-api` | Audit review and compliance export (AC-01.3) |
 | `ListPrincipals` | `atsapbx.v1.IdentityService` | `console-apis-phase-a` | Console users screen (flow A2): users with status and role bindings, never a credential |
 | `RevokeRole` | `atsapbx.v1.IdentityService` | `console-apis-phase-a` | Console roles screen (A2); same authority as `GrantRole`; the last tenant administrator cannot be revoked |
+| `ListCallRecords` | `atsapbx.v1.ReportingService` | `pbx-reporting` (LLD-09, D-88) | Terminated calls with participant attribution, duration and usage seconds; agents are narrowed to their own records |
+| `ExportCallRecords` | `atsapbx.v1.ReportingService` | `pbx-reporting` (LLD-09, D-88) | CSV export of the same records; the export is audited |
 | `ListCalls` | `atsapbx.v1.TelephonyService` | `console-apis-phase-a` | Console call history (A5): newest first, filtered, paged; no engine identifiers |
 | `GetLicenseStatus` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6); conditions since `licensing-status-conditions` | Console header and licence screen (A1); any authenticated caller. Reports the PRD §11.2 `condition` (one headline, server precedence), `tier` and `capacity` level as well as `state`; clients show them, never derive them (D-70) |
 | `ApplyLicenseKey` | `atsapbx.v1.LicensingService` | `console-apis-phase-a` (LLD-08 §6) | Licence activation (A1, EPIC-06); system scope; no restart; the token is never echoed |

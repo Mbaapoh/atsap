@@ -66,7 +66,7 @@ does not list, so the inventory cannot rot quietly.
 | 04 | Compliance | `compliance` | Not started — a **release gate** for LLD-06's dialling (D-45), not merely a dependency | — |
 | 05 | Webhook Delivery | `webhook-delivery` | Not started | — |
 | 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |
-| 09 | Reporting | `reporting` | Not started — split out of LLD-04 under D-48 | — |
+| 09 | Reporting | `reporting` | First slice implemented (`pbx-reporting`, D-88): terminated-call CDRs, participant attribution, agent scope and audited CSV export. Quality/recording/retention remain | — |
 | 10 | AI Pipeline | `ai-pipeline` | Not started — split out of LLD-05 under D-48 | — |
 | 11 | [Entitlement](LLD-11-entitlement.md) | `entitlement` | Draft — nothing built. Tier 1; needed the first time a paid module ships (Phase B), not for Phase A | — |
 

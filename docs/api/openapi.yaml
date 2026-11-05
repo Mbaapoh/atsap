@@ -2138,6 +2138,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/atsapbx.v1.DeleteInboundNumberResponse'
+  /atsapbx.v1.ReportingService/ListCallRecords:
+    post:
+      tags:
+        - atsapbx.v1.ReportingService
+      summary: ListCallRecords
+      operationId: atsapbx.v1.ReportingService.ListCallRecords
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ListCallRecordsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ListCallRecordsResponse'
+  /atsapbx.v1.ReportingService/ExportCallRecords:
+    post:
+      tags:
+        - atsapbx.v1.ReportingService
+      summary: ExportCallRecords
+      operationId: atsapbx.v1.ReportingService.ExportCallRecords
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/atsapbx.v1.ExportCallRecordsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/atsapbx.v1.ExportCallRecordsResponse'
   /atsapbx.v1.TelephonyService/GetCall:
     post:
       tags:
@@ -4270,6 +4340,141 @@ components:
           $ref: '#/components/schemas/atsapbx.v1.Trunk'
       title: UpdateTrunkResponse
       additionalProperties: false
+    atsapbx.v1.CallRecord:
+      type: object
+      properties:
+        callId:
+          type: string
+          title: call_id
+        direction:
+          type: string
+          title: direction
+        sourceNumber:
+          type: string
+          title: source_number
+        destNumber:
+          type: string
+          title: dest_number
+        startedAt:
+          title: started_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        answeredAt:
+          title: answered_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        endedAt:
+          title: ended_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        durationSeconds:
+          type: integer
+          title: duration_seconds
+          format: int32
+        terminationReason:
+          type: string
+          title: termination_reason
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.CallRecordParticipant'
+          title: participants
+      title: CallRecord
+      additionalProperties: false
+    atsapbx.v1.CallRecordFilter:
+      type: object
+      properties:
+        from:
+          title: from
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        to:
+          title: to
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        direction:
+          type: string
+          title: direction
+        extensionId:
+          type: string
+          title: extension_id
+        principalId:
+          type: string
+          title: principal_id
+        number:
+          type: string
+          title: number
+      title: CallRecordFilter
+      additionalProperties: false
+    atsapbx.v1.CallRecordParticipant:
+      type: object
+      properties:
+        participantId:
+          type: string
+          title: participant_id
+        role:
+          type: string
+          title: role
+        extensionId:
+          type: string
+          title: extension_id
+        principalId:
+          type: string
+          title: principal_id
+        billableSeconds:
+          type: integer
+          title: billable_seconds
+          format: int32
+        usageSeconds:
+          type: integer
+          title: usage_seconds
+          format: int32
+      title: CallRecordParticipant
+      additionalProperties: false
+    atsapbx.v1.ExportCallRecordsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        filter:
+          title: filter
+          $ref: '#/components/schemas/atsapbx.v1.CallRecordFilter'
+      title: ExportCallRecordsRequest
+      additionalProperties: false
+    atsapbx.v1.ExportCallRecordsResponse:
+      type: object
+      properties:
+        csv:
+          type: string
+          title: csv
+          format: byte
+      title: ExportCallRecordsResponse
+      additionalProperties: false
+    atsapbx.v1.ListCallRecordsRequest:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        filter:
+          title: filter
+          $ref: '#/components/schemas/atsapbx.v1.CallRecordFilter'
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        offset:
+          type: integer
+          title: offset
+          format: int32
+      title: ListCallRecordsRequest
+      additionalProperties: false
+    atsapbx.v1.ListCallRecordsResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/atsapbx.v1.CallRecord'
+          title: records
+      title: ListCallRecordsResponse
+      additionalProperties: false
     atsapbx.v1.CallSummary:
       type: object
       properties:
@@ -4444,6 +4649,16 @@ components:
           type: integer
           title: billable_seconds
           format: int32
+        extensionId:
+          type: string
+          title: extension_id
+          description: |-
+            The extension this participant used and the membership that owned it
+             at the time, when known (D-65/D-87). Empty for a carrier caller or an
+             external destination.
+        principalId:
+          type: string
+          title: principal_id
       title: Participant
       additionalProperties: false
 security: []
@@ -4518,6 +4733,11 @@ tags:
        CreateExtension and RegenerateSecret — and in no other message, ever.
        It is shown once and is not retrievable afterwards; an extension whose
        secret is lost is rotated, not recovered.
+  - name: atsapbx.v1.ReportingService
+    description: |-
+      ReportingService is the read-only call detail reporting surface
+       (LLD-09, D-88). It returns terminated calls only, so every record it
+       returns is final.
   - name: atsapbx.v1.TelephonyService
     description: |-
       TelephonyService exposes telephony-core's public Call/Participant

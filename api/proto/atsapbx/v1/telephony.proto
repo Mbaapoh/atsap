@@ -68,6 +68,11 @@ message Participant {
   // Disconnected.
   string state = 4;
   int32 billable_seconds = 5;
+  // The extension this participant used and the membership that owned it
+  // at the time, when known (D-65/D-87). Empty for a carrier caller or an
+  // external destination.
+  string extension_id = 6;
+  string principal_id = 7;
 }
 
 message ListCallsRequest {

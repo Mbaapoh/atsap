@@ -17,6 +17,7 @@ describe("public API only", () => {
       "atsapbx.v1.IdentityService",
       "atsapbx.v1.LicensingService",
       "atsapbx.v1.PbxService",
+      "atsapbx.v1.ReportingService",
       "atsapbx.v1.TelephonyService",
     ]);
     expect(PUBLIC_PROCEDURES.has("/atsapbx.v1.LicensingService/GetLicenseStatus")).toBe(true);

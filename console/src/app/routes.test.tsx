@@ -19,6 +19,7 @@ describe("Phase A route tree", () => {
     ["/extensions", "Extensions"],
     ["/trunks", "Trunks & routes"],
     ["/calls", "Call history"],
+    ["/reports", "Reports"],
     ["/account", "Account"],
   ])("%s renders its page heading", async (path, title) => {
     renderAt(path);
@@ -37,13 +38,13 @@ describe("Phase A route tree", () => {
     expect(screen.queryByRole("navigation", { name: "Main" })).not.toBeInTheDocument();
   });
 
-  it("navigation offers only the Phase A workflow screens; Licence lives in the top bar", () => {
+  it("navigation offers the workflow screens; Licence lives in the top bar", () => {
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Main" });
     const labels = Array.from(nav.querySelectorAll("a")).map((a) => a.textContent);
     expect(labels).toEqual([...primaryNav.map((n) => n.label), "Account"]);
-    expect(labels).toEqual(["Overview", "Users", "Extensions", "Trunks & routes", "Call history", "Account"]);
-    for (const dormant of ["Licence", "IVR", "Queues", "Voicemail", "Recordings", "Agents", "Reports", "Google"]) {
+    expect(labels).toEqual(["Overview", "Users", "Extensions", "Trunks & routes", "Call history", "Reports", "Account"]);
+    for (const dormant of ["Licence", "IVR", "Queues", "Voicemail", "Recordings", "Agents", "Google"]) {
       expect(nav).not.toHaveTextContent(dormant);
     }
   });
