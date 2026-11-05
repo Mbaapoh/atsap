@@ -32,6 +32,18 @@ MFA and company-domain SSO remain before GA.
 
 ## 2. What was done this week
 
+### 2026-11-04 — missing Phase B/C LLDs written
+
+The design gaps are closed on paper: `LLD-04` compliance (DNC, local-time
+windows, opt-out, abandonment), `LLD-05` webhook delivery, `LLD-06` dialer
+(preview/power R1, predictive R2), `LLD-09` full reporting (CDR, usage,
+quality, recording metadata/retention/access audit) and `LLD-10` AI
+pipeline. `LLD-02` gained MFA/company-SSO revision 4; `LLD-03` gained
+IVR-menu, queues/agents/hot-desk and voicemail designs. Vendor research
+(3CX, VitalPBX, Vodia, FusionPBX, Asterisk) and the deliberate differences
+are in `docs/lld/PRIOR-ART.md`. All are **designs**, not implemented
+except the slices already delivered.
+
 ### 2026-11-04 — IVR routing (D-89)
 
 `pbx-ivr-routing` attaches a DID to a versioned flow with open/closed

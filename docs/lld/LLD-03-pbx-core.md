@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `pbx-core` (Tier 1 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Phase A implemented & archived** — all four §12 slices: `pbx-extensions-projection`, `pbx-trunks-routes`, `pbx-call-placement`, `pbx-inbound-and-emergency` (living specs under `openspec/specs/pbx-core/`). Phase B (IVR, queues) not started |
+| **Status** | **Phase A implemented & archived; Phase B in progress** — ownership, reporting attribution and IVR time-routing are delivered; IVR menu, queues/agents and voicemail are designed in §3.2–3.4, not built |
 | **Traces to** | BRD FBR-R1-01/§16; PRD principle 4, EPIC-03 (US-03.1–03.10, AC-03.1–03.10), EPIC-10 (console), INV-01/INV-03/INV-10; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md) §1.2, [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §2, [05-security.md](../hld/05-security.md), [17-data-model-erd.md](../hld/17-data-model-erd.md), [18-phase-a-user-flows.md](../hld/18-phase-a-user-flows.md); DECISIONS D-02, D-22, D-24, D-41, D-43, D-46, D-47 |
 | **Why this is LLD-03** | LLD-01 proved the media path and LLD-02 landed identity; neither made a single extension exist. Every remaining LLD needs configuration that Asterisk can act on: `compliance` gates dialling that `pbx-core` routes, `reporting` reports on calls `pbx-core` places, and the console (D-46) has nothing to configure until this exists. D-26 (dependency-first) puts it here. |
 
@@ -22,6 +22,7 @@
 | 2026-10-13 | **§6 gains `GetSipRegistrar`** (`pbx-sip-registrar-settings`): the console can tell an administrator where a phone registers, so flow A3 completes without leaving the console (HLD-18 §7). Configured per installation; read with the extension-read permission. |
 | 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
 | 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
+| 2026-11-04 | **§3.2–3.4 added: IVR menu, queues/agents/hot-desk and voicemail design**, grounded in 3CX/FusionPBX/Vodia/Asterisk documentation. `pbx-ivr-routing` (time routing), ownership and participant attribution have since shipped; the menu/queue/voicemail execution remains. |
 | 2026-10-11 | **§3.1 added: extensions and the people who use them (D-65), Phase B design.** `ExtensionAssignment` (owner) and `Agent` (queue membership, state, hot-desk device), both keyed by `PrincipalID`; call participants gain the extension and owner. New Phase B change `pbx-extension-assignment` heads §12's Phase B list. Phase A is unchanged, and its console works without the link (HLD 18 §7). |
 
 ## 1. Scope
@@ -226,6 +227,121 @@ table.
   (the console joins against the extension list).
 - `call_participants.role` already has `AGENT`, `QUEUE` and `SUPERVISOR`
   values (migration `0001`), so no enum change is needed.
+
+### 3.2 IVR menu execution — next slice after `pbx-ivr-routing`
+
+`pbx-ivr-routing` delivers the open/closed destination and versioned flow
+(D-89). The menu adds prompt playback and DTMF without changing the flow
+aggregate:
+
+- A revision's `prompt` is a media reference (`sound:<name>` or an
+  uploaded object key); prompt uploads are 8 kHz/16-bit mono WAV/MP3
+  converted server-side, matching what 3CX and Vodia document for
+  auto-attendant prompts.
+- A flow has up to ten digit branches plus **no-input** and
+  **invalid-input** destinations; 3CX documents the same 10-option ceiling
+  and both fallbacks. The no-input timeout is per flow and re-prompts a
+  bounded number of times before the fallback.
+- A branch may target an extension, a queue (3.3), voicemail (3.4) or a
+  nested flow, bounded to a small depth; the builder refuses a dead end or
+  an unreachable target before publish (AC-03.7).
+- Execution is in `telephony-core` over ARI: answer the arriving channel,
+  `Playback` the prompt, collect `ChannelDtmfReceived` events, and hand the
+  selected destination back to the existing inbound decision. No dialplan
+  is generated (D-47); ARI is the call-control surface (LLD-01).
+- A published flow is immutable; publish/rollback and the inactive-call
+  guarantee are already proven by `pbx-ivr-routing`. A live call keeps the
+  revision it started on.
+- Test-before-publish (US-03.8) calls a flow's current revision through a
+  `TestFlow` API that simulates time/holiday and returns the branch tree; it
+  places no real call.
+
+**API additions:** prompt upload/list/delete, menu branch CRUD inside a
+revision, `TestFlow`. **Tests:** DTMF selection, timeout/invalid fallback,
+prompt failure, nested depth, publish during a live call, a non-engineer
+builds a two-level menu in under 30 minutes (AC-03.6), dead-end publish
+refused (AC-03.7).
+
+### 3.3 Queues, agents and hot-desking
+
+Queues are a `pbx-core` aggregate (HLD 04 §2); the `Agent` sketch is §3.1.
+
+```go
+type Queue struct {
+    ID, TenantID shared.ID
+    Name string
+    Strategy string // RING_ALL | LONGEST_IDLE | ROUND_ROBIN | FEWEST_CALLS
+    MaxWaitSeconds int
+    MaxCallers int          // queue call limit, as Vodia exposes
+    MusicOnHold string
+    AnnounceSeconds int
+    TimeoutDestination Destination
+    RecordingPolicy string
+}
+type QueueMember struct { QueueID, PrincipalID; Penalty int; Paused bool }
+type Agent struct {
+    PrincipalID shared.ID
+    State AgentState       // LoggedOut | Available | OnCall | WrapUp | Paused
+    PauseReason string
+    Device *ExtensionID    // hot-desk device for this shift
+    StateSince time.Time
+    WrapUpUntil *time.Time
+}
+```
+
+- **Distribution:** `RING_ALL`, `LONGEST_IDLE`, `ROUND_ROBIN` and
+  `FEWEST_CALLS`; penalty/tier ordering; an available agent only. FusionPBX
+  documents these ACD strategies/tiers and the max-wait/timeout controls;
+  Vodia documents priority, queue limits and overflow—adopt the same
+  observable semantics, platform-owned.
+- **Hold:** caller hears MOH; position/expected wait is announced at a
+  bounded interval when configured. The queue limit refuses with a busy
+  cause rather than silently dropping (Vodia documents a queue call
+  limit).
+- **Agent state:** `LoggedOut → Available → OnCall → WrapUp → Available`;
+  pause is explicit. Hot-desking sets `Agent.Device` for the shift, never
+  `ExtensionAssignment`; logging out restores the extension's own routing
+  (D-65). Disabling a membership logs it out.
+- **Overflow/timeout:** configurable destination (extension, queue,
+  voicemail); an empty/unstaffed queue can route to a closed destination.
+- **API:** `CreateQueue/ListQueues/UpdateQueue/DeleteQueue`,
+  `AddQueueMember/RemoveQueueMember`, `SetAgentState`, `LoginAgent`,
+  `LogoutAgent`, `GetQueueLive` (waiting/connected/agents; Vodia/VitalPBX
+  show real-time ACD views). Console: queue table, agent state, live
+  counts, hot-desk login.
+- **Execution:** `telephony-core` owns the waiting callers and agent legs
+  (ARI bridge/originate); the queue engine is a deterministic scheduler
+  over snapshots, unit-tested with a fake clock. It never blocks the call
+  path and never exceeds capacity/licence (INV-03).
+- **Tests:** strategy fairness, penalty/overflow, max wait/queue limit,
+  wrap-up expiry, hot-desk login/logout, disabled member, live counts,
+  a real two-agent call distribution, recordings per policy.
+
+### 3.4 Voicemail
+
+Voicemail is a mailbox owned by an extension (and therefore by its owner
+when assigned), never a separate user account.
+
+- **Greetings:** unavailable/busy/name recordings, uploaded or recorded;
+  the same platform object-store adapter as recordings (LLD-09).
+- **Leave:** an inbound/queue timeout or a menu digit invokes the voicemail
+  flow: play greeting, record, bound length, `#` to finish, then store
+  metadata + media. Asterisk's `VoiceMail`/`VoiceMailMain` document the
+  mailbox/context and options model; our execution stays ARI/Stasis-owned,
+  storing media and metadata in the platform, not in Asterisk's spool.
+- **Notify:** email with a short-lived signed link (never the audio as an
+  inline secret) and optional transcription when LLD-10 is enabled.
+- **Access:** owner or a role with mailbox-read; each play/download is
+  audited as a recording access (LLD-09); MWI is a device notification,
+  never the source of truth.
+- **Retention:** per-tenant policy, shared with recording retention;
+  deletion is permanent and audited.
+- **API:** `GetVoicemailGreeting/SetVoicemailGreeting`, `ListVoicemails`,
+  `GetVoicemail`, `DeleteVoicemail`, `MarkVoicemailRead`,
+  `GetVoicemailDownloadURL`. No endpoint exposes the media path.
+- **Tests:** leave/retrieve/delete, owner vs other agent vs admin,
+  email link expiry, MWI update, retention, no audio in logs, a call routed
+  to voicemail by a flow/queue.
 
 ## 4. Ports and the dependency direction
 

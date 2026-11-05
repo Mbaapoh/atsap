@@ -55,19 +55,23 @@ how LLD-02 nearly shipped a JWT cutover with no way to obtain a JWT.
 `scripts/check-docs.sh` fails if a proto defines an RPC that `API.md`
 does not list, so the inventory cannot rot quietly.
 
+**Prior art.** The missing Phase B/C LLDs were checked against current 3CX,
+VitalPBX, Vodia, FusionPBX and Asterisk documentation; sources, observed
+capabilities and where we differ are in [PRIOR-ART.md](PRIOR-ART.md).
+
 ## Index
 
 | # | LLD | Bounded context | Status | OpenSpec change (when proposed) |
 |---|---|---|---|---|
 | 01 | [Telephony Core Walking Skeleton](LLD-01-telephony-core-walking-skeleton.md) | `telephony-core` | Implemented & archived | Living spec [`telephony-core/call-lifecycle`](../../openspec/specs/telephony-core/call-lifecycle/spec.md) |
-| 02 | [Identity](LLD-02-identity.md) | `identity` | Implemented & archived | Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`access-control`](../../openspec/specs/identity/access-control/spec.md), [`tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| 02 | [Identity](LLD-02-identity.md) | `identity` | Implemented & archived (revision 3); revision 4 MFA/company-SSO design **Draft** | Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`access-control`](../../openspec/specs/identity/access-control/spec.md), [`tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | 08 | [Licensing](LLD-08-licensing.md) | `licensing` | Draft — nothing built; **Phase A work** despite the number | — |
-| 03 | [PBX Core](LLD-03-pbx-core.md) | `pbx-core` | In progress — extensions implemented & archived; trunks, routes, call placement and inbound remain | Living specs [`pbx-core/extension-management`](../../openspec/specs/pbx-core/extension-management/spec.md), [`pbx-core/endpoint-projection`](../../openspec/specs/pbx-core/endpoint-projection/spec.md) |
-| 04 | Compliance | `compliance` | Not started — a **release gate** for LLD-06's dialling (D-45), not merely a dependency | — |
-| 05 | Webhook Delivery | `webhook-delivery` | Not started | — |
-| 06 | Dialer (power dial in R1.0; predictive in R2) | `dialer` | Not started — **R1.0 scope since D-45**; needs `compliance` (LLD-04) as a release gate | — |
-| 09 | Reporting | `reporting` | First slice implemented (`pbx-reporting`, D-88): terminated-call CDRs, participant attribution, agent scope and audited CSV export. Quality/recording/retention remain | — |
-| 10 | AI Pipeline | `ai-pipeline` | Not started — split out of LLD-05 under D-48 | — |
+| 03 | [PBX Core](LLD-03-pbx-core.md) | `pbx-core` | Phase A delivered; Phase B ownership/reporting attribution/IVR routing delivered. **IVR menu, queues/agents and voicemail designed (§3.2–3.4)**, not built | Living specs [`pbx-core/extension-management`](../../openspec/specs/pbx-core/extension-management/spec.md), [`pbx-core/endpoint-projection`](../../openspec/specs/pbx-core/endpoint-projection/spec.md) |
+| 04 | [Compliance](LLD-04-compliance.md) | `compliance` | **Draft** — a release gate for LLD-06's dialling (D-45); no code | — |
+| 05 | [Webhook Delivery](LLD-05-webhook-delivery.md) | `webhook-delivery` | **Draft** — signed, retried, replayable delivery; outbox exists | — |
+| 06 | [Dialer](LLD-06-dialer.md) | `dialer` | **Draft** — preview/power R1.0, predictive R2; needs LLD-04 as a release gate | — |
+| 09 | [Reporting](LLD-09-reporting.md) | `reporting` | First slice implemented (`pbx-reporting`, D-88); full LLD **Draft** for quality, recording metadata, retention and exports | — |
+| 10 | [AI Pipeline](LLD-10-ai-pipeline.md) | `ai-pipeline` | **Draft** — optional, per-tenant, provider-neutral streaming; split out of LLD-05 under D-48 | — |
 | 11 | [Entitlement](LLD-11-entitlement.md) | `entitlement` | Draft — nothing built. Tier 1; needed the first time a paid module ships (Phase B), not for Phase A | — |
 
 The console is deliberately absent: it is not a bounded context, it

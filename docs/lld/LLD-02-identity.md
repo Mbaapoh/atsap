@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `identity` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Implemented & archived, revision 3 included** (user accounts, sessions, credential recovery, SSO readiness, Google OIDC, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, D-67, D-83; `identity-accounts-and-sessions` archived 2026-10-11, `identity-oidc-google` archived 2026-11-04). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
+| **Status** | **Implemented & archived through revision 3; revision 4 design (MFA, company SSO) is Draft** (user accounts, sessions, credential recovery, SSO readiness, Google OIDC, credential kinds, key rotation, off-network recovery: D-61–D-64, D-66, D-67, D-83; `identity-accounts-and-sessions` archived 2026-10-11, `identity-oidc-google` archived 2026-11-04). Living specs [`identity/authentication`](../../openspec/specs/identity/authentication/spec.md), [`identity/access-control`](../../openspec/specs/identity/access-control/spec.md), [`identity/tenant-provisioning`](../../openspec/specs/identity/tenant-provisioning/spec.md), [`identity/audit-log`](../../openspec/specs/identity/audit-log/spec.md), [`identity/public-api`](../../openspec/specs/identity/public-api/spec.md) |
 | **Traces to** | BRD FBR-R1-04/§10; PRD EPIC-01 (US-01.1–01.7, AC-01.1–01.7), INV-01/INV-10/INV-11; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §7, [05-security.md](../hld/05-security.md) §1; DECISIONS D-24 |
 | **Why this is LLD-02** | LLD-01 proved the media path against stub adapters whose files say, verbatim, "until LLD-02 lands." Every Tier 1 context needs `identity`'s tenant context (§10.1), so D-26 (dependency-first within a release) puts it here. |
 
@@ -17,6 +17,7 @@
 | 2026-09-09 | **§4a.1 added: the `MaxTenants` provisioning cap (D-51).** `CreateTenant` refuses with `FAILED_PRECONDITION` at the cap; reads are never gated; RLS stays mandatory in every mode. The entitlement is passed in through a port `identity` owns, so `identity` still depends on nothing. |
 | 2026-09-08 | **Licensing split out into [LLD-08](LLD-08-licensing.md).** This document was `LLD-02-identity-licensing.md` and covered two bounded contexts. `docs/lld/README.md` states an LLD covers "one bounded context at a time", and HLD 04 §10.1 lists `identity` and `licensing` as separate Tier-0 contexts depending on nothing. The merge had been justified as sharing "one cutover (auth + entitlement activate together)"; delivery disproved it — identity shipped in three archived changes while licensing shipped nothing. |
 | 2026-09-08 | Status → implemented. `auth-cutover-connectrpc` landed, closing the unauthenticated-`GetCall` concession §1 deferred; `identity-bootstrap` closed as unnecessary (§5.2, §9). |
+| 2026-11-04 | **Revision 4 draft: MFA and company-domain SSO.** TOTP is the first second factor (passkeys need a WebAuthn dependency decision), with recovery codes and administrator enforcement. Company SSO is generic OIDC on the existing per-tenant provider model, verified domains, no JIT; SAML later. §12. |
 | 2026-11-04 | **Revision 3 (D-67, D-83): "Sign in with Google".** One installation-wide OIDC client (config, not a tenant provider), `federated_identities` by `(issuer, subject)`, one-time state with PKCE and nonce, invitation and account-screen linking, public mailbox domains unclaimable. Generic OIDC; Google is the shipped provider. §4/§8/§9 updated. |
 | 2026-10-11 | **Revision 2 (D-61–D-64), ahead of the console.** A global `User` (one person, one email) with tenant memberships, and the principal reinterpreted as a membership with ids unchanged (§3, §5.4). Revocable rotating refresh sessions replace "no refresh flow" (§5.3, §10.2). Credential recovery: change, email reset link, administrator reset (§6). Login throttling ships in identity, superseding §10.5's edge-proxy stance, and the unknown-username timing difference is closed (§10.5, §10.10). SSO readiness: optional password, `(provider, subject)` external identities, per-tenant providers with verified domains, and two-step sign-in. No protocol is built (§4, §5.4). MFA is deferred (§8). Proposed as `identity-accounts-and-sessions`. |
 
@@ -666,3 +667,106 @@ sequenceDiagram
     UI->>Auth: any RPC with Bearer JWT
     Note over Auth,DB: ValidateToken: principal, tenant, user Active and session live — one read (§10.2)
 ```
+
+
+## 12. Revision 4 — MFA and company-domain SSO (design)
+
+### 12.1 MFA: TOTP first, passkeys behind a dependency decision
+
+D-66 requires TOTP and passkeys before GA. TOTP uses the standard library
+(`crypto/hmac`, SHA-1, 30-second step, 6 digits, ±1 step) and adds **no
+dependency**. Passkeys need a WebAuthn library; that is a D-28/D-35
+decision, so the port and UI seam are designed but no library is added
+here.
+
+**Enrolment** requires re-entering the current password (a stolen session
+must not enrol an attacker's factor). The secret is generated on the
+server, shown once as an `otpauth://` URI/QR, and stored encrypted with
+the identity keyring; confirmation proves one valid code before the factor
+becomes active. Ten single-use recovery codes are generated, shown once and
+stored as digests (never plaintext).
+
+```sql
+mfa_factors (
+  id UUID PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind VARCHAR(10) NOT NULL,          -- TOTP | PASSKEY
+  secret_ciphertext BYTEA NOT NULL,   -- TOTP; passkey credential id/public key
+  label VARCHAR(100) NOT NULL DEFAULT '',
+  confirmed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL,
+  last_used_at TIMESTAMPTZ
+);
+mfa_recovery_codes (
+  user_id UUID NOT NULL, digest VARCHAR(64) NOT NULL,
+  used_at TIMESTAMPTZ, PRIMARY KEY (user_id, digest)
+);
+mfa_challenges (
+  id UUID PRIMARY KEY, user_id UUID NOT NULL, session_id UUID,
+  expires_at TIMESTAMPTZ NOT NULL, attempts INT NOT NULL DEFAULT 0,
+  consumed_at TIMESTAMPTZ
+);
+```
+
+**Flow:** password (or federated) first factor → if the user has a
+confirmed factor (or policy requires one) the session is
+`PasswordChangeRequired`-like `MFARequired`: only `VerifyMfa`, `SignOut`
+and recovery are allowed. A valid TOTP or unused recovery code marks the
+session MFA-satisfied for its lifetime. A wrong code is throttled with the
+same account/source keys as login. An administrator reset revokes factors
+only with platform authority and is audited.
+
+**Enforcement:** a tenant policy (`mfa_required_roles`) can require MFA
+for administrator roles before they use the console; a platform policy can
+require it for platform scope. Existing enrolled users are challenged at
+next sign-in. There is no bypass parameter; recovery is a code or an
+administrator reset.
+
+**API:** `BeginMfaEnrollment`, `ConfirmMfaEnrollment`,
+`ListMfaFactors`, `DeleteMfaFactor`, `RegenerateRecoveryCodes`,
+`VerifyMfa`, `UseRecoveryCode`. Passkey endpoints are added only with the
+dependency decision.
+
+**Tests:** RFC 6238 vectors; clock skew ±1; replay of a used code refused;
+recovery code single use; factor encryption; throttle; enforcement;
+administrator reset; a disabled user cannot verify. A lost factor with no
+recovery code is an administrator reset, never email-only.
+
+### 12.2 Company SSO: generic OIDC on the per-tenant provider model
+
+D-63's model stays: one provider per tenant (OIDC now, SAML later), a
+verified domain routes discovery, and `Enforced` disables password
+sign-in for that domain. Google (D-67) is the installation-wide special
+case already shipped; company SSO is **per tenant** and uses the same
+generic OIDC adapter.
+
+**Provider administration (tenant admin):** `CreateIdentityProvider`
+(kind OIDC, display name, issuer, client id, encrypted client secret,
+redirect URI, mode), `List/Get/Update/Delete`, `ClaimDomain`, and
+`VerifyDomain` via a DNS TXT challenge. A public mailbox domain is refused
+(D-67); an unverified claim routes nothing. A domain claimed by another
+tenant is refused.
+
+**Sign-in:** `DiscoverSignIn` returns SSO when the domain has a verified
+claim and an enabled provider. The browser starts the same one-time
+state/PKCE/nonce flow used by Google; the callback verifies issuer,
+audience, signature, nonce and `email_verified`, then finds the person by
+`(issuer, subject)`. **No JIT account creation**; an unlinked subject is
+refused like a wrong password. Linking is from an invitation (verified
+email must equal the invited email, never by matching at sign-in) or from
+the account screen after re-entering the password. This mirrors §12.1's
+security posture and D-67's rules.
+
+**SAML:** a later adapter on the same provider model; OIDC ships first
+(D-63). One provider per domain; enforced mode is a tenant policy choice.
+
+**Tests:** a local fake OIDC issuer; verified/unverified domain; enforced
+vs optional; unlinked subject refused; invitation/link; state replay;
+nonce mismatch; public domain refused; cross-tenant claim; no account
+created by sign-in. Live IdP tests are release checks, not CI.
+
+**Open owner decisions:** passkeys' WebAuthn dependency (D-28/D-35), which
+roles must have MFA at GA, recovery policy for users who lose both factor
+and codes, and whether company SSO is enabled for a pilot before GA.
+
+**References:** D-63, D-66 (as amended), D-67, D-83; PRD EPIC-01;
+[Google OIDC implementation](https://openid.net/specs/openid-connect-core-1_0.html).

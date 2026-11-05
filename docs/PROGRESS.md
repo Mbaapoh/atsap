@@ -9,7 +9,11 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-04, after `pbx-ivr-routing` (D-89): a DID
+**Last updated:** 2026-11-04, after the Phase B/C design pass: the
+missing LLDs (04 compliance, 05 webhook delivery, 06 dialer, 09 reporting,
+10 AI pipeline) are written; LLD-02 and LLD-03 gained MFA/company-SSO and
+IVR-menu/queues/voicemail designs, checked against 3CX, VitalPBX, Vodia,
+FusionPBX and Asterisk. Before that, `pbx-ivr-routing` (D-89): a DID
 can route through a versioned flow with open/closed destinations, UTC
 business hours and holidays. Before that, `pbx-reporting` (LLD-09's call-record
 slice, D-88): terminated calls now have participant attribution,
