@@ -141,10 +141,38 @@ type InboundDecision struct {
 	CallerPrincipalID      *shareddomain.PrincipalID
 	DestinationExtensionID *shareddomain.ExtensionID
 	DestinationPrincipalID *shareddomain.PrincipalID
+	// IVR, when set, is executed by telephony-core before any destination
+	// is rung: answer, play the prompt, collect one DTMF digit, then route.
+	IVR *IVRMenu
 	// BypassScreening skips capacity and compliance checks. Assigned only
 	// in pbx-core's application layer from its own emergency matcher,
 	// under the same provenance rule as InitiateCallCommand's field.
 	BypassScreening bool
+}
+
+// IVRMenu is a prompt-and-digit menu from pbx-core. Destinations are
+// platform URIs/identities, never engine internals beyond the opaque URI.
+type IVRMenu struct {
+	Prompt  string
+	Timeout time.Duration
+	Options []IVRMenuOption
+	// NoInput and Invalid fall back to these destinations; a nil
+	// destination ends the call with a stable reason.
+	NoInput *IVRDestination
+	Invalid *IVRDestination
+}
+
+// IVRMenuOption maps one DTMF digit to a destination.
+type IVRMenuOption struct {
+	Digit       string
+	Destination IVRDestination
+}
+
+// IVRDestination is where a menu branch sends the caller.
+type IVRDestination struct {
+	EndpointURI string
+	ExtensionID *shareddomain.ExtensionID
+	PrincipalID *shareddomain.PrincipalID
 }
 
 // InboundRouter is telephony-core's outbound port for resolving arriving
@@ -255,7 +283,10 @@ type MediaGateway interface {
 	CreateBridge(ctx context.Context, bridgeType string) (BridgeID, error)
 	AddChannelToBridge(ctx context.Context, bridgeID BridgeID, channelRef ChannelRef) error
 	DestroyBridge(ctx context.Context, bridgeID BridgeID) error
-	StartPlayback(ctx context.Context, channelRef ChannelRef, mediaURI string) error
+	// StartPlayback starts media and returns the engine playback id, so an
+	// IVR can stop a prompt the moment a digit arrives.
+	StartPlayback(ctx context.Context, channelRef ChannelRef, mediaURI string) (string, error)
+	StopPlayback(ctx context.Context, channelRef ChannelRef, playbackID string) error
 	StartSnoop(ctx context.Context, channelRef ChannelRef, snoopReq SnoopRequest) (SnoopRef, error)
 	DestroyChannel(ctx context.Context, channelRef ChannelRef) error
 	// RingChannel sends ringing (SIP 180) on an arriving channel the

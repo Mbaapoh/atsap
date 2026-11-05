@@ -83,6 +83,9 @@ type Service struct {
 	// call ID string: the caller participant, its placement timer, and
 	// whether the destination may be originated yet.
 	ordered map[string]*orderedCall
+	// ivr tracks arriving callers in a prompt/DTMF menu, keyed by the
+	// caller channel id (D-90).
+	ivr map[string]*ivrSession
 }
 
 // orderedCall is the per-call state for an ordered (caller-first)
@@ -128,6 +131,7 @@ func NewService(
 		bridges:        make(map[string]ports.BridgeID),
 		arrived:        make(map[string]*arrivedCall),
 		ordered:        make(map[string]*orderedCall),
+		ivr:            make(map[string]*ivrSession),
 	}
 }
 
@@ -400,6 +404,9 @@ func (s *Service) orderedDestination(call *domain.Call, participantID shareddoma
 // originates its leg. A destination that cannot be reached refuses the
 // caller 480 rather than leaving it ringing.
 func (s *Service) connectArrived(ctx context.Context, call *domain.Call, decision ports.InboundDecision, callerRef ports.ChannelRef, now time.Time) error {
+	if decision.IVR != nil {
+		return s.startIVR(ctx, call, *decision.IVR, callerRef, now)
+	}
 	tenantID, callID := call.TenantID, call.ID
 	destination := &domain.CallParticipant{
 		ID: shareddomain.NewParticipantID(), CallID: callID, TenantID: tenantID,
@@ -1036,6 +1043,14 @@ func (s *Service) ensureBridge(ctx context.Context, callID shareddomain.CallID) 
 // teardown, not just to active calls).
 func (s *Service) finalizeTermination(ctx context.Context, call *domain.Call, reason string) error {
 	s.mu.Lock()
+	for channelID, session := range s.ivr {
+		if session.callID == call.ID {
+			if session.timer != nil {
+				session.timer.Stop()
+			}
+			delete(s.ivr, channelID)
+		}
+	}
 	bridgeID, hasBridge := s.bridges[call.ID.String()]
 	delete(s.bridges, call.ID.String())
 	s.mu.Unlock()

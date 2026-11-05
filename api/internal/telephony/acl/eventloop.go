@@ -35,6 +35,8 @@ type EventSink interface {
 	// (CHANNEL(pjsip,remote_addr)) for the orchestrator to attribute it
 	// by; it never consults its router for a channel it cannot attribute.
 	CallArrived(ctx context.Context, tenantID, sourceEndpoint, sourceAddress, dialled, callerNumber, channelID string) error
+	// IVRDigit delivers one DTMF digit from an IVR channel (D-90).
+	IVRDigit(ctx context.Context, channelID, digit string) error
 }
 
 // ChannelVariableReader reads a variable off a live engine channel. It
@@ -97,6 +99,8 @@ func (l *EventLoop) Handle(ctx context.Context, ev ari.Event) {
 		l.handleStasisStart(ctx, ev)
 	case "ChannelDestroyed", "ChannelHangupRequest":
 		l.handleChannelGone(ctx, ev)
+	case "ChannelDtmfReceived":
+		l.handleIVRDigit(ctx, ev)
 	}
 }
 
@@ -200,5 +204,26 @@ func (l *EventLoop) handleChannelGone(ctx context.Context, ev ari.Event) {
 	if err := l.sink.ParticipantLeft(ctx, corr.TenantID, corr.CallID, corr.ParticipantID); err != nil {
 		l.logger.Error("acl: participant-left handler failed", "error", err,
 			"call_id", corr.CallID, "participant_id", corr.ParticipantID)
+	}
+}
+
+type dtmfPayload struct {
+	Channel struct {
+		ID string `json:"id"`
+	} `json:"channel"`
+	Digit string `json:"digit"`
+}
+
+func (l *EventLoop) handleIVRDigit(ctx context.Context, ev ari.Event) {
+	var payload dtmfPayload
+	if err := json.Unmarshal(ev.Raw, &payload); err != nil {
+		l.logger.Warn("acl: failed to decode ChannelDtmfReceived", "error", err)
+		return
+	}
+	if payload.Channel.ID == "" || payload.Digit == "" {
+		return
+	}
+	if err := l.sink.IVRDigit(ctx, payload.Channel.ID, payload.Digit); err != nil {
+		l.logger.Error("acl: IVR digit handler failed", "channel_id", payload.Channel.ID, "error", err)
 	}
 }

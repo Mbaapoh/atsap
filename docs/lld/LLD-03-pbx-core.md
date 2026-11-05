@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `pbx-core` (Tier 1 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | **Phase A implemented & archived; Phase B in progress** — ownership, reporting attribution and IVR time-routing are delivered; IVR menu, queues/agents and voicemail are designed in §3.2–3.4, not built |
+| **Status** | **Phase A implemented & archived; Phase B in progress** — ownership, reporting attribution, IVR time-routing and the IVR menu are delivered; queues/agents and voicemail are designed in §3.3–3.4, not built |
 | **Traces to** | BRD FBR-R1-01/§16; PRD principle 4, EPIC-03 (US-03.1–03.10, AC-03.1–03.10), EPIC-10 (console), INV-01/INV-03/INV-10; TRD domain model; HLD [01-architecture.md](../hld/01-architecture.md) §1.2, [03-domain-model.md](../hld/03-domain-model.md) §5, [04-bounded-contexts.md](../hld/04-bounded-contexts.md) §2, [05-security.md](../hld/05-security.md), [17-data-model-erd.md](../hld/17-data-model-erd.md), [18-phase-a-user-flows.md](../hld/18-phase-a-user-flows.md); DECISIONS D-02, D-22, D-24, D-41, D-43, D-46, D-47 |
 | **Why this is LLD-03** | LLD-01 proved the media path and LLD-02 landed identity; neither made a single extension exist. Every remaining LLD needs configuration that Asterisk can act on: `compliance` gates dialling that `pbx-core` routes, `reporting` reports on calls `pbx-core` places, and the console (D-46) has nothing to configure until this exists. D-26 (dependency-first) puts it here. |
 
@@ -231,8 +231,7 @@ table.
 ### 3.2 IVR menu execution — next slice after `pbx-ivr-routing`
 
 `pbx-ivr-routing` delivers the open/closed destination and versioned flow
-(D-89). The menu adds prompt playback and DTMF without changing the flow
-aggregate:
+(D-89); `pbx-ivr-menu` adds the prompt/DTMF execution below (D-90).
 
 - A revision's `prompt` is a media reference (`sound:<name>` or an
   uploaded object key); prompt uploads are 8 kHz/16-bit mono WAV/MP3

@@ -989,8 +989,13 @@ type FlowConfig struct {
 	BusinessStartMinute int32                  `protobuf:"varint,3,opt,name=business_start_minute,json=businessStartMinute,proto3" json:"business_start_minute,omitempty"`
 	BusinessEndMinute   int32                  `protobuf:"varint,4,opt,name=business_end_minute,json=businessEndMinute,proto3" json:"business_end_minute,omitempty"`
 	Prompt              string                 `protobuf:"bytes,5,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Menu digit (0-9) -> extension id. Empty keeps time routing.
+	Menu               map[string]string `protobuf:"bytes,6,rep,name=menu,proto3" json:"menu,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	MenuTimeoutSeconds int32             `protobuf:"varint,7,opt,name=menu_timeout_seconds,json=menuTimeoutSeconds,proto3" json:"menu_timeout_seconds,omitempty"`
+	NoInputExtensionId string            `protobuf:"bytes,8,opt,name=no_input_extension_id,json=noInputExtensionId,proto3" json:"no_input_extension_id,omitempty"`
+	InvalidExtensionId string            `protobuf:"bytes,9,opt,name=invalid_extension_id,json=invalidExtensionId,proto3" json:"invalid_extension_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *FlowConfig) Reset() {
@@ -1054,6 +1059,34 @@ func (x *FlowConfig) GetBusinessEndMinute() int32 {
 func (x *FlowConfig) GetPrompt() string {
 	if x != nil {
 		return x.Prompt
+	}
+	return ""
+}
+
+func (x *FlowConfig) GetMenu() map[string]string {
+	if x != nil {
+		return x.Menu
+	}
+	return nil
+}
+
+func (x *FlowConfig) GetMenuTimeoutSeconds() int32 {
+	if x != nil {
+		return x.MenuTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *FlowConfig) GetNoInputExtensionId() string {
+	if x != nil {
+		return x.NoInputExtensionId
+	}
+	return ""
+}
+
+func (x *FlowConfig) GetInvalidExtensionId() string {
+	if x != nil {
+		return x.InvalidExtensionId
 	}
 	return ""
 }
@@ -5119,14 +5152,21 @@ const file_atsapbx_v1_pbx_proto_rawDesc = "" +
 	"\x16DeleteExtensionRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12!\n" +
 	"\fextension_id\x18\x02 \x01(\tR\vextensionId\"\x19\n" +
-	"\x17DeleteExtensionResponse\"\xe4\x01\n" +
+	"\x17DeleteExtensionResponse\"\xea\x03\n" +
 	"\n" +
 	"FlowConfig\x12*\n" +
 	"\x11open_extension_id\x18\x01 \x01(\tR\x0fopenExtensionId\x12.\n" +
 	"\x13closed_extension_id\x18\x02 \x01(\tR\x11closedExtensionId\x122\n" +
 	"\x15business_start_minute\x18\x03 \x01(\x05R\x13businessStartMinute\x12.\n" +
 	"\x13business_end_minute\x18\x04 \x01(\x05R\x11businessEndMinute\x12\x16\n" +
-	"\x06prompt\x18\x05 \x01(\tR\x06prompt\"\xa2\x01\n" +
+	"\x06prompt\x18\x05 \x01(\tR\x06prompt\x124\n" +
+	"\x04menu\x18\x06 \x03(\v2 .atsapbx.v1.FlowConfig.MenuEntryR\x04menu\x120\n" +
+	"\x14menu_timeout_seconds\x18\a \x01(\x05R\x12menuTimeoutSeconds\x121\n" +
+	"\x15no_input_extension_id\x18\b \x01(\tR\x12noInputExtensionId\x120\n" +
+	"\x14invalid_extension_id\x18\t \x01(\tR\x12invalidExtensionId\x1a7\n" +
+	"\tMenuEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa2\x01\n" +
 	"\x04Flow\x12\x17\n" +
 	"\aflow_id\x18\x01 \x01(\tR\x06flowId\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\tR\x06number\x12\x12\n" +
@@ -5470,7 +5510,7 @@ func file_atsapbx_v1_pbx_proto_rawDescGZIP() []byte {
 }
 
 var file_atsapbx_v1_pbx_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 84)
+var file_atsapbx_v1_pbx_proto_msgTypes = make([]protoimpl.MessageInfo, 85)
 var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(DeviceType)(0),                       // 0: atsapbx.v1.DeviceType
 	(OutboundClass)(0),                    // 1: atsapbx.v1.OutboundClass
@@ -5561,7 +5601,8 @@ var file_atsapbx_v1_pbx_proto_goTypes = []any{
 	(*ListInboundNumbersResponse)(nil),    // 86: atsapbx.v1.ListInboundNumbersResponse
 	(*DeleteInboundNumberRequest)(nil),    // 87: atsapbx.v1.DeleteInboundNumberRequest
 	(*DeleteInboundNumberResponse)(nil),   // 88: atsapbx.v1.DeleteInboundNumberResponse
-	(*timestamppb.Timestamp)(nil),         // 89: google.protobuf.Timestamp
+	nil,                                   // 89: atsapbx.v1.FlowConfig.MenuEntry
+	(*timestamppb.Timestamp)(nil),         // 90: google.protobuf.Timestamp
 }
 var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	0,  // 0: atsapbx.v1.Extension.device_type:type_name -> atsapbx.v1.DeviceType
@@ -5575,118 +5616,119 @@ var file_atsapbx_v1_pbx_proto_depIdxs = []int32{
 	0,  // 8: atsapbx.v1.UpdateExtensionRequest.device_type:type_name -> atsapbx.v1.DeviceType
 	1,  // 9: atsapbx.v1.UpdateExtensionRequest.outbound_class:type_name -> atsapbx.v1.OutboundClass
 	5,  // 10: atsapbx.v1.UpdateExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	16, // 11: atsapbx.v1.Flow.config:type_name -> atsapbx.v1.FlowConfig
-	17, // 12: atsapbx.v1.FlowResponse.flow:type_name -> atsapbx.v1.Flow
-	16, // 13: atsapbx.v1.CreateFlowRequest.config:type_name -> atsapbx.v1.FlowConfig
-	17, // 14: atsapbx.v1.ListFlowsResponse.flows:type_name -> atsapbx.v1.Flow
-	16, // 15: atsapbx.v1.PublishFlowRequest.config:type_name -> atsapbx.v1.FlowConfig
-	16, // 16: atsapbx.v1.FlowVersion.config:type_name -> atsapbx.v1.FlowConfig
-	89, // 17: atsapbx.v1.FlowVersion.published_at:type_name -> google.protobuf.Timestamp
-	27, // 18: atsapbx.v1.ListFlowVersionsResponse.versions:type_name -> atsapbx.v1.FlowVersion
-	30, // 19: atsapbx.v1.HolidaysResponse.holidays:type_name -> atsapbx.v1.Holiday
-	5,  // 20: atsapbx.v1.AssignExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	5,  // 21: atsapbx.v1.UnassignExtensionResponse.extension:type_name -> atsapbx.v1.Extension
-	5,  // 22: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
-	50, // 23: atsapbx.v1.GetSipRegistrarResponse.ice_servers:type_name -> atsapbx.v1.IceServer
-	89, // 24: atsapbx.v1.OutboundPolicy.suspended_at:type_name -> google.protobuf.Timestamp
-	43, // 25: atsapbx.v1.GetOutboundPolicyResponse.policy:type_name -> atsapbx.v1.OutboundPolicy
-	43, // 26: atsapbx.v1.UpdateOutboundPolicyResponse.policy:type_name -> atsapbx.v1.OutboundPolicy
-	43, // 27: atsapbx.v1.ResumeOutboundResponse.policy:type_name -> atsapbx.v1.OutboundPolicy
-	3,  // 28: atsapbx.v1.Trunk.health:type_name -> atsapbx.v1.TrunkHealth
-	4,  // 29: atsapbx.v1.Trunk.health_reason:type_name -> atsapbx.v1.TrunkHealthReason
-	89, // 30: atsapbx.v1.Trunk.health_observed_at:type_name -> google.protobuf.Timestamp
-	51, // 31: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
-	51, // 32: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
-	51, // 33: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
-	60, // 34: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
-	60, // 35: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
-	71, // 36: atsapbx.v1.GetEmergencyProfileResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
-	71, // 37: atsapbx.v1.ListEmergencyNumbersResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
-	82, // 38: atsapbx.v1.CreateInboundNumberResponse.inbound_number:type_name -> atsapbx.v1.InboundNumber
-	82, // 39: atsapbx.v1.ListInboundNumbersResponse.numbers:type_name -> atsapbx.v1.InboundNumber
-	6,  // 40: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
-	8,  // 41: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
-	10, // 42: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
-	12, // 43: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
-	14, // 44: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
-	35, // 45: atsapbx.v1.PbxService.AssignExtension:input_type -> atsapbx.v1.AssignExtensionRequest
-	19, // 46: atsapbx.v1.PbxService.CreateFlow:input_type -> atsapbx.v1.CreateFlowRequest
-	20, // 47: atsapbx.v1.PbxService.GetFlow:input_type -> atsapbx.v1.GetFlowRequest
-	21, // 48: atsapbx.v1.PbxService.ListFlows:input_type -> atsapbx.v1.ListFlowsRequest
-	23, // 49: atsapbx.v1.PbxService.PublishFlow:input_type -> atsapbx.v1.PublishFlowRequest
-	24, // 50: atsapbx.v1.PbxService.RollbackFlow:input_type -> atsapbx.v1.RollbackFlowRequest
-	25, // 51: atsapbx.v1.PbxService.DeleteFlow:input_type -> atsapbx.v1.DeleteFlowRequest
-	28, // 52: atsapbx.v1.PbxService.ListFlowVersions:input_type -> atsapbx.v1.ListFlowVersionsRequest
-	32, // 53: atsapbx.v1.PbxService.ListHolidays:input_type -> atsapbx.v1.ListHolidaysRequest
-	33, // 54: atsapbx.v1.PbxService.AddHoliday:input_type -> atsapbx.v1.AddHolidayRequest
-	34, // 55: atsapbx.v1.PbxService.DeleteHoliday:input_type -> atsapbx.v1.DeleteHolidayRequest
-	37, // 56: atsapbx.v1.PbxService.UnassignExtension:input_type -> atsapbx.v1.UnassignExtensionRequest
-	39, // 57: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
-	41, // 58: atsapbx.v1.PbxService.GetSipRegistrar:input_type -> atsapbx.v1.GetSipRegistrarRequest
-	44, // 59: atsapbx.v1.PbxService.GetOutboundPolicy:input_type -> atsapbx.v1.GetOutboundPolicyRequest
-	46, // 60: atsapbx.v1.PbxService.UpdateOutboundPolicy:input_type -> atsapbx.v1.UpdateOutboundPolicyRequest
-	48, // 61: atsapbx.v1.PbxService.ResumeOutbound:input_type -> atsapbx.v1.ResumeOutboundRequest
-	52, // 62: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
-	54, // 63: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
-	56, // 64: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
-	58, // 65: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
-	61, // 66: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
-	63, // 67: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
-	65, // 68: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
-	67, // 69: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
-	69, // 70: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
-	72, // 71: atsapbx.v1.PbxService.SetEmergencyProfile:input_type -> atsapbx.v1.SetEmergencyProfileRequest
-	74, // 72: atsapbx.v1.PbxService.GetEmergencyProfile:input_type -> atsapbx.v1.GetEmergencyProfileRequest
-	76, // 73: atsapbx.v1.PbxService.CreateEmergencyNumber:input_type -> atsapbx.v1.CreateEmergencyNumberRequest
-	78, // 74: atsapbx.v1.PbxService.ListEmergencyNumbers:input_type -> atsapbx.v1.ListEmergencyNumbersRequest
-	80, // 75: atsapbx.v1.PbxService.DeleteEmergencyNumber:input_type -> atsapbx.v1.DeleteEmergencyNumberRequest
-	83, // 76: atsapbx.v1.PbxService.CreateInboundNumber:input_type -> atsapbx.v1.CreateInboundNumberRequest
-	85, // 77: atsapbx.v1.PbxService.ListInboundNumbers:input_type -> atsapbx.v1.ListInboundNumbersRequest
-	87, // 78: atsapbx.v1.PbxService.DeleteInboundNumber:input_type -> atsapbx.v1.DeleteInboundNumberRequest
-	7,  // 79: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
-	9,  // 80: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
-	11, // 81: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
-	13, // 82: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
-	15, // 83: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
-	36, // 84: atsapbx.v1.PbxService.AssignExtension:output_type -> atsapbx.v1.AssignExtensionResponse
-	18, // 85: atsapbx.v1.PbxService.CreateFlow:output_type -> atsapbx.v1.FlowResponse
-	18, // 86: atsapbx.v1.PbxService.GetFlow:output_type -> atsapbx.v1.FlowResponse
-	22, // 87: atsapbx.v1.PbxService.ListFlows:output_type -> atsapbx.v1.ListFlowsResponse
-	18, // 88: atsapbx.v1.PbxService.PublishFlow:output_type -> atsapbx.v1.FlowResponse
-	18, // 89: atsapbx.v1.PbxService.RollbackFlow:output_type -> atsapbx.v1.FlowResponse
-	26, // 90: atsapbx.v1.PbxService.DeleteFlow:output_type -> atsapbx.v1.DeleteFlowResponse
-	29, // 91: atsapbx.v1.PbxService.ListFlowVersions:output_type -> atsapbx.v1.ListFlowVersionsResponse
-	31, // 92: atsapbx.v1.PbxService.ListHolidays:output_type -> atsapbx.v1.HolidaysResponse
-	31, // 93: atsapbx.v1.PbxService.AddHoliday:output_type -> atsapbx.v1.HolidaysResponse
-	31, // 94: atsapbx.v1.PbxService.DeleteHoliday:output_type -> atsapbx.v1.HolidaysResponse
-	38, // 95: atsapbx.v1.PbxService.UnassignExtension:output_type -> atsapbx.v1.UnassignExtensionResponse
-	40, // 96: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
-	42, // 97: atsapbx.v1.PbxService.GetSipRegistrar:output_type -> atsapbx.v1.GetSipRegistrarResponse
-	45, // 98: atsapbx.v1.PbxService.GetOutboundPolicy:output_type -> atsapbx.v1.GetOutboundPolicyResponse
-	47, // 99: atsapbx.v1.PbxService.UpdateOutboundPolicy:output_type -> atsapbx.v1.UpdateOutboundPolicyResponse
-	49, // 100: atsapbx.v1.PbxService.ResumeOutbound:output_type -> atsapbx.v1.ResumeOutboundResponse
-	53, // 101: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
-	55, // 102: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
-	57, // 103: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
-	59, // 104: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
-	62, // 105: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
-	64, // 106: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
-	66, // 107: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
-	68, // 108: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
-	70, // 109: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
-	73, // 110: atsapbx.v1.PbxService.SetEmergencyProfile:output_type -> atsapbx.v1.SetEmergencyProfileResponse
-	75, // 111: atsapbx.v1.PbxService.GetEmergencyProfile:output_type -> atsapbx.v1.GetEmergencyProfileResponse
-	77, // 112: atsapbx.v1.PbxService.CreateEmergencyNumber:output_type -> atsapbx.v1.CreateEmergencyNumberResponse
-	79, // 113: atsapbx.v1.PbxService.ListEmergencyNumbers:output_type -> atsapbx.v1.ListEmergencyNumbersResponse
-	81, // 114: atsapbx.v1.PbxService.DeleteEmergencyNumber:output_type -> atsapbx.v1.DeleteEmergencyNumberResponse
-	84, // 115: atsapbx.v1.PbxService.CreateInboundNumber:output_type -> atsapbx.v1.CreateInboundNumberResponse
-	86, // 116: atsapbx.v1.PbxService.ListInboundNumbers:output_type -> atsapbx.v1.ListInboundNumbersResponse
-	88, // 117: atsapbx.v1.PbxService.DeleteInboundNumber:output_type -> atsapbx.v1.DeleteInboundNumberResponse
-	79, // [79:118] is the sub-list for method output_type
-	40, // [40:79] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	89, // 11: atsapbx.v1.FlowConfig.menu:type_name -> atsapbx.v1.FlowConfig.MenuEntry
+	16, // 12: atsapbx.v1.Flow.config:type_name -> atsapbx.v1.FlowConfig
+	17, // 13: atsapbx.v1.FlowResponse.flow:type_name -> atsapbx.v1.Flow
+	16, // 14: atsapbx.v1.CreateFlowRequest.config:type_name -> atsapbx.v1.FlowConfig
+	17, // 15: atsapbx.v1.ListFlowsResponse.flows:type_name -> atsapbx.v1.Flow
+	16, // 16: atsapbx.v1.PublishFlowRequest.config:type_name -> atsapbx.v1.FlowConfig
+	16, // 17: atsapbx.v1.FlowVersion.config:type_name -> atsapbx.v1.FlowConfig
+	90, // 18: atsapbx.v1.FlowVersion.published_at:type_name -> google.protobuf.Timestamp
+	27, // 19: atsapbx.v1.ListFlowVersionsResponse.versions:type_name -> atsapbx.v1.FlowVersion
+	30, // 20: atsapbx.v1.HolidaysResponse.holidays:type_name -> atsapbx.v1.Holiday
+	5,  // 21: atsapbx.v1.AssignExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	5,  // 22: atsapbx.v1.UnassignExtensionResponse.extension:type_name -> atsapbx.v1.Extension
+	5,  // 23: atsapbx.v1.RegenerateSecretResponse.extension:type_name -> atsapbx.v1.Extension
+	50, // 24: atsapbx.v1.GetSipRegistrarResponse.ice_servers:type_name -> atsapbx.v1.IceServer
+	90, // 25: atsapbx.v1.OutboundPolicy.suspended_at:type_name -> google.protobuf.Timestamp
+	43, // 26: atsapbx.v1.GetOutboundPolicyResponse.policy:type_name -> atsapbx.v1.OutboundPolicy
+	43, // 27: atsapbx.v1.UpdateOutboundPolicyResponse.policy:type_name -> atsapbx.v1.OutboundPolicy
+	43, // 28: atsapbx.v1.ResumeOutboundResponse.policy:type_name -> atsapbx.v1.OutboundPolicy
+	3,  // 29: atsapbx.v1.Trunk.health:type_name -> atsapbx.v1.TrunkHealth
+	4,  // 30: atsapbx.v1.Trunk.health_reason:type_name -> atsapbx.v1.TrunkHealthReason
+	90, // 31: atsapbx.v1.Trunk.health_observed_at:type_name -> google.protobuf.Timestamp
+	51, // 32: atsapbx.v1.CreateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	51, // 33: atsapbx.v1.ListTrunksResponse.trunks:type_name -> atsapbx.v1.Trunk
+	51, // 34: atsapbx.v1.UpdateTrunkResponse.trunk:type_name -> atsapbx.v1.Trunk
+	60, // 35: atsapbx.v1.CreateRouteResponse.route:type_name -> atsapbx.v1.Route
+	60, // 36: atsapbx.v1.ListRoutesResponse.routes:type_name -> atsapbx.v1.Route
+	71, // 37: atsapbx.v1.GetEmergencyProfileResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
+	71, // 38: atsapbx.v1.ListEmergencyNumbersResponse.numbers:type_name -> atsapbx.v1.EmergencyNumber
+	82, // 39: atsapbx.v1.CreateInboundNumberResponse.inbound_number:type_name -> atsapbx.v1.InboundNumber
+	82, // 40: atsapbx.v1.ListInboundNumbersResponse.numbers:type_name -> atsapbx.v1.InboundNumber
+	6,  // 41: atsapbx.v1.PbxService.CreateExtension:input_type -> atsapbx.v1.CreateExtensionRequest
+	8,  // 42: atsapbx.v1.PbxService.GetExtension:input_type -> atsapbx.v1.GetExtensionRequest
+	10, // 43: atsapbx.v1.PbxService.ListExtensions:input_type -> atsapbx.v1.ListExtensionsRequest
+	12, // 44: atsapbx.v1.PbxService.UpdateExtension:input_type -> atsapbx.v1.UpdateExtensionRequest
+	14, // 45: atsapbx.v1.PbxService.DeleteExtension:input_type -> atsapbx.v1.DeleteExtensionRequest
+	35, // 46: atsapbx.v1.PbxService.AssignExtension:input_type -> atsapbx.v1.AssignExtensionRequest
+	19, // 47: atsapbx.v1.PbxService.CreateFlow:input_type -> atsapbx.v1.CreateFlowRequest
+	20, // 48: atsapbx.v1.PbxService.GetFlow:input_type -> atsapbx.v1.GetFlowRequest
+	21, // 49: atsapbx.v1.PbxService.ListFlows:input_type -> atsapbx.v1.ListFlowsRequest
+	23, // 50: atsapbx.v1.PbxService.PublishFlow:input_type -> atsapbx.v1.PublishFlowRequest
+	24, // 51: atsapbx.v1.PbxService.RollbackFlow:input_type -> atsapbx.v1.RollbackFlowRequest
+	25, // 52: atsapbx.v1.PbxService.DeleteFlow:input_type -> atsapbx.v1.DeleteFlowRequest
+	28, // 53: atsapbx.v1.PbxService.ListFlowVersions:input_type -> atsapbx.v1.ListFlowVersionsRequest
+	32, // 54: atsapbx.v1.PbxService.ListHolidays:input_type -> atsapbx.v1.ListHolidaysRequest
+	33, // 55: atsapbx.v1.PbxService.AddHoliday:input_type -> atsapbx.v1.AddHolidayRequest
+	34, // 56: atsapbx.v1.PbxService.DeleteHoliday:input_type -> atsapbx.v1.DeleteHolidayRequest
+	37, // 57: atsapbx.v1.PbxService.UnassignExtension:input_type -> atsapbx.v1.UnassignExtensionRequest
+	39, // 58: atsapbx.v1.PbxService.RegenerateSecret:input_type -> atsapbx.v1.RegenerateSecretRequest
+	41, // 59: atsapbx.v1.PbxService.GetSipRegistrar:input_type -> atsapbx.v1.GetSipRegistrarRequest
+	44, // 60: atsapbx.v1.PbxService.GetOutboundPolicy:input_type -> atsapbx.v1.GetOutboundPolicyRequest
+	46, // 61: atsapbx.v1.PbxService.UpdateOutboundPolicy:input_type -> atsapbx.v1.UpdateOutboundPolicyRequest
+	48, // 62: atsapbx.v1.PbxService.ResumeOutbound:input_type -> atsapbx.v1.ResumeOutboundRequest
+	52, // 63: atsapbx.v1.PbxService.CreateTrunk:input_type -> atsapbx.v1.CreateTrunkRequest
+	54, // 64: atsapbx.v1.PbxService.ListTrunks:input_type -> atsapbx.v1.ListTrunksRequest
+	56, // 65: atsapbx.v1.PbxService.UpdateTrunk:input_type -> atsapbx.v1.UpdateTrunkRequest
+	58, // 66: atsapbx.v1.PbxService.DeleteTrunk:input_type -> atsapbx.v1.DeleteTrunkRequest
+	61, // 67: atsapbx.v1.PbxService.CreateRoute:input_type -> atsapbx.v1.CreateRouteRequest
+	63, // 68: atsapbx.v1.PbxService.ListRoutes:input_type -> atsapbx.v1.ListRoutesRequest
+	65, // 69: atsapbx.v1.PbxService.DeleteRoute:input_type -> atsapbx.v1.DeleteRouteRequest
+	67, // 70: atsapbx.v1.PbxService.PlaceCall:input_type -> atsapbx.v1.PlaceCallRequest
+	69, // 71: atsapbx.v1.PbxService.HangupCall:input_type -> atsapbx.v1.HangupCallRequest
+	72, // 72: atsapbx.v1.PbxService.SetEmergencyProfile:input_type -> atsapbx.v1.SetEmergencyProfileRequest
+	74, // 73: atsapbx.v1.PbxService.GetEmergencyProfile:input_type -> atsapbx.v1.GetEmergencyProfileRequest
+	76, // 74: atsapbx.v1.PbxService.CreateEmergencyNumber:input_type -> atsapbx.v1.CreateEmergencyNumberRequest
+	78, // 75: atsapbx.v1.PbxService.ListEmergencyNumbers:input_type -> atsapbx.v1.ListEmergencyNumbersRequest
+	80, // 76: atsapbx.v1.PbxService.DeleteEmergencyNumber:input_type -> atsapbx.v1.DeleteEmergencyNumberRequest
+	83, // 77: atsapbx.v1.PbxService.CreateInboundNumber:input_type -> atsapbx.v1.CreateInboundNumberRequest
+	85, // 78: atsapbx.v1.PbxService.ListInboundNumbers:input_type -> atsapbx.v1.ListInboundNumbersRequest
+	87, // 79: atsapbx.v1.PbxService.DeleteInboundNumber:input_type -> atsapbx.v1.DeleteInboundNumberRequest
+	7,  // 80: atsapbx.v1.PbxService.CreateExtension:output_type -> atsapbx.v1.CreateExtensionResponse
+	9,  // 81: atsapbx.v1.PbxService.GetExtension:output_type -> atsapbx.v1.GetExtensionResponse
+	11, // 82: atsapbx.v1.PbxService.ListExtensions:output_type -> atsapbx.v1.ListExtensionsResponse
+	13, // 83: atsapbx.v1.PbxService.UpdateExtension:output_type -> atsapbx.v1.UpdateExtensionResponse
+	15, // 84: atsapbx.v1.PbxService.DeleteExtension:output_type -> atsapbx.v1.DeleteExtensionResponse
+	36, // 85: atsapbx.v1.PbxService.AssignExtension:output_type -> atsapbx.v1.AssignExtensionResponse
+	18, // 86: atsapbx.v1.PbxService.CreateFlow:output_type -> atsapbx.v1.FlowResponse
+	18, // 87: atsapbx.v1.PbxService.GetFlow:output_type -> atsapbx.v1.FlowResponse
+	22, // 88: atsapbx.v1.PbxService.ListFlows:output_type -> atsapbx.v1.ListFlowsResponse
+	18, // 89: atsapbx.v1.PbxService.PublishFlow:output_type -> atsapbx.v1.FlowResponse
+	18, // 90: atsapbx.v1.PbxService.RollbackFlow:output_type -> atsapbx.v1.FlowResponse
+	26, // 91: atsapbx.v1.PbxService.DeleteFlow:output_type -> atsapbx.v1.DeleteFlowResponse
+	29, // 92: atsapbx.v1.PbxService.ListFlowVersions:output_type -> atsapbx.v1.ListFlowVersionsResponse
+	31, // 93: atsapbx.v1.PbxService.ListHolidays:output_type -> atsapbx.v1.HolidaysResponse
+	31, // 94: atsapbx.v1.PbxService.AddHoliday:output_type -> atsapbx.v1.HolidaysResponse
+	31, // 95: atsapbx.v1.PbxService.DeleteHoliday:output_type -> atsapbx.v1.HolidaysResponse
+	38, // 96: atsapbx.v1.PbxService.UnassignExtension:output_type -> atsapbx.v1.UnassignExtensionResponse
+	40, // 97: atsapbx.v1.PbxService.RegenerateSecret:output_type -> atsapbx.v1.RegenerateSecretResponse
+	42, // 98: atsapbx.v1.PbxService.GetSipRegistrar:output_type -> atsapbx.v1.GetSipRegistrarResponse
+	45, // 99: atsapbx.v1.PbxService.GetOutboundPolicy:output_type -> atsapbx.v1.GetOutboundPolicyResponse
+	47, // 100: atsapbx.v1.PbxService.UpdateOutboundPolicy:output_type -> atsapbx.v1.UpdateOutboundPolicyResponse
+	49, // 101: atsapbx.v1.PbxService.ResumeOutbound:output_type -> atsapbx.v1.ResumeOutboundResponse
+	53, // 102: atsapbx.v1.PbxService.CreateTrunk:output_type -> atsapbx.v1.CreateTrunkResponse
+	55, // 103: atsapbx.v1.PbxService.ListTrunks:output_type -> atsapbx.v1.ListTrunksResponse
+	57, // 104: atsapbx.v1.PbxService.UpdateTrunk:output_type -> atsapbx.v1.UpdateTrunkResponse
+	59, // 105: atsapbx.v1.PbxService.DeleteTrunk:output_type -> atsapbx.v1.DeleteTrunkResponse
+	62, // 106: atsapbx.v1.PbxService.CreateRoute:output_type -> atsapbx.v1.CreateRouteResponse
+	64, // 107: atsapbx.v1.PbxService.ListRoutes:output_type -> atsapbx.v1.ListRoutesResponse
+	66, // 108: atsapbx.v1.PbxService.DeleteRoute:output_type -> atsapbx.v1.DeleteRouteResponse
+	68, // 109: atsapbx.v1.PbxService.PlaceCall:output_type -> atsapbx.v1.PlaceCallResponse
+	70, // 110: atsapbx.v1.PbxService.HangupCall:output_type -> atsapbx.v1.HangupCallResponse
+	73, // 111: atsapbx.v1.PbxService.SetEmergencyProfile:output_type -> atsapbx.v1.SetEmergencyProfileResponse
+	75, // 112: atsapbx.v1.PbxService.GetEmergencyProfile:output_type -> atsapbx.v1.GetEmergencyProfileResponse
+	77, // 113: atsapbx.v1.PbxService.CreateEmergencyNumber:output_type -> atsapbx.v1.CreateEmergencyNumberResponse
+	79, // 114: atsapbx.v1.PbxService.ListEmergencyNumbers:output_type -> atsapbx.v1.ListEmergencyNumbersResponse
+	81, // 115: atsapbx.v1.PbxService.DeleteEmergencyNumber:output_type -> atsapbx.v1.DeleteEmergencyNumberResponse
+	84, // 116: atsapbx.v1.PbxService.CreateInboundNumber:output_type -> atsapbx.v1.CreateInboundNumberResponse
+	86, // 117: atsapbx.v1.PbxService.ListInboundNumbers:output_type -> atsapbx.v1.ListInboundNumbersResponse
+	88, // 118: atsapbx.v1.PbxService.DeleteInboundNumber:output_type -> atsapbx.v1.DeleteInboundNumberResponse
+	80, // [80:119] is the sub-list for method output_type
+	41, // [41:80] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_atsapbx_v1_pbx_proto_init() }
@@ -5700,7 +5742,7 @@ func file_atsapbx_v1_pbx_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atsapbx_v1_pbx_proto_rawDesc), len(file_atsapbx_v1_pbx_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   84,
+			NumMessages:   85,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

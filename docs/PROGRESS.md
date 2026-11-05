@@ -9,7 +9,9 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-04, after the Phase B/C design pass: the
+**Last updated:** 2026-11-05, after `pbx-ivr-menu` (D-90): a flow can
+play a prompt and route the caller on a DTMF digit, with timeout and
+no-input/invalid fallbacks. Before that, the Phase B/C design pass: the
 missing LLDs (04 compliance, 05 webhook delivery, 06 dialer, 09 reporting,
 10 AI pipeline) are written; LLD-02 and LLD-03 gained MFA/company-SSO and
 IVR-menu/queues/voicemail designs, checked against 3CX, VitalPBX, Vodia,
@@ -52,9 +54,9 @@ longer stalls carrier calls for every tenant (D-75). Before that,
 2026-10-14, `pbx-trunk-health-probing` (trunk health from a real check)
 and the console linter.
 
-**Next work:** Phase B continues with `pbx-ivr-menu` (prompt/DTMF),
-then `pbx-queues`, then voicemail/recording and the remaining LLD-09
-quality and retention work. MFA and company-domain SSO remain before
+**Next work:** Phase B continues with `pbx-queues` (ACD, agents,
+hot-desk), then voicemail/recording and the remaining LLD-09 quality and
+retention work. MFA and company-domain SSO remain before
 GA. The Asterisk image scan
 remains owner-deferred.
 
@@ -76,7 +78,7 @@ A row is ticked only when its proof ran green. "Code merged" is not proof.
 
 | Phase | A partner can… | Backend | Console | Status |
 |---|---|---|---|---|
-| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 26 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling with TURN, T-6 health with alerts, outbound classes, Google sign-in, the fraud guard, a hardened scanned Asterisk image, extension ownership, call-record reporting and IVR routing | In progress |
+| **A** | install it, licence it, make and receive real calls, configured entirely in the UI | **Done**: 27 changes archived, every console slice A endpoint exists | **A1–A5 screens done** (`console-foundation`, `console-admin-screens`), plus click-to-call, the live call session, browser calling with TURN, T-6 health with alerts, outbound classes, Google sign-in, the fraud guard, a hardened scanned Asterisk image, extension ownership, call-record reporting, IVR routing and IVR menus | In progress |
 | **B** | run it as a business phone system: users ↔ extensions, IVR, queues and agents, CDR and reporting, voicemail, recording | **In progress**: ownership (D-87), call-record reporting (D-88), IVR routing (D-89) | Call flows, Reports, "Assigned to" delivered; IVR menu/queues/recording next | Started |
 | **C** | run an outbound operation (compliance first, then the power dialler) | — | — | Not started |
 
@@ -167,8 +169,8 @@ that link.
 ### Phase B — order (designed, not started)
 
 1. ~~`pbx-extension-ownership`~~ **done 2026-11-04** (D-87).
-2. ~~`pbx-ivr-routing`~~ **done 2026-11-04** (D-89): business hours,
-   holidays, publish/rollback. `pbx-ivr-menu` (prompt/DTMF) is next.
+2. ~~`pbx-ivr-routing`~~ **done 2026-11-04** (D-89);
+   ~~`pbx-ivr-menu`~~ **done 2026-11-05** (D-90): prompt/DTMF, fallbacks.
 3. `pbx-queues`: ACD queues, agents and state, hot-desking (US-03.4).
 4. LLD-09 `reporting`: immutable CDR, per-second usage, export,
    per-person and agent-scoped history.
@@ -215,6 +217,7 @@ that link.
 | 2026-11-02 | `console-click-to-call` | 5/5 | U I E A and the console's four tiers; caller-first placement and 30 s timeout (D-78); live e2e + all three phone UATs + `make console-check` |
 | 2026-11-02 | `console-call-session` | 32/32 | U I E A and the console's four tiers; live shell call bar, dialer, live history and `GetCall` outcome fields (D-79); full Go e2e, three phone UATs, `make console-check`, ratcheted floors |
 | 2026-11-03 | `pbx-trunk-health-thresholds` | 12/12 | U I E A; T-6 thresholds and recovery, `trunk_health_samples`, BR-08 email alert in Mailpit (D-80); full pbx integration, full Go e2e, console-check, three phone UATs |
+| 2026-11-05 | `pbx-ivr-menu` | 5/5 | U I E A; ARI prompt/DTMF execution, timeout and no-input/invalid fallbacks, console menu editor (D-90); full integration, e2e, race, console-check; live handset UAT documented |
 | 2026-11-04 | `pbx-ivr-routing` | 5/5 | U I E A; DID flows, immutable publish/rollback, UTC hours and holidays, console Call flows (D-89); full integration, e2e, race, console-check and phone UATs |
 | 2026-11-04 | `pbx-reporting` | 5/5 | U I E A; participant attribution, terminated-call CDRs, agent-scoped reads, audited CSV export and Reports page (D-88); full integration, e2e and race, console-check and phone UATs |
 | 2026-11-04 | `pbx-extension-ownership` | 5/5 | U I E A; audited extension ownership, active-member validation, "assigned to" in the console, assign/unassign API (D-87); full integration, full e2e, race, console-check and phone UATs |

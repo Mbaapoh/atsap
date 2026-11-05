@@ -10,7 +10,7 @@ const BASE = "http://localhost:3000/atsapbx.v1.PbxService/";
 const EXT_URL = BASE + "ListExtensions";
 const flow = {
   flowId: "f1", number: "4420", name: "Main line", activeVersion: 2,
-  config: { openExtensionId: "x1", closedExtensionId: "x2", businessStartMinute: 480, businessEndMinute: 1080 },
+  config: { openExtensionId: "x1", closedExtensionId: "x2", businessStartMinute: 480, businessEndMinute: 1080, menu: { "1": "x1" } },
 };
 
 function ext(id: string, number: string) {
@@ -40,7 +40,11 @@ describe("call flows", () => {
     await user.type(dialog.getByLabelText("Open from (UTC)"), "09:00");
     await user.clear(dialog.getByLabelText("Open until (UTC)"));
     await user.type(dialog.getByLabelText("Open until (UTC)"), "17:00");
-    await user.type(dialog.getByLabelText("Prompt (optional)"), "welcome");
+    await user.type(dialog.getByLabelText("Prompt"), "sound:welcome");
+    await user.type(dialog.getByLabelText("Menu (digit=extension, comma-separated)"), "1=1001,2=1002,bogus,3=,4=9999");
+    await user.clear(dialog.getByLabelText("Menu timeout (seconds)"));
+    await user.selectOptions(dialog.getByLabelText("No input destination"), "x2");
+    await user.selectOptions(dialog.getByLabelText("Invalid input destination"), "x2");
     await user.click(dialog.getByRole("button", { name: "Create flow" }));
     await waitFor(() => expect(body).toMatchObject({ number: "4421", name: "Sales line", config: { openExtensionId: "x1" } }));
   });
@@ -185,6 +189,8 @@ describe("flow failure paths", () => {
     await user.click(screen.getByRole("button", { name: "Remove" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "Add flow" }));
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Add flow" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Add a call flow" })).not.toBeInTheDocument();

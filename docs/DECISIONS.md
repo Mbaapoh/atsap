@@ -2903,6 +2903,46 @@ change `quality-and-supply-chain-gates`
 
 ---
 
+**D-90 · The IVR menu executes over ARI with a prompt, one DTMF digit
+and explicit no-input/invalid fallbacks (2026-11-05).**
+
+**Decision:** Extend the D-89 flow revision with a prompt, up to ten
+digit branches (0–9), a timeout and no-input/invalid destinations.
+Telephony answers the caller, starts an ARI `Playback`, stores the
+playback id and a timer, and routes on `ChannelDtmfReceived`. It stops the
+prompt and timer on a digit. No dialplan is generated.
+- The prompt is a built-in `sound:` reference in this slice; uploaded
+  prompts wait for the media/object-store decision.
+- A closed/holiday flow never enters the menu.
+- Missing destinations are refused at publish; a playback failure ends
+  the call with `ivr_prompt_failed` rather than routing blindly.
+- The chosen destination is attributed exactly like a direct route.
+- A live call keeps the revision it entered; publish/rollback does not
+  affect it.
+
+**Context:** 3CX documents a 10-option IVR with prompt upload, office-hour
+inheritance and no/invalid fallbacks; Vodia and FusionPBX document
+auto-attendants and DTMF menus. ARI is the platform's existing call-control
+surface (LLD-01/D-47), so this is a telephony state machine, not generated
+dialplan.
+
+**Alternatives:**
+- *Generate dialplan for the menu.* Rejected: two call-control planes and
+  reload semantics (D-47).
+- *Play a prompt and route after a fixed delay.* Rejected: no caller
+  choice and no invalid handling.
+- *Ship prompt upload now.* Deferred: it needs the recording storage
+  decision; built-in sound proves the menu loop first.
+
+**Consequences:** A caller hears a built-in prompt and can press a digit;
+uploaded greetings and recording-linked prompts follow with LLD-09.
+Live DTMF is a handset UAT until the rig can drive RTP DTMF.
+
+**Traceability:** PRD US-03.7/03.8, AC-03.6–03.8; LLD-03 §3.2; change
+`pbx-ivr-menu`
+
+---
+
 **D-89 · IVR ships in two slices: time-based flow routing first, the
 DTMF menu next (2026-11-04).**
 

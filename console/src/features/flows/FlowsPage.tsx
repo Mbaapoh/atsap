@@ -161,10 +161,31 @@ function FlowDialog({ open, flow, extensions, busy, onClose, onCreate, onPublish
   const [start, setStart] = useState(clock(flow?.config.businessStartMinute ?? 480));
   const [end, setEnd] = useState(clock(flow?.config.businessEndMinute ?? 1080));
   const [prompt, setPrompt] = useState(flow?.config.prompt ?? "");
+  const [menuText, setMenuText] = useState(
+    Object.entries(flow?.config.menu ?? {}).map(([d, id]) => `${d}=${extensions.find((x) => x.id === id)?.number ?? id}`).join(", "),
+  );
+  const [timeoutSeconds, setTimeoutSeconds] = useState(String(flow?.config.menuTimeoutSeconds ?? 5));
+  const [noInput, setNoInput] = useState(flow?.config.noInputExtensionId ?? "");
+  const [invalid, setInvalid] = useState(flow?.config.invalidExtensionId ?? "");
+  const menuId = useId();
+  const noInputId = useId();
+  const invalidId = useId();
 
   async function submit(ev: FormEvent) {
     ev.preventDefault();
-    const config = { openExtensionId: openExt, closedExtensionId: closedExt, businessStartMinute: minutes(start), businessEndMinute: minutes(end), prompt };
+    const menu: Record<string, string> = {};
+    for (const part of menuText.split(",")) {
+      const [digit, extensionNumber] = part.split("=").map((v) => v.trim());
+      if (!digit || !extensionNumber) continue;
+      const ext = extensions.find((x) => x.number === extensionNumber);
+      if (ext) menu[digit] = ext.id;
+    }
+    const config = {
+      openExtensionId: openExt, closedExtensionId: closedExt,
+      businessStartMinute: minutes(start), businessEndMinute: minutes(end), prompt,
+      menu, menuTimeoutSeconds: Number(timeoutSeconds) || 0,
+      noInputExtensionId: noInput, invalidExtensionId: invalid,
+    };
     if (flow) await onPublish(flow, config);
     else await onCreate({ number, name, config });
   }
@@ -192,7 +213,26 @@ function FlowDialog({ open, flow, extensions, busy, onClose, onCreate, onPublish
           </div>
           <TextField label="Open from (UTC)" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
           <TextField label="Open until (UTC)" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-          <TextField label="Prompt (optional)" value={prompt} onChange={(e) => setPrompt(e.target.value)} hint="Reserved for the DTMF-menu slice; routing uses the open/closed destinations." />
+          <TextField label="Prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} hint="Built-in Asterisk sound reference, e.g. sound:demo-congrats. Required when a menu is set." />
+          <div className="field">
+            <label className="field-label" htmlFor={menuId}>Menu (digit=extension, comma-separated)</label>
+            <input id={menuId} className="input" value={menuText} onChange={(e) => setMenuText(e.target.value)} placeholder="1=1001, 2=1002" />
+          </div>
+          <TextField label="Menu timeout (seconds)" inputMode="numeric" value={timeoutSeconds} onChange={(e) => setTimeoutSeconds(e.target.value)} />
+          <div className="field">
+            <label className="field-label" htmlFor={noInputId}>No input destination</label>
+            <select id={noInputId} className="input" value={noInput} onChange={(e) => setNoInput(e.target.value)}>
+              <option value="">Hang up</option>
+              {extensions.map((x) => <option key={x.id} value={x.id}>{x.number}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor={invalidId}>Invalid input destination</label>
+            <select id={invalidId} className="input" value={invalid} onChange={(e) => setInvalid(e.target.value)}>
+              <option value="">Hang up</option>
+              {extensions.map((x) => <option key={x.id} value={x.id}>{x.number}</option>)}
+            </select>
+          </div>
         </div>
         <div className="modal-actions">
           <button type="button" className="button" onClick={onClose} disabled={busy}>Cancel</button>

@@ -66,7 +66,8 @@ func Run(t *testing.T, gw ports.MediaGateway, obs WireObserver) {
 		require.NotEmpty(t, bridgeID)
 
 		require.NoError(t, gw.AddChannelToBridge(ctx, bridgeID, ref))
-		require.NoError(t, gw.StartPlayback(ctx, ref, "sound:hello-world"))
+		_, err = gw.StartPlayback(ctx, ref, "sound:hello-world")
+		require.NoError(t, err)
 		require.NoError(t, gw.DestroyChannel(ctx, ref))
 		require.NoError(t, gw.DestroyBridge(ctx, bridgeID))
 	})
@@ -120,7 +121,8 @@ func RunFailure(t *testing.T, gw ports.MediaGateway) {
 	})
 
 	t.Run("playback/failure-propagates", func(t *testing.T) {
-		assert.Error(t, gw.StartPlayback(ctx, "chan-1", "sound:hello-world"))
+		_, err := gw.StartPlayback(ctx, "chan-1", "sound:hello-world")
+		assert.Error(t, err)
 	})
 
 	t.Run("destroy/failure-propagates", func(t *testing.T) {

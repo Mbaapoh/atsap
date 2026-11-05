@@ -513,6 +513,24 @@ func TestInboundFlow_RoutesOpenClosedAndHoliday(t *testing.T) {
 	require.NotNil(t, decision.DestinationExtensionID)
 	assert.Equal(t, open.Extension.ID, *decision.DestinationExtensionID)
 
+	// A published menu turns the open branch into an IVR decision; no
+	// destination is rung until a digit arrives.
+	_, err = h.svc.PublishFlow(h.ctx, h.tenant, mustFlowID(t, h, "4420"), domain.FlowConfig{
+		OpenExtensionID: &open.Extension.ID, ClosedExtensionID: &closed.Extension.ID,
+		BusinessStartMinute: 0, BusinessEndMinute: 0, Prompt: "sound:welcome",
+		Menu:               map[string]shareddomain.ExtensionID{"1": open.Extension.ID, "2": closed.Extension.ID},
+		MenuTimeoutSeconds: 5, NoInputExtensionID: &closed.Extension.ID,
+	})
+	require.NoError(t, err)
+	decision, err = h.svc.ResolveInbound(h.ctx, telephonyports.InboundRequest{
+		TenantID: h.tenant, CallID: shareddomain.NewCallID(), SourceEndpoint: source, Dialled: "4420",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, decision.IVR)
+	assert.Equal(t, "sound:welcome", decision.IVR.Prompt)
+	require.Len(t, decision.IVR.Options, 2)
+	require.NotNil(t, decision.IVR.NoInput)
+
 	today := time.Now().UTC().Format("2006-01-02")
 	require.NoError(t, h.svc.AddHoliday(h.ctx, h.tenant, today, "Holiday"))
 	decision, err = h.svc.ResolveInbound(h.ctx, telephonyports.InboundRequest{

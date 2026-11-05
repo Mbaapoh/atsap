@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -31,11 +32,13 @@ func (s *FlowStore) Create(ctx context.Context, tx pgx.Tx, tenantID shareddomain
 		return fmt.Errorf("create flow: %w", err)
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO ivr_flow_versions
-		(tenant_id, flow_id, version, open_extension_id, closed_extension_id, business_start_minute, business_end_minute, prompt, published_at, published_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		(tenant_id, flow_id, version, open_extension_id, closed_extension_id, business_start_minute, business_end_minute, prompt, menu, menu_timeout_seconds, no_input_extension_id, invalid_extension_id, published_at, published_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		tenantID.String(), f.ID.String(), v.Version, nullableExtension(v.Config.OpenExtensionID),
 		nullableExtension(v.Config.ClosedExtensionID), v.Config.BusinessStartMinute, v.Config.BusinessEndMinute,
-		v.Config.Prompt, v.PublishedAt, v.PublishedBy.String())
+		v.Config.Prompt, menuJSON(v.Config.Menu), v.Config.MenuTimeoutSeconds,
+		nullableExtension(v.Config.NoInputExtensionID), nullableExtension(v.Config.InvalidExtensionID),
+		v.PublishedAt, v.PublishedBy.String())
 	if err != nil {
 		return fmt.Errorf("create flow version: %w", err)
 	}
@@ -121,10 +124,12 @@ func (s *FlowStore) Publish(ctx context.Context, tx pgx.Tx, tenantID shareddomai
 		return 0, err
 	}
 	_, err := tx.Exec(ctx, `INSERT INTO ivr_flow_versions
-		(tenant_id, flow_id, version, open_extension_id, closed_extension_id, business_start_minute, business_end_minute, prompt, published_at, published_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		(tenant_id, flow_id, version, open_extension_id, closed_extension_id, business_start_minute, business_end_minute, prompt, menu, menu_timeout_seconds, no_input_extension_id, invalid_extension_id, published_at, published_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		tenantID.String(), id.String(), next, nullableExtension(config.OpenExtensionID), nullableExtension(config.ClosedExtensionID),
-		config.BusinessStartMinute, config.BusinessEndMinute, config.Prompt, at, by.String())
+		config.BusinessStartMinute, config.BusinessEndMinute, config.Prompt, menuJSON(config.Menu),
+		config.MenuTimeoutSeconds, nullableExtension(config.NoInputExtensionID), nullableExtension(config.InvalidExtensionID),
+		at, by.String())
 	if err != nil {
 		return 0, fmt.Errorf("publish flow: %w", err)
 	}
@@ -213,7 +218,8 @@ func (s *FlowStore) IsHoliday(ctx context.Context, tx pgx.Tx, tenantID shareddom
 }
 
 func (s *FlowStore) version(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, id shareddomain.FlowID, version int) (domain.FlowVersion, error) {
-	row := tx.QueryRow(ctx, `SELECT version, open_extension_id, closed_extension_id, business_start_minute, business_end_minute, prompt, published_at, published_by
+	row := tx.QueryRow(ctx, `SELECT version, open_extension_id, closed_extension_id, business_start_minute, business_end_minute, prompt,
+		menu, menu_timeout_seconds, no_input_extension_id, invalid_extension_id, published_at, published_by
 		FROM ivr_flow_versions WHERE tenant_id=$1 AND flow_id=$2 AND version=$3`, tenantID.String(), id.String(), version)
 	vv, err := scanVersion(row)
 	if err != nil {
@@ -227,10 +233,13 @@ func (s *FlowStore) version(ctx context.Context, tx pgx.Tx, tenantID shareddomai
 
 func scanVersion(row pgx.Row) (ports.FlowVersionView, error) {
 	var (
-		v            ports.FlowVersionView
-		open, closed *string
+		v                              ports.FlowVersionView
+		open, closed, noInput, invalid *string
+		menuRaw                        []byte
 	)
-	if err := row.Scan(&v.Version, &open, &closed, &v.Config.BusinessStartMinute, &v.Config.BusinessEndMinute, &v.Config.Prompt, &v.PublishedAt, &v.PublishedBy); err != nil {
+	if err := row.Scan(&v.Version, &open, &closed, &v.Config.BusinessStartMinute, &v.Config.BusinessEndMinute,
+		&v.Config.Prompt, &menuRaw, &v.Config.MenuTimeoutSeconds, &noInput, &invalid,
+		&v.PublishedAt, &v.PublishedBy); err != nil {
 		return v, err
 	}
 	if open != nil {
@@ -247,7 +256,44 @@ func scanVersion(row pgx.Row) (ports.FlowVersionView, error) {
 		}
 		v.Config.ClosedExtensionID = &id
 	}
+	if noInput != nil {
+		id, err := shareddomain.ParseExtensionID(*noInput)
+		if err != nil {
+			return v, err
+		}
+		v.Config.NoInputExtensionID = &id
+	}
+	if invalid != nil {
+		id, err := shareddomain.ParseExtensionID(*invalid)
+		if err != nil {
+			return v, err
+		}
+		v.Config.InvalidExtensionID = &id
+	}
+	v.Config.Menu = map[string]shareddomain.ExtensionID{}
+	var raw map[string]string
+	if len(menuRaw) > 0 {
+		if err := json.Unmarshal(menuRaw, &raw); err != nil {
+			return v, err
+		}
+	}
+	for digit, id := range raw {
+		ext, err := shareddomain.ParseExtensionID(id)
+		if err != nil {
+			return v, err
+		}
+		v.Config.Menu[digit] = ext
+	}
 	return v, nil
+}
+
+func menuJSON(menu map[string]shareddomain.ExtensionID) []byte {
+	raw := map[string]string{}
+	for digit, ext := range menu {
+		raw[digit] = ext.String()
+	}
+	b, _ := json.Marshal(raw)
+	return b
 }
 
 func flowView(f domain.Flow, v domain.FlowVersion) ports.FlowView {

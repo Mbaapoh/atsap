@@ -18,6 +18,10 @@ export interface FlowConfig {
   businessStartMinute: number;
   businessEndMinute: number;
   prompt: string;
+  menu: Record<string, string>;
+  menuTimeoutSeconds: number;
+  noInputExtensionId: string;
+  invalidExtensionId: string;
 }
 
 export interface Flow {
@@ -37,13 +41,17 @@ export interface FlowVersion {
 
 export interface Holiday { day: string; name: string }
 
-function configOf(c: { openExtensionId: string; closedExtensionId: string; businessStartMinute: number; businessEndMinute: number; prompt: string } | undefined): FlowConfig {
+function configOf(c: Partial<FlowConfig> | undefined): FlowConfig {
   return {
     openExtensionId: c?.openExtensionId ?? "",
     closedExtensionId: c?.closedExtensionId ?? "",
     businessStartMinute: c?.businessStartMinute ?? 480,
     businessEndMinute: c?.businessEndMinute ?? 1080,
     prompt: c?.prompt ?? "",
+    menu: { ...c?.menu },
+    menuTimeoutSeconds: c?.menuTimeoutSeconds ?? 5,
+    noInputExtensionId: c?.noInputExtensionId ?? "",
+    invalidExtensionId: c?.invalidExtensionId ?? "",
   };
 }
 
@@ -114,6 +122,10 @@ function configWire(c: FlowConfig) {
     businessStartMinute: c.businessStartMinute,
     businessEndMinute: c.businessEndMinute,
     prompt: c.prompt,
+    menu: c.menu,
+    menuTimeoutSeconds: c.menuTimeoutSeconds,
+    noInputExtensionId: c.noInputExtensionId,
+    invalidExtensionId: c.invalidExtensionId,
   };
 }
 
@@ -130,6 +142,8 @@ export function useFlowVersions(id: string | null) {
           config: configOf(v.config ? {
             openExtensionId: v.config.openExtensionId, closedExtensionId: v.config.closedExtensionId,
             businessStartMinute: v.config.businessStartMinute, businessEndMinute: v.config.businessEndMinute, prompt: v.config.prompt,
+            menu: v.config.menu, menuTimeoutSeconds: v.config.menuTimeoutSeconds,
+            noInputExtensionId: v.config.noInputExtensionId, invalidExtensionId: v.config.invalidExtensionId,
           } : undefined),
           publishedAt: v.publishedAt ? timestampDate(v.publishedAt) : null,
           publishedBy: v.publishedBy,

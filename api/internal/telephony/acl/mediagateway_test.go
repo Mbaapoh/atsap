@@ -111,7 +111,7 @@ func TestMediaGatewayAdapter_StartPlayback(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":"pb1"}`))
 	})
-	err := gw.StartPlayback(context.Background(), "chan1", "sound:hello")
+	_, err := gw.StartPlayback(context.Background(), "chan1", "sound:hello")
 	require.NoError(t, err)
 	assert.Equal(t, "sound:hello", gotMedia)
 }
@@ -120,7 +120,7 @@ func TestMediaGatewayAdapter_StartPlayback_Error(t *testing.T) {
 	gw := newTestGateway(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	err := gw.StartPlayback(context.Background(), "chan1", "sound:hello")
+	_, err := gw.StartPlayback(context.Background(), "chan1", "sound:hello")
 	assert.Error(t, err)
 }
 

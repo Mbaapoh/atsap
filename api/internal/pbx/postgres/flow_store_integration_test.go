@@ -56,6 +56,24 @@ func TestFlowStore_CreatePublishRollbackHolidays(t *testing.T) {
 	}))
 
 	require.NoError(t, h.pool.WithTenant(ctx, h.tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		version, err := store.Publish(ctx, tx, h.tenantA, flow.ID, pbxdomain.FlowConfig{
+			OpenExtensionID: &open, Prompt: "sound:welcome", Menu: map[string]shareddomain.ExtensionID{"1": open},
+			MenuTimeoutSeconds: 7, NoInputExtensionID: &closed,
+		}, principal, now)
+		assert.Equal(t, 3, version)
+		return err
+	}))
+	require.NoError(t, h.pool.WithTenant(ctx, h.tenantA, func(ctx context.Context, tx pgx.Tx) error {
+		_, v, err := store.Get(ctx, tx, h.tenantA, flow.ID)
+		assert.Equal(t, "sound:welcome", v.Config.Prompt)
+		assert.Equal(t, 7, v.Config.MenuTimeoutSeconds)
+		assert.Equal(t, open, v.Config.Menu["1"])
+		require.NotNil(t, v.Config.NoInputExtensionID)
+		assert.Equal(t, closed, *v.Config.NoInputExtensionID)
+		return err
+	}))
+
+	require.NoError(t, h.pool.WithTenant(ctx, h.tenantA, func(ctx context.Context, tx pgx.Tx) error {
 		return store.AddHoliday(ctx, tx, h.tenantA, "2026-12-25", "Christmas")
 	}))
 	require.NoError(t, h.pool.WithTenant(ctx, h.tenantA, func(ctx context.Context, tx pgx.Tx) error {

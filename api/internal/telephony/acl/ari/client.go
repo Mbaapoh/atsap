@@ -244,6 +244,12 @@ func (c *Client) DestroyBridge(ctx context.Context, bridgeID string) error {
 	return err
 }
 
+// StopPlayback deletes a playback started on a channel.
+func (c *Client) StopPlayback(ctx context.Context, channelID, playbackID string) error {
+	_, err := c.do(ctx, http.MethodDelete, fmt.Sprintf("/channels/%s/play/%s", channelID, url.PathEscape(playbackID)), nil)
+	return err
+}
+
 // ListChannels returns the IDs of every channel currently known to
 // Asterisk, used by callers that need to find a channel by its
 // correlation variable rather than by an ID they already hold.

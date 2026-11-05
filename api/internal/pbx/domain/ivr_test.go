@@ -89,3 +89,26 @@ func TestRouteFlowOvernightAndMissingOpen(t *testing.T) {
 	assert.False(t, ok, "inside the overnight window with no open destination has no route")
 	assert.Equal(t, "4420", domain.NormalizeFlowNumber("  +4420 "))
 }
+
+func TestFlowMenuValidation(t *testing.T) {
+	open, closed := shareddomain.NewExtensionID(), shareddomain.NewExtensionID()
+	cfg := domain.FlowConfig{OpenExtensionID: &open, Prompt: "sound:welcome", Menu: map[string]shareddomain.ExtensionID{"1": open}, NoInputExtensionID: &closed}
+	require.NoError(t, cfg.Validate())
+	cfg.Prompt = ""
+	assert.Error(t, cfg.Validate(), "a menu needs a prompt")
+	cfg.Prompt = "sound:welcome"
+	cfg.Menu = map[string]shareddomain.ExtensionID{"10": open}
+	assert.Error(t, cfg.Validate())
+	cfg.Menu = map[string]shareddomain.ExtensionID{"1": {}}
+	assert.Error(t, cfg.Validate())
+	cfg.Menu = nil
+	cfg.MenuTimeoutSeconds = 61
+	assert.Error(t, cfg.Validate())
+	cfg.MenuTimeoutSeconds = 0
+	zero := shareddomain.ExtensionID{}
+	cfg.NoInputExtensionID = &zero
+	assert.Error(t, cfg.Validate())
+	cfg.NoInputExtensionID = nil
+	cfg.InvalidExtensionID = &zero
+	assert.Error(t, cfg.Validate())
+}

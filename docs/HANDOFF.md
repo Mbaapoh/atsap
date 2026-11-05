@@ -20,9 +20,9 @@ pilot), in this order:
 | **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
 | **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Phase B has ownership, reporting and IVR routing** (D-87–D-89). Next is
-`pbx-ivr-menu` (prompt/DTMF), then `pbx-queues`, then
-voicemail/recording and the remaining LLD-09 quality/retention work.
+The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Phase B has ownership, reporting and IVR (routing + menu)** (D-87–D-90).
+Next is `pbx-queues`, then voicemail/recording and the remaining LLD-09
+quality/retention work.
 MFA and company-domain SSO remain before GA.
 
 **Deferred by the owner, do not start unasked:**
@@ -31,6 +31,16 @@ MFA and company-domain SSO remain before GA.
 ---
 
 ## 2. What was done this week
+
+### 2026-11-05 — IVR menu (D-90)
+
+`pbx-ivr-menu` adds a prompt, up to ten DTMF branches, a timeout and
+no-input/invalid destinations to an immutable flow revision. Telephony
+answers, plays over ARI, collects a digit and routes; closed/holiday never
+enters the menu; publish validation refuses a missing destination or a
+prompt-less menu. The console Call flows editor exposes all fields. Unit,
+integration, e2e and race tiers pass; a real handset pressing digits is
+the documented UAT (`docs/uat/ivr-menu.md`).
 
 ### 2026-11-04 — missing Phase B/C LLDs written
 

@@ -18,6 +18,10 @@ type FlowConfig struct {
 	BusinessStartMinute int
 	BusinessEndMinute   int
 	Prompt              string
+	Menu                map[string]shareddomain.ExtensionID
+	MenuTimeoutSeconds  int
+	NoInputExtensionID  *shareddomain.ExtensionID
+	InvalidExtensionID  *shareddomain.ExtensionID
 }
 
 // Flow is a tenant's flow on one DID.
@@ -66,6 +70,26 @@ func (c FlowConfig) Validate() error {
 	}
 	if len(c.Prompt) > 255 {
 		return fmt.Errorf("flow prompt is too long")
+	}
+	if c.MenuTimeoutSeconds < 0 || c.MenuTimeoutSeconds > 60 {
+		return fmt.Errorf("flow menu timeout must be 0-60 seconds")
+	}
+	if len(c.Menu) > 0 && c.Prompt == "" {
+		return errors.New("a flow menu needs a prompt")
+	}
+	if c.NoInputExtensionID != nil && c.NoInputExtensionID.IsZero() {
+		return errors.New("no-input destination is required when set")
+	}
+	if c.InvalidExtensionID != nil && c.InvalidExtensionID.IsZero() {
+		return errors.New("invalid-input destination is required when set")
+	}
+	for digit, ext := range c.Menu {
+		if len(digit) != 1 || digit[0] < '0' || digit[0] > '9' {
+			return fmt.Errorf("flow menu digit %q must be 0-9", digit)
+		}
+		if ext.IsZero() {
+			return errors.New("flow menu destination is required")
+		}
 	}
 	return nil
 }

@@ -86,10 +86,11 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 	in := s.inbound
 
 	var (
-		extID      shareddomain.ExtensionID
-		flowRoute  *domain.FlowRoute
-		flowLooked bool
-		now        = s.now()
+		extID       shareddomain.ExtensionID
+		flowRoute   *domain.FlowRoute
+		flowVersion *domain.FlowVersion
+		flowLooked  bool
+		now         = s.now()
 	)
 	number := domain.NormalizeDialled(req.Dialled)
 	err := s.pool.WithTenant(ctx, req.TenantID, func(ctx context.Context, tx pgx.Tx) error {
@@ -105,6 +106,8 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 					return ports.ErrNotFound
 				}
 				flowRoute, flowLooked = &route, true
+				versionCopy := version
+				flowVersion = &versionCopy
 				return nil
 			}
 			if !errors.Is(err, ports.ErrNotFound) {
@@ -132,6 +135,10 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 		if flowRoute.ExtensionID == nil {
 			return notFound, nil
 		}
+		if !flowRoute.Closed && flowVersion != nil && len(flowVersion.Config.Menu) > 0 {
+			menu := s.buildIVRMenu(ctx, req.TenantID, flowVersion.Config)
+			return telephonyports.InboundDecision{IVR: menu, Direction: telephonydomain.Inbound}, nil
+		}
 		extID = *flowRoute.ExtensionID
 	}
 	return telephonyports.InboundDecision{
@@ -140,6 +147,32 @@ func (s *Service) resolveTrunkCall(ctx context.Context, req telephonyports.Inbou
 		DestinationExtensionID: &extID,
 		DestinationPrincipalID: s.principalForExtension(ctx, req.TenantID, extID),
 	}, nil
+}
+
+func (s *Service) buildIVRMenu(ctx context.Context, tenantID shareddomain.TenantID, cfg domain.FlowConfig) *telephonyports.IVRMenu {
+	menu := &telephonyports.IVRMenu{Prompt: cfg.Prompt, Timeout: time.Duration(cfg.MenuTimeoutSeconds) * time.Second}
+	for digit, extID := range cfg.Menu {
+		menu.Options = append(menu.Options, telephonyports.IVRMenuOption{
+			Digit: digit, Destination: s.ivrDestination(ctx, tenantID, extID),
+		})
+	}
+	if cfg.NoInputExtensionID != nil {
+		d := s.ivrDestination(ctx, tenantID, *cfg.NoInputExtensionID)
+		menu.NoInput = &d
+	}
+	if cfg.InvalidExtensionID != nil {
+		d := s.ivrDestination(ctx, tenantID, *cfg.InvalidExtensionID)
+		menu.Invalid = &d
+	}
+	return menu
+}
+
+func (s *Service) ivrDestination(ctx context.Context, tenantID shareddomain.TenantID, extID shareddomain.ExtensionID) telephonyports.IVRDestination {
+	return telephonyports.IVRDestination{
+		EndpointURI: s.inbound.Addresser.ExtensionAddress(extID),
+		ExtensionID: &extID,
+		PrincipalID: s.principalForExtension(ctx, tenantID, extID),
+	}
 }
 
 // resolveDeskPhoneCall runs a registered phone's dialling through the

@@ -52,6 +52,8 @@ func (s *domainSink) CallArrived(context.Context, string, string, string, string
 	return errors.New("domainSink: arriving calls are not part of the originated happy path")
 }
 
+func (s *domainSink) IVRDigit(context.Context, string, string) error { return nil }
+
 var fixedEventTime = time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 
 func stasisStartEvent(t *testing.T, channelID string) ari.Event {
@@ -296,6 +298,7 @@ func TestEventLoop_ChannelHangupRequest(t *testing.T) {
 }
 
 type recordingSink struct {
+	ivrDigits        []struct{ channelID, digit string }
 	answeredCalls    int
 	leftCalls        int
 	lastAnsweredChan string
@@ -326,6 +329,11 @@ func (s *recordingSink) ParticipantLeft(_ context.Context, _, _, _ string) error
 func (s *recordingSink) CallArrived(_ context.Context, tenantID, sourceEndpoint, sourceAddress, dialled, callerNumber, channelID string) error {
 	s.arrivedCalls = append(s.arrivedCalls, arrivedCall{tenantID, sourceEndpoint, dialled, callerNumber, channelID})
 	s.sourceAddresses = append(s.sourceAddresses, sourceAddress)
+	return s.err
+}
+
+func (s *recordingSink) IVRDigit(_ context.Context, channelID, digit string) error {
+	s.ivrDigits = append(s.ivrDigits, struct{ channelID, digit string }{channelID, digit})
 	return s.err
 }
 
@@ -390,4 +398,13 @@ func TestEventLoop_ATenantlessChannelCarriesItsSourceAddress(t *testing.T) {
 	require.Len(t, sink.arrivedCalls, 1)
 	assert.Equal(t, []string{""}, sink.sourceAddresses, "a configured tenant needs no address")
 	assert.Equal(t, []string{"ATSA_TENANT_ID"}, reader.asked)
+}
+
+func TestEventLoop_ChannelDtmfReceivedRoutesToSink(t *testing.T) {
+	sink := &recordingSink{}
+	loop := acl.NewEventLoop(acl.NewCorrelationRegistry(), sink, discardLogger())
+	loop.Handle(context.Background(), ari.Event{Type: "ChannelDtmfReceived", Raw: []byte(`{"channel":{"id":"chan-ivr"},"digit":"7"}`)})
+	require.Len(t, sink.ivrDigits, 1)
+	assert.Equal(t, "chan-ivr", sink.ivrDigits[0].channelID)
+	assert.Equal(t, "7", sink.ivrDigits[0].digit)
 }

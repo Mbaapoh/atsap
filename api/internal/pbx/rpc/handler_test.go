@@ -700,17 +700,21 @@ func TestFlows_Wire(t *testing.T) {
 	e := newEnv(t)
 	flowID, extID := shareddomain.NewFlowID(), shareddomain.NewExtensionID()
 	e.svc.flowView = ports.FlowView{ID: flowID, Number: "4420", Name: "Main", ActiveVersion: 2,
-		Config: domain.FlowConfig{OpenExtensionID: &extID, BusinessStartMinute: 480, BusinessEndMinute: 1080}}
+		Config: domain.FlowConfig{OpenExtensionID: &extID, BusinessStartMinute: 480, BusinessEndMinute: 1080,
+			Prompt: "sound:welcome", Menu: map[string]shareddomain.ExtensionID{"1": extID}, MenuTimeoutSeconds: 7}}
 	e.svc.flowViews = []ports.FlowView{e.svc.flowView}
 	e.svc.flowVersions = []ports.FlowVersionView{{Version: 2, Config: e.svc.flowView.Config, PublishedAt: time.Now(), PublishedBy: shareddomain.NewPrincipalID()}}
 	e.svc.holidays = map[string]string{"2026-12-25": "Christmas"}
 
 	created, err := e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{
 		TenantId: e.tenant.String(), Number: "4420", Name: "Main",
-		Config: &atsapbxv1.FlowConfig{OpenExtensionId: extID.String(), BusinessStartMinute: 480, BusinessEndMinute: 1080},
+		Config: &atsapbxv1.FlowConfig{OpenExtensionId: extID.String(), BusinessStartMinute: 480, BusinessEndMinute: 1080,
+			Prompt: "sound:welcome", Menu: map[string]string{"1": extID.String()}, MenuTimeoutSeconds: 7},
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, "4420", created.Msg.GetFlow().GetNumber())
+	assert.Equal(t, "sound:welcome", created.Msg.GetFlow().GetConfig().GetPrompt())
+	assert.Equal(t, extID.String(), created.Msg.GetFlow().GetConfig().GetMenu()["1"])
 	assert.Equal(t, extID.String(), e.svc.lastFlow.Config.OpenExtensionID.String())
 
 	got, err := e.h.GetFlow(e.ctx, connect.NewRequest(&atsapbxv1.GetFlowRequest{TenantId: e.tenant.String(), FlowId: flowID.String()}))
@@ -722,7 +726,10 @@ func TestFlows_Wire(t *testing.T) {
 	require.Len(t, listed.Msg.GetFlows(), 1)
 
 	_, err = e.h.PublishFlow(e.ctx, connect.NewRequest(&atsapbxv1.PublishFlowRequest{
-		TenantId: e.tenant.String(), FlowId: flowID.String(), Config: &atsapbxv1.FlowConfig{OpenExtensionId: extID.String()},
+		TenantId: e.tenant.String(), FlowId: flowID.String(), Config: &atsapbxv1.FlowConfig{
+			OpenExtensionId: extID.String(), Prompt: "sound:welcome", Menu: map[string]string{"1": extID.String()},
+			NoInputExtensionId: extID.String(), InvalidExtensionId: extID.String(), MenuTimeoutSeconds: 5,
+		},
 	}))
 	require.NoError(t, err)
 
@@ -747,5 +754,14 @@ func TestFlows_Wire(t *testing.T) {
 	_, err = e.h.GetFlow(e.ctx, connect.NewRequest(&atsapbxv1.GetFlowRequest{TenantId: e.tenant.String(), FlowId: "bad"}))
 	require.Error(t, err)
 	_, err = e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{TenantId: e.tenant.String(), Config: &atsapbxv1.FlowConfig{OpenExtensionId: "bad"}}))
+	require.Error(t, err)
+	_, err = e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{TenantId: e.tenant.String(), Config: &atsapbxv1.FlowConfig{
+		OpenExtensionId: extID.String(), Menu: map[string]string{"1": "bad"}}}))
+	require.Error(t, err)
+	_, err = e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{TenantId: e.tenant.String(), Config: &atsapbxv1.FlowConfig{
+		OpenExtensionId: extID.String(), NoInputExtensionId: "bad"}}))
+	require.Error(t, err)
+	_, err = e.h.CreateFlow(e.ctx, connect.NewRequest(&atsapbxv1.CreateFlowRequest{TenantId: e.tenant.String(), Config: &atsapbxv1.FlowConfig{
+		OpenExtensionId: extID.String(), InvalidExtensionId: "bad"}}))
 	require.Error(t, err)
 }

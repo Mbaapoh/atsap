@@ -42,6 +42,9 @@ func (s *Service) CreateFlow(ctx context.Context, cmd ports.CreateFlowCommand) (
 				return err
 			}
 		}
+		if err := s.validateFlowDestinations(ctx, tx, cmd.TenantID, cmd.Config); err != nil {
+			return err
+		}
 		if err := s.flows.Create(ctx, tx, cmd.TenantID, flow, version); err != nil {
 			return err
 		}
@@ -121,6 +124,9 @@ func (s *Service) PublishFlow(ctx context.Context, tenantID shareddomain.TenantI
 		var err error
 		f, _, err = s.flows.Get(ctx, tx, tenantID, id)
 		if err != nil {
+			return err
+		}
+		if err := s.validateFlowDestinations(ctx, tx, tenantID, cfg); err != nil {
 			return err
 		}
 		version, err := s.flows.Publish(ctx, tx, tenantID, id, cfg, actor.PrincipalID, s.now())
@@ -256,6 +262,31 @@ func (s *Service) DeleteHoliday(ctx context.Context, tenantID shareddomain.Tenan
 		}
 		return s.appendAuditEntry(ctx, tx, actor, tenantID, "holiday.removed", "holiday", day, nil, nil)
 	})
+}
+
+func (s *Service) validateFlowDestinations(ctx context.Context, tx pgx.Tx, tenantID shareddomain.TenantID, cfg domain.FlowConfig) error {
+	ids := []shareddomain.ExtensionID{}
+	for _, ext := range cfg.Menu {
+		ids = append(ids, ext)
+	}
+	if cfg.OpenExtensionID != nil {
+		ids = append(ids, *cfg.OpenExtensionID)
+	}
+	if cfg.ClosedExtensionID != nil {
+		ids = append(ids, *cfg.ClosedExtensionID)
+	}
+	if cfg.NoInputExtensionID != nil {
+		ids = append(ids, *cfg.NoInputExtensionID)
+	}
+	if cfg.InvalidExtensionID != nil {
+		ids = append(ids, *cfg.InvalidExtensionID)
+	}
+	for _, id := range ids {
+		if _, err := s.store.Get(ctx, tx, tenantID, id); err != nil {
+			return fmt.Errorf("%w: flow destination extension does not exist", ports.ErrInvalidInput)
+		}
+	}
+	return nil
 }
 
 func flowView(f domain.Flow, v domain.FlowVersion) ports.FlowView {

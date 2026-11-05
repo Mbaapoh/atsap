@@ -60,10 +60,17 @@ func (a *MediaGatewayAdapter) DestroyBridge(ctx context.Context, bridgeID ports.
 	return nil
 }
 
-func (a *MediaGatewayAdapter) StartPlayback(ctx context.Context, channelRef ports.ChannelRef, mediaURI string) error {
-	_, err := a.ari.Play(ctx, string(channelRef), mediaURI)
+func (a *MediaGatewayAdapter) StartPlayback(ctx context.Context, channelRef ports.ChannelRef, mediaURI string) (string, error) {
+	id, err := a.ari.Play(ctx, string(channelRef), mediaURI)
 	if err != nil {
-		return fmt.Errorf("acl: start playback: %w", err)
+		return "", fmt.Errorf("acl: start playback: %w", err)
+	}
+	return id, nil
+}
+
+func (a *MediaGatewayAdapter) StopPlayback(ctx context.Context, channelRef ports.ChannelRef, playbackID string) error {
+	if err := a.ari.StopPlayback(ctx, string(channelRef), playbackID); err != nil {
+		return fmt.Errorf("acl: stop playback: %w", err)
 	}
 	return nil
 }

@@ -337,7 +337,29 @@ func flowConfigFromProto(c *atsapbxv1.FlowConfig) (domain.FlowConfig, error) {
 	if c == nil {
 		return domain.FlowConfig{}, connect.NewError(connect.CodeInvalidArgument, errors.New("config is required"))
 	}
-	out := domain.FlowConfig{BusinessStartMinute: int(c.GetBusinessStartMinute()), BusinessEndMinute: int(c.GetBusinessEndMinute()), Prompt: c.GetPrompt()}
+	out := domain.FlowConfig{BusinessStartMinute: int(c.GetBusinessStartMinute()), BusinessEndMinute: int(c.GetBusinessEndMinute()),
+		Prompt: c.GetPrompt(), MenuTimeoutSeconds: int(c.GetMenuTimeoutSeconds()), Menu: map[string]shareddomain.ExtensionID{}}
+	for digit, raw := range c.GetMenu() {
+		id, err := shareddomain.ParseExtensionID(raw)
+		if err != nil {
+			return out, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid menu extension_id"))
+		}
+		out.Menu[digit] = id
+	}
+	if c.GetNoInputExtensionId() != "" {
+		id, err := shareddomain.ParseExtensionID(c.GetNoInputExtensionId())
+		if err != nil {
+			return out, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid no_input_extension_id"))
+		}
+		out.NoInputExtensionID = &id
+	}
+	if c.GetInvalidExtensionId() != "" {
+		id, err := shareddomain.ParseExtensionID(c.GetInvalidExtensionId())
+		if err != nil {
+			return out, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid invalid_extension_id"))
+		}
+		out.InvalidExtensionID = &id
+	}
 	if c.GetOpenExtensionId() != "" {
 		id, err := shareddomain.ParseExtensionID(c.GetOpenExtensionId())
 		if err != nil {
@@ -356,12 +378,22 @@ func flowConfigFromProto(c *atsapbxv1.FlowConfig) (domain.FlowConfig, error) {
 }
 
 func flowConfigToProto(c domain.FlowConfig) *atsapbxv1.FlowConfig {
-	out := &atsapbxv1.FlowConfig{BusinessStartMinute: wire.Int32(int64(c.BusinessStartMinute)), BusinessEndMinute: wire.Int32(int64(c.BusinessEndMinute)), Prompt: c.Prompt}
+	out := &atsapbxv1.FlowConfig{BusinessStartMinute: wire.Int32(int64(c.BusinessStartMinute)), BusinessEndMinute: wire.Int32(int64(c.BusinessEndMinute)),
+		Prompt: c.Prompt, Menu: map[string]string{}, MenuTimeoutSeconds: wire.Int32(int64(c.MenuTimeoutSeconds))}
+	for digit, ext := range c.Menu {
+		out.Menu[digit] = ext.String()
+	}
 	if c.OpenExtensionID != nil {
 		out.OpenExtensionId = c.OpenExtensionID.String()
 	}
 	if c.ClosedExtensionID != nil {
 		out.ClosedExtensionId = c.ClosedExtensionID.String()
+	}
+	if c.NoInputExtensionID != nil {
+		out.NoInputExtensionId = c.NoInputExtensionID.String()
+	}
+	if c.InvalidExtensionID != nil {
+		out.InvalidExtensionId = c.InvalidExtensionID.String()
 	}
 	return out
 }

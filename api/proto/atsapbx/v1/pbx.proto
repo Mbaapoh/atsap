@@ -275,6 +275,11 @@ message FlowConfig {
   int32 business_start_minute = 3;
   int32 business_end_minute = 4;
   string prompt = 5;
+  // Menu digit (0-9) -> extension id. Empty keeps time routing.
+  map<string, string> menu = 6;
+  int32 menu_timeout_seconds = 7;
+  string no_input_extension_id = 8;
+  string invalid_extension_id = 9;
 }
 
 message Flow {

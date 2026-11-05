@@ -40,6 +40,7 @@ type fakeMediaGateway struct {
 	rejectedChans    []rejectedChannel
 
 	failOriginate     error
+	failPlayback      error
 	failCreateBridge  error
 	failAddToBridge   error
 	failDestroyBridge error
@@ -97,7 +98,13 @@ func (f *fakeMediaGateway) DestroyBridge(_ context.Context, bridgeID ports.Bridg
 	return nil
 }
 
-func (f *fakeMediaGateway) StartPlayback(context.Context, ports.ChannelRef, string) error { return nil }
+func (f *fakeMediaGateway) StartPlayback(context.Context, ports.ChannelRef, string) (string, error) {
+	if f.failPlayback != nil {
+		return "", f.failPlayback
+	}
+	return "pb-1", nil
+}
+func (f *fakeMediaGateway) StopPlayback(context.Context, ports.ChannelRef, string) error { return nil }
 func (f *fakeMediaGateway) StartSnoop(context.Context, ports.ChannelRef, ports.SnoopRequest) (ports.SnoopRef, error) {
 	return "", errors.New("StartSnoop: not implemented in this change")
 }
@@ -1535,4 +1542,89 @@ func TestCallArrived_AnUnreachableDestinationIsRefusedNotLeftRinging(t *testing.
 	reserved, released := h.license.counts(call.ID.String())
 	assert.Equal(t, 1, reserved, "screening granted a channel")
 	assert.Equal(t, reserved, released, "and the refusal gave it back")
+}
+
+func TestCallArrived_IVRDigitRoutesToDestination(t *testing.T) {
+	ext := shareddomain.NewExtensionID()
+	router := &fakeInboundRouter{decision: ports.InboundDecision{
+		Direction: domain.Inbound,
+		IVR: &ports.IVRMenu{
+			Prompt: "sound:welcome", Timeout: time.Second,
+			Options: []ports.IVRMenuOption{{Digit: "1", Destination: ports.IVRDestination{
+				EndpointURI: "PJSIP/1001", ExtensionID: &ext,
+			}}},
+		},
+	}}
+	h := arrivedHarness(router)
+	tenant := shareddomain.NewTenantID()
+	arriveTestCall(t, h, tenant.String())
+
+	assert.Equal(t, []ports.ChannelRef{"chan-arriving"}, h.mediaGW.answeredChans, "the IVR answers the caller")
+	assert.Empty(t, h.mediaGW.originateCalls, "no destination is rung before a digit")
+	saved := lastSavedCall(t, h)
+	require.Len(t, saved.Participants, 1, "only the caller is on the call during the menu")
+	require.Equal(t, domain.ParticipantConnected, saved.Participants[0].State)
+
+	require.NoError(t, h.svc.IVRDigit(context.Background(), "chan-arriving", "1"))
+	require.Len(t, h.mediaGW.originateCalls, 1)
+	assert.Equal(t, "PJSIP/1001", h.mediaGW.originateCalls[0].EndpointURI)
+	saved = lastSavedCall(t, h)
+	require.Len(t, saved.Participants, 2)
+	require.NotNil(t, saved.Participants[1].ExtensionID)
+	assert.Equal(t, ext, *saved.Participants[1].ExtensionID)
+}
+
+func TestCallArrived_IVRInvalidDigitUsesFallback(t *testing.T) {
+	fallback := shareddomain.NewExtensionID()
+	router := &fakeInboundRouter{decision: ports.InboundDecision{
+		Direction: domain.Inbound,
+		IVR: &ports.IVRMenu{Prompt: "sound:welcome", Timeout: time.Second,
+			Invalid: &ports.IVRDestination{EndpointURI: "PJSIP/1002", ExtensionID: &fallback}},
+	}}
+	h := arrivedHarness(router)
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+	require.NoError(t, h.svc.IVRDigit(context.Background(), "chan-arriving", "9"))
+	require.Len(t, h.mediaGW.originateCalls, 1)
+	assert.Equal(t, "PJSIP/1002", h.mediaGW.originateCalls[0].EndpointURI)
+}
+
+func TestCallArrived_IVRNoInputTimeoutUsesFallback(t *testing.T) {
+	fallback := shareddomain.NewExtensionID()
+	router := &fakeInboundRouter{decision: ports.InboundDecision{
+		Direction: domain.Inbound,
+		IVR: &ports.IVRMenu{Prompt: "sound:welcome", Timeout: 10 * time.Millisecond,
+			NoInput: &ports.IVRDestination{EndpointURI: "PJSIP/1003", ExtensionID: &fallback}},
+	}}
+	h := arrivedHarness(router)
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+	require.Eventually(t, func() bool { return len(h.mediaGW.originated()) == 1 }, time.Second, 10*time.Millisecond)
+	assert.Equal(t, "PJSIP/1003", h.mediaGW.originated()[0].EndpointURI)
+}
+
+func TestCallArrived_IVRInvalidWithoutFallbackHangsUp(t *testing.T) {
+	router := &fakeInboundRouter{decision: ports.InboundDecision{
+		Direction: domain.Inbound,
+		IVR:       &ports.IVRMenu{Prompt: "sound:welcome", Timeout: time.Second},
+	}}
+	h := arrivedHarness(router)
+	arriveTestCall(t, h, shareddomain.NewTenantID().String())
+	require.NoError(t, h.svc.IVRDigit(context.Background(), "chan-arriving", "9"))
+	assert.Equal(t, []ports.ChannelRef{"chan-arriving"}, h.mediaGW.destroyedChans)
+}
+
+func TestCallArrived_IVRPromptFailureTerminates(t *testing.T) {
+	router := &fakeInboundRouter{decision: ports.InboundDecision{
+		Direction: domain.Inbound,
+		IVR:       &ports.IVRMenu{Prompt: "sound:missing", Timeout: time.Second},
+	}}
+	h := arrivedHarness(router)
+	h.mediaGW.failPlayback = errors.New("playback failed")
+	err := h.svc.CallArrived(context.Background(), shareddomain.NewTenantID().String(), "e_caller", "", "2000", "+1555000111", "chan-arriving")
+	require.Error(t, err)
+	assert.Contains(t, h.mediaGW.destroyedChans, ports.ChannelRef("chan-arriving"))
+}
+
+func TestIVRDigit_UnknownChannelIsIgnored(t *testing.T) {
+	h := arrivedHarness(&fakeInboundRouter{})
+	require.NoError(t, h.svc.IVRDigit(context.Background(), "no-such-channel", "1"))
 }

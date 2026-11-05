@@ -356,8 +356,9 @@ extensions in Phase A.
 **Call flows** attaches a DID to a flow with an **open** and **closed**
 destination, a UTC business window and a holiday calendar. Revisions are
 published and rollbackable; the DID cannot also be a direct inbound
-number. This slice routes by time only; the DTMF menu/prompt is the next
-slice (D-89).
+number. A revision may also carry a prompt, up to ten digit branches, a
+timeout and no-input/invalid destinations (D-90); the prompt is a built-in
+`sound:` reference until uploaded media lands.
 
 ### Reports
 

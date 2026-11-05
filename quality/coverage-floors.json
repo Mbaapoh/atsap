@@ -15,7 +15,7 @@
       "packages": {
         "atsap-api/internal/identity/domain": 95.5,
         "atsap-api/internal/licensing/domain": 98,
-        "atsap-api/internal/pbx/domain": 91.8,
+        "atsap-api/internal/pbx/domain": 92,
         "atsap-api/internal/shared/domain": 100,
         "atsap-api/internal/telephony/domain": 100
       }
@@ -23,8 +23,8 @@
   },
   "console": {
     "statements": 96.9,
-    "branches": 89.5,
+    "branches": 89.6,
     "functions": 98.7,
-    "lines": 98.1
+    "lines": 98.2
   }
 }

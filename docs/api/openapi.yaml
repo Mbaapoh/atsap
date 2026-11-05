@@ -4144,7 +4144,35 @@ components:
         prompt:
           type: string
           title: prompt
+        menu:
+          type: object
+          title: menu
+          additionalProperties:
+            type: string
+            title: value
+          description: Menu digit (0-9) -> extension id. Empty keeps time routing.
+        menuTimeoutSeconds:
+          type: integer
+          title: menu_timeout_seconds
+          format: int32
+        noInputExtensionId:
+          type: string
+          title: no_input_extension_id
+        invalidExtensionId:
+          type: string
+          title: invalid_extension_id
       title: FlowConfig
+      additionalProperties: false
+    atsapbx.v1.FlowConfig.MenuEntry:
+      type: object
+      properties:
+        key:
+          type: string
+          title: key
+        value:
+          type: string
+          title: value
+      title: MenuEntry
       additionalProperties: false
     atsapbx.v1.FlowResponse:
       type: object
