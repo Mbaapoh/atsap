@@ -1,5 +1,11 @@
 # Call flows
 
+## Purpose
+
+Routes a call to a tenant's number through a versioned flow: business hours, holidays and an IVR menu, executed over ARI with no generated dialplan (D-89, D-90; refactor to a typed graph is D-91).
+
+## Requirements
+
 ### Requirement: A DID can route through a time-based flow
 
 The system SHALL let a tenant attach a DID to a flow with an open and a

@@ -1,5 +1,11 @@
 # Call records
 
+## Purpose
+
+Final call detail records for terminated calls, attributed to participants, scoped by role and exportable with an audit entry (D-88; the append-only ledger is D-92).
+
+## Requirements
+
 ### Requirement: Final call records carry participant attribution
 
 The system SHALL return only terminated calls from the reporting service,
