@@ -177,6 +177,33 @@ Do not start row *N+1* until row *N* is implemented and its walking-skeleton
 or integration test passes — per D-26 (dependency-first within a release,
 risk-first across it).
 
+## Flow Definition of Ready: what a coding agent needs (D-98)
+
+An LLD flow is **ready** when a coding agent can implement it and a QA
+agent can test it without asking a question. Every R1.0 flow in
+[HLD-20](../hld/20-call-flow-catalogue.md) must satisfy all twelve items
+before its OpenSpec change is proposed. A missing item is a design gap,
+not an implementation detail.
+
+| # | Item | What "done" looks like |
+|---|---|---|
+| 1 | **Trigger and actors** | Who starts it (API, phone, engine event, timer), as which PRD persona, with which permission |
+| 2 | **Preconditions** | Licence, entitlement, ownership, states that must hold; what happens when one does not |
+| 3 | **Sequence** | Numbered steps naming the exact ARI resources/events (`bridges`, `snoop`, `externalMedia`, `ChannelDtmfReceived`…) and the owning context per step |
+| 4 | **State machine** | States, transitions, triggers and guards for each aggregate touched (Participant sub-states, agent, parked call, campaign attempt), as a table |
+| 5 | **Data model** | Tables, columns, types, constraints, uniqueness, RLS policy, grants, migration number, retention |
+| 6 | **Ports and interfaces** | Go signatures of inbound/outbound ports and domain functions; which are pure |
+| 7 | **API contract** | RPC names, request/response fields, permission, Connect error codes and console words for each refusal |
+| 8 | **Configuration and limits** | Every tunable with its default, range and scope (installation, tenant, object); timeouts with values |
+| 9 | **Failure and recovery** | Engine loss, app restart, timeout, a party hanging up mid-operation, concurrent operations; reconcile behaviour; no orphaned leg |
+| 10 | **Invariants and events** | Which INV/BR rules apply and how they hold; domain events emitted (name, payload, subject); audit entries |
+| 11 | **Test scenarios** | Given/When/Then per behaviour, each tagged with its tier (U/I/W/E/C/B/A), including the failure cases |
+| 12 | **Industry parity** | What 3CX, VitalPBX, FreePBX, FusionPBX or a VICIdial-class product do for this flow, and our deliberate differences |
+
+The `product-owner` agent checks items 1, 11 and 12 against the PRD at
+propose time; the `code-reviewer` checks the implementation against all
+twelve.
+
 ## Granularity: an LLD is neither a feature nor a task
 
 Three distinct grains, not two:

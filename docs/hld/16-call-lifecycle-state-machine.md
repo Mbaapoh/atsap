@@ -79,7 +79,7 @@ Notes:
   closes one `channel_history` row and opens another while identity and
   billable time continue unbroken (T-5, HLD [03](03-domain-model.md) §3).
 - Mute is a media flag, not a lifecycle state — it does not appear here.
-- Supervisor join (R2) and specialist dispatch (R3) are participant
+- Supervisor join (R1.0, D-97) and specialist dispatch (R3) are participant
   add/remove inside `Active`, needing no schema change (D-24 seam 2).
 
 ## 5. Failure recovery & disconnect rules

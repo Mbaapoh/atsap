@@ -3618,6 +3618,42 @@ release order in HANDOFF follows from it.
 
 ---
 
+**D-98 · A flow is ready for coding only when its LLD meets the
+twelve-item Flow Definition of Ready (2026-11-07).**
+
+**Context:** HLD-21 gives sequence-level flows, and several LLD
+refinements are outlines. A sequence diagram is not enough for a coding
+agent, which otherwise invents states, schemas, errors and timeouts, as
+the 2026-11-02..05 batch did.
+
+**Decision:** `docs/lld/README.md` defines twelve required items:
+1. trigger and actors;
+2. preconditions;
+3. the ARI-level sequence;
+4. state machines;
+5. data model;
+6. ports;
+7. the API contract with error codes;
+8. configuration and timeouts;
+9. failure and recovery;
+10. invariants and events;
+11. tiered test scenarios;
+12. industry parity.
+
+No OpenSpec change is proposed for a flow until its LLD section passes
+all twelve. The `product-owner` checks items 1, 11 and 12; the
+`code-reviewer` checks the code against all twelve.
+
+**Alternatives:** *Let the OpenSpec design.md carry the detail.*
+Rejected: design.md is per change and is archived. A flow's states,
+schema and parity belong in the context's LLD, where the next change
+finds them.
+
+**Related Decisions:** D-29, D-93, D-94, D-95
+**Traceability:** LLD README; HLD-20, HLD-21
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
