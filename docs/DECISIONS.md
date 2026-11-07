@@ -3578,6 +3578,46 @@ self-service step, and the caller still reaches a destination.
 
 ---
 
+**D-97 · R1.0 scope gains standard call features, live supervision
+and jurisdiction abandonment rules; the voice agent is R2; omnichannel
+stays beyond R3 (owner, 2026-11-07).**
+
+**Context:** The flow catalogue (HLD-20) and the research assessment
+(D-95) found standard flows with no PRD story, and found that supervisor
+monitoring sat in R2 although power dialling is R1.0 (D-45). The BRD had
+also never been updated for D-45. The owner chose the recommended option
+on four questions.
+
+**Decision:**
+- **Added to R1.0 (BRD FBR-R1-01, PRD US/AC-03.13–03.17):**
+  - call pickup;
+  - ring groups;
+  - forwarding, follow-me and DND;
+  - caller-ID presentation of owned numbers (BR-06);
+  - queue callback.
+- **Jurisdiction abandonment rules for power dialling in R1.0** (BRD
+  FBR-R1-19, PRD US-15.6/AC-15.6). The US defaults are 2 s connect,
+  15 s / 4-ring minimum, and 3 % per campaign per 30 days.
+- **Live listen, whisper and barge move to R1.0** (BRD FBR-R1-18; PRD
+  EPIC-16, US-16.2–16.4, AC-16.1–16.2). Wallboards and drag-to-transfer
+  stay R2.
+- **The AI voice agent is an R2 consumption add-on** (BRD §12.4.2; PRD
+  US-04.8–04.9, AC-04.9–04.10), after the R1.0 AI media path is proven.
+- **Omnichannel messaging stays beyond R3** (PRD §5.3 unchanged).
+- **BRD v1.1** reflects D-45 (preview and power dialling and compliance
+  in R1.0); **PRD v1.2** corrects its traceability table.
+
+**Consequences:** R1.0 grows by the call-feature set, supervision
+monitoring and the abandonment profile. Each needs its LLD refinement
+(HLD-21, LLD-01 §11, LLD-03 §3.3.1, LLD-04 §7) and OpenSpec changes. The
+release order in HANDOFF follows from it.
+
+**Related Decisions:** D-27, D-45, D-91, D-94, D-95, D-96
+**Traceability:** BRD v1.1 §7, §8, §12.4.2; PRD v1.2 §5, EPIC-03, 04, 14,
+15, 16, §18; HLD-20, HLD-21
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

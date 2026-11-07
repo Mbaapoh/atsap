@@ -1,7 +1,8 @@
 # AtsaPBX — Product Requirements Document
 
-**Version 1.1 · Approved for Technical Design**
-**Traces from:** BRD v1.0 · **Feeds:** High Level Design
+**Version 1.2 · Approved for Technical Design**
+**Traces from:** BRD v1.1
+**Revision 1.2 (2026-11-07, D-97):** EPIC-03 gains pickup, ring groups, forwarding/follow-me/DND, caller-ID presentation and queue callback; EPIC-15 gains jurisdiction abandonment rules for power dialling; EPIC-16 listen/whisper/barge move to R1.0; EPIC-04 gains the AI voice agent (R2 add-on); traceability corrected for D-45. · **Feeds:** High Level Design
 **Owner:** Product Owner · **Audience:** Product, Design, Engineering, QA, Support, Delivery Partners
 
 ---
@@ -66,11 +67,13 @@ Aligned to BRD §7 (product scope by release) and BRD §11 (scope). Where this s
 
 | Capability area | In scope | BRD reference |
 |---|---|---|
-| Everyday calling | Browser calling with no installation; hold, transfer, park, conference, presence, hot-desking, voicemail to email | §7.1 |
+| Everyday calling | Browser calling with no installation; hold, transfer, park, pickup, conference, presence, hot-desking, ring groups, forwarding, follow-me, do not disturb, voicemail to email, caller-ID presentation | §7.1 |
 | Desk phones | Automatic configuration of supported handsets | §7.1 |
 | Carrier connectivity | Multiple carriers, cheapest-route selection, automatic failover, per-carrier capacity limits | §7.1 |
 | Tenancy | Complete isolation between customer organisations | §7.1 |
-| Call handling | Multi-level menus, business hours, holidays, department routing, queues with basic distribution | §7.1 |
+| Call handling | Multi-level menus, business hours, holidays, department routing, queues with basic distribution, position announcements and callback | §7.1 |
+| Outbound | Preview and power dialling with enforced compliance, including jurisdiction abandonment rules (D-45) | §7.1 |
+| Supervision | Live listen, private coaching, join, each audited (D-97) | §7.1 |
 | Access and audit | Role-based permissions, append-only audit trail | §7.1 |
 | Security | Fraud detection, rate limits, spend caps, minimal external exposure | §7.1 |
 | Recording | Consent rules, announcements, retention, permanent deletion, access audit | §7.1 |
@@ -89,7 +92,8 @@ Aligned to BRD §7 (product scope by release) and BRD §11 (scope). Where this s
 | Fax delivery | R1.1 | Vertical-specific; commercially optional |
 | Bulk migration tooling | R1.1 | Needed for displacement deals, not for a first deployment |
 | **Predictive** pacing and abandonment-rate control | R2 | D-27: power dialling proves the loop first. Predictive is a pacing algorithm on top of a loop that already works, and debugging pacing mathematics and telephony plumbing at once means never knowing which is broken |
-| Supervisor coaching tools, wallboards | R2 | Belongs with the contact-centre release |
+| Wallboards, drag-to-transfer | R2 | Belongs with the contact-centre release; live listen/whisper/barge are R1.0 (D-97) |
+| AI voice agent / virtual receptionist | R2 add-on | Needs the R1.0 AI media path proven first (D-96, D-97) |
 | CRM and ERP connectors, embedded call controls | R2 | The API in R1.0 already permits partner-built integrations |
 | Live assistance and automated after-call work | R2 | Depends on the R1.0 AI pipeline being proven |
 | Specialist matching, rapid dispatch, budget tracking, per-second ledger | R3 | A distinct vertical product |
@@ -211,6 +215,11 @@ These hold in every release, every configuration and every failure mode. A featu
 | US-03.10 | As an employee on a poor network, I see an honest connection state rather than a dead call. |
 | US-03.11 | As a person placing a call from the console, I see whether my phone is ringing, whether the destination is ringing, and can end the call with one action. |
 | US-03.12 | As an administrator, I can connect a browser phone to one of the tenant's WEBRTC extensions and make, answer and end calls without installing anything. |
+| US-03.13 | As an employee, I answer a colleague's ringing phone from my own. |
+| US-03.14 | As a tenant administrator, I make a ring group so one number rings a team together or in turn. |
+| US-03.15 | As an employee, I forward my calls, set a follow-me sequence, or switch on do not disturb. |
+| US-03.16 | As a tenant administrator, I choose which owned number our outbound calls present. |
+| US-03.17 | As a caller, I ask to be called back instead of waiting, without losing my place. |
 
 **Acceptance criteria**
 - AC-03.1 A user places and answers calls on office, home and mobile networks with nothing installed.
@@ -225,6 +234,11 @@ These hold in every release, every configuration and every failure mode. A featu
 - AC-03.10 A call in progress survives the user navigating anywhere in the application.
 - AC-03.11 A placed call shows its live state — ringing the caller, calling the destination, connected with a running duration, or ended with its reason — within 2 seconds, offers Hang up at every point in flight, survives navigation and a reload, and never shows an ended call as active.
 - AC-03.12 An administrator connects a browser phone to a WEBRTC extension with its one-time SIP password, makes and answers a call over DTLS-SRTP, and the password is never stored or shown after the session.
+- AC-03.13 *(pickup)* A user in the same pickup group answers a ringing colleague's call with one code or click; the original phone stops ringing and the call record shows who answered.
+- AC-03.14 *(ring groups)* A ring group rings its members simultaneously or in order as configured, and follows its no-answer destination when nobody answers; it is reachable from a number, a menu option and a queue overflow alike.
+- AC-03.15 *(forwarding, follow-me, do not disturb)* A user sets unconditional, busy and no-answer forwarding, a follow-me sequence (desk, browser, external number) and do not disturb. Each takes effect on the next call. External forwarding obeys the user's calling permissions.
+- AC-03.16 *(caller ID)* Every outbound call presents only a number the tenant owns or is authorised to present; any other requested number is refused, never sent.
+- AC-03.17 *(queue callback)* A caller waiting in a queue can choose a callback, keeps their place, and is called back when an agent is reserved for them; a failed callback is retried by rule and reported.
 
 ---
 
@@ -252,6 +266,16 @@ These hold in every release, every configuration and every failure mode. A featu
 - AC-04.6 At least one self-hosted open-source provider and one commercial provider are demonstrated, interchangeable by configuration alone.
 - AC-04.7 Provider credentials are stored encrypted, scoped to their owner, and never appear in logs, exports, diagnostic bundles or error messages.
 - AC-04.8 Streamed duration per tenant is recorded and available through the API.
+
+**R2 add-on: AI voice agent (BRD §12.4.2, D-96, D-97)**
+
+| ID | User story |
+|---|---|
+| US-04.8 | As a tenant administrator, I put a virtual receptionist on a number or menu option that understands the caller and books, looks up or routes. |
+| US-04.9 | As a caller, I reach a person at once if the virtual receptionist cannot help, fails, or I press 0. |
+
+- AC-04.9 A provider error, a missed response deadline or the caller pressing 0 moves the call to its fallback destination within 2 seconds. The agent is never reachable from an emergency number.
+- AC-04.10 Each virtual-receptionist call counts as one AI channel, and its duration and outcome are recorded and available through the API.
 
 ---
 
@@ -539,6 +563,7 @@ not ship.
 | US-15.3 | As a compliance officer, calling slows automatically as abandonment approaches the legal limit. |
 | US-15.4 | As a contact, my opt-out is honoured immediately and permanently. |
 | US-15.5 | As an auditor, I am shown evidence that the rules were applied to every call in a period. |
+| US-15.6 | As a compliance officer, I set the abandonment rules of my jurisdiction once, and every power or predictive campaign obeys them. |
 
 **Acceptance criteria**
 - AC-15.1 A listed number is never dialled — including on a manual dial by an agent. Proven by an automated suite that must pass before every release.
@@ -546,11 +571,17 @@ not ship.
 - AC-15.3 Approaching the abandonment limit triggers automatic slow-down within 60 seconds; breaching it stops the campaign.
 - AC-15.4 An opt-out applies across every campaign within 60 seconds.
 - AC-15.5 A compliance report for any period shows rules applied, calls blocked and the reason for each.
+- AC-15.6 *(R1.0, power and predictive)* A tenant's jurisdiction profile sets the abandonment rules. US defaults follow the federal telemarketing rules:
+  - a live answer not connected to an agent within 2 seconds of the greeting counts as abandoned and hears an identification and opt-out message;
+  - an unanswered call rings at least 15 seconds or four rings;
+  - the abandonment limit is 3 % per campaign, measured over 30 days.
+
+  The profile also sets any no-redial period after an abandoned call. AC-15.3's slow-down and stop apply to power dialling from R1.0.
 
 ---
 
 ### EPIC-16 · Supervisor Workspace
-**BRD:** FBR-R2-04 · **Priority:** M
+**BRD:** FBR-R1-18, FBR-R2-04 · **Priority:** M · **R1.0: US-16.2–16.4, AC-16.1, AC-16.2 (D-97); R2: the rest**
 
 | ID | User story |
 |---|---|
@@ -1068,12 +1099,16 @@ satisfied. A partially satisfied gate is not a gate.
 | FBR-R1-15 Emergency calling | EPIC-12 | R1.1 |
 | FBR-R1-16 Fax | EPIC-13 | R1.1 |
 | FBR-R1-17 Migration and exit | EPIC-13 | R1.1 |
-| FBR-R2-01 Outbound dialling | EPIC-14 | R2 |
+| FBR-R1-18 Live supervision | EPIC-16 (US-16.2–16.4) | R1.0 |
+| FBR-R1-19 Preview and power dialling with compliance | EPIC-14, EPIC-15 | R1.0 (D-45) |
+| FBR-R2-01 Outbound dialling (predictive) | EPIC-14 | R2 |
 | FBR-R2-02 Answering-machine detection | EPIC-14 | R2 |
-| FBR-R2-03 Outbound compliance | EPIC-15 | R2 |
-| FBR-R2-04 Supervisor workspace | EPIC-16 | R2 |
+| FBR-R2-03 Outbound compliance (predictive pacing) | EPIC-15 | R2 (R1.0 rules: FBR-R1-19) |
+| FBR-R2-04 Supervisor workspace (wallboards, drag-to-transfer) | EPIC-16 | R2 |
 | FBR-R2-05 CRM and ERP connectivity | EPIC-17 | R2 |
 | FBR-R2-06 Live agent assist and after-call work | EPIC-18 | R2 |
+| FBR-R2-07 Automated after-call work | EPIC-18 | R2 |
+| BRD §12.4.2 AI voice agent add-on | EPIC-04 (US-04.8–04.9) | R2 |
 | FBR-R3-01 Specialist matching | EPIC-19 | R3 |
 | FBR-R3-02 Sub-15-second broadcast dispatch | EPIC-19 | R3 |
 | FBR-R3-03 Availability and escalation | EPIC-19 | R3 |

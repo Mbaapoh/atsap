@@ -1,6 +1,14 @@
 # AtsaPBX — Business Requirements Document
 
-**Version 1.0 · Executive Baseline for Launch**
+**Version 1.1 · Executive Baseline for Launch**
+**Revision 1.1 (2026-11-07, owner decision D-97):**
+- §7 reflects D-45: preview and power dialling and outbound compliance
+  are R1.0.
+- Core telephony names pickup, ring groups, forwarding, follow-me, do not
+  disturb, queue callback and caller-ID presentation.
+- Live listen, whisper and barge move to R1.0.
+- The AI voice agent is an R2 add-on.
+- Omnichannel stays out of scope.
 **Audience:** CEO, CFO, Sales, Delivery Partners, Product, Engineering Leadership
 **Owner:** Product Owner / Business Analyst
 **Status:** Approved baseline
@@ -182,7 +190,10 @@ The first release a partner can buy, install and run a business on.
 | Capability | Business value |
 |---|---|
 | WebRTC softphone in the browser, nothing to install | Staff work anywhere; onboarding in minutes |
-| Full call handling — hold, transfer, park, conference, presence, hot-desking, voicemail-to-email | The everyday calls customers remember when they fail |
+| Full call handling — hold, transfer (blind and announced), park, pickup, conference, presence, hot-desking, ring groups, forwarding, follow-me, do not disturb, voicemail-to-email, caller-ID presentation of owned numbers | The everyday calls customers remember when they fail |
+| Queues with basic distribution, position announcements and queue callback | Callers are not lost in a queue |
+| Preview and power outbound dialling with enforced compliance — do-not-call, calling hours in the contact's time, opt-out, abandonment limits (D-45) | An outbound operation can run legally from day one |
+| Live supervision — listen, whisper, barge, each audited | Coaching and rescue on real calls from the first contact-centre deployment |
 | Desk-phone auto-provisioning | Protects existing hardware; removes a migration blocker |
 | BYOT carrier connectivity with least-cost routing and automatic failover | No lock-in, no markup, no single-carrier outage |
 | Multi-tenant isolation | One platform serves many customer organisations safely |
@@ -209,11 +220,12 @@ The first release a partner can buy, install and run a business on.
 
 | Capability | Business value |
 |---|---|
-| Predictive and power outbound dialling | Agent talk time rises from roughly 15–20 minutes per hour to 45 or more |
+| Predictive outbound dialling (preview and power are R1.0) | Agent talk time rises from roughly 15–20 minutes per hour to 45 or more |
 | Answering-machine detection with message drop | Agents stop spending a third of the day on voicemail greetings |
 | Campaign management, lists, outcomes, callbacks | Campaign managers work without an analyst |
-| Automated compliance — do-not-call, calling hours, abandonment limits | Prevents fines that can exceed the platform's cost |
-| Supervisor workspace — listen, whisper, barge, wallboards | Coaching in real conversations; escalations rescued |
+| Compliance for predictive pacing (the R1.0 rules apply unchanged) | Prevents fines that can exceed the platform's cost |
+| Supervisor workspace — wallboards, drag-to-transfer (listen, whisper and barge are R1.0) | The floor is visible and calls move without a phone |
+| AI voice agent / virtual receptionist (consumption add-on, §12.4.2) | Self-service before or instead of a person, never in the emergency path |
 | CRM and ERP connectors, bi-directional | Call activity lands where the work happens |
 | Embeddable CTI widget for any web application | Works with in-house systems we have never seen |
 | Live agent assist and automated after-call work | New agents perform sooner; after-call admin largely disappears |
@@ -235,7 +247,9 @@ The first release a partner can buy, install and run a business on.
 
 ### Release 1.0
 
-- **FBR-R1-01 — Browser calling and core telephony.** Staff shall make and receive calls from a web browser with no installation, including hold, transfer, park, conference, presence, hot-desking and voicemail-to-email.
+- **FBR-R1-01 — Browser calling and core telephony.** Staff shall make and receive calls from a web browser with no installation, including hold, blind and announced transfer, park, pickup, conference, presence, hot-desking, ring groups, call forwarding, follow-me, do not disturb, voicemail-to-email, and queues with position announcements and callback. Outbound calls present only numbers the customer owns or is authorised to use (BR-06).
+- **FBR-R1-18 — Live supervision.** A supervisor shall listen to a live call unheard, speak privately to the agent, and join the call. Every use is logged with the supervisor's identity and can be disabled where the law forbids it. *(Moved from FBR-R2-04, D-97.)*
+- **FBR-R1-19 — Preview and power dialling with enforced compliance.** The R1.0 part of FBR-R2-01 and FBR-R2-03 (D-45): preview and power campaigns, lists, outcomes and callbacks. Do-not-call, calling hours in the contact's local time, opt-out and abandonment rules are enforced on every attempt, including manual dials. The abandonment rules (connect time, minimum ring, limit and measuring window, message) are set per jurisdiction.
 - **FBR-R1-02 — Desk-phone provisioning.** The platform shall configure supported desk phones automatically and securely, without an engineer visiting each device.
 - **FBR-R1-03 — Carrier neutrality and least-cost routing.** The platform shall connect to any standards-compliant carrier through guided setup, use several carriers simultaneously, route each call by lowest cost, and switch away from a failing carrier without human intervention.
 - **FBR-R1-04 — Multi-tenant isolation.** Data, configuration and media shall be completely isolated between customer organisations, and configuration changes shall take effect without interrupting service.
@@ -258,10 +272,10 @@ The first release a partner can buy, install and run a business on.
 
 ### Release 2
 
-- **FBR-R2-01 — Outbound dialling.** Predictive, power and preview dialling with adaptive pacing, campaign and list management, outcomes and automatic re-attempt rules.
+- **FBR-R2-01 — Outbound dialling.** Predictive dialling with adaptive pacing (preview and power are R1.0 under FBR-R1-19), campaign and list management, outcomes and automatic re-attempt rules.
 - **FBR-R2-02 — Answering-machine detection.** Automatic differentiation of humans from voicemail at high accuracy, optimised for a low rate of humans wrongly classified as machines.
 - **FBR-R2-03 — Outbound compliance.** Do-not-call lists, permitted calling hours and abandonment limits enforced automatically by the platform — including on manual dials — and evidenced to an auditor on demand.
-- **FBR-R2-04 — Supervisor workspace.** Live listen, private coaching, barge-in, live wallboards and drag-to-transfer call control.
+- **FBR-R2-04 — Supervisor workspace.** Live wallboards and drag-to-transfer call control. *(Live listen, private coaching and barge-in moved to R1.0 as FBR-R1-18, D-97.)*
 - **FBR-R2-05 — CRM and ERP connectivity.** Bi-directional integration with standard CRM and ERP platforms, configurable by an administrator rather than a developer, plus embeddable call-control widgets for any third-party web application. The objective stated in business terms: **an agent should never re-key information that already exists in another system.**
 - **FBR-R2-06 — Live agent assist (optional AI).** Real-time transcription driving contextual prompts, suggested responses and sentiment indication to the agent. **These features require AI to be enabled for that tenant. Agents operate fully without them.**
 - **FBR-R2-07 — Automated after-call work (optional AI).** Where enabled, the platform shall automatically transcribe, summarise and disposition calls, writing structured records into the connected CRM or ERP. **This feature is optional and requires AI to be enabled.** Without AI, agents complete after-call work manually through the interface — the platform does not depend on AI for core operation.
@@ -673,7 +687,9 @@ per-second margin ledger and availability tiers stay exactly as they are.
 A partner buys Language Services for the specialists and adds AI to make
 the wait for one survivable.
 
-**AI voice agent / virtual receptionist — separate consumption add-on.**
+**AI voice agent / virtual receptionist — separate consumption add-on,
+R2 (D-97).** It runs as a call destination with a guaranteed fallback to
+a person (D-96).
 Conversational intent handling, appointment booking, and API lookups
 during a live call, before or instead of routing to a person. Priced by
 concurrent AI channel rather than by edition, because its cost driver is

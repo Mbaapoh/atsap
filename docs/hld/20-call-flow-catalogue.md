@@ -20,8 +20,9 @@ before it is proposed.**
 - **Mentioned:** named in the PRD or BRD only; no flow design.
 - **Missing:** an industry-standard flow with no mention at all.
 
-**Release:** R1.0 / R1.1 / R2 / R3 per BRD §7 and PRD §4. Power dialling
-is **R1.0** (D-45); predictive is **R2** (D-27).
+**Release:** R1.0 / R1.1 / R2 / R3 per BRD v1.1 §7 and PRD v1.2. Power
+dialling and its abandonment rules are **R1.0** (D-45, D-97); predictive is
+**R2** (D-27); live supervision is **R1.0** (D-97).
 
 ---
 
@@ -78,10 +79,10 @@ is **R1.0** (D-45); predictive is **R2** (D-27).
 | IC-02 | ACD distribution (ring-all, longest-idle, round-robin, skills/penalty) | R1.0 | LLD-03 §3.3 | Designed (skills-based routing: R2) |
 | IC-03 | Agent state: log in/out, ready, not ready (reason codes), wrap-up | R1.0 | LLD-03 §3.1/3.3 | Designed |
 | IC-04 | Queue overflow / max wait / no agents → destination | R1.0 | LLD-03 §3.3 | Designed |
-| IC-05 | Queue callback (keep place, call back) | R1.0 | HLD-21 §3 | Designed |
+| IC-05 | Queue callback (keep place, call back) | R1.0 (AC-03.17) | HLD-21 §3 | Designed |
 | IC-06 | Agent screen-pop / CTI with caller context | R2 | HLD-21 §8 | Designed (connectors R2) |
 | IC-07 | Disposition and after-call work (manual; AI optional) | R1.0 / R2 | LLD-06 §6, EPIC-18 | Designed (outbound); inbound **Missing** |
-| IC-08 | Supervisor listen / whisper / barge | R2 | HLD-21 §2, PRD EPIC-16 | Designed |
+| IC-08 | Supervisor listen / whisper / barge | **R1.0** (D-97) | HLD-21 §2, PRD EPIC-16 | Designed |
 | IC-09 | Wallboards and real-time queue statistics | R2 | PRD EPIC-16, HLD-12 | Mentioned |
 | IC-10 | Blended agent (inbound and outbound on one login) | R2 | HLD-21 §3–4 | Designed |
 
@@ -94,8 +95,8 @@ is **R1.0** (D-45); predictive is **R2** (D-27).
 | OB-03 | Power/progressive dialling (ratio × available agents) | **R1.0** | LLD-06 §5, D-27, D-45 | Designed |
 | OB-04 | Predictive dialling (adaptive pacing on answer, talk and wrap estimates) | R2 | LLD-06 §5, HLD-21 §4 | Designed (pacing algorithm still to specify) |
 | OB-05 | Compliance gate before every attempt, including manual dials: DNC, contact-local calling hours, opt-out | R1.0 | LLD-04, D-21 | Designed |
-| OB-06 | Abandonment control (definition, measuring window, automatic slow-down, stop) | R2 | LLD-04 §7, HLD-21 §4 | Designed (profile parameters) |
-| OB-07 | Abandoned-call message within 2 s of the greeting; minimum ring time before giving up | R2 (R1.0 for power) | LLD-04 §7, HLD-21 §4 | Designed |
+| OB-06 | Abandonment control (definition, measuring window, automatic slow-down, stop) | **R1.0** for power (AC-15.6) | LLD-04 §7, HLD-21 §4 | Designed (profile parameters) |
+| OB-07 | Abandoned-call message within 2 s of the greeting; minimum ring time before giving up | **R1.0** (AC-15.6, D-97) | LLD-04 §7, HLD-21 §4 | Designed |
 | OB-08 | Answering-machine detection and voicemail drop | R2 (drop R1.0 only after an explicit decision) | LLD-06 §5–6, HLD-21 §4 | Designed (no-AI baseline + optional AI) |
 | OB-09 | Dispositions, retry rules, scheduled callbacks in the contact's zone | R1.0 | LLD-06 §6 | Designed |
 | OB-10 | Per-attempt evidence, including blocked attempts | R1.0 | LLD-06 §6, AC-14.5 | Designed |
@@ -132,7 +133,7 @@ is **R1.0** (D-45); predictive is **R2** (D-27).
 | AI-02 | Generate an IVR flow from a description (writes the D-91 graph) | R1.0 | FBR-R1-06, LLD-10 | Designed |
 | AI-03 | Transcription and summary after the call | R1.0 / R2 | LLD-10, EPIC-18 | Designed |
 | AI-04 | Live agent assist | R2 | EPIC-18 | Mentioned |
-| AI-05 | AI voice agent / virtual receptionist (never in the emergency path) | Add-on | HLD-21 §6, D-96 | Designed (outline) |
+| AI-05 | AI voice agent / virtual receptionist (never in the emergency path) | R2 add-on (D-97) | HLD-21 §6, D-96 | Designed (outline) |
 | AI-06 | AI failure mid-call degrades the feature, never the call | R1.0 | PRD §12.5, §13.1 | Designed (trace) |
 
 ## 8. Specialist dispatch (R3)

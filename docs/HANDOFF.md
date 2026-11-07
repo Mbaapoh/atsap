@@ -31,6 +31,15 @@ call-control spikes, then a telephony LLD revision, then
 The full list of what was kept and what was flagged is in
 [PROGRESS.md § Architecture review 2026-11-07](PROGRESS.md).
 
+**Scope (D-97, 2026-11-07):** BRD v1.1 and PRD v1.2 put these in R1.0:
+- pickup, ring groups, forwarding, follow-me and DND;
+- caller-ID presentation;
+- queue callback;
+- live listen, whisper and barge;
+- jurisdiction abandonment rules for power dialling.
+
+The AI voice agent is an R2 add-on. Omnichannel stays beyond R3.
+
 **AI:** the BRD makes AI optional and provider-neutral (VP-5, D-23). No AI
 code exists yet; LLD-10 is the design. The R1.0 gate requires call audio
 streamed to two providers, so an audio-tap spike (snoop or external
@@ -242,7 +251,7 @@ There were 39 commits on `develop`, all pushed. Each change below was specified,
 ## 3. How the project is run (read before changing anything)
 
 ### 3.1 Workflow
-- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-96, in number order); say so explicitly if one must change.
+- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-97, in number order); say so explicitly if one must change.
 - **Every piece of work is an OpenSpec change:**
   1. `/opsx:propose`: proposal, delta specs, design and tasks.
   2. `/opsx:apply`: one task at a time.
