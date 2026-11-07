@@ -3446,6 +3446,45 @@ mechanical tasks may still go to a cheaper model under the same gates.
 
 ---
 
+**D-94 · A product-owner agent accepts changes against the BRD/PRD,
+and a call-flow catalogue is the single inventory of flows (2026-11-07).**
+
+**Context:** D-93 added QA, implementer, reviewer and docs subagents.
+Tests prove that code meets its spec; nothing checked that the spec meets
+the PRD, or that UAT judged the product the way its users would. The
+review also found that the only end-to-end flow design is Phase A
+administration (HLD-18). Many industry-standard PBX, contact-centre and
+outbound flows are only mentioned, or are absent: attended transfer,
+pickup, ring groups, forwarding, follow-me, DND, queue callback, blended
+agents, caller-ID presentation, and the abandonment message and minimum
+ring time required by FCC 47 CFR 64.1200(a)(6)–(7).
+
+**Decision:**
+- **A `product-owner` subagent** (`.claude/agents/product-owner.md`):
+  - at propose, it maps scenarios to PRD stories, ACs and invariants
+    and writes `acceptance.md`;
+  - at change end, after QA is green, it writes and walks the UAT
+    procedure as the PRD persona and gives a verdict per AC;
+  - `REJECT` blocks the archive;
+  - steps that need real handsets are `OWNER STEP`s for the main session
+    to arrange with the owner.
+- **`docs/hld/20-call-flow-catalogue.md`** lists every flow with its
+  audience, release, design location and status. A flow marked
+  *Missing* or *Mentioned* gets an LLD section before it is proposed.
+  The catalogue's §10 is the design backlog.
+
+**Alternatives:**
+- *The QA agent also judges acceptance.* Rejected: the person who wrote
+  the tests then decides whether the tests were the right ones.
+- *Flows stay spread across the PRD, HLD and LLDs.* Rejected: that is how
+  attended transfer and abandonment handling went undesigned.
+
+**Related Decisions:** D-27, D-45, D-91, D-93
+**Traceability:** PRD §3, §12, §13; BRD §7–§9; HLD-20; WORKFLOW §5;
+TESTING §8
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

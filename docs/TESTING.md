@@ -182,12 +182,12 @@ docs" task at the end is malformed; split it.
 
 | When | Who | What runs | Blocks |
 |---|---|---|---|
-| **Propose** | `qa-engineer` | `coverage.md` test plan: every delta-spec scenario mapped to tiers (U/I/W/E/C/B/A) and named tests; gaps stated with a reason | The proposal is not ready without it |
+| **Propose** | `qa-engineer`, `product-owner` | `coverage.md` test plan: every delta-spec scenario mapped to tiers (U/I/W/E/C/B/A) and named tests; gaps stated with a reason. `acceptance.md`: scenarios mapped to PRD stories, ACs and invariants, and checked against the flow catalogue (HLD-20) | The proposal is not ready without both |
 | **Task start** | `qa-engineer` | The task's tests are written and fail for the right reason (red), with output pasted | Implementation does not start on a green or missing test |
 | **Task end** (every commit) | `implementer`, then the main session | `make lint` (0 issues), `make test` (unit), the **affected** integration package on `atsapbx_test`, wire tests for changed RPCs, console vitest for changed components plus the console lint | The commit |
 | **Task review** | `code-reviewer` | Read-only review of the diff against spec, design, boundaries, security, console rules | The commit (`VERDICT: approve`) |
 | **Slice end** (the last task of a tasks.md section that delivers a user-visible scenario) | `qa-engineer` | The full Go integration suite (`-p 1`, `atsapbx_test`); the e2e tests for the slice's scenarios after `make rig-restore`; Playwright browser specs on the real API for its console screens; `-race` (§6 container recipe while the host toolchain is broken) | The next slice |
-| **Change end** (before archive) | `qa-engineer`, then `docs-steward` | Full Go e2e; `make console-check`; the phone UATs (`uat-auto`, `uat-placement`, `uat-inbound`, with owner consent for the phones) and the change's manual UAT; `make quality` (coverage floors, SCA, gitleaks); `make coverage-ratchet`; `make docs`; `openspec validate --specs --strict` | The archive |
+| **Change end** (before archive) | `qa-engineer`, then `product-owner` (UAT as the PRD persona, a verdict per AC; `REJECT` blocks), then `docs-steward` | Full Go e2e; `make console-check`; the phone UATs (`uat-auto`, `uat-placement`, `uat-inbound`, with owner consent for the phones) and the change's manual UAT; `make quality` (coverage floors, SCA, gitleaks); `make coverage-ratchet`; `make docs`; `openspec validate --specs --strict` | The archive |
 
 Rules:
 

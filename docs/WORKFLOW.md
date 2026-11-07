@@ -189,6 +189,7 @@ proposals, design and the commit.
 | `qa-engineer` | propose (test plan), task start (failing tests), slice/change end (slow tiers, UAT) | tests, fixtures, `coverage.md` only |
 | `implementer` | after the failing tests exist | product code for one task; runs fast tiers |
 | `code-reviewer` | after the implementer, before the commit | nothing (read-only verdict) |
+| `product-owner` | propose (acceptance against the BRD/PRD and HLD-20), change end (UAT as the persona, verdict per AC) | `acceptance.md`, `docs/uat/` only (D-94) |
 | `docs-steward` | archive, new decisions, suspected drift | docs only; runs `make docs` and `openspec validate` |
 
 Subagents never commit, push, tick tasks, stop the owner's phones, add a
