@@ -335,6 +335,13 @@ of all 11 changes; the two High findings were then confirmed in the code):
 invalid for OpenSpec. They are repaired; `openspec validate --specs
 --strict` now passes 22/22.
 
+**Flow coverage (D-94):** [hld/20-call-flow-catalogue.md](hld/20-call-flow-catalogue.md).
+Of the 83 catalogued flows, 15 are wholly or partly **Missing** a design: attended
+transfer, pickup, ring groups, forwarding, follow-me, DND, caller-ID
+presentation, queue callback, blended agents, the abandonment message
+and minimum ring time, PCI recording pause, and others. Its §10 orders
+the design backlog.
+
 **Process drift (not a design issue):** each of the 11 changes landed as
 one squashed commit (two commits bundle two changes each), and the
 changes have only 4 to 6 coarse tasks. That breaks the "one commit per
