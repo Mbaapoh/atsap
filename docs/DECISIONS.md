@@ -3485,6 +3485,99 @@ TESTING §8
 
 ---
 
+**D-95 · The owner's ten-flow research is adopted in substance and
+adapted to the monolith, without Redis or an edge proxy (2026-11-07).**
+
+**Context:** The owner supplied research describing ten enterprise flows
+in the style of VICIdial, 3CX, VitalPBX, Amazon Connect and Cisco:
+- predictive and AI-assisted outbound;
+- inbound smart routing with a co-pilot;
+- the IVR state machine;
+- transfers;
+- supervisor monitoring;
+- parking;
+- skill-based ACD with a hopper;
+- WebRTC provisioning;
+- omnichannel blending with compliance recording;
+- plug-and-play CRM/AI integration.
+
+It proposed microservices, Redis, OpenSIPS and RTPEngine.
+
+**Decision:** HLD-21 holds the adapted flows; its §0 is the item-by-item
+verdict.
+- **Adopted:**
+  - bounded contexts with an integration ACL and plugin ports;
+  - snoop-based monitoring;
+  - attended transfer through holding and consult bridges;
+  - skill-based ACD with wrap-up;
+  - a dialler hopper;
+  - event-driven screen-pop.
+- **Adapted:**
+  - state in Postgres with advisory-lock single ownership, not Redis
+    (D-56);
+  - blind transfer by originate-and-swap, not ARI `redirect`;
+  - parking slots per tenant, with a timeout;
+  - AI on `externalMedia` fed from snoop copies (D-23);
+  - AMD with a baseline that needs no AI;
+  - recording into the tenant's object store;
+  - compliance re-checked at the moment of dial.
+- **Rejected or deferred:**
+  - microservices (D-20);
+  - an edge proxy or SBC now (D-77);
+  - omnichannel, which stays beyond R3 per PRD §5 unless the owner
+    decides otherwise.
+- **New design rules:**
+  - the abandonment rules are jurisdiction-profile parameters (FCC
+    64.1200(a)(6)–(7) values for US tenants), and they apply to power
+    dialling in R1.0;
+  - power and predictive agents use a nailed-up leg, so the 2-second
+    connect can be met.
+
+**Alternatives:**
+- *Adopt the research as written.* Rejected: it contradicts D-20, D-23,
+  D-56 and D-77, and omits tenancy for parking slots and compliance at
+  dial time.
+- *Ignore it.* Rejected: it correctly names several flows the design had
+  not covered.
+
+**Related Decisions:** D-20, D-23, D-56, D-77, D-91, D-94
+**Traceability:** HLD-20, HLD-21; LLD-01 §11, LLD-03 §3.3.1, LLD-04 §7,
+LLD-06 §5, LLD-09, LLD-10 §4.1
+
+---
+
+**D-96 · The AI voice agent is a call destination on the live leg;
+every other AI stays on copied audio (2026-11-07).**
+
+**Context:** D-23 says AI subscribes to copied audio and is never in the
+call path. The BRD's AI voice agent / virtual receptionist (§12.4.2)
+must speak to the caller, so it cannot work on a copy.
+
+**Decision:**
+- The voice agent is a D-91 destination kind, `ai_agent`, that holds the
+  live leg through `externalMedia`. It always has a configured fallback
+  destination.
+- A provider error, a missed latency deadline or the caller pressing 0
+  moves the call to the fallback at once.
+- It is never reachable on the emergency path (BR-09), it counts as an AI
+  channel for licensing, and it is optional per tenant like all AI.
+- Transcription, assist, quality scoring, AMD classification and every
+  other AI feature remain on snoop copies under D-23.
+
+**Consequence:** D-23's guarantee becomes "an AI failure can degrade a
+feature, never a call". For the voice agent, the degraded feature is the
+self-service step, and the caller still reaches a destination.
+
+**Alternatives:**
+- *No voice agent.* Rejected: it is a BRD add-on.
+- *A voice agent on a copy with TTS injected.* Rejected: it reimplements
+  bridging badly and still affects what the caller hears.
+
+**Related Decisions:** D-05, D-06, D-23, D-91, D-95
+**Traceability:** BRD §12.4.2, BR-09; PRD EPIC-04; HLD-21 §6; LLD-10 §4.1
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

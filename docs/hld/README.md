@@ -65,6 +65,7 @@ The High-Level Design is partitioned into nineteen modular chapters:
 19. [Phase A User Flows](18-phase-a-user-flows.md) — What an administrator actually does from a fresh install to a working call (D-46 Phase A): first-run bootstrap, users and roles, extensions, trunks and routes, the first call, and the console slice they imply.
 20. [Console UI Architecture](19-console-ui-architecture.md) — How the Phase A administration console consumes the public API (D-36, D-43, D-46): session and Tenant boundary, truthful state presentation, accessibility, and the browser E2E evidence. Visual brief: [../CONSOLE-DESIGN.md](../CONSOLE-DESIGN.md).
 21. [Call Flow Catalogue](20-call-flow-catalogue.md) — Every PBX, contact-centre, outbound/predictive, recording, integration, AI and dispatch flow checked against the BRD/PRD and industry practice, with its design location and build status, and the flows still missing a design (D-94).
+22. [Media and Call-Control Flows](21-media-and-call-control-flows.md) — ARI-level sequences for hold, transfers (blind, attended, phone-initiated), park, pickup, conference, supervisor monitoring, ACD, power/predictive with AMD and abandonment, AI tap and voice agent, recording, screen-pop and WebRTC credentials, with the assessment of the owner's flow research (D-95, D-96).
 
 ---
 
