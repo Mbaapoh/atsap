@@ -333,8 +333,8 @@ are added. HLD-03, HLD-16 and HLD-21 now use exactly this set.
 |---|---|---|---|---|
 | `Invited` | Leg being originated or resolved; no alerting yet | no | no (yes if it is a transfer/consult/recall target) | exists |
 | `Ringing` | Endpoint alerting (SIP 180/183). Was `Alerting` in HLD-21 and LLD-03 | no | as `Invited` | exists |
-| `Connected` | In a conversation bridge (`M`, consult `K`, room), or answered by an in-platform application (IVR, voicemail, queue) | yes | yes | exists |
-| `OnHold` | Out of the conversation, hearing MOH: held by a party, by its own phone's peer, or as the caller during a consult | yes | yes | exists |
+| `Connected` | In a conversation bridge (`M`, consult `K`, room), or answered by an in-platform application (IVR, voicemail) | yes | yes | exists |
+| `OnHold` | Out of the conversation, hearing MOH: held by a party, by its own phone's peer, as the caller during a consult, or waiting in a queue (`hold_origin=queue`, §23.1) | yes | yes | exists |
 | `Parked` | In a park bridge `P`, owning a slot; no other party | yes | yes | **new** |
 | `Transferring` | The **transferee** while a blind-transfer target, recall or fallback rings; hears ringback or MOH | yes | yes | exists (meaning fixed) |
 | `Disconnected` | Terminal. `left_reason` says why. Was `Left` in HLD-03/21 | stops | no | exists |
@@ -396,7 +396,7 @@ moment a party is held or parked; it is replaced by:
 
 | Call kind | Ends when |
 |---|---|
-| `standard` | live parties (table above) ≤ 1 **and** no open operation owns a pending leg (transfer target, recall, consult) **and** the one live party, if any, is not `OnHold`/`Parked`/`Transferring` (those are waiting for someone, §12.9, §16) |
+| `standard` | live parties (table above) ≤ 1 **and** no open operation owns a pending leg (transfer target, recall, consult) **and** the one live party, if any, is not `OnHold`/`Parked`/`Transferring` and not `Connected` to an in-platform application (IVR, voicemail) — those are waiting for someone (§12, §16, §23.1) |
 | `room` (§18) | zero live parties, or the last moderator leaves and the room says so |
 | any, emergency (INV-01) | never by a call-control timer or fallback; only by a party hanging up |
 
@@ -427,6 +427,7 @@ outcomes are immutable (INV-08).
 | `K` consult | `type=mixing` | `atsa-k-<operation_id>` | Life of an attended operation |
 | `P` park | `type=holding` + `POST /bridges/{P}/moh?mohClass=` | `atsa-p-<park operation_id>` | Life of the park |
 | `S` snoop | `type=mixing` | `atsa-s-<monitor_session_id>` | Life of a monitor session |
+| `Q` queue wait | `type=holding` + bridge MOH | `atsa-q-<queue_entry_id>` | While the caller waits in a queue (§23.1, LLD-03 §3.3.1) |
 
 - **Hold has no bridge.** Hold = `POST /bridges/{M}/removeChannel` then
   `POST /channels/{id}/moh?mohClass=<class>`; resume = `DELETE
@@ -633,7 +634,7 @@ ALTER TABLE calls ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'standard'
 ALTER TABLE calls ADD COLUMN merged_into_call_id UUID REFERENCES calls(id);
 ALTER TABLE call_participants
     ADD COLUMN left_reason VARCHAR(32),
-    ADD COLUMN hold_origin VARCHAR(16) CHECK (hold_origin IN ('api','phone','consult','system')),
+    ADD COLUMN hold_origin VARCHAR(16) CHECK (hold_origin IN ('api','phone','consult','queue','system')),
     ADD COLUMN audibility VARCHAR(8) NOT NULL DEFAULT 'full' CHECK (audibility IN ('full','listen','whisper')),
     ADD COLUMN muted BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN ringing_since TIMESTAMPTZ,
@@ -718,6 +719,8 @@ CREATE TABLE monitor_sessions (
 );
 CREATE UNIQUE INDEX monitor_sessions_one_per_supervisor
     ON monitor_sessions (tenant_id, supervisor_principal_id) WHERE ended_at IS NULL;
+CREATE UNIQUE INDEX monitor_sessions_one_per_call      -- LLD-03 §3.17: one monitor per call
+    ON monitor_sessions (tenant_id, call_id) WHERE ended_at IS NULL;
 ```
 
 Each `.down.sql` drops what its `.up.sql` adds, in reverse order.
@@ -1619,6 +1622,157 @@ their designs are final there. Each lands in the OpenSpec change named.
 | `usage_seconds.quality_mos` | [LLD-09 §8](LLD-09-reporting.md) (RC-06) | Migration 0030 also runs `ALTER TABLE usage_seconds ALTER COLUMN quality_mos DROP NOT NULL, ALTER COLUMN quality_mos DROP DEFAULT` (and the same for `quality_jitter`, `quality_loss`): quality comes from RTCP SR/RR windows (`participant.rtcp_window`, SPIKE R-S1), never a fabricated 4.50 |
 | `MaintenanceGate` | [LLD-12 Part B](LLD-12-provisioning-and-lifecycle.md) | Call admission (`Screening`, and arriving-call refusal before it) calls `Admit(ctx, emergency)` first: `ErrDraining` → `RefusalUnavailable` (SIP 503, Q.850 cause 41); emergency always admitted (INV-01). New legs **inside** an existing call (transfer, consult, recall, pickup leg, ad-hoc party) are not call setups and are always admitted (INV-03); a new arriving call for pickup, retrieve or room entry is gated like any other. `ActiveCallStats()` feeds `drain status` |
 
+### 23.1 Queue media for the ACD (LLD-03 §3.3.1–§3.3.3)
+
+`pbx-core` owns entries, the dispatcher, reservations, announcements'
+timing and every queue decision (LLD-03 §3.3). Telephony executes the
+media through two ports and reports outcomes back. The operations below
+are the names LLD-03 uses.
+
+1. **Trigger and actors.** A `HoldInQueue{entry_id, HoldClass}` command at
+   the end of a queue decision's `Program`; then the dispatcher (system)
+   calls `QueueMedia`. The caller has no permission; agents act through
+   their devices.
+2. **Preconditions.** The caller's Participant is live and the call is not
+   already in a queue (one live entry per call, LLD-03's partial unique
+   index; telephony refuses a second `Hold` with `ErrAlreadyQueued`). The
+   call already holds its licence capacity; agent legs are internal legs
+   of the same call and reserve nothing (LLD-03 §3.3.1 item 2). New
+   arriving calls are gated by `MaintenanceGate` before they reach the
+   queue; offers to agents are not.
+3. **Sequence.**
+
+   | Operation | Telephony steps (ARI) | Participant effect |
+   |---|---|---|
+   | `QueueMedia.Hold(entry, call, mohClass)` | `POST /channels/{caller}/answer` (if not yet); create `Q` = `POST /bridges?type=holding&bridgeId=atsa-q-<entry>`; `removeChannel` from `M` if the caller was in it (transfer into a queue); `addChannel` caller to `Q`; `POST /bridges/{Q}/moh?mohClass=`; set channel var `ATSA_QUEUE_ENTRY=<entry>` | caller → `OnHold(queue)` |
+   | `QueueMedia.Announce(entry, prompts)` | `DELETE /bridges/{Q}/moh`; `POST /channels/{caller}/play?media=<p1>,<p2>…&playbackId=qa-<entry>-<n>`; on `PlaybackFinished` (or failure) `POST /bridges/{Q}/moh`; DTMF during MOH or playback → `QueueOutcome.DtmfPressed(entry, digit)` | none |
+   | `QueueMedia.Offer(offer)` | per agent device: new Participant (role `AGENT`, D-87 attribution, `Pickable=false`) `Invited`; `POST /channels/acdo-<offer_id>-<n>?endpoint=…&app=<ARI app>&timeout=<ring_seconds>&callerId=<queue>: <caller>` with `ATSA_*` variables and `ATSA_QUEUE_OFFER=<offer>`. ARI `409` on the explicit id = already sent (idempotent retry, SPIKE-Q3) | agents `Invited → Ringing` |
+   | first agent answers | `StasisStart`/`Up` → `QueueOutcome.Answered(offer_id, principal)` **synchronously**; `Connect` → continue; `Reject` → hang that leg up `answered_elsewhere` | — |
+   | `QueueMedia.Connect(offer, principal)` | optional `POST /channels/{agent}/play?media=<agent_announce>` (agent only); recording consent per LLD-09 (BR-03); `DELETE /bridges/{Q}/moh`, `removeChannel` caller from `Q`, `addChannel` caller and agent to **`M`** (the call's main bridge, kept — LLD-03's "mixing bridge"); destroy `Q`; other legs of the offer `DELETE /channels/{id}?reason_code=26` | caller `OnHold → Connected`; agent `Connected`; siblings `Disconnected(answered_elsewhere)` |
+   | `QueueMedia.Cancel(offer, reason)` | `DELETE` every live leg of the offer (`reason_code=26` for `answered_elsewhere`, else `normal`) | legs `Disconnected(cancelled)` |
+   | no answer / 486 / 603 / 480 | `Dial`/`ChannelDestroyed` cause → `QueueOutcome.Missed(offer_id, principal, cause)` | leg `Disconnected(no_answer\|busy\|rejected\|unreachable)` |
+   | `QueueMedia.Leave(entry, destination)` | `DELETE /bridges/{Q}/moh`, `removeChannel` caller, destroy `Q`; `InboundRouter.Continue{reason: queue_overflow, Destination, Routing}` → run the returned decision | caller `OnHold → Transferring` (plan) or `Connected` (application) |
+   | caller hangs up while queued/offered | `ChannelDestroyed` → `QueueOutcome.CallerLeft(entry)`; cancel the offer's legs; destroy `Q` | caller `Disconnected(normal)` |
+   | agent or caller leaves after connect, or the agent transfers the caller away | `QueueOutcome.Ended(entry, reason)` with `agent_left` / `caller_left` / `transferred` | — |
+   | **Callback** (LLD-03 §3.3.3 steps 5–9) | `Offer` with `Callback{entry, number}` creates a **new** Call (outbound, `service_type=contact_centre`) whose first Participant is the agent; on answer the agent → `OnHold(queue)` with channel MOH; pbx-core then calls `QueueMedia.DialCallback(offer, decision)` (a route plan already gated by LLD-04, capacity and presentation) → the customer leg runs the plan, then the decision's confirm `Program`; on `1` → `Connect` (agent unheld, both in `M`); failure → `QueueOutcome.Missed(offer, customer, cause)` and the agent leg is hung up | as rows above |
+   | `LiveCalls.List(ctx, tenant)` | in-memory calls plus `GET /channels` reconciliation; returns `[{call_id, participant_id, role, state, queue_entry?, queue_offer?, answered_at?}]` from the `ATSA_QUEUE_*` variables, so a new dispatcher can recover after any restart | — |
+
+4. **State machine.** No new Participant states: queued = `OnHold`
+   (`hold_origin=queue`), offered agent legs = `Invited/Ringing`,
+   connected = `Connected`. Entry states are LLD-03's. Telephony's own
+   per-entry media state (pure `NextQueueMediaState`):
+
+   | From | Event | To |
+   |---|---|---|
+   | — | `Hold` | `Waiting` (MOH) |
+   | `Waiting` | `Announce` | `Announcing` |
+   | `Announcing` | `PlaybackFinished` / playback failed | `Waiting` (MOH restarted) |
+   | `Waiting`, `Announcing` | `Connect` | `Bridged` (`Q` destroyed) |
+   | `Waiting`, `Announcing` | `Leave` | `Left` (`Q` destroyed) |
+   | any | caller gone | `Gone` (`Q` destroyed) |
+
+   `Announce` while `Announcing` queues the new prompts after the current
+   ones; `Connect` during `Announcing` stops the playback first.
+5. **Data model.** No new table: entries are LLD-03's `queue_entries`.
+   `call_participants.hold_origin` gains `queue` (migration 0030 check).
+   Correlation survives restarts through `ATSA_QUEUE_ENTRY` /
+   `ATSA_QUEUE_OFFER` channel variables.
+6. **Ports.**
+
+   ```go
+   type QueueMedia interface { // inbound, implemented by telephony, called by pbx-core
+       Hold(ctx context.Context, entry QueueEntryID, call shareddomain.CallID, mohClass string) error // ErrAlreadyQueued, ErrCallGone
+       Announce(ctx context.Context, entry QueueEntryID, prompts []string) error                      // ErrCallGone
+       Offer(ctx context.Context, o QueueOffer) error                                                 // idempotent by OfferID
+       Cancel(ctx context.Context, offer OfferID, reason string) error                                // idempotent
+       Connect(ctx context.Context, offer OfferID, agent shareddomain.PrincipalID) error              // ErrCallGone, ErrOfferGone
+       Leave(ctx context.Context, entry QueueEntryID, dest Destination, routing []byte) error
+       DialCallback(ctx context.Context, offer OfferID, target InboundDecision) error
+   }
+   type QueueOffer struct {
+       OfferID OfferID; Entry QueueEntryID; TenantID shareddomain.TenantID
+       CallID  *shareddomain.CallID           // nil for a callback: telephony creates the call
+       Agents  []OfferedAgent                 // {PrincipalID, ExtensionID, DeviceURIs}
+       RingSeconds int; CallerID, AgentAnnounce string
+       Callback *CallbackTarget               // {Number, Display} for IC-05
+   }
+   type QueueOutcome interface { // outbound, implemented by pbx-core; called synchronously for Answered
+       Answered(ctx context.Context, offer OfferID, agent shareddomain.PrincipalID) (ConnectVerdict, error) // Connect | Reject
+       Missed(ctx context.Context, offer OfferID, who shareddomain.PrincipalID, cause string) error
+       Ended(ctx context.Context, entry QueueEntryID, reason string) error
+       CallerLeft(ctx context.Context, entry QueueEntryID) error
+       DtmfPressed(ctx context.Context, entry QueueEntryID, digit string) error
+   }
+   type LiveCalls interface { List(ctx context.Context, tenant shareddomain.TenantID) ([]LiveCall, error) }
+   ```
+
+   `Answered` has a 2 s deadline: on timeout or error telephony treats the
+   verdict as `Reject` (the agent leg is hung up, the caller keeps waiting,
+   the dispatcher's sweeper restores the entry). Other outcome calls are
+   non-blocking with retry from the event loop's queue (`CallEventSink`
+   rules).
+7. **API.** None on telephony (queue RPCs are LLD-03 §3.3). Errors to
+   pbx-core: `ErrAlreadyQueued`, `ErrCallGone` (caller left before the
+   step), `ErrOfferGone` (offer cancelled or answered), engine failure
+   wrapped as `ErrEngineUnavailable` (pbx-core retries on its 1 s tick).
+8. **Configuration.** All queue values are LLD-03's. Telephony:
+   `QueueOutcome.Answered` deadline 2 s (installation); offer leg channel
+   id prefix `acdo-` fixed.
+9. **Failure and recovery.**
+
+   | Situation | Behaviour |
+   |---|---|
+   | `Q` creation or MOH fails at `Hold` | caller stays in `M` (or unbridged) with channel MOH; `Hold` succeeds degraded; logged. Silence is never left |
+   | Announcement playback fails | MOH restarted at once; `Announce` returns nil (an announcement is not worth an error) |
+   | `Connect`: caller left between `Answered` and bridge | `ErrCallGone`; agent leg hung up; pbx-core ends the entry |
+   | Agent answers after `Cancel` | leg hung up `answered_elsewhere` (LLD-03 "Reject") |
+   | Repeated `Offer` after a dispatcher restart | `409` on the explicit id = already sent; no duplicate leg |
+   | App restart, engine alive | if FL-04 re-adopts, `Q` bridges are found by name and the `ATSA_QUEUE_*` variables rebuild correlation; `LiveCalls.List` feeds LLD-03 recovery (a)–(f). If not, §22's sweep ends the calls and `LiveCalls.List` returns none, so every entry closes `lost` |
+   | Engine restart | callers and legs gone; `LiveCalls.List` empty; LLD-03 recovery closes entries |
+10. **Invariants and events.** INV-03 (an announcement or outcome failure
+    never ends the caller; a queue caller is `OnHold`, so the §11.2 end rule
+    keeps the call while it waits), INV-10 (entry and offer ids are checked
+    against the tenant of the call; `LiveCalls.List` is per tenant), INV-01
+    (an emergency number is never a callback target — LLD-03 refuses it).
+    Events: `call.held`/`call.resumed` with `hold_origin=queue`,
+    `participant.joined/left` (agents), `call.terminated` v2 with
+    `service_type=contact_centre`; queue events are LLD-03's.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | caller answered by a queue decision | `Hold` | caller in `atsa-q-<entry>` with MOH; `OnHold(queue)`; call not ended | U, E |
+    | queued | `Announce([pos, ewt])` | MOH stops, prompts play, MOH back; gap < 300 ms | E (SPIKE-Q2) |
+    | DTMF `1` during MOH | — | `DtmfPressed(entry, "1")` once | U, E |
+    | ring-all offer of two agents | first answers | `Answered` called once; caller and agent in `M`; other leg stopped with no missed call; `Q` destroyed | E |
+    | `Answered` returns `Reject` / times out | — | agent leg hung up; caller still on MOH | U |
+    | offer repeated with the same id | `Offer` twice | one leg per device (409 path) | E (SPIKE-Q3) |
+    | agent no answer 15 s | — | `Missed(…, no_answer)`; caller still queued | U, E |
+    | caller hangs up while offered | — | `CallerLeft`; agent legs cancelled; no `acdo-` channel left | E |
+    | max wait | `Leave(entry, voicemail)` | caller leaves `Q` and reaches voicemail via `Continue` | E |
+    | caller transferred into a queue from an active call | `Hold` | caller removed from `M` into `Q`; transferor already gone; call not ended | U, E |
+    | callback | `Offer{Callback}`, agent answers, `DialCallback`, customer presses 1 | new call; agent heard MOH, then both in `M` | E |
+    | dispatcher restart with an offered entry | `LiveCalls.List` | offer legs and entry ids returned from channel variables | I, E |
+    | tenant B entry id in a tenant A call | `Hold` | refused | U |
+12. **Industry parity.** Asterisk `app_queue` (FreePBX), 3CX queues,
+    VitalPBX and FusionPBX `mod_callcenter` all keep the caller on MOH in
+    the queue, announce position/hold time, ring agents and bridge the
+    first to answer. **Difference:** queue state is durable in Postgres
+    under one dispatcher (no Redis, D-56); telephony keeps one main bridge
+    per call, so a queue call that is later transferred or recorded has one
+    continuous record; callback is agent-first (LLD-03 §3.3.3).
+
+### 23.2 One monitor per call
+
+LLD-03 §3.17 enforces one live monitor per call, and the database backs
+it: migration 0033 adds
+`CREATE UNIQUE INDEX monitor_sessions_one_per_call ON monitor_sessions
+(tenant_id, call_id) WHERE ended_at IS NULL;` next to the per-supervisor
+index. A second `StartMonitor` on the same call fails the insert and
+returns `ErrMonitorBusy` (pbx-core: `FAILED_PRECONDITION` "Someone is
+already monitoring this call."). Test: two supervisors start at once →
+exactly one session (I).
+
 ## 24. Spikes, owner decisions and OpenSpec handoff
 
 | Spike | Question (Asterisk 22.11.0) | Fallback |
@@ -1643,6 +1797,7 @@ hold/resume after SPIKE-CC-2; (2) plan/program runner and `Continue`,
 blind and attended transfer; (3) REFER after SPIKE-CC-1; (4) park and
 pickup with `pbx-pickup-park`; (5) conference (0032) with
 `pbx-conference-rooms`; (6) monitor primitives (0033) after SPIKE-CC-3;
-(7) device state with `pbx-presence`. Recording control and `MediaTap`
+(7) device state with `pbx-presence`; (8) queue media (§23.1) with
+`pbx-queues`, after SPIKE-Q2/Q3. Recording control and `MediaTap`
 land with LLD-09's and LLD-10's changes. Each `pbx-core` counterpart
 lands in the same change or before it.

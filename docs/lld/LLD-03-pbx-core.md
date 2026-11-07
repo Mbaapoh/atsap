@@ -863,7 +863,7 @@ Dispatch (one dispatcher per tenant queue):
 9. **Originate (after commit).** `QueueMedia.Offer{offer_id, entry,
    agents[{principal, devices}], ring_seconds, caller_id}` → telephony
    originates each agent device with an **explicit channel id**
-   `acdo-<offer_id>-<n>` (`POST /channels/{channelId}`, `app=atsapbx`,
+   `acdo-<offer_id>-<n>` (`POST /channels/{channelId}`, `app=<configured ARI app name>` (`voip-app` on the rig),
    `timeout=ring_seconds`, caller ID = the original caller with the
    queue name as the display-name prefix). A repeated originate with the
    same id returns 409 from ARI and is treated as already sent
@@ -877,8 +877,9 @@ Dispatch (one dispatcher per tenant queue):
     when the entry is gone: telephony hangs that leg up with
     `answered_elsewhere`). On `Connect`: optional
     `Play(agent_announce_prompt)` on the agent channel only; recording
-    consent per LLD-09 (BR-03); `POST /bridges?type=mixing`; move caller
-    from the holding bridge and add the agent; cancel the other legs
+    consent per LLD-09 (BR-03); `QueueMedia.Connect` moves the caller from
+    the holding bridge into the call's existing main bridge with the agent
+    (the main bridge is never replaced: D-99, LLD-01 §23.1); cancel the other legs
     (`answered_elsewhere`). The agent's Participant gets role `AGENT`
     and D-87 attribution (extension, principal).
 11. **No answer / reject** (`ring_seconds`, 486, 603, 480): telephony
@@ -886,7 +887,7 @@ Dispatch (one dispatcher per tenant queue):
     `OfferMissed` (§3.1.1 autopause); entry back to `waiting`
     (`RINGNOANSWER` event). The entry is re-offered at once if another
     agent is eligible; otherwise after `retry_seconds` (5 s).
-12. **Completion.** Agent or caller leaves the mixing bridge, or the
+12. **Completion.** Agent or caller leaves the main bridge, or the
     agent transfers the caller away → `QueueOutcome.Ended(entry,
     reason)` → entry `completed` (`COMPLETEAGENT`/`COMPLETECALLER`/
     `TRANSFER`), agent `WorkEnded` → `WrapUp` (queue `wrapup_seconds`).
@@ -901,7 +902,8 @@ primitives exist there and may carry them):
 | `QueueMedia.Hold(entry, call, mohClass)` | Answered caller in a per-caller holding bridge with MOH | `bridges?type=holding`, `addChannel`, `bridges/{id}/moh` |
 | `QueueMedia.Announce(entry, prompts)` | Stop MOH, play the prompt list, restart MOH; a DTMF during playback is reported | `DELETE …/moh`, `channels/{id}/play`, `PlaybackFinished`, `ChannelDtmfReceived` |
 | `QueueMedia.Offer(offer)` / `Cancel(offer, reason)` | Originate/cancel agent legs with explicit ids | `POST /channels/{channelId}`, `DELETE /channels/{id}` |
-| `QueueMedia.Connect(offer, principal)` | Mixing bridge, move caller, add agent, optional agent-only prompt | `bridges?type=mixing`, `addChannel`, `channels/{id}/play` |
+| `QueueMedia.Connect(offer, principal)` | Optional agent-only prompt, then move the caller from the holding bridge into the call's main bridge with the agent (LLD-01 §23.1) | `channels/{id}/play`, `bridges/{id}/removeChannel`, `addChannel` |
+| `QueueMedia.DialCallback(offer, decision)` | New outbound call whose first party is the agent (MOH) until the customer presses 1 (§3.3.3; LLD-01 §23.1) | `channels` originate, `moh`, `addChannel` |
 | `QueueMedia.Leave(entry, destination)` | Leave the holding bridge and continue at a destination (overflow) through `InboundRouter.Continue` | `removeChannel` |
 | `QueueOutcome` (pbx implements) | `Answered`, `Missed`, `Ended`, `CallerLeft(entry)`, `DtmfPressed(entry, digit)` | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
 | `LiveCalls.List()` | Live calls with their entry/offer ids, for recovery | `GET /channels` |
@@ -1192,7 +1194,8 @@ Delivery (**agent-first**):
 8. Originate the caller (route selection §4.1, class `callback_class`);
    on answer `Program`: "This is your callback from <tenant>. Press 1 to
    speak to an agent now." `Collect{1, 10 s}`.
-9. `1` → bridge caller and agent (mixing bridge, as §3.3.1 step 10) →
+9. `1` → caller joins the agent in the callback call's main bridge
+   (`QueueMedia.DialCallback`, LLD-01 §23.1) →
    `connected`; `CALLBACK_CONNECTED`, outbox `pbx.callback_completed`.
 10. No answer (30 s), busy, rejected, unreachable, or no confirmation in
     10 s (answering machines land here) → `callback_attempts + 1`; if <
@@ -1419,8 +1422,9 @@ ahead.
 | SPIKE-Q2 | Announcement on a channel in a holding bridge with bridge MOH: stop/play/restart gap < 300 ms, DTMF received during MOH and playback | §3.3.1 |
 | SPIKE-Q3 | `POST /channels/{channelId}` with a reused id returns 409 on Asterisk 22 and creates nothing | §3.3.1 item 9 |
 
-**Delivery (one OpenSpec change each, after `pbx-ivr-flow-graph` and
-`pbx-presence`):** `pbx-agents` (§3.1.1, `0045`, `*45`/`*46`, reason
+**Delivery (one OpenSpec change each, after `pbx-ivr-flow-graph`,
+`pbx-presence` and `pbx-hot-desk`, because hot-desked agents must ring at
+the desk; order as in §12):** `pbx-agents` (§3.1.1, `0045`, `*45`/`*46`, reason
 codes, `AgentStates` port for LLD-06) → `pbx-queues` (§3.3–§3.3.2,
 §3.3.4–§3.3.5, `0046`–`0048`, `queue` destination kind) →
 `pbx-queue-callback` (§3.3.3) → `pbx-supervision` (§3.17, `0049`, after
@@ -3844,17 +3848,20 @@ after the Phase A console slice exists, per D-46.
 | `pbx-ivr-routing` | B | DID flow, immutable revisions, publish/rollback, UTC business hours and holidays | **Implemented and archived 2026-11-04** (D-89); the DTMF menu/prompt is `pbx-ivr-menu` |
 | `pbx-ivr-menu` | B | Prompt playback, DTMF menu, flow-as-data execution beyond time routing | **Implemented and archived 2026-11-05** (D-90): one menu level, extension destinations |
 | `pbx-ivr-flow-graph` | B | Typed destinations, node-graph revisions, weekly schedules in a time zone, override, re-prompt, direct dial (§3.2.1) | **Proposed 2026-11-07** (D-91); before `pbx-queues` |
+| `pbx-number-inventory` | B | §3.12 owned numbers, evidence, presentation precedence (BR-06, AC-03.16); migration 0035 | **Designed (D-98).** First routing feature, after `pbx-ivr-flow-graph`; unblocks OB-12 (LLD-06) |
+| `pbx-extension-routing` | B | §3.6 forwarding, follow-me, DND; §3.13 codes for them (AC-03.15); 0037, 0039 | **Designed (D-98).** After `pbx-number-inventory` |
+| `pbx-presence` | B | §3.8 presence hub, console stream, `Stasis:` device state (AC-03.3); 0044 part | **Designed (D-98).** After `pbx-extension-routing`; desk BLF after SPIKE-P1 |
+| `pbx-ring-groups` | B | §3.7 six strategies (AC-03.14); 0038 | **Designed (D-98).** After `pbx-presence` (skip busy/DND) |
+| `pbx-voicemail` | B | §3.4 mailboxes, deposit/retrieval, MWI, voicemail to email (US-03.5); 0043 | **Designed (D-98).** After `pbx-ring-groups`; SPIKE-V1 |
+| `pbx-pickup-park` | B | §3.9 pickup groups, §3.10 park lots (AC-03.13); 0040, 0041 | **Designed (D-98).** After `telephony-call-control` (LLD-01) |
+| `pbx-conference-rooms` | B | §3.11; 0042 | **Designed (D-98).** After `telephony-call-control` |
+| `pbx-hot-desk` | B | §3.14 (US-03.4); 0044 part | **Designed (D-98).** After `pbx-voicemail` (shared phone PIN) |
+| `pbx-moh-classes` | B | §3.15; 0036 | **Designed (D-98).** After SPIKE-M1; earlier changes use the installation `default` class |
+| `pbx-agents` | B | §3.1.1 agent states, reason codes, `*45`/`*46`, `AgentStates` port for the dialler; 0045 | **Designed (D-98).** After `pbx-presence` and `pbx-hot-desk`; before LLD-06 `dialer-agent-session` |
+| `pbx-queues` | B | §3.3–§3.3.2, §3.3.4–§3.3.5: queues, members, dispatcher, announcements/EWT, overflow, live view, `queue_events`, `queue` destination kind (IC-01/02/04; OD-7); 0046–0048 | **Designed (D-98).** After `pbx-agents` and `pbx-ivr-flow-graph`; SPIKE-Q2, SPIKE-Q3 |
+| `pbx-queue-callback` | B | §3.3.3 queue callback (AC-03.17) | **Designed (D-98).** After `pbx-queues` and `pbx-number-inventory`; LLD-04 gate kind `QUEUE_CALLBACK` |
+| `pbx-supervision` | B | §3.17 listen/whisper/barge policy, tenant switch, audit (AC-16.1–16.2); 0049 | **Designed (D-98).** After `pbx-queues` and `telephony-call-control` (LLD-01 §20); SPIKE-Q1 |
 | `pbx-ivr-flows` | B | Full flow builder/IVR UI on top of routing and menu | Later |
-| `pbx-queues` | B | ACD queues, §3.1 `Agent` (state, queue membership, hot-desk device), wrap-up | After `pbx-ivr-flow-graph` (adds the `queue` destination kind) |
-| `pbx-voicemail` | B | §3.4: mailboxes, deposit/retrieval, MWI, voicemail to email (US-03.5) | Needs assignment and recording governance |
-| `pbx-number-inventory` | B | §3.12 owned numbers, evidence, presentation precedence (BR-06, AC-03.16) | First of the routing features; unblocks OB-12 |
-| `pbx-extension-routing` | B | §3.6 forwarding, follow-me, DND; §3.13 codes for them (AC-03.15) | After `pbx-ivr-flow-graph` |
-| `pbx-presence` | B | §3.8 presence hub, console stream, custom device state (AC-03.3) | Desk BLF after SPIKE-P1 |
-| `pbx-ring-groups` | B | §3.7 (AC-03.14) | After presence (skip busy/DND) |
-| `pbx-pickup-park` | B | §3.9 pickup groups, §3.10 park lots (AC-03.13) | After `telephony-call-control` |
-| `pbx-conference-rooms` | B | §3.11 | After `telephony-call-control` |
-| `pbx-hot-desk` | B | §3.14 (US-03.4) | After voicemail (shared phone PIN) |
-| `pbx-moh-classes` | B | §3.15 | After SPIKE-M1 |
 
 Each change is proposed, applied, and archived independently. **Do not
 start a change until the previous one's tests pass** — per D-26 and the
