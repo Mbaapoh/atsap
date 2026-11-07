@@ -298,6 +298,38 @@ the usual co-author line.
 | R3 | `ListCalls`/`GetCall` have no role check | An agent can read every call in the tenant | small change, any time | — |
 | R4 | `pbx` keeps growing (IVR, fraud, TURN, health, ownership; `ports.go` 837 lines) | Fraud rules are pure checks that D-21 would place in `compliance` | Revisit when `compliance` (LLD-04) starts | — |
 
+**Console review** (a `code-reviewer` subagent read the console diffs
+of all 11 changes; the two High findings were then confirmed in the code):
+- **Passes:** tsc and oxlint are clean; only generated API clients are
+  used; the OIDC exchange is server-side; the SIP password is in memory
+  only.
+- **High, a live data-loss bug:** `useFlows` drops the menu fields
+  (`console/src/features/flows/adapter.ts:67-70`), so republishing a flow
+  from the Call flows dialog silently deletes its IVR menu.
+- **High:** errors from creating or publishing a flow render behind the
+  open modal (`FlowsPage.tsx:87`), so the user sees nothing.
+- **Medium:**
+  - mistyped menu digits are dropped silently;
+  - the softphone is not cleaned up on sign-out or tenant switch (HLD-19
+    §6);
+  - the in-call view has no DTMF keypad and there is no ringtone;
+  - flow rollback has no confirmation;
+  - the holiday form is shown to non-administrators;
+  - Outbound protection has no field validation and takes caps in raw
+    micros.
+- **Low:** six items (labels, raw enums, engine wording, the Google
+  callback's `returnTo` and error text).
+- **Test gap:** Reports, Call flows, IVR menu, Outbound protection,
+  ownership and Google sign-in have component tests only. There is no
+  browser e2e and no real-API spec, so under the "every tier green" rule
+  those tasks were ticked early.
+
+| # | What | Change | Severity |
+|---|---|---|---|
+| R5 | Call flows republish wipes the menu; hidden dialog errors | `console-review-fixes` (before `pbx-ivr-flow-graph`) | **High** |
+| R6 | Browser e2e / real-API specs for Reports, Call flows, Outbound protection, ownership, Google (stub IdP) | `console-review-fixes` | **High** (proof debt) |
+| R7 | The Medium/Low console findings above | `console-review-fixes`; the softphone DTMF/ringtone may need its own change | Medium |
+
 **Spec hygiene:** two main specs created in this batch
 (`pbx-core/call-flows`, `reporting/call-records`) were structurally
 invalid for OpenSpec. They are repaired; `openspec validate --specs
