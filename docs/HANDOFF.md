@@ -57,6 +57,11 @@ against the BRD, PRD, HLD and vendor practice.
 - `LLD-03` §3.2.1 (shipped versus the target IVR).
 - `HLD 04` §5 (reporting implementation status).
 - `PRIOR-ART` (IVR sources, and the CDR claim corrected).
+- **OpenSpec repair.** The main specs `pbx-core/call-flows` and
+  `reporting/call-records` had no `## Purpose`/`## Requirements` sections,
+  so OpenSpec could not parse their requirements and would have refused
+  the next archive. Both are repaired, and `openspec validate --specs
+  --strict` passes 22/22. **Run it before every archive.**
 
 **Process drift to stop.** From 2026-11-02 each change landed as one
 squashed commit, and two commits bundle two changes each. From

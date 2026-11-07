@@ -298,6 +298,11 @@ the usual co-author line.
 | R3 | `ListCalls`/`GetCall` have no role check | An agent can read every call in the tenant | small change, any time | — |
 | R4 | `pbx` keeps growing (IVR, fraud, TURN, health, ownership; `ports.go` 837 lines) | Fraud rules are pure checks that D-21 would place in `compliance` | Revisit when `compliance` (LLD-04) starts | — |
 
+**Spec hygiene:** two main specs created in this batch
+(`pbx-core/call-flows`, `reporting/call-records`) were structurally
+invalid for OpenSpec. They are repaired; `openspec validate --specs
+--strict` now passes 22/22.
+
 **Process drift (not a design issue):** each of the 11 changes landed as
 one squashed commit (two commits bundle two changes each), and the
 changes have only 4 to 6 coarse tasks. That breaks the "one commit per
