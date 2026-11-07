@@ -54,97 +54,113 @@ catalogue says so.
 
 ## 1. Call control (`telephony-core`; PRD US-03.2, AC-03.2)
 
-Every flow below keeps these rules:
+Every flow below keeps these rules (detail, states, DDL, RPCs and tests:
+[LLD-01 §11–§24](../lld/LLD-01-telephony-core-walking-skeleton.md)):
 - the **Participant** (not the channel) is the domain identity across
-  bridges (D-17, D-32);
-- usage seconds keep accruing per Participant (D-24);
+  bridges (D-17, D-32). States: `Invited`, `Ringing`, `Connected`,
+  `OnHold`, `Parked`, `Transferring`, `Disconnected` (HLD-16 §4);
+- the call's main bridge `M` is **never replaced**: parties are added to
+  and removed from it, so a bridge recording is continuous;
+- usage seconds keep accruing per Participant (D-24); `OnHold`, `Parked`
+  and `Transferring` are billable;
+- `pbx-core` decides (destinations as ring plans, recalls and fallbacks
+  through `InboundRouter.Continue`, lots, groups, rooms); `telephony-core`
+  executes (LLD-03 §3.5.1);
 - an engine failure mid-operation leaves every party in a known bridge
-  or hung up, never orphaned (HLD-16 §5).
+  or hung up, never orphaned (LLD-01 §22).
 
 ### 1.1 Hold and resume
 
 ```text
-Bridge M [A ⇄ B] ── B presses Hold (API or phone re-INVITE) ──►
-  remove A from M; add A to holding bridge H_A (type=holding); start MOH (tenant class)
-Resume: remove A from H_A; add A back to M
+Bridge M [A ⇄ B] ── B holds (API) ──►
+  remove A from M; POST /channels/{A}/moh (tenant or object class)   — no extra bridge
+Resume: DELETE /channels/{A}/moh; add A back to M
 ```
 
-- `HoldParticipant` sets the Participant sub-state to `OnHold` (HLD-16
-  §4).
-- A phone's own hold (sendonly re-INVITE) is reflected from engine
-  events and does not move bridges.
-- If the holder hangs up, the held party is not left in silence: the
-  call's hold-recall rule rings the holder back or follows a fallback
-  destination.
+- A → `OnHold`; a `hold` operation row makes "already held" impossible.
+- **Phone hold** (sendonly re-INVITE, ARI `ChannelHold`): the engine
+  plays MOH to the held party too (decided; industry behaviour). The
+  bridge is not moved; SPIKE-CC-2 confirms this, else the platform holds
+  the peer as for an API hold.
+- If the holder hangs up, the held party hears MOH while the platform
+  rings the holder back and then follows their no-answer rule; it is
+  never left on MOH with nobody behind it. A reminder tone reaches the
+  holder every 120 s (default).
 
 ### 1.2 Blind (cold) transfer
 
 ```text
 M [A ⇄ B]; B transfers A to destination D
-  1. resolve D through the D-91 destination registry (extension, queue, flow, external…)
-  2. originate C toward D; A hears ringback (MOH optional)
-  3. remove B from M (B's Participant → Left, reason transferred)
-  4. on C answer: add C to M → M [A ⇄ C]
-  5. on C failure/timeout: follow D's no-answer rule (voicemail, recall B, fallback)
+  1. pbx-core resolves D (D-91) into a ring plan, program or feature
+  2. A → Transferring (ringback); B leaves (Disconnected, transferred)
+  3. plan legs originated toward C; first answer is added to M → M [A ⇄ C]
+  4. no answer: the plan's terminal (target's rule, or recall B after 15 s), then the tenant fallback
 ```
 
 An external D passes outbound class and fraud screening (D-82, D-85)
-exactly like a placed call.
+exactly like a placed call. `redirect` is not used (§0).
 
 ### 1.3 Attended (consultative) transfer
 
 ```text
-M [A ⇄ B] → hold A in H_A (§1.1)
-B consults: originate C → bridge K [B ⇄ C]
-  complete: move A from H_A into K, remove B → K [A ⇄ C]; destroy M
-  cancel:   hang up C, move A back into M
-  C declines/no answer: B returns to A (resume)
-Variant "three-way then drop": add A to K before B leaves (§1.6)
+M [A ⇄ B] → A OnHold (channel MOH, out of M)
+B consults: B moves to consult bridge K; originate C → K [B ⇄ C]
+  swap:     B moves between M and K; whoever B leaves hears MOH
+  complete: C moves into M, A resumes, B leaves → M [A ⇄ C]; K destroyed
+  cancel / C declines / C hangs up: C gone, B back to M with A
+  B hangs up while consulting: completes (drop-completes, FreePBX/3CX parity)
+Variant "three-way then drop": add C to M, then B hangs up
 ```
+
+A keeps one Participant throughout; C is a new Participant on the same
+call; "consulting" is an operation state, not a Participant state.
 
 ### 1.4 Phone-initiated transfer (SIP REFER from a desk phone or softphone)
 
 Desk phones transfer with their own button and send REFER, so the
 platform must handle it, not only API-initiated transfers.
-- **Target:** the engine hands the REFER to the Stasis application, and
-  the platform runs §1.2 or §1.3, so the Participants stay consistent.
-- **Spike first:** confirm that the pinned Asterisk 22 version exposes
-  ARI-side transfer handling (an endpoint transfer-handling option and
-  `ChannelTransfer`-style events).
-- **Fallback:** let Asterisk perform the transfer natively and reconcile
-  from `BridgeBlindTransfer` / `BridgeAttendedTransfer` events.
+- **Primary:** endpoints projected with `transfer_handling=ari-only`;
+  Asterisk raises `ChannelTransfer`; the platform resolves `Refer-To`
+  like a dialled number and runs §1.2 or §1.3, reporting
+  `transfer_progress` back to the phone. An attended REFER with
+  `Replaces` merges the phone's consult call into the original call.
+- **Fallback** (SPIKE-CC-1 fails): Asterisk performs the transfer
+  natively; the platform reconciles from `BridgeBlindTransfer` /
+  `BridgeAttendedTransfer` and the channels' correlation variables.
 
 ### 1.5 Park, retrieve, timeout
 
 ```text
-B parks A: allocate slot S in tenant lot L (Postgres row, unique tenant+lot+slot)
-  move A to holding bridge P_S with MOH; announce S to B (prompt or UI); B is free
-Retrieve: any tenant user dials the lot's retrieve code + S (or BLF/console click)
-  → answer retriever R; move A into new bridge [A ⇄ R]; free S
-Timeout (default 60 s per lot): ring B ("comeback"); if no answer → lot fallback destination
+B parks A: pbx-core claims slot S in tenant lot L (Postgres, unique tenant+lot+slot)
+  A → Parked: holding bridge P_S with MOH; slot announced to B (attended) or shown (console, lamp); B leaves
+Retrieve: a tenant user dials S (or BLF/console) → A and retriever R in M; slot freed
+Timeout (default 60 s per lot): Continue(park_timeout) → ring the parker 20 s → lot fallback
 ```
 
-Slots never cross tenants (INV-10). An engine restart drops parked
-channels: the slot rows are swept by reconcile and the call is recorded
-as `parked_lost`.
+Slots never cross tenants (INV-10). Retrieve-versus-timeout races are
+decided by one conditional update on the slot row. An engine restart
+drops parked channels: the park is recorded as `parked_lost`.
 
 ### 1.6 Conference
 
 - **Ad hoc:** the third party is originated into the existing mixing
-  bridge M.
-- **Rooms:** a tenant-owned room (number, PIN, moderator rules) is a
-  persistent bridge created on first entry and destroyed at the last
-  leave. It is a D-91 destination kind `conference`.
+  bridge M; Asterisk switches the mixing technology itself, so no bridge
+  upgrade is needed (default cap: 5 parties).
+- **Rooms:** a tenant-owned room (number, PIN, moderator rules) is one
+  Call of kind `room` with N Participants, created on first entry and
+  ended at the last leave. `pbx-core` checks the PIN; telephony joins,
+  mutes, removes and locks. It is a D-91 destination kind `conference`.
 - Recording consent (BR-03) is announced to every entrant when the room
-  records.
+  records. Each entrant is a call for licensing.
 
 ### 1.7 Pickup
 
-When an extension is ringing (Participant `Alerting`), a user in the same
-pickup group dials the pickup code (directed: code + extension). The
-platform answers the picker's channel, cancels the ringing leg (`reason
-picked_up`) and bridges the caller with the picker. Group membership is a
-`pbx-core` concept.
+When an extension is ringing (Participant `Ringing`), a user in the same
+pickup group dials the pickup code (directed: code + extension).
+`pbx-core` picks the oldest ringing call; telephony claims it atomically,
+ends the rung leg (`left_reason=picked_up`, "answered elsewhere") and
+bridges the caller with the picker, who is recorded as the answering
+party (AC-03.13). Group membership is a `pbx-core` concept.
 
 ## 2. Supervisor monitoring (`telephony-core` with `pbx-core` agents; PRD EPIC-16)
 
@@ -225,13 +241,17 @@ beyond the call, which is correct for an IVR.
 
 ## 6. AI audio (`ai-pipeline`; LLD-10; D-23, D-96)
 
-**Listening AI** (transcription, assist, quality):
+**Listening AI** (detail: LLD-10 AI-01):
 
 ```text
-Participant connected → AITap (no-op if AI disabled for the tenant)
-  snoop (spy=in|out per speaker) → externalMedia (slin16; AudioSocket or RTP encapsulation)
-  → provider adapter (tenant's choice) → transcript segments → events
+participant.joined event → ai-pipeline AITap (no-op if AI is disabled for the tenant; telephony never calls ai-pipeline)
+  per speaker: snoop spy=in&whisper=none → private mixing bridge
+    → externalMedia format=slin16&encapsulation=rtp&transport=udp → the app's loopback relay
+  → provider adapter (tenant's choice; each adapter converts to its provider's format)
+  R1.0 ends at the provider stream; transcripts and summaries are R2 (AI-03)
 ```
+
+AudioSocket is used only if spike §10.2 proves it at slin16.
 
 - The call never waits on the tap.
 - A failure stops the tap, never the call.
@@ -253,20 +273,28 @@ destination kind ai_agent (D-91 registry) → answer → externalMedia bidirecti
 
 1. **Consent first:** the announcement plays and finishes *before*
    recording starts (BR-03).
-2. **Recording:** `bridges/{id}/record` gives a mixed recording, or
-   per-participant snoop recordings give separated channels (R3).
-3. **Storage:** the file is moved from the engine to the tenant's object
-   store, encrypted, with retention metadata.
+2. **Recording (R1.0):** a mixed recording from `bridges/{id}/record` on
+   the call's main bridge, with a new segment on each bridge change.
+   Separated per-participant snoop recordings are R3.
+3. **Storage:** the file is fetched with `GET
+   /recordings/stored/{name}/file`, its SHA-256 is checked, it is
+   uploaded encrypted to the tenant's object store with retention
+   metadata, and then `DELETE /recordings/stored/{name}` removes it from
+   the engine (LLD-09 RC-01).
 4. **Access:** every access is audited with a reason (BR-04).
-5. **Pause/resume** for card payments (RC-07) uses the live-recording
-   pause, and the gap is recorded in the metadata.
+5. **Pause for card payments** (RC-07) uses `POST
+   /recordings/live/{name}/mute`, not pause: the recording keeps its
+   timeline and writes silence. The AI-tap snoop is deleted in the same
+   operation, and the interval is stored in the metadata (LLD-09 RC-07;
+   spike R-S2).
 
 ## 8. Integration and screen-pop (`integration`; LLD-05; EPIC-05/17)
 
 ```text
 telephony-core / pbx-core / dialer domain events → transactional outbox → NATS (tenant.<id>.event.call.*)
-  ├─ webhook-delivery (R1.0): signed, retried, replayable (LLD-05)
-  ├─ console event stream: agent UI receives "call offered/answered" + caller context
+  ├─ webhook-delivery (R1.0): Standard Webhooks signatures; retries at +1 m, 5 m, 15 m, 1 h, 6 h, 24 h;
+  │    Unhealthy after 3 failures, Disabled at 24 h; replayable (LLD-05)
+  ├─ console/partner event stream: EventService.StreamEvents (ConnectRPC server stream, resume cursor; LLD-05 IN-03)
   └─ integration connectors (R2): per-tenant CRMProvider adapter (FetchContactByNumber,
      WriteActivity); result → screen-pop payload on the agent's stream; failures never touch the call
 ```
@@ -290,12 +318,27 @@ telephony-core / pbx-core / dialer domain events → transactional outbox → NA
 ## 10. Open spikes (before the owning LLD is finalised)
 
 1. Phone-initiated transfer handling in Stasis on the pinned Asterisk 22
-   (§1.4).
-2. `externalMedia` with AudioSocket at slin16: latency, and its
-   behaviour when the consumer stalls (§6, AI-01).
-3. Snoop whisper direction semantics verified by recording (AC-16.1).
+   (§1.4): `transfer_handling=ari-only`, `ChannelTransfer`,
+   `transfer_progress` (LLD-01 SPIKE-CC-1).
+2. `externalMedia` for the AI tap (§6, AI-01; LLD-10 SPIKE AI-S1):
+   latency and behaviour when the consumer stalls; RTP `slin16` **byte
+   order**, packetisation and payload type; the accepted **`direction`**
+   values; whether AudioSocket carries slin16 and whether
+   **`chan_websocket`** is present.
+3. Snoop whisper direction semantics verified by recording (AC-16.1;
+   LLD-01 SPIKE-CC-3).
 4. A talk-detection AMD baseline: accuracy and decision time against the
    2-second connect limit (§4).
+5. A phone's own hold in an ARI mixing bridge plays MOH to the held peer
+   (two-party and three-party) (§1.1; LLD-01 SPIKE-CC-2).
+6. BLF subscriptions to ARI-controlled `Stasis:` device states through a
+   static pattern hint, without generated dialplan (LLD-03 SPIKE-P1).
+7. **R-S1:** AMI `RTCPReceived`/`RTCPSent` for chan_pjsip (UDP and WebRTC
+   rtcp-mux) with report blocks and RTT, and `CHANNEL(rtpqos,…)` at
+   hangup (§7; LLD-09 RC-06).
+8. **R-S2:** live-recording `mute` writes silence and keeps the timeline,
+   and the muted state is observable after an app restart (§7 pause;
+   LLD-09 RC-07).
 
 ## Traceability
 

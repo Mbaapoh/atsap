@@ -29,7 +29,8 @@ In AtsaPBX, telephony is modeled around persistent business concepts, not transi
 |  - tenant_id: UUID                                                      |
 |  - role: Caller | Agent | IVR | Queue | Supervisor | Specialist | AI    |
 |  - endpoint_uri: string (e.g. "sip:101@tenant.atsapbx", "tel:+15550100")|
-|  - state: Invited | Ringing | Connected | OnHold | Transferring | Left  |
+|  - state: Invited | Ringing | Connected | OnHold | Parked |             |
+|           Transferring | Disconnected                                   |
 |  - joined_at, answered_at, left_at: Timestamp                           |
 |  - billable_seconds: int                                                |
 +-------------------------------------------------------------------------+
@@ -97,16 +98,20 @@ Each `CallParticipant` executes its own lifecycle independently of the parent Ca
 
 ```text
 [Invited] ──> [Ringing] ──> [Connected] ──> [OnHold] ──> [Connected] ──> [Disconnected]
-                                 │                            ▲
-                                 └──> [Transferring] ─────────┘
+                                 │  ├──> [Parked] ────────────▲
+                                 │  └──> [Transferring] ──────┘
+                                 (any non-terminal state ──> [Disconnected])
 ```
 
 1. **`Invited`:** Participant created, endpoint resolution in progress.
 2. **`Ringing`:** Destination alerted (SIP 180 Ringing received).
 3. **`Connected`:** Audio bridged. Billable timer starts.
 4. **`OnHold`:** Participant placed on hold (MOH stream bridged). Participant remains billable.
-5. **`Transferring`:** Attended transfer in progress. Handover channels negotiating.
-6. **`Disconnected`:** Participant left the call. Billable timer stops. Record locked.
+5. **`Parked`:** Participant waiting in a park slot. Remains billable.
+6. **`Transferring`:** The transferee while a blind-transfer target, recall or fallback rings. Remains billable.
+7. **`Disconnected`:** Participant left the call (`left_reason` says why). Billable timer stops. Record locked.
+
+Canonical set, transitions and `left_reason` values: [LLD-01 §11.2](../lld/LLD-01-telephony-core-walking-skeleton.md).
 
 > [!NOTE]
 > **Participant Independence Rule (PRD §11.1):**
@@ -120,29 +125,30 @@ When a call is transferred (blind or attended), Asterisk creates new channels an
 
 ```text
 1. Initial State:
-   Call A: [Participant 1 (Caller)] <── Bridge 100 ──> [Participant 2 (Agent A)]
-            └─ Channel: PJSIP/car-01                    └─ Channel: PJSIP/agent-01
+   Call A: [Participant 1 (Caller)] <── main Bridge 100 ──> [Participant 2 (Agent A)]
+            └─ Channel: PJSIP/car-01                         └─ Channel: PJSIP/agent-01
 
-2. Agent A initiates Attended Transfer to Agent B:
-   - Agent A puts Participant 1 OnHold (Participant 1 bridged to MOH).
-   - Agent A originates consultation call to Agent B:
-     Call B (Internal): [Participant 3 (Agent A)] <── Bridge 200 ──> [Participant 4 (Agent B)]
-                         └─ Channel: PJSIP/agent-01-cons             └─ Channel: PJSIP/agent-02
+2. Agent A starts an attended transfer to Agent B (LLD-01 §14):
+   - Participant 1 → OnHold (MOH on the channel; it stays in Bridge 100).
+   - A consult operation (call_operations row) originates Agent B:
+     consult Bridge 200: [Agent A's consult channel] <──> [Participant 3 (Agent B), Ringing → Connected]
 
-3. Agent A Completes Transfer:
-   - ACL receives Asterisk BridgeMerge / ARI ChannelMove.
-   - ACL moves Channel PJSIP/agent-02 into Bridge 100.
-   - ACL records ChannelHistory entry for Participant 2: channel replaced with PJSIP/agent-02.
-   - Participant 1 takes off hold.
-   - Call B is Terminated.
-   - Participant 1 and Participant 2 remain the SAME domain entities in Call A.
+3. Agent A completes the transfer:
+   - Participant 3 (Agent B) is moved into the main Bridge 100; the consult bridge is destroyed.
+   - Participant 2 (Agent A) → Disconnected, reason `transferred`.
+   - Participant 1 → Connected (off hold). Its participation, channel history and
+     billable duration continue unbroken in Call A.
    - Resulting State:
-     Call A: [Participant 1 (Caller)] <── Bridge 100 ──> [Participant 2 (Now Agent B)]
-              └─ Channel: PJSIP/car-01                    ├─ ChannelHistory 1: PJSIP/agent-01 (Closed)
-                                                          └─ ChannelHistory 2: PJSIP/agent-02 (Active)
+     Call A: [Participant 1 (Caller)] <── Bridge 100 ──> [Participant 3 (Agent B)]
+              └─ ChannelHistory: PJSIP/car-01 (Active)   └─ attributed to Agent B's extension owner
+             [Participant 2 (Agent A): Disconnected, transferred, its own duration closed]
 ```
 
-The billable duration for Participant 1 and Participant 2 continues unbroken. Usage is never split into multiple calls, and double-billing is prevented.
+The caller's participation is continuous (D-17): one Participant, one
+unbroken duration, never split into two calls. Each agent is a separate
+Participant with its own duration and attribution (D-87, D-88, D-99), so
+"how many minutes did Agent B handle" has an exact answer. The main
+bridge is never replaced, so recording continues through the transfer.
 
 ---
 
@@ -360,7 +366,7 @@ CREATE TABLE IF NOT EXISTS call_participants (
     call_id UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
     role VARCHAR(50) NOT NULL,     -- CALLER, AGENT, IVR, QUEUE, SUPERVISOR, SPECIALIST, AI
     endpoint_uri VARCHAR(255) NOT NULL,
-    state VARCHAR(50) NOT NULL,    -- Invited, Ringing, Connected, OnHold, Transferring, Disconnected
+    state VARCHAR(50) NOT NULL,    -- Invited, Ringing, Connected, OnHold, Parked, Transferring, Disconnected
     joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     answered_at TIMESTAMPTZ,
     left_at TIMESTAMPTZ,

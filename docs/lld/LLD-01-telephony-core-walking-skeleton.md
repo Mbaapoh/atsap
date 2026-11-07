@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Bounded context** | `telephony-core` (Tier 0 — see [`04-bounded-contexts.md` §10](../hld/04-bounded-contexts.md#10-bounded-context-build--dependency-graph)) |
-| **Status** | Implemented & archived — behavior lives in [`openspec/specs/telephony-core/call-lifecycle/spec.md`](../../openspec/specs/telephony-core/call-lifecycle/spec.md); change artifacts under `openspec/changes/archive/2026-09-07-telephony-core-originate-bridge-hangup/` |
+| **Status** | §1–§10: implemented & archived. §11–§24 (2026-11-07): call-control design to the Flow Definition of Ready, not built. Archived skeleton — behavior lives in [`openspec/specs/telephony-core/call-lifecycle/spec.md`](../../openspec/specs/telephony-core/call-lifecycle/spec.md); change artifacts under `openspec/changes/archive/2026-09-07-telephony-core-originate-bridge-hangup/` |
 | **Traces to** | BRD FBR-R1-01/§7.1; PRD EPIC-03 (calling only, no IVR yet), PRD §11.1 (Call lifecycle), PRD §11.1/T-5 (participant continuity); TRD Domain model; HLD [01-architecture.md](../hld/01-architecture.md), [03-domain-model.md](../hld/03-domain-model.md), [04-bounded-contexts.md §1](../hld/04-bounded-contexts.md); DECISIONS D-15–D-20, D-25, D-26, D-32 |
 | **Why this is LLD-01** | D-25 (spike before spec), D-26 (prove the media path before building on assumptions about it). Every other bounded context — `pbx-core` for real routing, `dialer` for the predictive/power dialler, `compliance`, `reporting` — either calls into `telephony-core` or reacts to its events. Nothing else can be honestly specified until a real two-party call has gone `Initiated → Active → Terminated` through this code. |
 
@@ -103,7 +103,7 @@ type CallParticipant struct {
     TenantID        shared.TenantID
     Role            ParticipantRole // Caller | Agent | IVR | Queue | Supervisor | Specialist | AI
     EndpointURI     string
-    State           ParticipantState // Invited | Ringing | Connected | OnHold | Transferring | Disconnected
+    State           ParticipantState // Invited | Ringing | Connected | OnHold | Parked | Transferring | Disconnected (canonical set: §11.2)
     JoinedAt        time.Time
     AnsweredAt      *time.Time
     LeftAt          *time.Time
@@ -301,19 +301,1348 @@ that preceded the change already relocated `ari`/`ami` under
 `internal/telephony/acl` and created the skeleton package directories, so
 tasks 5.1/5.2 are satisfied in the working tree before apply begins.
 
-## 11. Call control beyond the walking skeleton (2026-11-07)
+## 11. Call control: shared model (revision 2026-11-07)
 
-`HoldParticipant` and `TransferParticipant` return `ErrNotImplemented`.
-Their designs are in HLD-21 §1:
-- hold and music on hold;
-- blind transfer by originate-and-swap (not ARI `redirect`, which leaves
-  the engine);
-- attended transfer through a holding bridge and a consult bridge;
-- phone-initiated REFER handling, which needs a spike first;
-- park, pickup and conference.
+Sections 11–24 refine [HLD-21 §1–§2](../hld/21-media-and-call-control-flows.md)
+into the twelve-item Flow Definition of Ready ([README.md](README.md), D-98)
+for the OpenSpec change `telephony-call-control`. Sections 11, 22 and 23 hold
+what every flow shares; each flow section (12–20) states its own items
+and points at the shared tables instead of repeating them.
 
-Supervisor snoop is in §2. The Participant stays the identity across
-bridges (D-17, D-32). The next telephony LLD revision turns these
-sequences into ports and states before `telephony-call-control` is
-proposed.
+**Test tier tags** (TESTING.md §8): **U** unit (pure, hermetic) · **I**
+integration (Postgres `atsapbx_test`) · **W** wire (ConnectRPC handler
+contract) · **E** e2e (rig: Asterisk 22.11.0 + Postgres + NATS) · **C**
+console component · **B** browser (Playwright) · **A** acceptance/UAT
+against a PRD criterion.
 
+### 11.1 Ownership split
+
+| Concern | Owner | How it crosses |
+|---|---|---|
+| Bridges, channels, MOH, snoop, device-state writes, Participant states, operation rows, parked-call rows, timers that move media | `telephony-core` (this LLD) | — |
+| Who may do what, destination resolution (D-91) into a `RingPlan`/`Program`, outbound class and fraud screening of an external target, feature codes, recall and fallback chains, park lots **and slot allocation (`parked_calls`)**, pickup groups and candidate selection, rooms and PIN checks, MOH classes, monitoring policy and its audit, presence and lamp values | `pbx-core` ([LLD-03 §3.5–§3.15](LLD-03-pbx-core.md)) | Console RPCs live on `PbxService` (the `PlaceCall` precedent): `pbx-core` authorises, resolves, then calls the telephony inbound ports `CallControl` and `ConferenceControl` (§11.5). Phone-originated actions and every recall/fallback enter telephony first and ask `pbx-core` through `InboundRouter.ResolveInbound` / `InboundRouter.Continue`, the LLD-03 §4.2 pattern. Telephony reports facts back in process through `CallEventSink` |
+| Capacity | `licensing` via `LicenseManager` | Reservation keys per §11.8 |
+| Recording start/stop/pause | LLD-09 | Recording is on the call's main bridge `M`, which every flow keeps (§11.4), so call control never restarts it |
+
+### 11.2 Canonical Participant states (resolves the audit finding)
+
+The code's names are kept (`api/internal/telephony/domain/types.go`); two
+are added. HLD-03, HLD-16 and HLD-21 now use exactly this set.
+
+| State | Media position | Billable (usage ticks) | Counts as "live" for the end rule | Code today |
+|---|---|---|---|---|
+| `Invited` | Leg being originated or resolved; no alerting yet | no | no (yes if it is a transfer/consult/recall target) | exists |
+| `Ringing` | Endpoint alerting (SIP 180/183). Was `Alerting` in HLD-21 and LLD-03 | no | as `Invited` | exists |
+| `Connected` | In a conversation bridge (`M`, consult `K`, room), or answered by an in-platform application (IVR, voicemail, queue) | yes | yes | exists |
+| `OnHold` | Out of the conversation, hearing MOH: held by a party, by its own phone's peer, or as the caller during a consult | yes | yes | exists |
+| `Parked` | In a park bridge `P`, owning a slot; no other party | yes | yes | **new** |
+| `Transferring` | The **transferee** while a blind-transfer target, recall or fallback rings; hears ringback or MOH | yes | yes | exists (meaning fixed) |
+| `Disconnected` | Terminal. `left_reason` says why. Was `Left` in HLD-03/21 | stops | no | exists |
+
+**Rules.**
+- `Transferring` belongs to the **transferee** (A), never the transferor.
+  The transferor (B) goes `Connected → Disconnected(transferred)`. The
+  target (C) is a **new** Participant: a different person is a different
+  participation (PRD T-5, D-17). HLD-16's "Transferring → Connected, same
+  participant" is A's path. HLD-03 §3's example that reuses Agent A's
+  Participant for Agent B is superseded by this rule.
+- **No `Consulting` or `PickedUp` participant state.** A consult is an
+  operation (§11.3): during it the caller is `OnHold` and the transferor
+  and target are `Connected` in `K`. A picked-up leg is `Disconnected`
+  with `left_reason=picked_up`, and the picker is a new `Connected`
+  Participant.
+- **Mute is a flag** (`muted`), not a state (unchanged).
+- **Monitoring supervisors** (listen/whisper) are `Connected` Participants
+  with role `SUPERVISOR` and `audibility` `listen|whisper`; they never count
+  as live. A barging supervisor (`audibility=full`) counts.
+- **Renames are documentation only.** No code or row ever stored `Left`
+  or `Alerting`, so no data migration is needed. Migration 0030 adds a
+  `CHECK` constraint on the final set. LLD-03's `Alerting`/`Left` (§3.5.1
+  `CallEventSink`, §3.8, §3.9) read as `Ringing`/`Disconnected`, and its
+  `ErrNotAlerting` is telephony's `ErrNotRinging`.
+
+**Transition table** (pure: `domain.NextParticipantState(from, ev) (to, error)`).
+Unlisted pairs return `ErrInvalidTransition`. Any non-terminal state also
+goes to `Disconnected` on `Left(reason)`.
+
+| From | Event | Guard | To | Side effect |
+|---|---|---|---|---|
+| — | `Created` | call not Terminated | Invited | — |
+| Invited | `Alerted` | — | Ringing | `ringing_since` set |
+| Invited, Ringing | `Answered` | bridged or app-answered | Connected | `answered_at`; ticks start; `participant.joined` |
+| Invited, Ringing | `Failed(busy/no_answer/rejected/unreachable/cancelled)` | — | Disconnected | `left_reason`; no ticks |
+| Ringing | `PickedUp` | a picker claimed this leg (§17) | Disconnected | `left_reason=picked_up` |
+| Ringing | `AnsweredElsewhere` | sibling leg answered (ring group, pickup) | Disconnected | `left_reason=answered_elsewhere` |
+| Connected | `Held(origin)` | not already held | OnHold | `hold_origin`; `call.held` |
+| OnHold | `Resumed` | the hold's operation is open | Connected | `call.resumed` |
+| Connected, OnHold | `Parked(slot)` | slot reserved | Parked | `call.parked` |
+| Parked | `Retrieved` / `RecallAnswered` | park row won (§16) | Connected | `call.unparked` |
+| Connected, OnHold | `BlindTransferStarted` | subject of the operation | Transferring | `call.transfer_started` |
+| Transferring | `TargetAnswered` | — | Connected | `call.transferred` |
+| Transferring | `FallbackToApplication` | fallback is voicemail/IVR/queue | Connected | counterpart is the application |
+| OnHold | `ConsultCompleted` | subject of an attended op | Connected | `call.transferred` |
+| Connected | `Rehomed(newCall)` | §11.6 | Disconnected | `left_reason=rehomed`; a new Participant on the new call continues the same channel |
+| any non-terminal | `Left(reason)` | — | Disconnected | `left_at`; ticks stop; `participant.left` |
+
+**`left_reason` values:** `normal`, `api_hangup`, `transferred`, `parked`,
+`picked_up`, `answered_elsewhere`, `cancelled`, `busy`, `no_answer`,
+`rejected`, `unreachable`, `rehomed`, `kicked`, `pin_failed`,
+`hold_abandoned`, `monitor_stopped`, `engine_lost`, `app_restart`.
+
+**Call end rule (replaces "fewer than two Connected").** Pure:
+`(c *Call) EndDecision() (end bool, reason string)`. The code's current
+rule (`connectedCount() < 2`, `transitions.go`) would end a call the
+moment a party is held or parked; it is replaced by:
+
+| Call kind | Ends when |
+|---|---|
+| `standard` | live parties (table above) ≤ 1 **and** no open operation owns a pending leg (transfer target, recall, consult) **and** the one live party, if any, is not `OnHold`/`Parked`/`Transferring` (those are waiting for someone, §12.9, §16) |
+| `room` (§18) | zero live parties, or the last moderator leaves and the room says so |
+| any, emergency (INV-01) | never by a call-control timer or fallback; only by a party hanging up |
+
+### 11.3 The call-control operation (new aggregate)
+
+Every multi-step action is one `CallOperation` row. It says what was in
+flight when something fails (§22), and its partial unique indexes make
+"already held" and "two transfers at once" impossible.
+
+| Kind | States (→ terminal outcome) |
+|---|---|
+| `hold` | `Held` → `Resumed` · `Recalling` → `Resumed` · `FellBack` · `Ended` |
+| `blind_transfer` | `TargetRinging` → `Completed` · `Recalling` → `Recalled` · `FellBack` · `Failed` |
+| `attended_transfer` | `ConsultRinging` → `Consulting` → `Completed` · `Cancelled` · `Failed`; flag `active_side` = `caller` or `target` (swap) |
+| `park` | `Parked` → `Retrieved` · `Recalling` → `Retrieved` · `FellBack` · `Abandoned` · `Lost`. This row is the park's history; `pbx-core`'s `parked_calls` row is the slot claim and is deleted at the end (LLD-03 §3.10) |
+| `pickup` | `Claimed` → `Completed` · `Lost` |
+| `adhoc_add` | `TargetRinging` → `Completed` · `Failed` |
+| `monitor` | mirrors `monitor_sessions` (§20) |
+
+Each kind's full state × event table is in its flow section. Terminal
+outcomes are immutable (INV-08).
+
+### 11.4 Bridge topology and ARI primitives
+
+| Bridge | ARI | Id (ACL-internal) | Lifetime |
+|---|---|---|---|
+| `M` main | `POST /bridges?type=mixing&bridgeId=atsa-m-<call>&name=…` | `atsa-m-<call_id>` | Life of the Call (today's code) |
+| `K` consult | `type=mixing` | `atsa-k-<operation_id>` | Life of an attended operation |
+| `P` park | `type=holding` + `POST /bridges/{P}/moh?mohClass=` | `atsa-p-<park operation_id>` | Life of the park |
+| `S` snoop | `type=mixing` | `atsa-s-<monitor_session_id>` | Life of a monitor session |
+
+- **Hold has no bridge.** Hold = `POST /bridges/{M}/removeChannel` then
+  `POST /channels/{id}/moh?mohClass=<class>`; resume = `DELETE
+  /channels/{id}/moh` then `POST /bridges/{M}/addChannel`. A channel in
+  Stasis outside a bridge keeps its media. This avoids a bridge per hold;
+  `P` is a bridge only so reconcile can find parks by name (§22).
+- **`M` is never replaced.** Every flow adds and removes channels on `M`,
+  so a bridge recording (LLD-09) is continuous through hold, transfer,
+  park and pickup. Asterisk changes a mixing bridge's technology (native
+  RTP for two, softmix for three or more) by itself, so an ad-hoc
+  conference needs no bridge "upgrade".
+- **Ids derived from platform ids stay inside the ACL** (D-19, rule 3 of
+  HLD-01 §1.2). Nothing above the ACL sees a bridge or channel id.
+- **No new event subscription.** Channel and bridge events for the app's
+  own channels and bridges arrive without `subscribeAll`, which stays off
+  while asterisk/asterisk#2170 is open (ASTERISK-INTEGRATION.md).
+  Device-state **writes** need no subscription.
+
+ARI resources this LLD adds to `acl/ari.Client`:
+
+| Purpose | ARI | Used by |
+|---|---|---|
+| Remove from bridge | `POST /bridges/{id}/removeChannel?channel=` | all |
+| Named bridge | `POST /bridges?type=&bridgeId=&name=` | all |
+| Channel MOH | `POST` / `DELETE /channels/{id}/moh?mohClass=` | hold, transfer ringback-as-MOH, consult |
+| Bridge MOH | `POST` / `DELETE /bridges/{id}/moh?mohClass=` | park, room waiting for a moderator |
+| Ringback | `POST` / `DELETE /channels/{id}/ring` | transferee while the target rings |
+| Bridge playback | `POST /bridges/{id}/play?media=` | room tones, announcements |
+| Mute | `POST` / `DELETE /channels/{id}/mute?direction=in` | room mute |
+| Snoop | `POST /channels/{id}/snoop?spy=&whisper=&app=&snoopId=` | §20 |
+| Hang up with cause | `DELETE /channels/{id}?reason_code=26` (answered elsewhere) or `reason=` | pickup, ring-group siblings |
+| Transfer progress | `POST /channels/{id}/transfer_progress?states=` | §15 (SPIKE-CC-1) |
+| Device state | `PUT` / `DELETE /deviceStates/Stasis:<name>?deviceState=` | §21 |
+| MWI | `PUT` / `DELETE /mailboxes/{name}?newMessages=&oldMessages=` | `MailboxPublisher` (LLD-03 §3.4) |
+| Live inventory | `GET /channels`, `GET /bridges`, `GET /channels/{id}/variable` | §22 |
+
+Events the event loop adds (translated inside `acl`, D-41 clause 2):
+`ChannelStateChange` (Ringing), `Dial` (`dialstatus`), `ChannelHold`,
+`ChannelUnhold`, `ChannelEnteredBridge`, `ChannelLeftBridge`,
+`ChannelTransfer` (SPIKE-CC-1), `BridgeBlindTransfer`,
+`BridgeAttendedTransfer`, `PlaybackFinished`, `StasisStart` for snoop
+channels (`args=["snoop","<session>"]`).
+
+### 11.5 Ports (Go): the contract LLD-03 §3.5.1 relies on
+
+LLD-03 §3.5.1 lists what `pbx-core` needs; this section owns the final
+names. Every name there is adopted; the two refinements (`Stasis:` device
+prefix, `Ringing`/`Disconnected` event names) are noted where they occur.
+
+| Port (telephony/ports) | Direction | This LLD |
+|---|---|---|
+| `InboundRouter.ResolveInbound` (exists) | telephony → pbx | `InboundDecision` gains `Plan *RingPlan`, `Program *Program`, `HoldClass string`, `Routing []byte`, `Feature *FeatureDecision` (`Pickup{CallID, ParticipantID}`, `Park{LotID, Slot, ExpiresAt, MOHClass}`, `Retrieve{CallID, ParticipantID}`, `Conference{RoomJoin}`), and `RefusalBusy` (486, ARI reason `busy`). `InboundRequest` gains `Purpose` (`arrival` \| `transfer` \| `consult`), `CallID` of the call being transferred, and the transferor's extension, so a REFER target or an API transfer target is resolved exactly like a dialled number (§13, §15) |
+| `InboundRouter.Continue` (new) | telephony → pbx | `ContinueRequest{TenantID, CallID, ParticipantID, Destination, Routing, Reason}` → `InboundDecision`. Telephony calls it for a plan terminal, and for every recall: `hold_orphaned` (§12), `transfer_no_answer` (§13), `park_timeout` (§16). `pbx-core` owns every recall/fallback chain and its timers' values |
+| Plan runner, Program runner | pbx → telephony (decision data) | Executed by `application`; first answer wins, siblings hung up `answered_elsewhere` (§11.4 cause 26). A transferee runs a plan exactly as an arriving caller does |
+| `CallControl` (new inbound port) | pbx → telephony | Signatures below. `Park` / `Retrieve` / `Pickup` are LLD-03's names |
+| `ConferenceControl.Join/Mute/Remove/Lock` | pbx → telephony | §18 |
+| `DeviceStatePublisher.Set(name, state)` | pbx → telephony | §21. The ACL writes `Stasis:<name>`: ARI controls only `Stasis:` devices, so LLD-03's `Custom:` reads `Stasis:` (verified in SPIKE-P1) |
+| `MailboxPublisher.Set(name, new, old)` | pbx → telephony | `PUT /mailboxes/{name}`; telephony adds nothing else |
+| `CallEventSink` (pbx implements) | telephony → pbx, in process | Kinds `ParticipantRinging`, `ParticipantAnswered`, `ParticipantHeld`, `ParticipantResumed`, `ParticipantParked`, `ParticipantTransferring`, `ParticipantLeft` (with `left_reason`), `RegistrationChanged`. Non-blocking, buffer 1024; on overflow telephony raises `Resync` and `pbx-core` reads `CallControl.LiveParticipants` |
+| `MediaStore.Store` | telephony → shared | LLD-09; unchanged here |
+
+```go
+// telephony/ports — inbound, implemented by application, called by pbx-core.
+// CallService.HoldParticipant delegates to Hold; TransferParticipant
+// (TransferCommand{NewDestEndpointURI}) is replaced by BlindTransfer.
+type CallControl interface {
+    Hold(ctx context.Context, cmd HoldCommand) (OperationID, error)
+    Resume(ctx context.Context, cmd OperationCommand) error
+    BlindTransfer(ctx context.Context, cmd TransferCommand) (OperationID, error)
+    StartConsult(ctx context.Context, cmd TransferCommand) (OperationID, error)
+    SwapConsult(ctx context.Context, cmd OperationCommand) error
+    CompleteTransfer(ctx context.Context, cmd OperationCommand) error
+    CancelConsult(ctx context.Context, cmd OperationCommand) error
+    AddParticipant(ctx context.Context, cmd TransferCommand) (OperationID, error) // ad hoc third party
+    Park(ctx context.Context, cmd ParkCommand) (OperationID, error)
+    Retrieve(ctx context.Context, cmd RetrieveCommand) error
+    Pickup(ctx context.Context, cmd PickupCommand) error // ErrNotRinging when the leg stopped ringing
+    StartMonitor(ctx context.Context, cmd MonitorCommand) (MonitorSessionID, error)
+    ChangeMonitorMode(ctx context.Context, id MonitorSessionID, mode MonitorMode) error
+    StopMonitor(ctx context.Context, id MonitorSessionID) error
+    LiveParticipants(ctx context.Context, t shareddomain.TenantID) ([]ParticipantView, error) // presence resync
+}
+
+type ConferenceControl interface {
+    Join(ctx context.Context, cmd JoinCommand) error // ErrFull, ErrLocked
+    Mute(ctx context.Context, room RoomID, p shareddomain.ParticipantID, on bool) error
+    Remove(ctx context.Context, room RoomID, p shareddomain.ParticipantID) error
+    Lock(ctx context.Context, room RoomID, on bool) error
+}
+
+type Actor struct { // who asked; authorised by pbx-core, recorded here
+    PrincipalID   *shareddomain.PrincipalID
+    ParticipantID *shareddomain.ParticipantID // the actor's own leg on the call, if any
+    Origin        Origin // api | phone_refer | phone_native | phone_hold | feature_code | timer
+}
+type HoldCommand      struct { TenantID shareddomain.TenantID; CallID shareddomain.CallID; Subject shareddomain.ParticipantID; MOHClass string; Actor Actor }
+type OperationCommand struct { TenantID shareddomain.TenantID; OperationID OperationID; Actor Actor }
+type TransferCommand  struct {
+    TenantID shareddomain.TenantID; CallID shareddomain.CallID
+    Subject  shareddomain.ParticipantID // the transferee (A)
+    Actor    Actor                      // normally B
+    Target   InboundDecision            // from ResolveInbound(Purpose=transfer|consult); never a raw dial string
+}
+type ParkCommand     struct { TenantID shareddomain.TenantID; CallID shareddomain.CallID; Subject shareddomain.ParticipantID; LotID LotID; Slot int; MOHClass string; ExpiresAt time.Time; Actor Actor }
+type RetrieveCommand struct { TenantID shareddomain.TenantID; CallID shareddomain.CallID; Parked shareddomain.ParticipantID; Retriever Leg }
+type PickupCommand   struct { TenantID shareddomain.TenantID; CallID shareddomain.CallID; Ringing shareddomain.ParticipantID; Picker Leg }
+type JoinCommand     struct { TenantID shareddomain.TenantID; Room RoomID; Entrant Leg; Moderator, Muted, WaitForModerator, EndWithLastModerator, EntryTone bool; WaitTimeout time.Duration; Limit int; MOHClass string }
+// Leg names an arriving channel by its provisional Call and Participant (§11.6), or
+// asks telephony to originate one (console retrieve/pickup, click-to-call D-78).
+type Leg struct { CallID *shareddomain.CallID; ParticipantID *shareddomain.ParticipantID; Originate *OriginateTarget }
+```
+
+Supporting types (`RingPlan`, `Program`, `Terminal`, `Destination`) are
+`pbx-core`'s pure data (LLD-03 §3.5.2), declared in `telephony/ports` so
+telephony never imports `pbx`. The static `[stasis-in]` context gains
+one hand-written `_*X.` pattern so `*` codes reach Stasis; nothing is
+generated (D-47).
+
+**Engine-facing additions** (`MediaGateway`, ACL adapter): `CreateNamedBridge`,
+`RemoveChannelFromBridge`, `StartMOH`/`StopMOH`, `StartBridgeMOH`/`StopBridgeMOH`,
+`StartRinging`/`StopRinging`, `PlayToBridge`, `SetMute`,
+`StartSnoop(ch, SnoopRequest{Spy, Whisper, SnoopID})` (replaces the stub),
+`HangupWithCause`, `ReportTransferProgress`, `SetDeviceState`, `SetMailbox`,
+`ListLiveChannels`, `ListLiveBridges`.
+
+**Pure domain functions** (`telephony/domain`, no I/O, 100 % unit-covered):
+
+| Function | Purpose |
+|---|---|
+| `NextParticipantState(from, ev) (ParticipantState, error)` | §11.2 table |
+| `(*Call) Hold / Resume / BeginBlindTransfer / TargetAnswered / Park / Unpark / PickUp / Rehome / Kick (…) ([]event.DomainEvent, error)` | aggregate methods; each enforces its guards |
+| `(*Call) EndDecision() (bool, string)` | §11.2 end rule |
+| `NextOperationState(kind, from, ev) (OpState, error)` | §11.3 per-kind tables |
+| `AdmitToRoom(limit, live int, locked, moderatorPresent, isModerator, waitForModerator bool) Admission` | §18 (`Admit`, `Wait`, `Full`, `Locked`) |
+| `NextRoomState(from, ev) (RoomState, error)` | §18 |
+
+`SelectPickup` (oldest first), `ChooseSlot`, `RoleForPin` and the lamp
+mapping are `pbx-core`'s pure functions (LLD-03 §3.8–§3.11).
+
+### 11.6 Re-homing a channel to another Call
+
+A conference entrant, a picker and a phone's consult call all arrive as
+their own provisional Call (StasisStart creates one, §4.1). When the
+router says the channel belongs to another Call, telephony **re-homes**
+it in one transaction:
+
+1. the provisional Participant → `Disconnected(rehomed)`; its usage stops at `t`;
+2. a new Participant on the target Call starts at the same `t` with the
+   same extension/principal attribution;
+3. the provisional Call → `Terminated(merged)`, `merged_into_call_id` set;
+4. the ACL re-points correlation and rewrites `ATSA_PARTICIPANT_ID` /
+   `ATSA_CALL_ID` on the channel (`POST /channels/{id}/variable`);
+5. capacity: the provisional call's reservation key moves to the new
+   Participant's `capacity_key`, and is released when that Participant
+   leaves, not when the provisional Call terminates (§11.8).
+
+No second of usage is lost or counted twice (D-24, PRD T-5). A Participant
+belongs to one Call; continuity across calls is the `rehomed` link.
+
+### 11.7 Shared configuration (defaults are defaults)
+
+"Owner" says where the value is stored and edited. Values owned by
+`pbx-core` reach telephony inside a decision, a command or a `Continue`
+answer; telephony stores none of them.
+
+| Key | Default | Range | Scope | Owner | Used in |
+|---|---|---|---|---|---|
+| MOH class | tenant default class | an existing class | tenant; per extension, queue, lot, room | pbx-core (LLD-03 §3.15) via `HoldClass`/`MOHClass` | §12, §14, §16, §18 |
+| `hold.reminder_interval` | 120 s | 0 (off), 30–600 s | installation (env `ATSAPBX_HOLD_REMINDER`); tenant override later | telephony | §12 |
+| hold orphan recall | ring holder's devices 20 s, then holder's no-answer rule | — | extension | pbx-core (`Continue` `hold_orphaned`) | §12 |
+| transfer target ring | destination's ring time (20 s default) | 5–120 s | destination | pbx-core (plan) | §13, §14 |
+| blind transfer no answer | `destination_rule` (OD-CC-3) | `destination_rule`, `recall_transferor` | tenant | pbx-core (plan `OnExhausted`) | §13 |
+| transfer recall after / ring | 15 s / 20 s | 5–120 s / 10–60 s | tenant | pbx-core | §13, §14 |
+| transfer fallback | none | a D-91 destination | tenant | pbx-core | §12, §13 |
+| `transfer.consult_ring` | 30 s | 5–120 s | tenant | pbx-core (consult plan) | §14 |
+| `transfer.attended_drop_completes` | true | bool | installation | telephony | §14 |
+| park slots / timeout / comeback | 701–720 / 60 s / 20 s, then fallback | LLD-03 §3.10 | lot | pbx-core | §16 |
+| `conference.adhoc_max` | 5 parties | 3–10 | installation | telephony | §18 |
+| room limit, PIN attempts, wait, end-with-moderator | 25 / 3 / off (600 s) / off | LLD-03 §3.11 | room | pbx-core (`JoinCommand`) | §18 |
+| call waiting | on, 1 waiting call | off, 1–2 | extension | pbx-core (busy rule) | §19 |
+| `control.ari_step_timeout` | 5 s | 1–15 s | installation (env) | telephony | all |
+| feature codes | `*8`, `**<ext>`; park = lot number 700, retrieve = slot number | — | tenant | pbx-core (LLD-03 §3.13) | §15–§17 |
+
+### 11.8 Capacity, emergency and tenancy rules for every flow
+
+| Rule | How it holds |
+|---|---|
+| Capacity is per simultaneous call (LLD-08) | A blind-transfer target, recall, pickup or retrieval replaces a party: no new reservation. **OWNER DECISION (OD-CC-1):** a consult leg and each ad-hoc party beyond two reserve one unit, key `<call_id>/<participant_id>`, released when that Participant leaves. Recommended: yes (3CX counts a consult as a call). Refusal → `RESOURCE_EXHAUSTED` and the call is untouched |
+| INV-01 emergency | `InboundDecision.BypassScreening` (assigned only in `pbx/application`) skips capacity for an emergency target. An emergency Call is never ended by a hold, park or transfer timer or fallback (§11.2); with no fallback it stays held and keeps recalling |
+| INV-03 | No call-control failure ends a live conversation. A failed step returns every party to the last stable position (§22) |
+| INV-10 | Every row is tenant-scoped under RLS; a call, lot, slot or room of another tenant is `NOT_FOUND`, identical to a missing one; device-state names carry ids, never tenant-local numbers |
+
+### 11.9 Data model (migrations 0030–0033; 0034 reserved)
+
+Every table: `ENABLE` + `FORCE ROW LEVEL SECURITY`, policy
+`USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)`
+with the same `WITH CHECK`, grants to `atsapbx_app` only, and retention with
+the call record (`ON DELETE CASCADE` from `calls`; LLD-09 sets the period).
+
+```sql
+-- 0030_call_control_participants.up.sql
+ALTER TABLE calls ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'standard'
+    CHECK (kind IN ('standard','room'));
+ALTER TABLE calls ADD COLUMN merged_into_call_id UUID REFERENCES calls(id);
+ALTER TABLE call_participants
+    ADD COLUMN left_reason VARCHAR(32),
+    ADD COLUMN hold_origin VARCHAR(16) CHECK (hold_origin IN ('api','phone','consult','system')),
+    ADD COLUMN audibility VARCHAR(8) NOT NULL DEFAULT 'full' CHECK (audibility IN ('full','listen','whisper')),
+    ADD COLUMN muted BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN ringing_since TIMESTAMPTZ,
+    ADD COLUMN state_changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ADD COLUMN rehomed_from UUID REFERENCES call_participants(id),
+    ADD COLUMN capacity_key VARCHAR(80),
+    ADD CONSTRAINT call_participants_state_ck CHECK (state IN
+      ('Invited','Ringing','Connected','OnHold','Parked','Transferring','Disconnected')),
+    ADD CONSTRAINT call_participants_left_ck CHECK ((state = 'Disconnected') = (left_reason IS NOT NULL));
+-- rows written before 0030 get left_reason 'normal' in the same migration
+ALTER TABLE usage_seconds                 -- LLD-09 RC-06: no fabricated quality
+    ALTER COLUMN quality_mos DROP NOT NULL, ALTER COLUMN quality_mos DROP DEFAULT,
+    ALTER COLUMN quality_jitter DROP NOT NULL, ALTER COLUMN quality_jitter DROP DEFAULT,
+    ALTER COLUMN quality_loss DROP NOT NULL, ALTER COLUMN quality_loss DROP DEFAULT;
+
+-- 0031_call_operations.up.sql
+CREATE TABLE call_operations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    call_id UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
+    kind VARCHAR(24) NOT NULL CHECK (kind IN
+      ('hold','blind_transfer','attended_transfer','park','pickup','adhoc_add','monitor')),
+    origin VARCHAR(16) NOT NULL CHECK (origin IN
+      ('api','phone_refer','phone_native','phone_hold','feature_code','timer')),
+    state VARCHAR(24) NOT NULL,
+    subject_participant_id UUID NOT NULL REFERENCES call_participants(id),
+    initiator_participant_id UUID REFERENCES call_participants(id),
+    target_participant_id UUID REFERENCES call_participants(id),
+    actor_principal_id UUID,
+    destination JSONB,            -- D-91 {kind, ref}; never an engine address
+    active_side VARCHAR(8) CHECK (active_side IN ('caller','target')),
+    related_call_id UUID REFERENCES calls(id),
+    deadline_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at TIMESTAMPTZ,
+    outcome VARCHAR(24),
+    reason VARCHAR(48),
+    CHECK ((ended_at IS NULL) = (outcome IS NULL))
+);
+CREATE UNIQUE INDEX call_operations_open_subject
+    ON call_operations (tenant_id, subject_participant_id) WHERE ended_at IS NULL;
+CREATE UNIQUE INDEX call_operations_open_transfer
+    ON call_operations (tenant_id, call_id) WHERE ended_at IS NULL
+    AND kind IN ('blind_transfer','attended_transfer');
+CREATE INDEX call_operations_call ON call_operations (tenant_id, call_id, started_at);
+
+-- 0032_conference_sessions.up.sql
+CREATE TABLE conference_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    room_id UUID NOT NULL,         -- pbx-core's room
+    call_id UUID NOT NULL UNIQUE REFERENCES calls(id) ON DELETE CASCADE, -- the room Call (kind='room')
+    state VARCHAR(8) NOT NULL CHECK (state IN ('Waiting','Active','Ended')),
+    locked BOOLEAN NOT NULL DEFAULT false,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at TIMESTAMPTZ,
+    peak_participants SMALLINT NOT NULL DEFAULT 0,
+    end_reason VARCHAR(32)
+);
+CREATE UNIQUE INDEX conference_sessions_live ON conference_sessions (tenant_id, room_id) WHERE ended_at IS NULL;
+CREATE TABLE conference_members (
+    participant_id UUID PRIMARY KEY REFERENCES call_participants(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    session_id UUID NOT NULL REFERENCES conference_sessions(id) ON DELETE CASCADE,
+    is_moderator BOOLEAN NOT NULL DEFAULT false,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 0033_monitor_sessions.up.sql
+CREATE TABLE monitor_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id),
+    call_id UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
+    target_participant_id UUID NOT NULL REFERENCES call_participants(id),
+    supervisor_participant_id UUID REFERENCES call_participants(id),
+    supervisor_principal_id UUID NOT NULL,
+    mode VARCHAR(8) NOT NULL CHECK (mode IN ('listen','whisper','barge')),
+    state VARCHAR(12) NOT NULL CHECK (state IN ('Connecting','Active','Ended')),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at TIMESTAMPTZ,
+    end_reason VARCHAR(32)
+);
+CREATE UNIQUE INDEX monitor_sessions_one_per_supervisor
+    ON monitor_sessions (tenant_id, supervisor_principal_id) WHERE ended_at IS NULL;
+```
+
+Each `.down.sql` drops what its `.up.sql` adds, in reverse order.
+`0034` is reserved for the reconcile follow-up (§22). **`parked_calls` is
+`pbx-core`'s** (LLD-03 §3.10, migration 0041): it is the slot claim;
+telephony's park history is the `call_operations` row of kind `park`.
+
+### 11.10 Events (outbox → `tenant.<tenant_id>.event.call.<action>`)
+
+Payloads carry platform ids only (no channel, bridge or endpoint).
+Common fields: `call_id`, `tenant_id`, `operation_id` (when any),
+`occurred_at`, `origin`.
+
+| Event | Extra payload |
+|---|---|
+| `call.held` / `call.resumed` | `participant_id`, `hold_origin`, `held_seconds` (resumed) |
+| `call.hold_reminder` | `participant_id`, `held_seconds` |
+| `call.transfer_started` | `kind` (blind/attended), `subject_participant_id`, `transferor_participant_id`, `destination` {kind, ref} |
+| `call.consult_started` / `call.consult_swapped` / `call.consult_cancelled` | `subject_participant_id`, `target_participant_id`, `active_side` |
+| `call.transferred` | `subject_participant_id`, `transferor_participant_id`, `target_participant_id`, `destination` |
+| `call.transfer_recalled` / `call.transfer_failed` | as above + `reason` |
+| `call.parked` | `participant_id`, `lot_id`, `slot`, `parker_participant_id`, `timeout_at` |
+| `call.park_recalling` / `call.unparked` / `call.park_fallback` / `call.parked_abandoned` / `call.parked_lost` | `parked_call_id`, `lot_id`, `slot`, `retriever_participant_id` (unparked) |
+| `call.picked_up` | `picked_participant_id`, `picker_participant_id`, `picker_extension_id`, `picker_principal_id` |
+| `call.participant_added` / `call.participant_muted` / `call.participant_removed` | `participant_id`, `muted`, `by_principal_id` |
+| `call.conference_started` / `call.conference_ended` | `room_id`, `session_id`, `peak_participants`, `end_reason` |
+| `call.monitor_started` / `call.monitor_mode_changed` / `call.monitor_stopped` | `session_id`, `target_participant_id`, `supervisor_principal_id`, `mode` |
+| `participant.state_changed` (subject `…event.participant.state_changed`) | `participant_id`, `extension_id`, `from`, `to`, `left_reason`. For external consumers (webhooks); `pbx-core` presence and lamps use the in-process `CallEventSink` (§21) |
+| `participant.joined` / `participant.left` (existing subjects) | widened per §23: `role`, `extension_id`, `principal_id`, `direction`, `audibility`, `left_reason` |
+| `call.terminated` (v2) | full snapshot per §23 / LLD-09 §3.3 |
+
+**Audit** (identity `audit_logs`, written by `pbx-core` in its own
+transaction before it calls telephony): any action on a call where the
+actor is not a party (`call.control.any`), kick and mute of another
+person, pickup of a directed target outside the actor's groups, and every
+monitor start/mode change/stop (AC-16.2). Hold and transfer of one's own
+call are recorded by the events and the CDR, not audited.
+
+### 11.11 API contract shared by §12–§18 (`PbxService`, ConnectRPC)
+
+| Action (provisional vocabulary, LLD-02 role table) | Grants |
+|---|---|
+| `call.control` | hold, resume, transfer, consult, park, add party, on a call where the actor's own Participant is live. Every role that can `call.place` |
+| `call.control.any` | the same on any call of the tenant. SUPERVISOR, TENANT_ADMIN |
+| `call.park.retrieve` | retrieve from lots the actor's extension may use. As `call.control` |
+| `call.pickup` | group and directed pickup within the actor's pickup groups. As `call.control` |
+| `conference.moderate` | mute/kick in a room where the actor is a moderator Participant; any room with `call.control.any` |
+
+| Refusal | Connect code | Console wording |
+|---|---|---|
+| Not signed in / no permission | `UNAUTHENTICATED` / `PERMISSION_DENIED` | "You don't have permission to do that." |
+| Call, participant, operation, lot, slot or room unknown **or another tenant's** | `NOT_FOUND` | "This call has ended or isn't yours." |
+| State does not allow it (named per RPC) | `FAILED_PRECONDITION` | per RPC below |
+| Lost a race with another operation | `ABORTED` | "Someone else just changed this call. Try again." |
+| Capacity or slots exhausted | `RESOURCE_EXHAUSTED` | "No line is free right now." / "All park slots are full." |
+| Engine not ready (D-73) or step timeout | `UNAVAILABLE` | "Calls can't be changed right now. Your call is unaffected." |
+| Target refused by class or fraud guard (D-82, D-85) | `PERMISSION_DENIED` | "You can't transfer to that number." |
+| Bad id or destination shape | `INVALID_ARGUMENT` | "Check the destination and try again." |
+
+The recording RPCs (§23) are on `TelephonyService` as LLD-09 specifies;
+park, pickup and room RPCs are LLD-03's. Every RPC response carries `operation_id` (when one is created) and the
+resulting `participant_state`. Errors never include an engine identifier.
+
+## 12. Hold, resume and music on hold (PB-08)
+
+1. **Trigger and actors.** Console/API `HoldCall` by an employee or agent
+   on their own call (`call.control`) or a supervisor (`call.control.any`);
+   a desk phone or softphone sending a hold re-INVITE (`a=sendonly` or
+   `inactive`), seen as ARI `ChannelHold` on the holder's channel.
+2. **Preconditions.** Call `Active`; subject `Connected` in `M`; no open
+   operation on the subject. In a call with three or more live parties the
+   request must name `participant_id`. Licence state is irrelevant (hold
+   adds no leg). Failure → table in item 7.
+3. **Sequence (API hold of A by B).**
+   1. `pbx-core` authorises, then `CallControl.Hold`.
+   2. telephony: insert `call_operations(kind=hold, state=Held)` and
+      A → `OnHold(api)` with the `call.held` outbox row, one transaction.
+   3. ACL: `POST /bridges/{M}/removeChannel?channel=A`, then
+      `POST /channels/{A}/moh?mohClass=<HoldCommand.MOHClass>` (else the call's `HoldClass`).
+   4. Arm the reminder timer (`hold.reminder_interval`).
+   5. Resume: `DELETE /channels/{A}/moh`, `POST /bridges/{M}/addChannel?channel=A`,
+      A → `Connected`, op `Resumed`, `call.resumed`.
+   **Phone hold (decided: the engine supplies MOH to the held party in
+   both cases).** B's phone holds → `ChannelHold(B)`. Two-party `M`: the
+   engine's own hold indication plays the endpoint's MOH class
+   (`moh_suggest`, projected by `pbx-core` from the tenant class) to A;
+   telephony records A `OnHold(phone)` and opens a `hold` op with
+   `origin=phone_hold`; no bridge moves. `ChannelUnhold(B)` resumes.
+   Three or more parties: B is marked `muted` (others keep talking, no
+   MOH). **SPIKE-CC-2** confirms on 22.11.0 that a held peer in an ARI
+   mixing bridge hears MOH (native and softmix). **Fallback:** on
+   `ChannelHold`, run steps 3–5 for the peer exactly as an API hold.
+4. **State machine.** Participant: §11.2. `hold` operation:
+
+   | From | Event | Guard | To | Side effect |
+   |---|---|---|---|---|
+   | — | `Hold` | subject Connected, no open op | Held | MOH starts |
+   | Held | `Resume` | actor is holder or `call.control.any` | Resumed (terminal) | MOH stops, back in `M` |
+   | Held | reminder tick | holder still live | Held | short tone to holder (`POST /channels/{B}/play?media=sound:beep`), `call.hold_reminder` |
+   | Held | holder leaves | — | Recalling | `InboundRouter.Continue{reason: hold_orphaned, destination: holder's extension}`; A stays on MOH and runs the returned plan (default: holder's devices 20 s, then their no-answer rule) |
+   | Recalling | a plan leg answers | — | Resumed | new holder Participant joins `M`, A unheld |
+   | Recalling | plan reaches an application terminal (voicemail, queue) | — | FellBack | A `Transferring` → `Connected` to the application |
+   | Recalling | plan exhausted / `Refuse`, not emergency | — | Ended | play `sound:vm-goodbye`, A `Disconnected(hold_abandoned)` |
+   | Recalling | plan exhausted, emergency call | — | Recalling | `Continue` again (INV-01) |
+   | Held | subject leaves | — | Ended | MOH gone with the channel |
+   | Held | `BlindTransfer`/`StartConsult`/`Park` on subject | — | Ended(`superseded`) | the new op opens in the same transaction |
+5. **Data model.** `call_operations` (kind `hold`), `call_participants.hold_origin`. No new table.
+6. **Ports.** `CallControl.Hold/Resume`; `InboundRouter.Continue`;
+   `CallEventSink` (`ParticipantHeld/Resumed`); `MediaGateway.RemoveChannelFromBridge/StartMOH/StopMOH`;
+   pure `(*Call).Hold/Resume`, `NextOperationState(hold, …)`.
+7. **API.** `HoldCall{call_id, participant_id?}` → `{operation_id, participant_state}`;
+   `ResumeCall{call_id, operation_id}` → `{participant_state}`.
+
+   | Refusal | Code | Console |
+   |---|---|---|
+   | subject not Connected (ringing, parked, transferring) | `FAILED_PRECONDITION` | "Only a connected call can be put on hold." |
+   | already held | `FAILED_PRECONDITION` | "This call is already on hold." |
+   | resume when not held / op ended | `FAILED_PRECONDITION` | "This call isn't on hold." |
+   | 3+ parties, no `participant_id` | `INVALID_ARGUMENT` | "Choose who to put on hold." |
+   | hold and resume race | `ABORTED` | shared wording |
+8. **Configuration.** MOH class, `hold.reminder_interval` (120 s), the
+   orphan-recall chain (holder 20 s, then their no-answer rule) (§11.7).
+   **OWNER DECISION (OD-CC-2):** a maximum hold time that forces the recall
+   even while the holder is live. Recommended default: off (reminder only;
+   3CX and FreePBX do not force it).
+9. **Failure and recovery.** MOH start fails → A stays out of `M` in
+   silence is not allowed: re-add A to `M`, op `Ended(moh_failed)`,
+   `UNAVAILABLE`. `removeChannel` fails → nothing changed, `UNAVAILABLE`.
+   Holder hangs up → orphan recall (item 4). Held party hangs up → op
+   `Ended`; the call ends by the §11.2 rule. Hold and hangup race → the
+   hangup wins (channel gone → op `Ended`). Engine/app restart → §22.
+10. **Invariants and events.** INV-03 (a failed hold leaves the call as
+    it was), INV-01 (an emergency call is never ended by hold
+    abandonment), INV-10. Events `call.held`, `call.resumed`,
+    `call.hold_reminder`, `participant.state_changed`. Audit only with
+    `call.control.any`.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | A Connected | `Hold` | A OnHold, op Held, one `call.held` | U |
+    | A OnHold | `Hold` again | `FAILED_PRECONDITION`, no second op (unique index) | U, I |
+    | A Ringing | `Hold` | refused | U, W |
+    | two concurrent `HoldCall` for A | both commit | exactly one succeeds, other `ABORTED` | I |
+    | A held by API on the rig | listen on A | MOH audible on A, B hears silence; resume restores two-way audio | E |
+    | B's phone sends sendonly | — | A hears MOH; A `OnHold(phone)`; unhold resumes | E (SPIKE-CC-2) |
+    | A held, B hangs up | recall rings B's extension 20 s, unanswered, no rule | A hears goodbye, `hold_abandoned` | U, E |
+    | emergency call held, holder gone, recall fails | timer | still recalling; call not ended | U |
+    | MOH start fails (fake gateway) | `Hold` | A back in `M`, `UNAVAILABLE` | U |
+    | console | click Hold, Resume | button state and timer follow `call.held`/`call.resumed` | C, B |
+    | AC-03.2 | hold from browser, desk phone and toward an external party | MOH heard each way | A |
+12. **Industry parity.** 3CX, VitalPBX, FreePBX and FusionPBX all play the
+    PBX's MOH to the held party whatever side holds, with per-tenant or
+    per-queue classes; we match. FreePBX has no orphan-hold recall by
+    default (the held caller hears MOH until they hang up); 3CX returns the
+    caller to the holder. **Deliberate difference:** we recall the holder
+    and then follow their no-answer rule, so a caller is never left on MOH
+    with nobody behind it.
+
+## 13. Blind transfer (PB-09)
+
+1. **Trigger and actors.** Console/API `BlindTransfer` by a party to the
+   call (`call.control`) or a supervisor (`call.control.any`); a phone's
+   blind REFER (§15). Transferor B, transferee A, target D (D-91 kinds:
+   extension, ring group, queue, flow, voicemail, external, park, conference).
+2. **Preconditions.** Call `Active`; A `Connected` or `OnHold`; B live (or
+   the actor holds `call.control.any`); no open transfer on the call. D
+   resolved by `pbx-core`; an external D passed outbound class and fraud
+   screening (D-82, D-85) as if B dialled it; emergency D carries
+   `BypassScreening`.
+3. **Sequence.**
+   1. `pbx-core` authorises, resolves D with its own `ResolveInbound`
+      logic (`Purpose=transfer`) into an `InboundDecision` (a `RingPlan`, a
+      `Program` or a `Feature`), calls `CallControl.BlindTransfer`.
+   2. telephony (one tx): op `blind_transfer/TargetRinging`, A → `Transferring`,
+      B → `Disconnected(transferred)`, new Participant C `Invited`, outbox.
+   3. ACL: `POST /bridges/{M}/removeChannel?channel=B`, hang up B
+      (`DELETE /channels/{B}`); A stays in `M`; `POST /channels/{A}/ring`
+      (or `…/moh` when the tenant prefers MOH while transferring).
+   4. Plan: run it for A exactly as for an arriving caller — each leg is
+      `POST /channels` (originate C, `channelId=atsa-part-<C>-…`, step
+      seconds as `timeout`, `originator=A` so connected line and CDR link);
+      first answer wins, siblings `answered_elsewhere`.
+      Program (voicemail, IVR) or Feature (park, conference): skip 4–5;
+      hand A to it; op `Completed`.
+   5. C answers (`StasisStart` + `ChannelStateChange Up`) →
+      `DELETE /channels/{A}/ring`, `POST /bridges/{M}/addChannel?channel=C`;
+      A, C `Connected`; op `Completed`; `call.transferred`.
+   6. Every leg fails (`Dial` `BUSY|NOANSWER|CHANUNAVAIL`, or step
+      timers): the plan's `OnExhausted`/`OnAllBusy` terminal applies; a
+      `Destination` terminal goes through `InboundRouter.Continue{reason:
+      transfer_no_answer}`. Whether that terminal is the target's own rule
+      or a recall of B is `pbx-core`'s plan (OD-CC-3); telephony only runs it.
+4. **State machine** (`blind_transfer` op):
+
+   | From | Event | Guard | To | Side effect |
+   |---|---|---|---|---|
+   | — | `Start` | preconditions | TargetRinging | B leaves; A ringback |
+   | TargetRinging | C answered | — | Completed | A ⇄ C in `M` |
+   | TargetRinging | every leg fails | terminal is a destination | TargetRinging (next hop) | C `Disconnected(no_answer)`; `Continue{transfer_no_answer}`; LLD-03's 5-hop guard bounds the chain |
+   | TargetRinging | every leg fails | terminal is voicemail/Program | Completed | A → application |
+   | TargetRinging | `Continue` returns a plan whose legs are B's devices | — | Recalling | B's devices ring with A (default 15 s target then 20 s recall when OD-CC-3 = `recall_transferor`) |
+   | Recalling | recall answered | — | Recalled | new B Participant in `M` with A |
+   | Recalling | recall fails, next terminal | — | FellBack | A → the tenant fallback (one hop) |
+   | Recalling, TargetRinging | terminal `Refuse` / plan exhausted, not emergency | — | Failed | announce `sound:pbx-invalid` then A `Disconnected(transfer_failed)` |
+   | Recalling, TargetRinging | plan exhausted, emergency | — | Recalling | `Continue` again (INV-01) |
+   | any open | A hangs up | — | Failed(`transferee_left`) | cancel C (`DELETE /channels/{C}`, `reason=normal`), `call.transfer_failed`; call ends by §11.2 |
+
+   **B busy on recall:** `pbx-core` sees B busy in its presence hub and
+   returns a plan without B (or `OnAllBusy`), so the recall goes straight
+   to the fallback.
+5. **Data model.** `call_operations` (`destination` JSONB, `deadline_at` =
+   ring deadline). C is a `call_participants` row on the **same** call.
+6. **Ports.** `CallControl.BlindTransfer`; `InboundDecision` (plan runner);
+   `InboundRouter.Continue`; `CallEventSink`; `MediaGateway.Originate`
+   (with `originator`), `StartRinging/StopRinging`, `RemoveChannelFromBridge`;
+   pure `(*Call).BeginBlindTransfer/TargetAnswered`, `NextOperationState`.
+7. **API.** `BlindTransfer{call_id, participant_id (A), destination {kind, ref}}`
+   → `{operation_id}`.
+
+   | Refusal | Code | Console |
+   |---|---|---|
+   | A not Connected/OnHold | `FAILED_PRECONDITION` | "This call can't be transferred right now." |
+   | transfer already in progress | `FAILED_PRECONDITION` | "A transfer is already in progress." |
+   | D is the transferor's own extension | `INVALID_ARGUMENT` | "You can't transfer a call to yourself." |
+   | D refused by class/fraud | `PERMISSION_DENIED` | "You can't transfer to that number." |
+   | D unknown / deleted | `NOT_FOUND` | "That destination doesn't exist." |
+8. **Configuration** (all `pbx-core`, §11.7). Target ring (destination's,
+   20 s), blind no-answer mode, recall after 15 s, recall ring 20 s,
+   tenant fallback. **OWNER DECISION (OD-CC-3):** what an unanswered
+   blind transfer does by default. Recommended `destination_rule` (the
+   target's own voicemail/forwarding, 3CX behaviour), with
+   `recall_transferor` after 15 s available per tenant (FreePBX parity).
+9. **Failure and recovery.** Originate fails → that leg counts as failed
+   (the plan's next leg or terminal). Engine step timeout before B is removed → nothing changed,
+   `UNAVAILABLE`. After B is removed, every failure path ends in recall,
+   fallback or the announcement: A is never left ringing forever.
+   C answers after A hung up → C hung up, `call.transfer_failed`.
+   Restart → §22.
+10. **Invariants and events.** INV-01 (emergency D bypasses capacity;
+    emergency A is never dropped by the `Failed` path, it recalls again),
+    INV-03, INV-10 (D resolved inside the tenant). Events
+    `call.transfer_started`, `call.transferred`, `call.transfer_recalled`,
+    `call.transfer_failed`; CDR shape (LLD-09): one call, Participants
+    A (continuous), B (`transferred`), C (answered), linked by
+    `operation_id`. Audit only with `call.control.any`.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | A⇄B | blind to extension C, C answers | A,C Connected; B `transferred`; A's usage has no gap or duplicate | U, I, E |
+    | C rings 20 s, has voicemail | timeout | A in C's voicemail; op Completed | U, E |
+    | mode `recall_transferor`, C silent 15 s | — | B's phone rings with A; answered → A⇄B | U, E |
+    | recall unanswered, no fallback | — | announcement, `transfer_failed` | U |
+    | A hangs up while C rings | — | C cancelled; no orphan channel on `GET /channels` | U, E |
+    | B busy on recall | — | straight to fallback | U |
+    | external D blocked by class | `BlindTransfer` | `PERMISSION_DENIED`; call untouched | W, I |
+    | two transfers on one call | concurrent | one `FAILED_PRECONDITION` (unique index) | I |
+    | transfer to voicemail | — | A hears greeting, no ringing leg | E |
+    | console | drag/enter destination, Transfer | call leaves my list; toast on failure | C, B |
+    | AC-03.2 | browser → desk phone → external | each direction completes | A |
+12. **Industry parity.** All four do blind transfer from phone and UI.
+    FreePBX recalls the transferor after `transferdigittimeout`/`atxfernoanswertimeout`
+    (15 s default); 3CX follows the target's no-answer forwarding;
+    FusionPBX follows the target's no-answer. **Difference:** both modes
+    are offered per tenant, and the transfer is executed inside the
+    platform (originate and swap), not by SIP `redirect` (HLD-21 §0), so
+    the caller's Participant, recording and usage stay one record.
+
+## 14. Attended (consultative) transfer, swap and cancel (PB-10)
+
+1. **Trigger and actors.** Console/API `StartConsult` → `SwapConsult`* →
+   `CompleteTransfer` or `CancelConsult`, by the transferor B
+   (`call.control`); a phone's attended REFER with `Replaces` (§15).
+2. **Preconditions.** As §13 item 2, plus D is an **endpoint** kind
+   (extension, ring group member, external). Voicemail, queue, flow, park
+   and conference are blind-only. OD-CC-1 capacity for the consult leg.
+3. **Sequence (API).**
+   1. `StartConsult`: one tx → op `attended_transfer/ConsultRinging`,
+      `active_side=target`, A → `OnHold(consult)`, C `Invited`.
+   2. ACL: remove A from `M`, `POST /channels/{A}/moh`; create `K`
+      (`atsa-k-<op>`); remove B from `M`, add B to `K`; originate C
+      (`timeout=transfer.consult_ring`); B hears ringback in `K` (`POST /channels/{B}/ring`).
+   3. C answers → add C to `K`; op `Consulting`; `call.consult_started`.
+   4. `SwapConsult` (toggle): when `active_side=target`: remove C from `K`,
+      `POST /channels/{C}/moh`, C → `OnHold(consult)`; remove B from `K`, add
+      B to `M`; `DELETE /channels/{A}/moh`, add A to `M`, A → `Connected`;
+      `active_side=caller`. The reverse swaps back. `call.consult_swapped`.
+   5. `CompleteTransfer`: stop MOH on whoever is held; add C to `M`
+      (and A if not there); remove B and hang B up; destroy `K`. A, C
+      `Connected` in `M`; B `Disconnected(transferred)`; op `Completed`;
+      `call.transferred`. **`M` is kept, so A's bridge recording is
+      continuous.** The consult in `K` is recorded only if LLD-09's rule
+      covers B's extension.
+   6. `CancelConsult`: hang up C (`cancelled`), destroy `K`, B back to `M`,
+      A unheld; op `Cancelled`.
+   **Three-way then drop** (HLD-21 §1.3 variant): `AddParticipant` (§18)
+   then B hangs up; no attended op.
+4. **State machine** (`attended_transfer` op):
+
+   | From | Event | Guard | To | Side effect |
+   |---|---|---|---|---|
+   | — | `StartConsult` | preconditions, OD-CC-1 capacity | ConsultRinging | A held, B in `K` |
+   | ConsultRinging | C answers | — | Consulting | B ⇄ C |
+   | ConsultRinging | C fails / `consult_ring` (30 s) | — | Cancelled(`target_no_answer`) | B back with A (auto-resume) |
+   | ConsultRinging | `CompleteTransfer` | `attended_drop_completes` | blind op (§13) | becomes a blind transfer of A to the ringing C (Asterisk `atxferdropcall` parity) |
+   | ConsultRinging, Consulting | `CancelConsult` | actor is B or `.any` | Cancelled | C hung up |
+   | Consulting | `SwapConsult` | — | Consulting | `active_side` flips |
+   | Consulting | `CompleteTransfer` | A and C live | Completed | A ⇄ C in `M` |
+   | Consulting | C hangs up | — | Cancelled(`target_left`) | B back with A |
+   | any open | A hangs up | — | Consulting (A gone) / Failed | op continues as a plain B⇄C call; `CompleteTransfer` now `FAILED_PRECONDITION`; `call.transfer_failed(transferee_left)` |
+   | any open | B hangs up, Consulting | `attended_drop_completes` | Completed | as `CompleteTransfer` (FreePBX/3CX parity) |
+   | any open | B hangs up, ConsultRinging | `attended_drop_completes` | blind op | C keeps ringing; recall rules of §13 apply |
+   | any open | B hangs up | not `attended_drop_completes` | Cancelled | C hung up; A orphan-recalls B (§12) |
+5. **Data model.** `call_operations` (`active_side`, `target_participant_id`).
+   C is on the same call.
+6. **Ports.** `CallControl.StartConsult/SwapConsult/CompleteTransfer/CancelConsult`;
+   `MediaGateway.CreateNamedBridge/DestroyBridge/RemoveChannelFromBridge/StartMOH`;
+   pure `NextOperationState(attended_transfer, …)`.
+7. **API.** `StartConsult{call_id, participant_id (A), destination}` →
+   `{operation_id, target_participant_id}`; `SwapConsult{operation_id}` →
+   `{active_side}`; `CompleteTransfer{operation_id}` → `{}` (idempotent:
+   completing a `Completed` op returns OK); `CancelConsult{operation_id}` → `{}`.
+
+   | Refusal | Code | Console |
+   |---|---|---|
+   | D is an application kind | `FAILED_PRECONDITION` | "Use blind transfer for voicemail, queues and menus." |
+   | Complete while A gone | `FAILED_PRECONDITION` | "The caller hung up. You're still talking to your colleague." |
+   | Swap before C answers | `FAILED_PRECONDITION` | "Wait for them to answer before switching." |
+   | Complete/Cancel on a finished op | `FAILED_PRECONDITION` | "This transfer has already finished." |
+   | consult capacity (OD-CC-1) | `RESOURCE_EXHAUSTED` | "No line is free for the consultation. Your caller is still on the line." |
+8. **Configuration.** `transfer.consult_ring` (30 s),
+   `transfer.attended_drop_completes` (true), `moh_class`, OD-CC-1.
+9. **Failure and recovery.** `K` creation or C originate fails → undo in
+   reverse (B to `M`, A unheld), `UNAVAILABLE`. Partial completion (C
+   added to `M`, B removal fails) → hang B up by channel; the outcome is
+   still `Completed`. A hangs up while held → op continues as B⇄C (never
+   dropped). C and A both gone → B left alone; call ends by §11.2.
+   Restart → §22.
+10. **Invariants and events.** INV-03, INV-01 (emergency consult target
+    bypasses capacity), INV-10. Events `call.consult_started`,
+    `call.consult_swapped`, `call.consult_cancelled`, `call.transferred`,
+    `call.transfer_failed`.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | A⇄B | consult C, C answers, complete | A⇄C in the same `M`; B `transferred`; recording file of `M` covers before and after | U, E |
+    | consulting | swap, swap | each time the other party hears MOH; audio verified | E |
+    | consult ringing 30 s | — | auto-cancel; A⇄B again | U, E |
+    | consulting | C hangs up | B⇄A resumed automatically | U, E |
+    | consulting | A hangs up | B⇄C continue; Complete → `FAILED_PRECONDITION` | U, W |
+    | consulting | B hangs up | A⇄C (drop completes) | U, E |
+    | consult to voicemail | `StartConsult` | `FAILED_PRECONDITION` | U, W |
+    | Complete called twice | — | second returns OK, no duplicate event | U, I |
+    | console | consult panel with Swap/Complete/Cancel | buttons follow op state | C, B |
+    | AC-03.2 | announced transfer browser ↔ desk phone ↔ external | completes each way | A |
+12. **Industry parity.** 3CX and VitalPBX expose consult, swap
+    ("toggle"), complete and cancel in the client; FreePBX uses `*2`
+    attended transfer with `atxferdropcall`, `atxferloopdelay`,
+    `atxfernoanswertimeout` 15 s; FusionPBX uses `att_xfer` with the same
+    drop-completes behaviour. **Difference:** the consult lives in the
+    same Call (one record, one recording bridge), and in-call DTMF feature
+    codes (`*2`, `##`) are **off** in R1.0 (**OWNER DECISION OD-CC-4**,
+    recommended off: phones use their transfer key, browsers use the
+    console).
+
+## 15. Phone-initiated transfer: SIP REFER (PB-09/PB-10 from a phone)
+
+Decided design for both branches; the spike picks the branch, not the behaviour.
+
+1. **Trigger and actors.** A desk phone or softphone's transfer key sends
+   `REFER` (blind: `Refer-To: <sip:201@…>`; attended: `Refer-To` with
+   `Replaces=<dialog of B's consult call>`). Actor: the extension's
+   assigned principal; permission is the extension's own outbound class
+   (no RBAC check: a phone acts as its owner, as when it dials).
+2. **Preconditions.** The REFERring channel is a correlated live
+   Participant. For attended, the replaced dialog is a call the platform
+   knows (B's consult call arrived through Stasis as its own Call).
+3. **Sequence.**
+   - **Primary (ARI-handled):** `pbx-core` projects
+     `ps_endpoints.transfer_handling = 'ari-only'`. Asterisk raises
+     `ChannelTransfer` (refer-to destination, referred-by, and for attended
+     the replaced channel) instead of acting.
+     - Blind: telephony calls `InboundRouter.ResolveInbound{Purpose: transfer,
+       Dialled: <Refer-To user part>, transferor extension, CallID}` (a REFER
+       to the lot number resolves to `Feature=Park`, LLD-03 §3.10) → runs §13 with `origin=phone_refer`; reports progress with
+       `POST /channels/{B}/transfer_progress?states=channel_progress`
+       then `channel_answered` or `channel_declined`, so the phone shows
+       the outcome; B's phone then hangs up its leg.
+     - Attended: the replaced channel identifies B's consult Call 2
+       (`B'⇄C`). telephony re-homes C into Call 1 (§11.6), adds C to `M`,
+       unholds A, hangs up B and B'; Call 2 → `Terminated(merged)`,
+       `merged_into_call_id`=Call 1; op `attended_transfer/Completed`,
+       `origin=phone_refer`.
+   - **Fallback (native):** `transfer_handling` default. Asterisk performs
+     the transfer; telephony reconciles:
+     - Blind: `BridgeBlindTransfer` arrives; the transferee leaves `M` and
+       re-enters Stasis through `[stasis-in]` with the dialled target and its
+       existing `ATSA_PARTICIPANT_ID`/`ATSA_CALL_ID` variables. The event loop
+       treats a correlated re-entry as "continue this Participant": A
+       `Transferring`, target resolved by the router, §13 from step 4.
+     - Attended: `BridgeAttendedTransfer` names the surviving channels
+       (`transferee`, `transfer_target`) and result. telephony re-homes C
+       into Call 1 as in the primary path and reconciles `M` membership
+       (Asterisk may have moved channels between our bridges: `GET
+       /bridges/{M}` is the truth).
+4. **State machine.** As §13/§14 with `origin=phone_refer` or `phone_native`.
+   REFER-specific: `ChannelTransfer` while an op is open on the call →
+   `transfer_progress=channel_declined` (phone shows failure); unresolvable
+   target → `channel_unavailable`.
+5. **Data model.** `call_operations.origin`, `related_call_id` (Call 2),
+   `calls.merged_into_call_id`.
+6. **Ports.** `InboundRouter.ResolveInbound` (`Purpose=transfer`); `MediaGateway.ReportTransferProgress`;
+   event-loop translations `ChannelTransfer`, `BridgeBlindTransfer`,
+   `BridgeAttendedTransfer` → `TransferRequested`/`NativeTransferObserved`.
+7. **API.** None (phone path). The result is visible through `GetCall` and events.
+8. **Configuration.** `ps_endpoints.transfer_handling` (projected by
+   `pbx-core`; `ari-only` if SPIKE-CC-1 passes); timers as §13/§14.
+9. **Failure and recovery.** Target refused by class/fraud →
+   `channel_declined`; the call is untouched (B still has A on hold on the
+   phone). Native-fallback events arriving for an unknown channel → log
+   at ERROR and run the reconcile sweep for that call (§22): no channel
+   may stay outside a known bridge without a Participant.
+10. **Invariants and events.** INV-01 (REFER to an emergency number is
+    resolved with bypass, never refused for capacity), INV-10 (a REFER
+    target is resolved only within the transferor's tenant; a `Replaces`
+    naming another tenant's dialog is refused), events as §13/§14.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | baresip/desk phone on the rig, `ari-only` | blind REFER to 1002 | `ChannelTransfer` seen; A⇄1002; Participants as §13 | E (SPIKE-CC-1) |
+    | same | attended REFER with Replaces | Call 2 `merged`; C re-homed; usage of C continuous across the two calls | E, I |
+    | REFER to a blocked external | — | `channel_declined`; call unchanged | E |
+    | native fallback configured | blind REFER | correlated re-entry continues A's Participant | E |
+    | REFER replacing a dialog of another tenant | — | refused | U |
+    | AC-03.2 | transfer key on desk phone and in browser softphone | identical record to API transfer | A |
+12. **Industry parity.** FreePBX and FusionPBX let the engine (Asterisk /
+    FreeSWITCH) execute REFER natively; 3CX handles REFER in its own call
+    controller. **Difference:** we keep REFER under platform control (primary)
+    so a phone transfer and a console transfer produce the same record.
+    **SPIKE-CC-1** confirms `transfer_handling=ari-only`, `ChannelTransfer` and
+    `transfer_progress` on 22.11.0 (added in the 22.x line); the native
+    branch is the fallback.
+
+## 16. Park, retrieve, comeback (PB-11)
+
+`pbx-core` owns the lot, the slot claim (`parked_calls`, conditional
+updates, `ChooseSlot`, `Sweep`) and the comeback chain (LLD-03 §3.10).
+Telephony owns the media, the timer and the park's history.
+
+1. **Trigger and actors.** Park: console `ParkCall` (LLD-03 RPC; call
+   party), a phone's blind or attended REFER to the lot number or a slot
+   number (§15, `Purpose=transfer` → `Feature=Park`). Retrieve: a phone
+   dialling the slot number, console `RetrieveParkedCall`, a BLF key.
+   Timer: telephony's, armed at `expires_at`.
+2. **Preconditions.** Subject `Connected` or `OnHold`; `pbx-core` has
+   claimed a slot (else the parker hears `pbx-park-full`, LLD-03, and the
+   call is untouched). Retrieve: `pbx-core`'s conditional
+   `PARKED → RETRIEVED` succeeded.
+3. **Sequence.**
+   1. `pbx-core` `AllocateSlot` (its tx) → `CallControl.Park{call,
+      subject, lot, slot, MOHClass, ExpiresAt}`.
+   2. telephony (one tx): op `park/Parked`, A → `Parked`, parker B →
+      `Disconnected(parked)`, `call.parked`; `CallEventSink(ParticipantParked)`.
+   3. ACL: create `P` (`type=holding`, `atsa-p-<op>`), `POST /bridges/{P}/moh?mohClass=`,
+      `removeChannel` A from `M`, `addChannel` A to `P`; hang up B (API) or
+      `transfer_progress=channel_answered` (REFER).
+   4. **Slot announcement to the parker:** API → the RPC returns `slot`;
+      attended phone park → `POST /channels/{B'}/play?media=digits:<slot>`
+      on the consult leg before the phone completes; blind phone park →
+      not audible (B's leg has gone): the lamp (§21) and console show it.
+   5. Arm the timer at `ExpiresAt` (survives nothing; re-armed by `Sweep`
+      after a restart, LLD-03).
+   6. Retrieve: `pbx-core` `RetrieveSlot` wins the conditional update →
+      `CallControl.Retrieve{call, parked, retriever}`: the retriever's
+      provisional Call is re-homed into A's Call (§11.6); answer it; move A
+      from `P` to `M`, add R to `M`, destroy `P`; op `Retrieved`;
+      `call.unparked`. Telephony keeps `M` (recording continuity) — the
+      port's "retrieve into a new bridge" (LLD-03 §3.5.1) is met by `M`.
+   7. Timeout: `InboundRouter.Continue{reason: park_timeout}` → `pbx-core`
+      `ParkTimeout` (conditional `PARKED → COMEBACK`, slot freed) returns a
+      `RingPlan` (parker's devices `comeback_seconds`, caller-id
+      "Parked 701: <caller>", then the lot fallback). Op `Recalling`; A stays
+      in `P` with MOH while the plan rings; a leg answers → A to `M` with
+      that leg, op `Retrieved`. If `pbx-core` lost the race (already
+      retrieved) it returns no decision and telephony does nothing.
+   8. Plan reaches voicemail/queue → op `FellBack`; `Refuse` or exhausted
+      → announcement, A `Disconnected(hold_abandoned)` (not for emergency:
+      `Continue` again).
+4. **State machine** (op `park`; LLD-03's row states in brackets):
+
+   | From | Event | Guard | To | Side effect |
+   |---|---|---|---|---|
+   | — | `Park` | slot claimed | Parked [`PARKED`] | `call.parked`, lamp `INUSE` |
+   | Parked | `Retrieve` | pbx conditional update won | Retrieved [row deleted] | `call.unparked` |
+   | Parked | timer | `Continue` returned a plan | Recalling [`COMEBACK`, slot free] | `call.park_recalling` |
+   | Parked | timer | `Continue` returned nothing (lost race) | Parked | none |
+   | Recalling | plan leg answers | — | Retrieved | comeback siblings `answered_elsewhere` |
+   | Recalling | application terminal | — | FellBack | `call.park_fallback` |
+   | Recalling | exhausted, not emergency | — | FellBack(`abandoned`) | announcement, A hung up |
+   | Parked, Recalling | A hangs up | — | Abandoned [`ABANDONED`] | `call.parked_abandoned` |
+   | Parked, Recalling | engine lost / reconcile finds no channel | — | Lost [`LOST`] | `call.parked_lost` |
+
+   **Races.** Retrieve vs timeout and two retrievers are decided by
+   `pbx-core`'s conditional update on its row; telephony acts only on the
+   winner's call. Retrieve during `Recalling` is not possible: the slot is
+   already free (FreePBX behaviour; the comeback leg is the way back).
+   A `Retrieve` arriving for an op that is no longer `Parked` returns
+   `ErrNotParked` (`ABORTED`, "That call has already been picked up").
+5. **Data model.** `call_operations` (kind `park`, `deadline_at` =
+   `ExpiresAt`); `parked_calls` is LLD-03's (0041).
+6. **Ports.** `CallControl.Park/Retrieve`; `InboundRouter.Continue`;
+   `CallEventSink(ParticipantParked)`; `DeviceStatePublisher` (called by
+   `pbx-core`); pure `NextOperationState(park, …)`.
+7. **API.** LLD-03 `ParkCall`, `RetrieveParkedCall`, `ListParkedCalls`.
+   Telephony errors map: subject not Connected/OnHold →
+   `FAILED_PRECONDITION` "This call can't be parked right now"; P/move
+   failure → `UNAVAILABLE`; `ErrNotParked` → `ABORTED`.
+8. **Configuration.** LLD-03 §3.10: slots 701–720, timeout 60 s,
+   comeback 20 s, fallback (parker's mailbox, else hang up), lot MOH.
+9. **Failure and recovery.** `P` create or move fails → A back to `M`,
+   `CallControl.Park` returns `UNAVAILABLE` and `pbx-core` deletes its
+   row in compensation. App restart, engine alive → `P` found by name
+   (`GET /bridges`), op kept, `Sweep` re-arms timers. Engine restart →
+   op `Lost`; `pbx-core` `Sweep` marks its row `LOST`.
+10. **Invariants and events.** INV-10 (slot numbers tenant-local, RLS on
+    both tables; bridge ids carry op ids), INV-01 (an emergency call is
+    never dropped by the no-fallback path), INV-03. Telephony events
+    `call.parked`, `call.park_recalling`, `call.unparked`,
+    `call.park_fallback`, `call.parked_abandoned`, `call.parked_lost`
+    (LLD-03 emits its `pbx.call_parked…` for config-side consumers).
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | A⇄B | `Park` | A in `P` hearing MOH; B gone; op Parked | U, E |
+    | parked | `Retrieve` with R's provisional call | A⇄R in `M`; R's usage continuous across re-home | I, E |
+    | parked | timer fires after a retrieve won | `Continue` returns nothing; no ringing | U |
+    | comeback plan answered by parker | — | A⇄parker; op Retrieved | U, E |
+    | comeback exhausted, fallback voicemail | — | A in voicemail; FellBack | E |
+    | A hangs up while parked | — | Abandoned, `P` destroyed, no orphan bridge | U, E |
+    | Asterisk restarted with a parked call | reconnect | op Lost, `call.parked_lost` | E |
+    | `removeChannel` fails (fake) | `Park` | A still in `M`, `UNAVAILABLE` | U |
+    | console | park, retrieve | panel follows events | C, B |
+    | AC-03.2 | park on a desk phone, retrieve in the browser | works both ways | A |
+12. **Industry parity.** As LLD-03 §3.10 (FreePBX 70/71–78, 45 s,
+    comeback then destination; 3CX shared park; VitalPBX/FusionPBX valet
+    with BLF). **Difference:** the parked caller stays the same Participant
+    in the same Call and recording, and a park lost to an engine restart is
+    recorded as `parked_lost`.
+
+## 17. Call pickup (PB-12, AC-03.13)
+
+`pbx-core` selects the candidate (`SelectPickup`, oldest first by
+`ringing_since`, from its presence hub; LLD-03 §3.9). Telephony claims and
+bridges.
+
+1. **Trigger and actors.** A phone dials `*8` (group) or `**<ext>`
+   (directed), or console `PickupCall` (LLD-03). Group membership is the
+   permission; `pbx.pickup.any` widens directed pickup.
+2. **Preconditions.** The chosen Participant is `Ringing` and was
+   originated pickable (plan legs for extensions, ring groups,
+   forwarding, follow-me; **not** queue or dialler offers, LLD-03 §3.9).
+3. **Sequence.**
+   1. Picker's channel arrives (provisional Call) → `ResolveInbound` →
+      `Feature=Pickup{CallID, ParticipantID}`; console path: `pbx-core`
+      calls `CallControl.Pickup` with `Picker.Originate` (rings the
+      actor's device first, click-to-call D-78).
+   2. Claim, atomically: per-call lock (one Stasis owner, D-73), then
+      `UPDATE call_participants SET state='Disconnected', left_reason='picked_up'
+      WHERE id=$1 AND tenant_id=$2 AND state='Ringing'`. 0 rows →
+      `ErrNotRinging`; `pbx-core` retries `SelectPickup` once, then plays
+      `pbx-nothing-to-pickup` (LLD-03).
+   3. Re-home the picker into the target Call (§11.6) with the picker's
+      extension/principal; op `pickup/Claimed`.
+   4. ACL: hang up the claimed leg and every sibling of the same plan step
+      with `reason_code=26` (answered elsewhere, no missed call on the
+      phones); answer the caller if not yet answered; add caller and
+      picker to `M`. Picker `Connected`; op `Completed`; `call.picked_up`.
+4. **State machine.** Target `Ringing → Disconnected(picked_up)`;
+   siblings `Ringing → Disconnected(answered_elsewhere)`; picker `Invited →
+   Connected`. Op `Claimed → Completed`, or `Claimed → Lost` when the
+   caller hangs up between claim and bridge (picker hears
+   `pbx-nothing-to-pickup`, hung up).
+5. **Data model.** `call_operations(kind=pickup, subject=claimed leg,
+   target=picker)`; `call_participants.ringing_since`, `left_reason`.
+   **Who answered (AC-03.13):** the CDR's answering party is the
+   Participant with `answered_at` — the picker, with `extension_id` and
+   `principal_id` (LLD-03's "`answered_by` attribution") — and the op row
+   links it to the extension that was rung.
+6. **Ports.** `InboundDecision.Feature=Pickup`; `CallControl.Pickup`
+   (`ErrNotRinging`); `CallEventSink` (`ParticipantRinging` feeds
+   `pbx-core`'s alerting list); `MediaGateway.HangupWithCause`.
+7. **API.** LLD-03 `PickupCall`. Telephony errors map: `ErrNotRinging` →
+   `ABORTED` "Someone else answered it"; engine failure → `UNAVAILABLE`.
+8. **Configuration.** Codes and groups: LLD-03 §3.9, §3.13.
+9. **Failure and recovery.** Claim committed, bridge fails → the caller
+   cannot get the cancelled leg back: telephony calls
+   `Continue{reason: pickup_failed}` for the rung extension's no-answer
+   chain (A `Transferring`); op `Lost`. Restart between claim and bridge →
+   §22.
+10. **Invariants and events.** INV-10 (claim filters by tenant; candidates
+    come only from the picker's tenant hub), INV-03. Event `call.picked_up`.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | 1001 ringing, 1002 in its group | 1002 dials `*8` | 1002⇄caller; 1001 stops with no missed call; CDR answerer 1002 | E, A (AC-03.13) |
+    | two pickers claim one leg | concurrent `Pickup` | exactly one wins; the other `ErrNotRinging` | U, I, E |
+    | ring group of three | pickup | all three legs stop | E |
+    | caller hangs up during claim | — | op Lost, picker hears the prompt | U |
+    | leg of another tenant id | `Pickup` | `ErrNotRinging` (0 rows, RLS) | I |
+    | console | Answer on a ringing colleague | my device rings, then connected | C, B |
+12. **Industry parity.** FreePBX `*8`/`**ext`, 3CX `*20*`, FusionPBX and
+    VitalPBX the same. **Difference:** the picker is recorded as the
+    answering party of the original call, where FreePBX's CDR shows a
+    separate `PICKUP` leg.
+
+## 18. Conference: ad hoc and rooms (PB-13)
+
+Rooms are configured and entered under `pbx-core`'s control (number,
+Argon2id PINs, `RoleForPin`, `BuildRoomEntry` Program, moderator RPCs;
+LLD-03 §3.11). Telephony owns the room's media, session and Participants.
+
+1. **Trigger and actors.** Ad hoc: `AddToCall` (this LLD, `call.control`).
+   Room: any caller reaching a `conference` destination; `pbx-core`'s entry
+   Program collects the PIN and then decides `Feature=Conference` →
+   `ConferenceControl.Join`. Moderator actions: LLD-03
+   `MuteConferenceParticipant` / `RemoveConferenceParticipant` /
+   `LockConference` → `ConferenceControl.Mute/Remove/Lock`.
+2. **Preconditions.** Ad hoc: call `Active`, live parties <
+   `conference.adhoc_max` (5), OD-CC-1 capacity. Room: entrant passed the
+   PIN; `AdmitToRoom` admits (not locked, live < `Limit`). Each entrant
+   already holds its own capacity reservation from its own Screening
+   ("each entrant is a call for licensing", LLD-03 §3.11), so the licence
+   caps a room naturally.
+3. **Sequence.**
+   - **Ad hoc:** op `adhoc_add/TargetRinging`; `pbx-core` resolves the
+     destination (`Purpose=transfer`) into a plan; telephony originates;
+     on answer adds to `M`. Asterisk switches `M` to softmix by itself:
+     no bridge upgrade, recording continuous.
+   - **Room join** (`ConferenceControl.Join`):
+     1. One in-process lock per room (single Stasis owner, D-73): find the
+        live session (`conference_sessions_live`) or create it with a new
+        Call `kind=room` (Initiated → Screening without a capacity check →
+        Routing → Presenting) and its `M` (`atsa-m-<room call>`).
+     2. `AdmitToRoom` → `Full`/`Locked`: return `ErrFull`/`ErrLocked`
+        (`pbx-core` plays `conf-full`/`conf-locked` and hangs up).
+     3. Re-home the entrant into the room Call (§11.6);
+        `conference_members` row (moderator flag from `JoinCommand`).
+     4. `Wait` (wait for moderator, none present): session `Waiting`;
+        `POST /bridges/{M}/moh?mohClass=` so entrants hear MOH; timer
+        `WaitTimeout` (600 s) → all entrants hear `conf-leaderhasleft`,
+        hung up `no_moderator`. A moderator joins → `DELETE …/moh`,
+        session `Active`.
+     5. Add to `M` (`Muted` → `POST /channels/{id}/mute?direction=in`);
+        entry tone `POST /bridges/{M}/play?media=sound:beep`. The room
+        Call → `Active` at two live participants. If the room records,
+        `pbx-core`'s Program played the consent prompt first (BR-03).
+     6. Leave: leave tone; last live participant, or last moderator with
+        `EndWithLastModerator` → everyone hung up, session `Ended`, room
+        Call `Terminated`, `M` destroyed.
+   - **Mute:** `POST`/`DELETE /channels/{id}/mute?direction=in`, `muted`
+     flag. **Remove:** hang up (`kicked`). **Lock:** `locked=true`; new
+     entrants `ErrLocked`. In-call `*` self-mute (LLD-03) uses the same
+     primitive unless a moderator muted.
+4. **State machine** (session; LLD-03 §3.11's table, telephony-held):
+
+   | From | Event | Guard | To | Side effect |
+   |---|---|---|---|---|
+   | — | first admitted entrant | no moderator needed, or moderator | Active | `call.conference_started` |
+   | — | first admitted entrant | waiting for moderator | Waiting | bridge MOH |
+   | Waiting | moderator joins | — | Active | MOH stops |
+   | Waiting | `WaitTimeout` | — | Ended(`no_moderator`) | all hung up |
+   | Active | `Lock(on/off)` | — | Active | `locked` toggled |
+   | Active, Waiting | entrant, live = `Limit` | — | unchanged | `ErrFull` |
+   | Active | last live leaves | — | Ended | `call.conference_ended` |
+   | Active | last moderator leaves | `EndWithLastModerator` | Ended | all hung up |
+5. **Data model.** `calls.kind='room'`, `conference_sessions`,
+   `conference_members` (0032), `call_participants.muted`.
+   `conference_rooms` is LLD-03's (0042).
+6. **Ports.** `ConferenceControl.Join/Mute/Remove/Lock`;
+   `CallControl.AddParticipant`; pure `AdmitToRoom`, `NextRoomState`.
+7. **API.** Ad hoc `AddToCall{call_id, destination}` → `{participant_id,
+   operation_id}` (`call.control`; refusals: full →
+   `RESOURCE_EXHAUSTED` "This call already has the maximum number of
+   people"; capacity → `RESOURCE_EXHAUSTED` "No line is free right now").
+   Room RPCs are LLD-03's; telephony errors map `ErrFull` →
+   `RESOURCE_EXHAUSTED`, `ErrLocked` → `FAILED_PRECONDITION` "This room is
+   locked", participant gone → `NOT_FOUND`.
+8. **Configuration.** `conference.adhoc_max` (5); room values from
+   LLD-03 §3.11 (limit 25, wait off / 600 s, end-with-moderator off,
+   mute-on-entry off).
+9. **Failure and recovery.** Re-home fails → entrant stays on its own
+   call, hears `conf-errormenu`, hung up; no half-member row (one tx).
+   App restart, engine alive → if FL-04 re-adopts, `M` found by name and
+   members rebuilt from channel variables; otherwise ended (§22). Engine
+   restart → session `Ended(engine_lost)`. A muted entrant who rejoins
+   starts with the room's mute-on-entry value.
+10. **Invariants and events.** INV-10 (session unique per tenant and room;
+    bridge named by the room Call id), BR-03, INV-03. Events
+    `call.conference_started/ended`, `participant.joined/left`,
+    `call.participant_muted/removed`. Audit of moderator actions is
+    `pbx-core`'s.
+11. **Tests.**
+
+    | Given | When | Then | Tier |
+    |---|---|---|---|
+    | A⇄B | add C | three parties hear each other; same `M`; recording continuous | E |
+    | five parties ad hoc | add a sixth | `RESOURCE_EXHAUSTED` | U, W |
+    | room limit 3 | fourth `Join` | `ErrFull`, others unaffected | U, E |
+    | concurrent joins at limit − 1 | two `Join` | exactly one admitted (room lock) | U, I |
+    | wait for moderator | two entrants | both hear MOH; moderator joins → MOH stops | E |
+    | waiting 600 s | timer | all hung up `no_moderator` | U |
+    | moderator mutes B | — | B not mixed (energy check), B hears all | E |
+    | last participant leaves | — | session Ended, room Call Terminated | U, I |
+    | entrant re-homed | joins | usage has no gap or duplicate | I |
+    | AC-03.2 | browser, desk phone and external in one room | all hear each other | A |
+12. **Industry parity.** FreePBX ConfBridge, 3CX conference, VitalPBX and
+    FusionPBX rooms (see LLD-03 §3.11). **Difference:** a room is one Call
+    with N Participants (D-17, D-18), so one record holds the meeting.
+
+## 19. Call waiting (part of PB-15 busy handling)
+
+1. **Trigger and actors.** A new call routes to an extension that already
+   has a live Participant. `pbx-core` decides from its presence hub
+   (fed by `CallEventSink`): ring it (call waiting) or apply the busy rule
+   (`RefusalBusy`/forward, LLD-03 §3.6).
+2. **Preconditions.** Call waiting on for the extension and fewer than
+   its maximum waiting legs; else the busy rule.
+3. **Sequence.** The plan simply includes the busy extension's devices;
+   telephony originates the second leg (the phone plays its waiting
+   tone). The user answers: a desk phone holds call 1 itself
+   (`ChannelHold` → §12 phone hold, the far party hears MOH); the browser
+   console calls `HoldCall` on call 1 automatically before answering.
+4. **State machine.** No new states.
+5. **Data model.** None.
+6. **Ports.** `CallEventSink`; `CallControl.LiveParticipants` (resync).
+7. **API.** None new (the console uses `HoldCall`).
+8. **Configuration.** Call waiting on, one waiting call (LLD-03, per extension).
+9. **Failure and recovery.** The phone rejects the second INVITE (486) →
+   the leg fails `busy`; the plan's `OnAllBusy` applies.
+10. **Invariants and events.** INV-03 (call 1 is never touched by call
+    2's failure). Events: `participant.joined/left`, `call.held`.
+11. **Tests.** On a call, a second call arrives → waiting tone; answering
+    holds the first with MOH (E); call waiting off → busy rule (E, LLD-03);
+    browser Answer on a second call holds the first (C, B).
+12. **Industry parity.** 3CX, FreePBX (`CW`), FusionPBX and VitalPBX
+    default call waiting on per extension. Same here.
+
+## 20. Supervisor monitoring execution primitives (IC-08, AC-16.1)
+
+Policy (who may monitor whom, the jurisdiction switch, the audit row and
+the RPCs) is `pbx-core`'s (LLD-03, supervision). Telephony executes.
+
+1. **Trigger and actors.** `pbx-core` calls `CallControl.StartMonitor`
+   after its policy and audit; supervisor endpoint is a phone or browser.
+2. **Preconditions.** Target Participant `Connected`; the supervisor has no
+   other live monitor session (unique index); target is not itself a
+   monitoring supervisor.
+3. **Sequence.**
+   1. Session row `Connecting`; supervisor Participant `Invited`, role
+      `SUPERVISOR`, `audibility=listen|whisper|full`.
+   2. Listen: `POST /channels/{agent}/snoop?spy=both&whisper=none&app=voip-app&snoopId=atsa-snoop-<session>`;
+      whisper: `spy=both&whisper=out`. Snoop channel `StasisStart` (args
+      `snoop,<session>`) → create `S`, add the snoop channel.
+   3. Originate the supervisor; on answer add to `S`; session `Active`.
+   4. Mode change: listen ↔ whisper → hang up the snoop, create a new
+      snoop with the other `whisper` value, add to `S` (supervisor stays
+      in `S`, no re-ring). → barge: remove supervisor from `S`, add to `M`,
+      hang up the snoop, destroy `S`, `audibility=full`.
+   5. Stop: hang up supervisor and snoop, destroy `S`, session `Ended`.
+   **SPIKE-CC-3** (HLD-21 §10.3): verify by recording that `whisper=out`
+   is heard by the agent only, and that a listen snoop is inaudible to both
+   parties (AC-16.1). Fallback if `out` reaches the customer: whisper uses
+   `whisper=in` per the spike's finding; if neither isolates, whisper is
+   disabled and the console says so.
+4. **State machine** (`monitor_sessions.state`): `Connecting → Active →
+   Ended`; `Connecting → Ended` (supervisor no answer, 20 s;
+   target left); `Active → Ended` (stop, target Participant leaves, agent
+   transferred away, supervisor hangs up). A monitor follows the target
+   **Participant**, not the channel: if the target is re-homed (§11.6) the
+   session ends with `target_left`.
+5. **Data model.** `monitor_sessions` (0033).
+6. **Ports.** `CallControl.StartMonitor/ChangeMonitorMode/StopMonitor`;
+   `MediaGateway.StartSnoop(ch, SnoopRequest{Spy, Whisper, SnoopID})`.
+7. **API.** Defined in LLD-03 (`StartMonitoring` etc.); telephony maps its
+   errors: target not Connected → `FAILED_PRECONDITION` "That call isn't
+   connected"; supervisor busy → `FAILED_PRECONDITION` "You're already
+   monitoring a call."
+8. **Configuration.** Supervisor ring 20 s; policy switches in LLD-03.
+9. **Failure and recovery.** Snoop fails → session `Ended(snoop_failed)`,
+   the monitored call is untouched (D-23 spirit, INV-03). Restart → §22
+   (sessions ended; snoops hung up).
+10. **Invariants and events.** INV-03, INV-10, AC-16.1, AC-16.2 (audit by
+    `pbx-core` before `StartMonitor`; a failed audit write refuses the
+    monitor). Monitor Participants never count as live and are excluded
+    from the CDR's party count. Events `call.monitor_*`.
+11. **Tests.** Listen: recording of `M` has no supervisor audio (E, A
+    AC-16.1); whisper: agent channel recording has it, customer's has not
+    (E, SPIKE-CC-3); barge → three-way (E); agent hangs up → session ends
+    and supervisor leg is hung up (U, E); call ends while monitoring → no
+    orphan snoop on `GET /channels` (E); second monitor by the same
+    supervisor → refused (U, I).
+12. **Industry parity.** FreePBX ChanSpy (`q`, `w`, `B`), 3CX listen/
+    whisper/barge, VitalPBX and FusionPBX eavesdrop. **Difference:** each
+    action is an audited platform session with its own row, not a
+    dialplan feature code.
+
+## 21. Device state for BLF and park lamps (PB-11, PB-18 seam)
+
+No dialplan is generated (D-47), so lamps use ARI-controlled device
+states. `pbx-core` decides names and values (LLD-03 §3.8, `PresenceOf`);
+telephony owns the engine write and the facts.
+
+| Piece | Owner | Definition |
+|---|---|---|
+| Facts | telephony | `CallEventSink` (in process): `ParticipantRinging/Answered/Held/Resumed/Parked/Transferring/Left`, each with `extension_id`, `call_id`, `participant_id`, `ringing_since`; `CallControl.LiveParticipants` for a resync after overflow or a `pbx-core` restart |
+| Value | `pbx-core` (pure) | `NOT_INUSE`, `INUSE`, `BUSY`, `RINGING`, `RINGINUSE`, `ONHOLD`, `UNAVAILABLE`, `INVALID` (e.g. DND → `BUSY`, unregistered → `UNAVAILABLE`, occupied slot → `INUSE`) |
+| Write | telephony port, ACL adapter | `DeviceStatePublisher.Set(ctx, name, state)` → `PUT /deviceStates/Stasis:<name>?deviceState=`; `Clear` → `DELETE` |
+
+```go
+type DeviceState string // the eight ARI values above; anything else is refused
+type DeviceStatePublisher interface {
+    // name is pbx-core's (e.g. "atsa-<ext hex>", "atsa-park-<lot hex>-<slot>"):
+    // must match ^atsa-[a-z0-9-]{1,64}$ so it can never carry a tenant-local number.
+    Set(ctx context.Context, name string, state DeviceState) error
+    Clear(ctx context.Context, name string) error
+}
+type MailboxPublisher interface {
+    Set(ctx context.Context, name string, newMsgs, oldMsgs int) error // PUT /mailboxes/{name}
+}
+```
+
+- **Prefix.** ARI controls only `Stasis:` devices (`PUT` on any other
+  technology is refused as uncontrolled), so the ACL owns the prefix and
+  LLD-03's `Custom:` (§3.5.1, §3.8, SPIKE-P1 hint) reads `Stasis:`. SPIKE-P1
+  (LLD-03 §3.8) proves the pattern hint `Stasis:atsa-${EXTEN}` and its
+  fallback (console presence only).
+- **Writes only, no subscription** (asterisk/asterisk#2170). On app start
+  `pbx-core` republishes every name (idempotent), so engine restarts heal.
+- A write failure is logged and retried by the next change, never a call
+  failure (INV-06). Budget: LLD-03 §3.8 (device state ≤ 1 s).
+- **Tests:** name with a digit-only suffix refused (U); `Set` → `GET
+  /deviceStates/Stasis:atsa-…` returns the value (E); `CallEventSink` never
+  blocks the event loop when `pbx-core` is slow (overflow → `Resync`) (U).
+
+## 22. Engine loss, Stasis reconnect and app restart
+
+Whole-call re-adoption is FL-04's decision (HLD-09). This section fixes
+what call control does in each case so no leg is orphaned whichever way
+FL-04 goes.
+
+| Case | Detect | Call-control behaviour |
+|---|---|---|
+| ARI websocket gap, both alive | event stream reconnects | **Reconcile per call:** `GET /channels`, `GET /bridges`; every correlated channel missing → its `ChannelDestroyed` is synthesised; then each open op is re-evaluated by the table below |
+| Asterisk restarted | reconnect finds none of our channels | every open op → `Failed(engine_lost)`; park ops → `Lost` (`call.parked_lost`; `pbx-core` `Sweep` marks its row); room sessions and monitors ended; Participants `Disconnected(engine_lost)`; calls `Terminated(engine_lost)`; `pbx-core` republishes lamps |
+| App restarted, engine alive | startup | Durable rows say what was in flight. **If FL-04 re-adopts:** rebuild correlation from `ATSA_*` channel variables and bridges by name (`atsa-m/k/p/s-…`), then the table below. **If not (today's accepted limitation):** hang up every `atsa-` channel, destroy every `atsa-` bridge (AI tap channels `aitap-`/`aixm-`/`aitapbr-` are swept by LLD-10), then close rows as for an engine restart with `app_restart` |
+| `ApplicationReplaced` (D-73) | event | not ready; no reconcile from this instance; the new owner reconciles |
+
+**Per-operation reconcile** (only when the parties survive):
+
+| Op state found | Engine shows | Action |
+|---|---|---|
+| hold `Held` | A out of `M` | restart MOH on A; re-arm reminder |
+| hold `Recalling`, blind `TargetRinging`/`Recalling` | plan legs absent | `Continue` again from the terminal (the plan restarts; legs are never resumed) |
+| blind `TargetRinging` | C up, not in `M` | add C to `M`, `Completed` |
+| attended `ConsultRinging/Consulting` | `K` missing | cancel: B (if alive) and A back to `M` |
+| attended any | A alone, B gone | orphan recall (§12) |
+| park `Parked` | `P` with A | keep; `pbx-core` `Sweep` re-arms the timer from `expires_at` (expired → `Continue(park_timeout)` now) |
+| park `Recalling` | `P` with A, no comeback legs | `Continue(park_timeout)` again |
+| pickup `Claimed` | picker up, not bridged | bridge if the caller is alive, else hang up the picker |
+| room session | `M` with members | keep members whose channels exist; others `Disconnected(engine_lost)` |
+| monitor any | — | end session, hang up snoop and supervisor |
+
+Every ARI step has `control.ari_step_timeout` (5 s); a timed-out step is
+a failure of that step, compensated as each flow's item 9 says.
+Compensation never hangs up a party that was in conversation before the
+operation began (INV-03). **Tests:** websocket dropped for 10 s during a
+blind transfer whose target answered in the gap → `Completed` after
+reconnect (E, fault-injected); Asterisk restarted with held, parked and
+consulting calls → every row closed, `GET /channels` and `GET /bridges`
+empty of `atsa-` (E); app killed mid-consult with FL-04 "end" → no
+`atsa-` channel survives startup (E).
+
+## 23. Contracts other LLDs rely on (records, AI, provisioning)
+
+These are telephony-core changes requested by LLD-09, LLD-10 and LLD-12;
+their designs are final there. Each lands in the OpenSpec change named.
+
+| Contract | Owner LLD | Telephony change |
+|---|---|---|
+| `call.terminated` **v2** | [LLD-09 §3.3](LLD-09-reporting.md) | On `Terminated`, the outbox row in the same transaction carries the full snapshot: `call_id, direction, source_digits, dest_digits, started_at, answered_at?, ended_at, termination_reason, disposition, service_type, department_id?, route_id?, carrier_id?, trunk_id?, cost_micros, participants[]{participant_id, role, extension_id?, principal_id?, joined_at, answered_at?, left_at, billable_seconds, usage_seconds, cost_micros}`, UTC microseconds. `disposition` is derived (pure) from the Participants' `left_reason`s; `service_type`, `department_id`, `route_id`, `carrier_id`, `trunk_id` come from `pbx-core`'s decision attribution (`InboundDecision`/`PlaceCall` gain an opaque `CallAttribution`); cost fields are 0 until rating exists. v1 consumers ignore extra fields. Merged calls (§11.6) carry `merged_into_call_id` |
+| `participant.joined` / `participant.left` | [LLD-10 §3](LLD-10-ai-pipeline.md) (AI-01 starts from it) | Payload gains `role`, `extension_id?`, `principal_id?`, `direction`, `joined_at`/`left_at`, `left_reason`; emitted for every Participant including re-homed and supervisor ones (`audibility` included so the tap can skip monitors). Telephony never calls `ai-pipeline` |
+| Recording RPCs `StartCallRecording`, `StopCallRecording`, `PauseCallRecording`, `ResumeCallRecording` | [LLD-09 §4–§5](LLD-09-reporting.md) (RC-01, RC-07) | On `TelephonyService`; inbound port `RecordingControl{Arm, Start, Stop, Pause, Resume}`; ACL port `EngineRecorder{Play, RecordBridge, StopLive, Mute, Unmute, FetchStored, DeleteStored}` over `POST /bridges/{id}/record`, `POST /recordings/live/{name}/stop|mute|unmute`, `GET /recordings/stored/{name}/file`, `DELETE /recordings/stored/{name}`. Because every flow keeps `M` (§11.4), hold, blind transfer, completed attended transfer, park and pickup need **no** new segment; only a recorded party moving into `K` or `P` starts a segment there, per LLD-09 §4.3 step 7. PCI pause also stops every AI tap on the call synchronously (`MediaTap.Stop`) |
+| `MediaTap` inbound port | [LLD-10 §3](LLD-10-ai-pipeline.md) (AI-01) | `Start(ctx, TapRequest{CallID, ParticipantID, StreamID, RelayAddr}) (TapHandle, error)`, `Stop(ctx, TapHandle) error`: snoop `spy=in&whisper=none&snoopId=aitap-<stream>`, `POST /channels/externalMedia` (`encapsulation=rtp`, `transport=udp`, `format=slin16`, `channelId=aixm-<stream>`), a mixing bridge `aitapbr-<stream>`. `StasisStart` for `aitap-`/`aixm-` ids never creates a Participant, reserves capacity or writes a CDR. The tap follows the Participant: re-home (§11.6) or a new channel ends it (`participant.left`), and AI-01 restarts it on the new `participant.joined`. Gated by SPIKE AI-S1 |
+| `usage_seconds.quality_mos` | [LLD-09 §8](LLD-09-reporting.md) (RC-06) | Migration 0030 also runs `ALTER TABLE usage_seconds ALTER COLUMN quality_mos DROP NOT NULL, ALTER COLUMN quality_mos DROP DEFAULT` (and the same for `quality_jitter`, `quality_loss`): quality comes from RTCP SR/RR windows (`participant.rtcp_window`, SPIKE R-S1), never a fabricated 4.50 |
+| `MaintenanceGate` | [LLD-12 Part B](LLD-12-provisioning-and-lifecycle.md) | Call admission (`Screening`, and arriving-call refusal before it) calls `Admit(ctx, emergency)` first: `ErrDraining` → `RefusalUnavailable` (SIP 503, Q.850 cause 41); emergency always admitted (INV-01). New legs **inside** an existing call (transfer, consult, recall, pickup leg, ad-hoc party) are not call setups and are always admitted (INV-03); a new arriving call for pickup, retrieve or room entry is gated like any other. `ActiveCallStats()` feeds `drain status` |
+
+## 24. Spikes, owner decisions and OpenSpec handoff
+
+| Spike | Question (Asterisk 22.11.0) | Fallback |
+|---|---|---|
+| SPIKE-CC-1 | `transfer_handling=ari-only`, `ChannelTransfer`, `POST /channels/{id}/transfer_progress` | Native REFER + reconcile from `BridgeBlindTransfer`/`BridgeAttendedTransfer` (§15) |
+| SPIKE-CC-2 | A phone's hold in an ARI mixing bridge plays MOH to the peer (2-party native, 3-party softmix); `ChannelHold`/`ChannelUnhold` delivered | Platform hold of the peer on `ChannelHold` (§12) |
+| SPIKE-CC-3 | Snoop `whisper` direction isolates the agent; listen inaudible (AC-16.1; HLD-21 §10 item 3) | Opposite direction; else whisper disabled (§20) |
+| SPIKE-CC-4 | `DELETE /channels/{id}?reason_code=26` gives "answered elsewhere" on phones | `reason=normal` (phone may show a missed call) |
+| SPIKE-P1 (LLD-03) | Pattern hint `Stasis:atsa-${EXTEN}` for PJSIP BLF subscriptions | Console presence only (§21) |
+
+| Owner decision | Recommended default |
+|---|---|
+| OD-CC-1 consult legs and ad-hoc parties beyond two reserve capacity | Yes, one unit each, released when that Participant leaves |
+| OD-CC-2 forced maximum hold time | Off (reminder tone every 120 s) |
+| OD-CC-3 unanswered blind transfer | Destination's own no-answer rule; recall-transferor after 15 s selectable per tenant |
+| OD-CC-4 in-call DTMF transfer/park codes (`*2`, `##`) | Off in R1.0 (phones use their keys, browsers the console) |
+
+**Handoff.** `telephony-call-control` is delivered as separate OpenSpec
+changes, in order: (1) model, migrations 0030–0031, end rule, `CallEventSink`,
+`call.terminated` v2, `participant.*` payloads, `MaintenanceGate`, and
+hold/resume after SPIKE-CC-2; (2) plan/program runner and `Continue`,
+blind and attended transfer; (3) REFER after SPIKE-CC-1; (4) park and
+pickup with `pbx-pickup-park`; (5) conference (0032) with
+`pbx-conference-rooms`; (6) monitor primitives (0033) after SPIKE-CC-3;
+(7) device state with `pbx-presence`. Recording control and `MediaTap`
+land with LLD-09's and LLD-10's changes. Each `pbx-core` counterpart
+lands in the same change or before it.

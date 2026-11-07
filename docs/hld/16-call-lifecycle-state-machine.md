@@ -59,28 +59,58 @@ stateDiagram-v2
 
 ## 4. Participant sub-states
 
+Canonical set (code names kept; `Parked` added): `Invited`, `Ringing`,
+`Connected`, `OnHold`, `Parked`, `Transferring`, `Disconnected`. Full
+transition table, guards and `left_reason` values:
+[LLD-01 §11.2](../lld/LLD-01-telephony-core-walking-skeleton.md).
+
 ```mermaid
 stateDiagram-v2
     [*] --> Invited : participant created
     Invited --> Ringing : endpoint alerted
-    Ringing --> Connected : audio bridged, billable timer starts
-    Connected --> OnHold : hold requested
-    OnHold --> Connected : resume
-    Connected --> Transferring : attended transfer in progress
-    Transferring --> Connected : handover complete, same participant
-    Connected --> Disconnected : participant leaves, timer stops, record locked
+    Ringing --> Connected : answered and bridged, billable timer starts
+    Ringing --> Disconnected : no answer / busy / picked up elsewhere
+    Connected --> OnHold : hold (API, phone, consult)
+    OnHold --> Connected : resume / consult completed
+    Connected --> Parked : parked in a slot
+    OnHold --> Parked : parked while held
+    Parked --> Connected : retrieved / comeback answered
+    Connected --> Transferring : blind transfer, this party is the transferee
+    OnHold --> Transferring : blind transfer while held
+    Transferring --> Connected : target, recall or fallback answers
+    Connected --> Disconnected : leaves (left_reason), timer stops
     OnHold --> Disconnected : leaves while held
+    Parked --> Disconnected : leaves while parked
+    Transferring --> Disconnected : leaves while transferring
     Disconnected --> [*]
 ```
 
 Notes:
 
+- **`Transferring` belongs to the transferee** (the party being moved),
+  never the transferor. The transferor goes `Connected → Disconnected`
+  (`left_reason=transferred`). The target is a **new** Participant: a
+  different person is a different participation (PRD T-5, D-17).
+- **Attended transfer** reconciles HLD-21 §1.3 as follows: during the
+  consult the caller A is `OnHold`; transferor B and target C are
+  `Connected` in the consult bridge. On completion C moves into A's
+  original bridge, A returns to `Connected` (same Participant), B is
+  `Disconnected(transferred)`. "Consulting" is an operation state, not a
+  Participant state (LLD-01 §11.3).
+- A pickup ends the rung Participant (`left_reason=picked_up`); the picker
+  is a new `Connected` Participant.
 - A transfer replaces Asterisk channels, never the participant: the ACL
   closes one `channel_history` row and opens another while identity and
   billable time continue unbroken (T-5, HLD [03](03-domain-model.md) §3).
+- `OnHold`, `Parked` and `Transferring` are billable.
 - Mute is a media flag, not a lifecycle state — it does not appear here.
 - Supervisor join (R1.0, D-97) and specialist dispatch (R3) are participant
-  add/remove inside `Active`, needing no schema change (D-24 seam 2).
+  add/remove inside `Active`, needing no schema change (D-24 seam 2). A
+  listening or whispering supervisor never keeps a call alive.
+- **Call end rule:** a standard call ends when at most one live party
+  remains and nobody is waiting on a pending leg (held, parked or
+  transferring parties wait for a recall); a conference room ends at zero
+  live parties (LLD-01 §11.2).
 
 ## 5. Failure recovery & disconnect rules
 
@@ -109,10 +139,12 @@ payload carries an Asterisk channel ID — participants are identified by
 | → Active | `event.call.active` | `tenant.{id}.event.call.active` | `call_id`, `answered_at`, `timestamp` |
 | Active ↔ Degraded | `event.call.degraded` | `tenant.{id}.event.call.degraded` | `call_id`, quality summary, `timestamp` |
 | → Terminated | `event.call.terminated` | `tenant.{id}.event.call.terminated` | `call_id`, `ended_at`, final billable seconds, `termination_reason` |
-| Participant joins/leaves | `event.participant.joined` / `event.participant.left` | `tenant.{id}.event.participant.joined` | `participant_id`, `call_id`, `role`, `timestamp` |
+| Participant joins/leaves | `event.participant.joined` / `event.participant.left` | `tenant.{id}.event.participant.joined` | `participant_id`, `call_id`, `role`, `extension_id`, `principal_id`, `left_reason`, `timestamp` |
+| Call-control actions (hold, transfer, park, pickup, conference, monitor) | `event.call.<action>` | `tenant.{id}.event.call.<action>` | LLD-01 §11.10 |
 
-Only the events HLD [04](04-bounded-contexts.md) §1 publishes appear here —
-no `ringing`/`answered`/`ended`/`failed` variants, no `routed`/`recovered`.
+The call-control events are listed in LLD-01 §11.10; `call.terminated`
+carries the v2 snapshot LLD-09 §3.3 needs. No `ringing`/`answered`/
+`ended`/`failed` variants, no `routed`/`recovered`.
 
 ## 7. Traceability & verification
 

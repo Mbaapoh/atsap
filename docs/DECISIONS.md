@@ -3654,6 +3654,41 @@ finds them.
 
 ---
 
+**D-99 · On transfer the transferred party keeps its Participant; each
+handling party is its own Participant; the call's main bridge is never
+replaced (2026-11-07).**
+
+**Context:** HLD-03 §3 illustrated D-17 with Agent A's Participant
+becoming Agent B after an attended transfer. That conflicts with D-87/D-88:
+a Participant is attributed to an extension owner when it is created, so
+reusing it would credit Agent B's minutes to Agent A. The call-control LLD
+(LLD-01 §11–§14) needed a single rule.
+
+**Decision:**
+- **The transferred party** (usually the caller) keeps its Participant;
+  its duration and channel history continue unbroken. This is D-17's
+  guarantee.
+- **The transferor** becomes `Disconnected` with reason `transferred`.
+  **The new party** is a new Participant with its own attribution.
+- "Consulting" is the state of a transfer operation (`call_operations`),
+  not of a person.
+- **The call's main bridge is never replaced.** Hold uses music on hold
+  on the channel; attended transfer moves the new party into the main
+  bridge. Recording therefore continues through hold, transfer, park and
+  pickup.
+- **Canonical Participant states:** Invited, Ringing, Connected, OnHold,
+  Parked, Transferring, Disconnected. "Alerting" and "Left" were
+  document-only names and are retired.
+
+**Alternatives:** *Reuse the transferor's Participant for the new party*
+(the old HLD-03 example). Rejected: it misattributes per-agent minutes
+and contradicts D-88.
+
+**Related Decisions:** D-17, D-18, D-32, D-87, D-88
+**Traceability:** HLD-03 §3, HLD-16 §4, HLD-21 §1; LLD-01 §11–§14; PRD T-5
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External
