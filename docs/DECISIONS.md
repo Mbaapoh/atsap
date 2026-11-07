@@ -3401,6 +3401,51 @@ not record the deviation.
 
 ---
 
+**D-93 · Shift-left testing with QA, implementer, reviewer and
+docs subagents; one task is one commit (2026-11-07).**
+
+**Context:** From 2026-11-02 to 2026-11-05, eleven changes landed as
+single squashed commits. Each change ended in one "unit, integration,
+e2e, race, console-check and UAT; docs" task, so every slow tier ran once
+at the end. Defects found there were found late, the UI was reviewed by
+nobody, and two main specs were left unparseable. The owner asked for
+industry shift-left practice with QA agents and proper subagents.
+
+**Decision:**
+- **The cadence is `docs/TESTING.md` §8:**
+  - a test plan at propose (`coverage.md` before code);
+  - failing tests at task start;
+  - fast tiers and a read-only review at every task commit;
+  - integration, e2e and browser specs at the end of each vertical
+    slice;
+  - full e2e, console-check, UAT, quality, docs and spec validation at
+    change end.
+- **Four project subagents** in `.claude/agents/`: `qa-engineer`,
+  `implementer`, `code-reviewer` and `docs-steward`, with the roles in
+  `docs/WORKFLOW.md` §5. The main session orchestrates and alone commits,
+  pushes, ticks tasks, asks the owner and records decisions.
+- **Tasks are vertical slices sized for one commit**, with their tests;
+  a trailing "tests" task is not allowed.
+
+**Alternatives:**
+- *Keep tiers at change end.* Rejected: it is how late defects and drift
+  happened.
+- *Run every tier on every commit.* Rejected: e2e and UAT need the rig
+  and the owner's phones; per-slice is the cheapest point where a
+  scenario is complete end to end.
+- *One general agent doing everything.* Rejected: test authorship
+  separated from implementation is what makes the tests independent
+  evidence.
+
+**Consequences:** More commits, and a review per commit. Subagent runs
+cost context, so independent read-only work runs in parallel and
+mechanical tasks may still go to a cheaper model under the same gates.
+
+**Related Decisions:** D-28, D-29, D-71
+**Traceability:** HANDOFF §3; WORKFLOW §2, §5; TESTING §8
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

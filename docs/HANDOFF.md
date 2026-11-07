@@ -11,6 +11,7 @@ before-pilot item is closed; see PROGRESS). Phase B is in progress.
 
 | # | What | State | How to start |
 |---|---|---|---|
+| 0 | **`console-review-fixes`**: Call flows republish wipes the IVR menu (data loss), dialog errors hidden behind the modal, then the missing browser/real-API specs and the Medium findings (PROGRESS R5–R7) | Found 2026-11-07; not proposed yet | `/opsx:propose console-review-fixes`; run it with the D-93 subagent loop |
 | 1 | **`pbx-ivr-flow-graph`**: typed destinations, multi-level menus as a node graph, weekly schedules in an IANA time zone with a manual override, re-prompt, direct dial, and an extension delete that checks flows | **Proposed** (D-91); planning artifacts in `openspec/changes/pbx-ivr-flow-graph/` | `/opsx:apply pbx-ivr-flow-graph`, one task and one commit at a time |
 | 2 | **`pbx-queues`**: ACD queues, agents and state, hot-desk (LLD-03 §3.3) | Designed | Propose after #1; it adds the `queue` destination kind |
 | 3 | **`pbx-voicemail`**, then recording governance (LLD-03 §3.4, LLD-09) | Designed | After #2 |
@@ -233,16 +234,27 @@ There were 39 commits on `develop`, all pushed. Each change below was specified,
 ## 3. How the project is run (read before changing anything)
 
 ### 3.1 Workflow
-- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-92, in number order); say so explicitly if one must change.
+- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-93, in number order); say so explicitly if one must change.
 - **Every piece of work is an OpenSpec change:**
   1. `/opsx:propose`: proposal, delta specs, design and tasks.
   2. `/opsx:apply`: one task at a time.
   3. `/opsx:archive`: syncs the delta specs into `openspec/specs/` and moves the change to `openspec/changes/archive/`.
-- **Per task** (owner rule, "auto mode"):
-  1. Implement.
-  2. Run every relevant tier (§4).
-  3. Tick the task in `tasks.md` with a short note of what was proven.
-  4. Make **one commit per task**, then push to `develop`.
+- **Per task** (owner rule, "auto mode", shift-left since D-93; full
+  cadence in [TESTING.md §8](TESTING.md)):
+  1. `qa-engineer` subagent: write the task's tests and show them
+     failing.
+  2. `implementer` subagent: make them pass, then run the fast tiers
+     (lint, unit, the affected integration package on `atsapbx_test`,
+     console vitest).
+  3. `code-reviewer` subagent: a read-only review of the diff, which must
+     end `VERDICT: approve`.
+  4. Main session: re-run the gates, tick the task in `tasks.md` with the
+     proof, make **one commit per task** and push to `develop`.
+  5. At the end of a slice, `qa-engineer` runs full integration, the
+     slice's e2e and the browser specs. At the end of a change it runs
+     full e2e, console-check, UAT and quality; `docs-steward` then
+     updates the docs and runs `openspec validate --specs --strict`
+     before `/opsx:archive`.
 
   Never batch tasks. Never skip tiers. Ratchet the coverage floors after green.
 - **Stop and ask the owner** for any new dependency, security trade-off, or scope change.

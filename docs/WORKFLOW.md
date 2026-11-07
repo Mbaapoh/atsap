@@ -37,13 +37,19 @@ LLD exists for the context
         │                   (planning only — no code)
         │      ↓ review: does it match BRD/PRD? does it skip an invariant?
         │
-        ├─ /opsx:apply    → work the tasks, checking each one off
+        │                   + coverage.md test plan (qa-engineer)
+        ├─ /opsx:apply    → per task: qa-engineer writes failing tests →
+        │                   implementer makes them pass (fast tiers) →
+        │                   code-reviewer approves → tick, commit, push
+        │                   per slice: qa-engineer runs integration, e2e,
+        │                   browser specs (TESTING.md §8)
         │      ↓ pause on: ambiguity, a design issue, added scope
         │
         ├─ verify against the LLD's Definition of Done
         │      ↓ "tests pass" is not the bar; the DoD is
         │
-        └─ /opsx:archive  → delta specs merge into openspec/specs/
+        └─ /opsx:archive  → full tiers + UAT (qa-engineer), then
+                            docs-steward; delta specs merge into openspec/specs/
                             which becomes the new source of truth;
                             docs/PROGRESS.md is updated in the same commit
 ```
@@ -117,12 +123,14 @@ Integration tests need the dev stack up (`mise run dev`) and connect over
 host ports, so override the compose hostnames:
 
 ```bash
-DATABASE_URL="postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx?sslmode=disable" \
+DATABASE_URL="postgres://atsapbx_app:devpassword123@localhost:15432/atsapbx_test?sslmode=disable" \
+ENGINE_DATABASE_URL="postgres://asterisk_engine:devpassword123@localhost:15432/atsapbx_test?sslmode=disable" \
   go test -tags integration ./... -p 1
 ```
 
 `-p 1` is required: the integration suite resets the schema, so packages
-must not run in parallel.
+must not run in parallel. **Always `atsapbx_test`**: the suite migrates
+its database down, and pointed at `atsapbx` it wipes the rig's data.
 
 **Restore the rig between tiers with `mise run rig:restore`.** Two things
 rot independently, and neither symptom names its cause — which is why
@@ -172,6 +180,27 @@ enforced by review rather than by a machine, the change says so plainly
 
 ## 5. Who does which work
 
+**Subagents in the loop (D-93).** Definitions live in `.claude/agents/`.
+The main session is the architect and orchestrator: it holds decisions,
+proposals, design and the commit.
+
+| Agent | When | Writes |
+|---|---|---|
+| `qa-engineer` | propose (test plan), task start (failing tests), slice/change end (slow tiers, UAT) | tests, fixtures, `coverage.md` only |
+| `implementer` | after the failing tests exist | product code for one task; runs fast tiers |
+| `code-reviewer` | after the implementer, before the commit | nothing (read-only verdict) |
+| `docs-steward` | archive, new decisions, suspected drift | docs only; runs `make docs` and `openspec validate` |
+
+Subagents never commit, push, tick tasks, stop the owner's phones, add a
+dependency or decide a trade-off. Those stay with the main session and
+the owner. Independent read-only work (reviews, searches) may run in
+parallel; edits to the same files never do.
+
+Another model (OpenCode, DeepSeek) may play the implementer for mechanical
+tasks. Its output gets the same `code-reviewer` pass and the same gates,
+and it follows the same one-task-one-commit rule. The 2026-11-02..05
+batch did not, and that is why this table exists.
+
 Two agents, deliberately different roles — full guidance in the
 `agent-delegation` skill:
 
@@ -196,8 +225,9 @@ or anything touching credentials, grants, or bypass paths.
 - House style: `docs: ...` for documentation, `Add ...` for new
   artefacts, imperative subject, bullet body for multi-part commits,
   requirements traceability where the convention applies.
-- **No AI attribution trailers.** The author is the repository owner's
-  own git identity.
+- **Attribution:** the author is the repository owner's git identity;
+  commit messages end with the co-author line the tooling supplies
+  (HANDOFF §3.1). If another model wrote the work, say so in the body.
 - **Commit and push are separate authorizations.** A request to commit is
   not permission to push.
 - Never `--force`, never `--no-verify`, never amend someone else's commit.

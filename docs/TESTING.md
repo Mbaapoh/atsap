@@ -170,3 +170,35 @@ is a call, not a fixture.
   agents (or humans) turn any red build into a fix without tribal
   knowledge: the failing artifact, the reproduction recipe, and the
   decision trail are all in the repo or one click away in CI.
+
+---
+
+## 8. Shift-left cadence: which tier runs when (D-93)
+
+Tests move left: they are planned at propose, written before the code
+they prove, and the slow tiers run at the end of each **vertical slice**,
+not once at the end of a change. A change that has a single "tests and
+docs" task at the end is malformed; split it.
+
+| When | Who | What runs | Blocks |
+|---|---|---|---|
+| **Propose** | `qa-engineer` | `coverage.md` test plan: every delta-spec scenario mapped to tiers (U/I/W/E/C/B/A) and named tests; gaps stated with a reason | The proposal is not ready without it |
+| **Task start** | `qa-engineer` | The task's tests are written and fail for the right reason (red), with output pasted | Implementation does not start on a green or missing test |
+| **Task end** (every commit) | `implementer`, then the main session | `make lint` (0 issues), `make test` (unit), the **affected** integration package on `atsapbx_test`, wire tests for changed RPCs, console vitest for changed components plus the console lint | The commit |
+| **Task review** | `code-reviewer` | Read-only review of the diff against spec, design, boundaries, security, console rules | The commit (`VERDICT: approve`) |
+| **Slice end** (the last task of a tasks.md section that delivers a user-visible scenario) | `qa-engineer` | The full Go integration suite (`-p 1`, `atsapbx_test`); the e2e tests for the slice's scenarios after `make rig-restore`; Playwright browser specs on the real API for its console screens; `-race` (§6 container recipe while the host toolchain is broken) | The next slice |
+| **Change end** (before archive) | `qa-engineer`, then `docs-steward` | Full Go e2e; `make console-check`; the phone UATs (`uat-auto`, `uat-placement`, `uat-inbound`, with owner consent for the phones) and the change's manual UAT; `make quality` (coverage floors, SCA, gitleaks); `make coverage-ratchet`; `make docs`; `openspec validate --specs --strict` | The archive |
+
+Rules:
+
+- **One task is one commit, pushed after its gates pass.** Tasks are
+  sized so this is possible: a task is one behaviour, its tests, and
+  their wiring, usually under about 400 changed lines.
+- **A UI-visible scenario needs a console test in the same task as the
+  API that serves it, or in the next one.** UI is never back-filled at
+  the end.
+- **E2e and UAT are evidence, not discovery.** If a defect first appears
+  there, add the missing lower-tier test that would have caught it, in
+  the same fix commit.
+- Subagents cannot ask the owner. Any step needing the phones on UDP
+  5070/5071 returns `NEEDS OWNER CONSENT`, and the main session asks.
