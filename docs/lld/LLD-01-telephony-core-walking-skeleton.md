@@ -300,3 +300,20 @@ applying agent; this file is the design source. The codebase reorganisation
 that preceded the change already relocated `ari`/`ami` under
 `internal/telephony/acl` and created the skeleton package directories, so
 tasks 5.1/5.2 are satisfied in the working tree before apply begins.
+
+## 11. Call control beyond the walking skeleton (2026-11-07)
+
+`HoldParticipant` and `TransferParticipant` return `ErrNotImplemented`.
+Their designs are in HLD-21 §1:
+- hold and music on hold;
+- blind transfer by originate-and-swap (not ARI `redirect`, which leaves
+  the engine);
+- attended transfer through a holding bridge and a consult bridge;
+- phone-initiated REFER handling, which needs a spike first;
+- park, pickup and conference.
+
+Supervisor snoop is in §2. The Participant stays the identity across
+bridges (D-17, D-32). The next telephony LLD revision turns these
+sequences into ports and states before `telephony-call-control` is
+proposed.
+

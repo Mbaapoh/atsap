@@ -162,9 +162,25 @@ permitted attempt. A refusal never creates a billable call.
 - **Opt-out is immediate and permanent**: it writes `opt_outs` and the
   next `Decide`, including one already queued, sees it. The cache, if any,
   is invalidated through the same transaction, not a timer.
-- **Abandonment** (R2) is a rolling ratio per campaign; approaching the
+- **Abandonment** is a rolling ratio per campaign; approaching the
   configured limit slows the pacer, breaching it stops new attempts;
-  calls in progress continue (INV-03).
+  calls in progress continue (INV-03). **It applies to power dialling in
+  R1.0 as well as predictive in R2**, because a power dialler can abandon
+  too (HLD-21 §4, D-95).
+- **The jurisdiction profile carries the abandonment rules as
+  parameters** (2026-11-07, HLD-21 §4). None of them is a constant:
+  - `abandon_connect_limit` (FCC: 2 s after the greeting completes);
+  - `abandon_limit` and `abandon_window` (FCC: 3 % per campaign per 30
+    days);
+  - `min_ring` (FCC: 15 s or 4 rings before giving up);
+  - `abandon_message_required` (an identification and opt-out message);
+  - `no_redial_after_abandon` (a window during which the number is not
+    dialled again; UK practice, confirm the current Ofcom figures before
+    adopting);
+  - whether AMD time counts against the connect limit.
+
+  US values come from 47 CFR 64.1200(a)(6)–(7). Other jurisdictions are
+  tenant-entered, like the emergency catalogue.
 
 ## 8. Security and failure model
 

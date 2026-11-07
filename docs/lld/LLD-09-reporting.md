@@ -112,6 +112,15 @@ compares terminated calls to records and emits an alert/correction.
 - **Consent:** the policy records whether announcement/consent was required
   and how it was satisfied; an unknown policy is not “consent”.
 
+**Recording execution (2026-11-07):** HLD-21 §7 sets the sequence:
+- consent completes before recording starts;
+- mixed bridge recording, or separated per-participant snoop recordings;
+- the file moves from the engine to the tenant's encrypted object
+  store;
+- every access is audited;
+- recording pauses for card payments, with the gap recorded in the
+  metadata.
+
 ## 6. API and exports
 
 `ReportingService` already provides `ListCallRecords`/`ExportCallRecords`.

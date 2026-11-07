@@ -90,6 +90,18 @@ The tap adapter is the only code allowed to touch ARI media; it lives in
 `ai-pipeline/acl/asterisk` (or the telephony ACL) and never leaks a channel
 into domain/API.
 
+### 4.1 Transport and the AI voice agent (2026-11-07)
+
+- **Transport:** the tap is a snoop feeding ARI `externalMedia` at
+  slin16 (AudioSocket or RTP encapsulation; HLD-21 §6). The spike
+  measures latency and stall behaviour (HLD-21 §10).
+- **The AI voice agent** (BRD §12.4.2) is the one AI feature on the live
+  leg. Under D-96 it is a call **destination** (`ai_agent`) with a
+  latency deadline and an immediate fallback destination. It is never on
+  the emergency path, and listening AI stays on copies (D-23).
+- **AMD** is not an AI dependency: an AI classifier is an optional
+  plugin to the dialler's baseline AMD (HLD-21 §4).
+
 ## 5. Provider adapters
 
 ```go

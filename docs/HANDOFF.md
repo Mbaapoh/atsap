@@ -22,8 +22,11 @@ before-pilot item is closed; see PROGRESS). Phase B is in progress.
 
 **Flows:** [hld/20-call-flow-catalogue.md](hld/20-call-flow-catalogue.md)
 lists every PBX, contact-centre, outbound and predictive flow with its
-status. §10 there is the design backlog. Call control (hold, transfer,
-park, pickup, conference) and abandonment compliance come first.
+status. Realtime sequences are in
+[hld/21-media-and-call-control-flows.md](hld/21-media-and-call-control-flows.md)
+(D-95, D-96). The catalogue's §10 is the remaining design backlog:
+call-control spikes, then a telephony LLD revision, then
+`telephony-call-control`.
 
 The full list of what was kept and what was flagged is in
 [PROGRESS.md § Architecture review 2026-11-07](PROGRESS.md).
@@ -239,7 +242,7 @@ There were 39 commits on `develop`, all pushed. Each change below was specified,
 ## 3. How the project is run (read before changing anything)
 
 ### 3.1 Workflow
-- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-94, in number order); say so explicitly if one must change.
+- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-96, in number order); say so explicitly if one must change.
 - **Every piece of work is an OpenSpec change:**
   1. `/opsx:propose`: proposal, delta specs, design and tasks.
   2. `/opsx:apply`: one task at a time.

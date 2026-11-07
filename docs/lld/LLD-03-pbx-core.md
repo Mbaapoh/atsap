@@ -354,6 +354,29 @@ type Agent struct {
   wrap-up expiry, hot-desk login/logout, disabled member, live counts,
   a real two-agent call distribution, recordings per policy.
 
+#### 3.3.1 Realtime sequence and the call features pbx-core owns (2026-11-07)
+
+**The ACD sequence is HLD-21 §3:**
+- one dispatcher per queue under a Postgres advisory lock;
+- durable `queue_entry` and agent-state rows, with no Redis (D-56);
+- position and EWT prompts;
+- overflow;
+- **queue callback**, where the caller keeps their position (IC-05).
+
+**`pbx-core` also owns the configuration** behind the call-control
+flows in HLD-21 §1:
+- park lots: slots unique per tenant and lot, timeout and comeback,
+  fallback;
+- pickup groups and the pickup and park retrieve codes;
+- conference rooms (number, PIN, moderator);
+- ring groups (simultaneous, hunt, memory-hunt);
+- per-extension forwarding (unconditional, busy, no answer,
+  unavailable), follow-me and DND.
+
+Each one is a D-91 destination kind or a per-extension rule, so a DID,
+an IVR option and a queue overflow reach it the same way. `telephony-core`
+executes the bridges; `pbx-core` decides the destination.
+
 ### 3.4 Voicemail
 
 Voicemail is a mailbox owned by an extension (and therefore by its owner

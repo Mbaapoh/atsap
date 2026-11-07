@@ -336,6 +336,10 @@ invalid for OpenSpec. They are repaired; `openspec validate --specs
 --strict` now passes 22/22.
 
 **Flow coverage (D-94):** [hld/20-call-flow-catalogue.md](hld/20-call-flow-catalogue.md).
+*Update, same day (D-95, D-96):* HLD-21 now gives the realtime sequences
+for most of them, and 4 of 84 flows remain **Missing**: paging,
+caller-ID presentation, inbound disposition, and outbound caller-ID
+pools. The text below is what the first pass found.
 Of the 83 catalogued flows, 15 are wholly or partly **Missing** a design: attended
 transfer, pickup, ring groups, forwarding, follow-me, DND, caller-ID
 presentation, queue callback, blended agents, the abandonment message

@@ -113,6 +113,21 @@ talk-time, wrap-up and abandonment estimates. The algorithm is a pure
 function over a bounded observation window; it can only change the number
 of simultaneous attempts, never bypass compliance or capacity.
 
+**Execution detail (2026-11-07):** HLD-21 §4 specifies the realtime
+sequence:
+- a **nailed-up agent leg** (the agent is answered once at login and
+  held in their own bridge), so that a human answer connects in under a
+  second;
+- a Postgres **hopper** of pre-selected contacts, with compliance
+  **re-evaluated at dial time**;
+- the minimum ring time, the abandonment message and the abandonment
+  ratio from the LLD-04 jurisdiction profile;
+- AMD on a copied stream: a talk-detection baseline without AI, and an
+  optional AI plugin whose decision deadline defaults to *human*.
+
+Blended agents share the LLD-03 agent state with the inbound
+dispatcher; a reservation is a single conditional row update.
+
 **Pause/stop:** set campaign state, stop **new** attempts within 10 s (AC-14.4),
 cancel pending callbacks if the operator asks; calls in progress run to
 natural completion.
