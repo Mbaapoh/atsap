@@ -73,6 +73,7 @@ capabilities and where we differ are in [PRIOR-ART.md](PRIOR-ART.md).
 | 09 | [Reporting](LLD-09-reporting.md) | `reporting` | First slice implemented (`pbx-reporting`, D-88); full LLD **Draft** for quality, recording metadata, retention and exports | — |
 | 10 | [AI Pipeline](LLD-10-ai-pipeline.md) | `ai-pipeline` | **Draft** — optional, per-tenant, provider-neutral streaming; split out of LLD-05 under D-48 | — |
 | 11 | [Entitlement](LLD-11-entitlement.md) | `entitlement` | Draft — nothing built. Tier 1; needed the first time a paid module ships (Phase B), not for Phase A | — |
+| 12 | [Desk-Phone Provisioning and Installation Lifecycle](LLD-12-provisioning-and-lifecycle.md) | `pbx-core` (device module); install/upgrade/backup is installation tooling, not a context | **Draft — design only** — AD-07 and AD-09 to the D-98 Definition of Ready; owner decisions OD-1–OD-11 open | — |
 
 The console is deliberately absent: it is not a bounded context, it
 consumes every context and owns none, and D-46 retired it as a single
