@@ -1,36 +1,67 @@
 # Handoff — where AtsaPBX stands and how to continue
 
-**Written:** 2026-11-01, at the end of a working week, so that anyone — a
-person or a different AI model — can pick up exactly here. Read this
+**Written:** 2026-11-01; **revised 2026-11-07** after an architecture
+review, so that anyone (a person, Claude, DeepSeek or another model) can
+pick up exactly here. Read this
 first, then [PROGRESS.md](PROGRESS.md). When this file and PROGRESS,
-DECISIONS or `openspec/specs/` disagree, **they** win; fix this file.
+DECISIONS or `openspec/specs/` disagree, **t## 1. The next work, in order (revised 2026-11-07)
 
----
-
-## 1. The next work, in order (owner decision, 2026-11-01)
-
-The owner closes **all of these in the current phase** (Phase A, before a
-pilot), in this order:
+Phase A is **done** and pilot-ready (every A1–A5 flow and every
+before-pilot item is closed; see PROGRESS). Phase B is in progress.
 
 | # | What | State | How to start |
 |---|---|---|---|
-| **7a** | **Call session UX** (owner request, 2026-11-02): a persistent call bar with live state and one-click Hang up/Cancel, a global dialer (searchable extension, keypad, recents), live Call history, and `GetCall` timestamps/reason | **Done and archived 2026-11-02** (`console-call-session`, D-79); proven by full Go e2e, all three phone UATs, `make console-check` and the console tiers | — |
-| **7** | **Click-to-call**: ring the caller's phone first, then the destination; a "Place a call" action and a "Hang up" action on Call history | **Done and archived 2026-11-02** (`console-click-to-call`, D-78); proven by e2e, all three phone UATs and `make console-check` | — |
-| **5** | **Trunk health exactly as HLD T-6**: 10 s checks; Degraded after 3 consecutive failures or >20 % call-setup failures over 60 s (min 5); 5 min recovery | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80) | — |
-| **6** | **BR-08 carrier-failure alert**: the operator is told when a carrier fails | **Done and archived 2026-11-03** (`pbx-trunk-health-thresholds`, D-80); one email per failure transition | — |
-| **8** | **Browser calling** (BRD FBR-R1-01, PRD EPIC-03): a softphone in the console over WebRTC | **Done and archived 2026-11-03** (`console-browser-phone`, D-81); SIP.js over WS/WSS, two-browser rig call, full e2e and console-check | — |
+| 1 | **`pbx-ivr-flow-graph`**: typed destinations, multi-level menus as a node graph, weekly schedules in an IANA time zone with a manual override, re-prompt, direct dial, and an extension delete that checks flows | **Proposed** (D-91); planning artifacts in `openspec/changes/pbx-ivr-flow-graph/` | `/opsx:apply pbx-ivr-flow-graph`, one task and one commit at a time |
+| 2 | **`pbx-queues`**: ACD queues, agents and state, hot-desk (LLD-03 §3.3) | Designed | Propose after #1; it adds the `queue` destination kind |
+| 3 | **`pbx-voicemail`**, then recording governance (LLD-03 §3.4, LLD-09) | Designed | After #2 |
+| 4 | **`reporting-cdr-ledger`**: an event-fed, INSERT-only CDR replaces the read over telephony tables | Flagged (D-92) | Before the R1.0 gate |
+| 5 | **Call control**: hold, transfer, park, conference (FBR-R1-01); `HoldParticipant` and `TransferParticipant` are stubs | Not ordered by the owner yet | Ask the owner where it goes |
+| 6 | **`ListCalls`/`GetCall` role scoping**, as Reports does | Open gap (Medium) | Small change, any time |
+| 7 | **MFA and company-domain SSO** (LLD-02 revision 4) | Designed | Before GA |
 
-The numbering (#5 to #8) is the refinement list proposed on 2026-11-01. #1 to #3 are done: `pbx-carrier-addresses` and `pbx-carrier-ingress`; **#7 and #7a are done and archived 2026-11-02** (`console-click-to-call` D-78, `console-call-session` D-79); **#5, #6 and #8 are done and archived 2026-11-03** (`pbx-trunk-health-thresholds` D-80, `console-browser-phone` D-81). **Phase B has ownership, reporting and IVR (routing + menu)** (D-87–D-90).
-Next is `pbx-queues`, then voicemail/recording and the remaining LLD-09
-quality/retention work.
-MFA and company-domain SSO remain before GA.
+The full list of what was kept and what was flagged is in
+[PROGRESS.md § Architecture review 2026-11-07](PROGRESS.md).
 
-**Deferred by the owner, do not start unasked:**
-- `quality-and-supply-chain-gates` task 5.3 (the Asterisk image scan: a multi-stage image, and `--ignore-unfixed`).
+**AI:** the BRD makes AI optional and provider-neutral (VP-5, D-23). No AI
+code exists yet; LLD-10 is the design. The R1.0 gate requires call audio
+streamed to two providers, so an audio-tap spike (snoop or external
+media over ARI) should be scheduled before R1.0. Ask the owner when.
+
+---
+
+ and `--ignore-unfixed`).
 
 ---
 
 ## 2. What was done this week
+
+### 2026-11-07 — architecture review and documentation reconciliation
+
+**Who did the 2026-11-02 to 2026-11-05 work.** The owner reports that
+DeepSeek made it through the agent tooling. Every commit carries the
+standard co-author line, so read authorship from this note, not the
+trailer.
+
+**What it covered.** The review checked every change from D-79 to D-90
+against the BRD, PRD, HLD and vendor practice.
+- **Most of it is aligned and kept.** The list is in PROGRESS.
+- **Two designs are flagged for refactor.** The IVR model is D-91 and is
+  next; reporting's cross-context read is D-92.
+
+**Documents fixed.**
+- `DECISIONS.md`: D-81 to D-90 had been inserted in reverse order and
+  are now in number order, with content unchanged.
+- `PROGRESS.md`: the stale "Active changes" row, the Phase B and LLD
+  statuses, and the open gaps that were already closed.
+- This file.
+- `LLD-03` §3.2.1 (shipped versus the target IVR).
+- `HLD 04` §5 (reporting implementation status).
+- `PRIOR-ART` (IVR sources, and the CDR claim corrected).
+
+**Process drift to stop.** From 2026-11-02 each change landed as one
+squashed commit, and two commits bundle two changes each. From
+`pbx-ivr-flow-graph` on, go back to one commit per task (§3.1).
+
 
 ### 2026-11-05 — IVR menu (D-90)
 
@@ -140,7 +171,7 @@ transition emails the tenant administrators and
 `ATSAPBX_CARRIER_ALERT_EMAILS` once, with no alert on recovery. Migration
 0017, the pure decision, the prober and the call window are tested at
 unit, integration and e2e (the alert is verified in Mailpit). The Asterisk
-image scan remains owner-deferred.
+image scan was then owner-deferred; it closed on 2026-11-04 (D-86).
 
 ### 2026-11-02 — live call session and dialer (D-79)
 
@@ -197,7 +228,7 @@ There were 39 commits on `develop`, all pushed. Each change below was specified,
 ## 3. How the project is run (read before changing anything)
 
 ### 3.1 Workflow
-- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-77); say so explicitly if one must change.
+- **The product docs** are BRD, then PRD, then HLD (`docs/hld/`), then LLD (`docs/lld/`), then OpenSpec specs (`openspec/specs/`). **Never re-litigate a decision** in [DECISIONS.md](DECISIONS.md) (append-only, D-1 to D-92, in number order); say so explicitly if one must change.
 - **Every piece of work is an OpenSpec change:**
   1. `/opsx:propose`: proposal, delta specs, design and tasks.
   2. `/opsx:apply`: one task at a time.
@@ -237,16 +268,13 @@ Run from the repo root; `mise` pins the toolchain (`.mise.toml`, `console/mise.t
 
 ---
 
-## 5. Browser calling — decisions taken (D-81)
+## 5. Browser calling and the carrier alert — decisions taken (D-80, D-81, D-84)
 
 - **Library:** SIP.js 0.21.2 (MIT; D-35/68 allowed).
 - **Transport:** WS on the dev rig via Asterisk's HTTP server, WSS in production through the reverse proxy or a mounted `transport-wss` certificate; `SIP_WEBRTC_URL` selects it.
 - **Who may use it:** an administrator chooses a WEBRTC extension and enters its one-time SIP password; ownership waits for Phase B (D-65).
-- **NAT:** host ICE only in Phase A. **TURN/coturn is still required before a production NAT pilot**, recorded as a gap.
-
-#5 and #6 need fewer decisions:
-- The alert channel for BR-08: **email through the existing mailer** (Mailpit on the rig) is the simplest. Webhooks are LLD-05, later.
-- Who receives the alert: tenant administrators, the platform operator, or both.
+- **NAT:** STUN/TURN is installation-configured and passed to the browser (`pbx-turn-media`, D-84); the rig runs a dev coturn. TURN credentials are static in Phase A (accepted gap).
+- **BR-08 alert (D-80):** email through the existing mailer to tenant administrators and `ATSAPBX_CARRIER_ALERT_EMAILS`; webhooks wait for LLD-05.
 
 ---
 

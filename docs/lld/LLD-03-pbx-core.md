@@ -23,6 +23,7 @@
 | 2026-10-11 | **§3 `Trunk` gains `AuthUsername`** (`pbx-trunks-routes` design D7). Carrier digest auth needs a username as well as the secret; both are optional, matching SIP-trunk convention, so an IP-authenticated carrier carries neither. Outbound carrier registration stays out: it needs `ps_registrations` and a new engine grant. |
 | 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
 | 2026-11-04 | **§3.2–3.4 added: IVR menu, queues/agents/hot-desk and voicemail design**, grounded in 3CX/FusionPBX/Vodia/Asterisk documentation. `pbx-ivr-routing` (time routing), ownership and participant attribution have since shipped; the menu/queue/voicemail execution remains. |
+| 2026-11-07 | **§3.2.1 added: IVR review against 3CX, VitalPBX, FreePBX, FusionPBX and Amazon Connect** (D-91). The shipped single-level, extension-only, UTC-window menu is recorded; the target is typed destinations, a five-kind node graph, weekly schedules in an IANA time zone with a manual override, re-prompt and direct dial, delivered by `pbx-ivr-flow-graph` before `pbx-queues`. |
 | 2026-10-11 | **§3.1 added: extensions and the people who use them (D-65), Phase B design.** `ExtensionAssignment` (owner) and `Agent` (queue membership, state, hot-desk device), both keyed by `PrincipalID`; call participants gain the extension and owner. New Phase B change `pbx-extension-assignment` heads §12's Phase B list. Phase A is unchanged, and its console works without the link (HLD 18 §7). |
 
 ## 1. Scope
@@ -254,6 +255,43 @@ table.
 - Test-before-publish (US-03.8) calls a flow's current revision through a
   `TestFlow` API that simulates time/holiday and returns the branch tree; it
   places no real call.
+
+#### 3.2.1 What shipped, and the target model (review 2026-11-07, D-91)
+
+**Shipped** (`pbx-ivr-routing` D-89, `pbx-ivr-menu` D-90): a DID-owned
+flow; immutable revisions with publish/rollback; one UTC business window
+applied to every day; a tenant holiday calendar; a built-in `sound:`
+prompt; up to ten digits; no-input/invalid fallbacks; ARI execution.
+Every destination is an **extension**, and there is **one menu level**.
+
+**Not yet built from this section:** re-prompt before the fallback,
+nested flows, queue/voicemail destinations, prompt upload and
+`TestFlow`.
+
+**Target model (`pbx-ivr-flow-graph`, before `pbx-queues`):**
+
+```text
+FlowRevision v2 { schema_version: 2, entry: NodeID, nodes: map[NodeID]Node }
+Node =
+  schedule { schedule_id, open: NodeID, closed: NodeID, holiday?: NodeID }
+  menu     { prompt, timeout_s, retries (default 2), options: {"0".."9","*","#"} -> NodeID,
+             direct_dial: bool, no_input: NodeID, invalid: NodeID }
+  play     { prompt, next: NodeID }
+  goto     { destination: Destination }
+  hangup   { reason }
+Destination { kind: extension | flow | queue | ring_group | voicemail | external, ref }
+Schedule  { id, name, time_zone (IANA; tenant default), ranges: [{weekday, start, end}],
+            override: none | open_until_next | closed_until_next | open | closed }
+```
+
+- The interpreter is a pure function `(revision, node, event, now) ->
+  (next node, commands)` (D-22); telephony executes the commands over ARI.
+- Publish refuses dead ends, unreachable nodes, menu depth above five, and
+  a destination kind whose context has not shipped.
+- v1 revisions are converted on read (schedule → menu → goto), never
+  rewritten. New publishes write v2 only.
+- Deleting an extension refuses, or names the flows it breaks, while an
+  active revision targets it.
 
 **API additions:** prompt upload/list/delete, menu branch CRUD inside a
 revision, `TestFlow`. **Tests:** DTMF selection, timeout/invalid fallback,
@@ -1035,9 +1073,10 @@ after the Phase A console slice exists, per D-46.
 | `pbx-extension-ownership` | B | §3.1 `ExtensionAssignment`; "assigned to" in the console; assign/unassign API (D-87) | **Implemented and archived 2026-11-04.** Phase B opens here; participant attribution and person-scoped history move to LLD-09 as D-87 records |
 | `pbx-reporting` | B (LLD-09) | The remainder of D-65: `call_participants.extension_id`/`principal_id`, terminated-call CDR reads, agent-scoped visibility, CSV export with audit (D-88) | **Implemented and archived 2026-11-04**; quality/recording/retention remain later LLD-09/recording slices |
 | `pbx-ivr-routing` | B | DID flow, immutable revisions, publish/rollback, UTC business hours and holidays | **Implemented and archived 2026-11-04** (D-89); the DTMF menu/prompt is `pbx-ivr-menu` |
-| `pbx-ivr-menu` | B | Prompt playback, DTMF menu, flow-as-data execution beyond time routing | After `pbx-ivr-routing` |
+| `pbx-ivr-menu` | B | Prompt playback, DTMF menu, flow-as-data execution beyond time routing | **Implemented and archived 2026-11-05** (D-90): one menu level, extension destinations |
+| `pbx-ivr-flow-graph` | B | Typed destinations, node-graph revisions, weekly schedules in a time zone, override, re-prompt, direct dial (§3.2.1) | **Proposed 2026-11-07** (D-91); before `pbx-queues` |
 | `pbx-ivr-flows` | B | Full flow builder/IVR UI on top of routing and menu | Later |
-| `pbx-queues` | B | ACD queues, §3.1 `Agent` (state, queue membership, hot-desk device), wrap-up | After IVR |
+| `pbx-queues` | B | ACD queues, §3.1 `Agent` (state, queue membership, hot-desk device), wrap-up | After `pbx-ivr-flow-graph` (adds the `queue` destination kind) |
 | `pbx-voicemail` | B | Voicemail to an owned extension, voicemail to email (US-03.5) | Needs assignment and recording governance |
 
 Each change is proposed, applied, and archived independently. **Do not

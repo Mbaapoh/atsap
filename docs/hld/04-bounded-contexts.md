@@ -161,6 +161,7 @@ All bounded contexts live as Go modules within the single AtsaPBX monolithic bin
   - Usage records are deduplicated by `(participant_id, second_timestamp)`.
   - All records are strictly append-only. Corrections are written as separate, attributable adjustment rows (BR-07).
   - Records are derived exclusively from `Participant` identity, never raw Asterisk channels.
+- **Implementation status (2026-11-07):** the first slice (`pbx-reporting`, D-88) is a read-only `ReportingService` over terminated calls, with agent scoping and an audited CSV export. It reads telephony's `calls`, `call_participants` and `usage_seconds` tables directly. This departs from the dependency table below (events only) and from the append-only invariant above. **D-92** records it as temporary; `reporting-cdr-ledger` replaces it with an event-fed, INSERT-only CDR before the R1.0 gate.
 
 ---
 

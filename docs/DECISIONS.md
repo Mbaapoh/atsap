@@ -2859,279 +2859,95 @@ Phase A; webhooks remain LLD-05.
 
 ---
 
-**D-86 · The Asterisk runtime is a minimal multi-stage image; the image
-gate fails on fixable HIGH/CRITICAL and ignores unfixed base-OS CVEs,
-with the full report retained (2026-11-04).**
+**D-81 · Browser calling uses SIP.js over WebSocket, with a WEBRTC extension the administrator connects (2026-11-02).**
 
-**Decision:** Build Asterisk in a builder stage and copy only the
-installed tree and the shared libraries its binary and modules link into
-a clean `debian:bookworm-slim` runtime. The compiler, Python and the
-`-dev` packages no longer ship, and the image is ~0.8 GB instead of
-~3.3 GB.
-- Trivy fails a production image on **fixable** HIGH/CRITICAL
-  vulnerabilities. The API image is scanned strictly. The Asterisk
-  runtime is scanned with `--ignore-unfixed`, because its remaining
-  findings are Debian base-OS CVEs with no fixed version; the unfiltered
-  SARIF report is written to `quality-reports/trivy-core.sarif` for
-  review and the SBOM remains attached.
-- `TRIVY_JAVA_DB_REPOSITORY` prefers GHCR; a cached Java DB is used when
-  an update is unreachable, so the scan does not depend on a mirror that
-  can 404.
+**Decision:** The console has a browser phone. It uses **SIP.js 0.21.2**
+(MIT, allowed by D-35) behind a small `Softphone` interface. A WEBRTC
+extension is projected with a WebRTC transport, DTLS media, ICE, AVPF and
+RTCP multiplexing; a SIP extension is unchanged. The dev rig serves PJSIP
+WebSocket at `ws://localhost:8088/ws` through Asterisk's HTTP server; a
+production deployment terminates TLS at its reverse proxy and sets
+`SIP_WEBRTC_URL` to `wss://…`, or uses the documented `transport-wss`
+with mounted certificates. An extension's `from_domain` is projected from
+the installation's domain, so a browser never sees the engine's container
+hostname in a SIP URI.
 
-**Context:** The previous single-stage image shipped its whole build
-toolchain, and its scan could not pass: 20 fixable HIGH Python 3.11
-findings plus unfixed base CVEs. The discrepancy was recorded as the
-last open item in `quality-and-supply-chain-gates`.
+Because Phase A has no user↔extension ownership (D-65), the administrator
+chooses a **WEBRTC extension** and enters its one-time SIP password. The
+password lives in the form and then in SIP.js for that page only — never
+in storage, a URL, a log, or a toast. The browser phone offers
+connect/disconnect, dial, incoming answer/reject, mute and hang up. It is
+the same extension call path as a desk phone, so routing, call history and
+the API call session see it unchanged. Hold, transfer, park and conference
+are Phase B.
 
-**Alternatives:**
-- *Ignore every unfixed finding on both images.* Rejected: the API image
-  is clean and should stay strict.
-- *Use a non-Debian runtime.* Rejected for now: the Asterisk build and
-  its modules expect the Debian glibc and library layout; a distroless
-  runtime would need a full module audit.
-- *Keep the single stage and purge packages.* Rejected: `install_prereq`
-  and `make install` leave too many paths to prove; a fresh runtime
-  stage is the smaller, inspectable artifact.
+**Context:** FBR-R1-01/EPIC-03 require browser calling. The engine
+projection already knew `WEBRTC` as a device type but `core/conf` had no
+WebSocket transport and `ps_endpoints` lacked the browser-media columns;
+the projector's own comment warned that a WEBRTC extension pointed at a
+transport that did not exist. The console had no SIP stack.
 
-**Consequences:** Fixable CVEs still fail CI. Unfixed base CVEs are
-visible in the retained report but do not block a release; re-check them
-on each Debian base bump. The runtime image must be rebuilt when a
-module gains a new shared library (the gather step is automatic).
+**Alternatives rejected:**
+- JsSIP: also MIT, but SIP.js's TypeScript API and browser media handling
+  fit the console better.
+- A hand-written SIP stack: unsafe and out of scope.
+- A committed self-signed certificate: fails in a real browser and is a
+  bad example. Dev uses WS on localhost; production requires WSS.
+- Opus-only media: the engine image has no `codec_opus`; browsers support
+  PCMU/PCMA, so WEBRTC endpoints negotiate ulaw/alaw. A deployment that
+  installs codec_opus may add it.
+- User↔extension ownership now: it is Phase B (D-65); the administrator
+  chooses the extension until then.
+- TURN in this change: Phase A is host candidates only. A symmetric-NAT
+  browser needs a relay; production must add TURN, recorded as a gap.
 
-**Traceability:** `quality-and-supply-chain-gates` task 5.3; LLD-01 §9;
-change `quality-and-supply-chain-gates`
+**Trade-off accepted:** a password prompt per browser session (the secret
+is not recoverable), no TURN, and no hold/transfer in Phase A.
 
----
-
-**D-90 · The IVR menu executes over ARI with a prompt, one DTMF digit
-and explicit no-input/invalid fallbacks (2026-11-05).**
-
-**Decision:** Extend the D-89 flow revision with a prompt, up to ten
-digit branches (0–9), a timeout and no-input/invalid destinations.
-Telephony answers the caller, starts an ARI `Playback`, stores the
-playback id and a timer, and routes on `ChannelDtmfReceived`. It stops the
-prompt and timer on a digit. No dialplan is generated.
-- The prompt is a built-in `sound:` reference in this slice; uploaded
-  prompts wait for the media/object-store decision.
-- A closed/holiday flow never enters the menu.
-- Missing destinations are refused at publish; a playback failure ends
-  the call with `ivr_prompt_failed` rather than routing blindly.
-- The chosen destination is attributed exactly like a direct route.
-- A live call keeps the revision it entered; publish/rollback does not
-  affect it.
-
-**Context:** 3CX documents a 10-option IVR with prompt upload, office-hour
-inheritance and no/invalid fallbacks; Vodia and FusionPBX document
-auto-attendants and DTMF menus. ARI is the platform's existing call-control
-surface (LLD-01/D-47), so this is a telephony state machine, not generated
-dialplan.
-
-**Alternatives:**
-- *Generate dialplan for the menu.* Rejected: two call-control planes and
-  reload semantics (D-47).
-- *Play a prompt and route after a fixed delay.* Rejected: no caller
-  choice and no invalid handling.
-- *Ship prompt upload now.* Deferred: it needs the recording storage
-  decision; built-in sound proves the menu loop first.
-
-**Consequences:** A caller hears a built-in prompt and can press a digit;
-uploaded greetings and recording-linked prompts follow with LLD-09.
-Live DTMF is a handset UAT until the rig can drive RTP DTMF.
-
-**Traceability:** PRD US-03.7/03.8, AC-03.6–03.8; LLD-03 §3.2; change
-`pbx-ivr-menu`
+**Related Decisions:** D-35, D-36, D-43, D-65, D-68, D-79
+**Traceability:** BRD FBR-R1-01, §16; PRD EPIC-03, AC-03.1; HLD-12, HLD-19;
+`openspec/changes/console-browser-phone` (design D1–D8); specs
+`pbx-core/endpoint-projection`, `pbx-core/extension-management`
 
 ---
 
-**D-89 · IVR ships in two slices: time-based flow routing first, the
-DTMF menu next (2026-11-04).**
+**D-82 · Toll fraud is confined by a per-extension outbound class, with
+NATIONAL as the default and "+" as the international signal
+(2026-11-03).**
 
-**Decision:** `pbx-ivr-routing` ships the routing half of an
-auto-attendant: a DID-owned flow with immutable revisions, an open and a
-closed destination, UTC business hours and a holiday calendar. Publish
-and rollback move the active pointer. The DTMF menu/prompt execution is
-`pbx-ivr-menu`, built on ARI answer/play/DTMF.
-- The prompt field is reserved and stored but not played in this slice.
-- A DID cannot be both a flow and a direct inbound number.
-- Closed with no destination refuses rather than leaving the caller in
-  silence.
-- Revisions are immutable; only the active pointer changes.
+**Decision:** Every extension holds one of INTERNAL, NATIONAL or
+INTERNATIONAL. Placement refuses a trunk-bound destination the class
+does not cover before reserving a channel or touching the engine.
+- A new extension, and every existing extension at migration, is
+  NATIONAL.
+- A leading `+` classifies a dialled destination INTERNATIONAL;
+  otherwise it is NATIONAL. Internal destinations are always allowed.
+- Emergency is exempt from the class rule (AC-08.3); the dial plan has
+  already established emergency provenance.
+- The console shows the class and lets an administrator choose it; the
+  change is audited like any other extension edit.
+- The engine does not enforce the class. Placement is the only path to a
+  trunk, so a second enforcement point would only create drift.
 
-**Context:** D-65/LLD-03 put flow execution with a menu in one change.
-The routing model is independently useful (after-hours routing), small
-enough to prove end-to-end, and does not need ARI event-state changes. A
-menu needs playback/DTMF state and is a separate risk surface.
-
-**Alternatives:**
-- *One change with the menu.* Deferred: it would mix routing with ARI
-  media state and delay after-hours routing for every tenant.
-- *Use the dialplan for IVR.* Rejected: the platform controls calls over
-  ARI, and generated dialplan would split call control across two planes.
-
-**Consequences:** Customers can route by hours/holiday today. A caller
-hears no prompt yet; the menu follows. Prompt storage is forward-
-compatible.
-
-**Traceability:** PRD US-03, D-65; LLD-03 §12; change `pbx-ivr-routing`
-
----
-
-**D-88 · Reporting ships as a read-only service over terminated calls,
-with participant attribution and audited CSV export (2026-11-04).**
-
-**Decision:** Add `ReportingService` (LLD-09's first slice):
-- It reads **terminated calls only**, so every record is final; the
-  caller, participants, duration, outcome and per-participant usage
-  seconds come from `calls`, `call_participants` and `usage_seconds`.
-- `call_participants.extension_id`/`principal_id` are filled at call
-  creation from the extension's owner at that moment. A carrier caller
-  and an external destination have no attribution; a desk phone and an
-  internal destination do.
-- An agent (a membership without an administrator or supervisor role)
-  sees only records where they are a participant; administrators and
-  supervisors see the tenant. The filter cannot widen an agent's scope.
-- CSV export is bounded, same filters, and writes one audit entry naming
-  the person and the range (AC-07.5). Nothing is mutated.
-- Quality scores, retention and recording links remain the rest of
-  LLD-09 / recording governance; this change does not fake them.
-
-**Context:** The existing call history is operational state; reporting
-needs final CDRs, attribution and an export that compliance can use. The
-data already exists (D-65/D-87); this is the read model and its audit.
+**Context:** LLD-03 §10.2 calls toll fraud a configuration control, not
+a detection one. A compromised extension dialling premium international
+numbers is the classic PBX loss; the safe default must be the narrowest
+one that still lets a normal phone work.
 
 **Alternatives:**
-- *Export from the calls table directly in the console.* Rejected: role
-  scoping and the export audit belong on the server.
-- *Include in-flight calls.* Rejected: a record that changes after it is
-  read is not a CDR.
-- *Build the full quality/retention slice now.* Deferred: those need
-  recording storage and RTCP-XR data that do not exist yet.
+- *A country table to decide national.* Deferred: it needs a trusted
+  home-country source per tenant, and the dialled form already gives a
+  deterministic signal.
+- *Enforce in Asterisk.* Rejected: it duplicates the rule in engine
+  vocabulary and creates a second place to get it wrong.
+- *Default INTERNATIONAL to avoid support calls.* Rejected: it removes
+  the control exactly when it matters.
 
-**Consequences:** Reports show terminated calls only. Per-person history
-and agent scoping are now available; recording/quality and immutable
-retention remain in the reporting/recording roadmap.
+**Consequences:** An extension must be widened deliberately before it
+can dial international form. Anomaly detection (AC-08.2) and spend caps
+remain `compliance` work; this decision does not claim them.
 
-**Traceability:** HLD 04 §5; PRD EPIC-07/AC-07.5; LLD-09; changes
-`pbx-reporting`, `pbx-extension-ownership` (D-87)
-
----
-
-**D-87 · Phase B opens with extension ownership; per-person call
-attribution follows with reporting (2026-11-04).**
-
-**Decision:** Ship `pbx-extension-ownership` first: the audited
-`ExtensionAssignment` link, "assigned to" in the console, and the API to
-assign/unassign. The call-participant attribution (`extension_id` and
-`principal_id` on `call_participants`) and person-scoped history land
-with LLD-09 `reporting`, where the immutable CDR and the per-second
-usage ledger already read those columns.
-- An extension has 0..1 owner; a membership may own several.
-- Assignment is a tenant-scoped pbx-core aggregate keyed by principal;
-  identity is untouched and its store is read only for the member's
-  display name/email.
-- Deleting an extension removes its assignment (FK cascade); assigning a
-  disabled membership is refused.
-- An unassigned line keeps working exactly as in Phase A.
-
-**Context:** D-65 put both ownership and participant attribution in one
-change. Ownership is small, unblocks voicemail/IVR/queues, and can ship
-without touching telephony; participant attribution needs the telephony
-participant columns and belongs with the reporting slice that consumes
-them. Splitting avoids a large cross-context change for no Phase B
-blocker.
-
-**Alternatives:**
-- *One large assignment change including telephony participant columns.*
-  Deferred: it would touch every call path and its tests without a
-  Phase B consumer yet.
-- *Keep ownership in identity.* Rejected by D-65: identity does not know
-  extensions exist.
-
-**Consequences:** "Assigned to" is available now. "My calls" and
-person-scoped history wait for LLD-09. The D-65 invariant remains: the
-link lives in pbx-core and is keyed by the membership.
-
-**Traceability:** D-65; LLD-03 §3.1/§12; change `pbx-extension-ownership`
-
----
-
-**D-85 · Outbound fraud is guarded by a per-tenant policy: rated spend
-caps, blocked prefixes, and anomaly suspension with explicit resume
-(2026-11-04).**
-
-**Decision:** A tenant outbound policy (`tenant_outbound_policies`) holds
-daily and monthly spend caps, blocked destination prefixes, an anomaly
-threshold and window, and business hours (UTC). Every trunk-bound,
-non-emergency attempt is checked under a per-tenant lock; an attempt over
-the anomaly threshold outside business hours suspends outbound and alerts
-the administrators. Answered calls are rated from
-`carrier_routes.cost_per_minute` and their answered duration into a daily
-ledger; reaching a cap blocks the next call and alerts at most hourly.
-- New calls are refused; calls in progress are never cut off (AC-08.1).
-- Emergency calls bypass every guard (AC-08.3).
-- Suspension is state with a reason and timestamp; an administrator
-  resumes explicitly, the one-click reactivation HLD 05 §4.2 asks for.
-- Defaults: no cap, no blocked prefix, anomaly at 20 international calls
-  in 10 minutes outside 08:00–18:00 UTC.
-
-**Context:** D-82 confines one extension; AC-08.1/08.2 need a tenant
-control and a detection rule before a pilot. A full `compliance` context
-(DNC, calling hours, dialer abandonment) is LLD-04 work and not needed
-for manual Phase A calls.
-
-**Alternatives:**
-- *Prepay/balance rating.* Rejected for Phase A: there is no billing
-  currency or rated CDR yet; route cost and answered duration are the
-  facts the platform actually has.
-- *A timer that auto-resumes.* Rejected: HLD 05 requires an operator to
-  review the destination analysis before reactivation.
-- *Detect with call history only.* Rejected: concurrent attempts would
-  all read an under-threshold count; the attempt log is locked and
-  transactional.
-
-**Consequences:** Caps are enforced on the next call after usage is
-recorded, not mid-call. The anomaly rule is deliberately blunt (volume,
-international form, outside hours) and a false positive needs a manual
-resume. Company SSO, MFA and the compliance dialer remain separate.
-
-**Traceability:** HLD 05 §4.2, LLD-03 §10.2; change `pbx-fraud-guard`
-
----
-
-**D-84 · Browser media uses installation-configured STUN/TURN, exposed
-only to signed-in tenants (2026-11-04).**
-
-**Decision:** Add STUN/TURN configuration (`TURN_URLS`,
-`TURN_USERNAME`, `TURN_CREDENTIAL`) and return it from
-`GetSipRegistrar` with the signalling URL. The browser phone passes the
-servers to SIP.js's `RTCPeerConnection`; no public STUN server is
-invented.
-- The credential is installation-wide, stored in the deployment secret
-  store, and readable by signed-in tenant users because a browser cannot
-  allocate a relay without it. Rotating it is a deployment change.
-- Empty URLs keep host candidates and change nothing.
-- The dev compose runs coturn with host networking; production runs a
-  public TURN service (TLS where required) and the console is given its
-  URLs.
-
-**Context:** D-81 shipped host ICE only and recorded symmetric NAT as a
-High production gap. TURN is the standard remedy and is not a platform
-protocol dependency.
-
-**Alternatives:**
-- *Bundle coturn into the app image.* Rejected: the app is stateless;
-  media relaying is a separate, independently scalable service.
-- *Issue short-lived TURN credentials.* Deferred: static credentials are
-  enough for Phase A; the API shape allows a future credential service.
-- *Use a public STUN server.* Rejected: a default installation must not
-  depend on a third party and must not imply TURN where there is none.
-
-**Consequences:** A tenant can read the installation's TURN credential;
-it is not a tenant or platform secret. A production deployment without
-TURN still fails behind symmetric NAT, and the UAT/release checklist
-covers it.
-
-**Traceability:** HLD 06 §2; LLD-03 §7.1; change `pbx-turn-media`
+**Traceability:** LLD-03 §10.2; change `pbx-outbound-classes`
 
 ---
 
@@ -3185,95 +3001,403 @@ administrator (D-67).
 
 ---
 
-**D-82 · Toll fraud is confined by a per-extension outbound class, with
-NATIONAL as the default and "+" as the international signal
-(2026-11-03).**
+**D-84 · Browser media uses installation-configured STUN/TURN, exposed
+only to signed-in tenants (2026-11-04).**
 
-**Decision:** Every extension holds one of INTERNAL, NATIONAL or
-INTERNATIONAL. Placement refuses a trunk-bound destination the class
-does not cover before reserving a channel or touching the engine.
-- A new extension, and every existing extension at migration, is
-  NATIONAL.
-- A leading `+` classifies a dialled destination INTERNATIONAL;
-  otherwise it is NATIONAL. Internal destinations are always allowed.
-- Emergency is exempt from the class rule (AC-08.3); the dial plan has
-  already established emergency provenance.
-- The console shows the class and lets an administrator choose it; the
-  change is audited like any other extension edit.
-- The engine does not enforce the class. Placement is the only path to a
-  trunk, so a second enforcement point would only create drift.
+**Decision:** Add STUN/TURN configuration (`TURN_URLS`,
+`TURN_USERNAME`, `TURN_CREDENTIAL`) and return it from
+`GetSipRegistrar` with the signalling URL. The browser phone passes the
+servers to SIP.js's `RTCPeerConnection`; no public STUN server is
+invented.
+- The credential is installation-wide, stored in the deployment secret
+  store, and readable by signed-in tenant users because a browser cannot
+  allocate a relay without it. Rotating it is a deployment change.
+- Empty URLs keep host candidates and change nothing.
+- The dev compose runs coturn with host networking; production runs a
+  public TURN service (TLS where required) and the console is given its
+  URLs.
 
-**Context:** LLD-03 §10.2 calls toll fraud a configuration control, not
-a detection one. A compromised extension dialling premium international
-numbers is the classic PBX loss; the safe default must be the narrowest
-one that still lets a normal phone work.
+**Context:** D-81 shipped host ICE only and recorded symmetric NAT as a
+High production gap. TURN is the standard remedy and is not a platform
+protocol dependency.
 
 **Alternatives:**
-- *A country table to decide national.* Deferred: it needs a trusted
-  home-country source per tenant, and the dialled form already gives a
-  deterministic signal.
-- *Enforce in Asterisk.* Rejected: it duplicates the rule in engine
-  vocabulary and creates a second place to get it wrong.
-- *Default INTERNATIONAL to avoid support calls.* Rejected: it removes
-  the control exactly when it matters.
+- *Bundle coturn into the app image.* Rejected: the app is stateless;
+  media relaying is a separate, independently scalable service.
+- *Issue short-lived TURN credentials.* Deferred: static credentials are
+  enough for Phase A; the API shape allows a future credential service.
+- *Use a public STUN server.* Rejected: a default installation must not
+  depend on a third party and must not imply TURN where there is none.
 
-**Consequences:** An extension must be widened deliberately before it
-can dial international form. Anomaly detection (AC-08.2) and spend caps
-remain `compliance` work; this decision does not claim them.
+**Consequences:** A tenant can read the installation's TURN credential;
+it is not a tenant or platform secret. A production deployment without
+TURN still fails behind symmetric NAT, and the UAT/release checklist
+covers it.
 
-**Traceability:** LLD-03 §10.2; change `pbx-outbound-classes`
+**Traceability:** HLD 06 §2; LLD-03 §7.1; change `pbx-turn-media`
 
 ---
 
-**D-81 · Browser calling uses SIP.js over WebSocket, with a WEBRTC extension the administrator connects (2026-11-02).**
+**D-85 · Outbound fraud is guarded by a per-tenant policy: rated spend
+caps, blocked prefixes, and anomaly suspension with explicit resume
+(2026-11-04).**
 
-**Decision:** The console has a browser phone. It uses **SIP.js 0.21.2**
-(MIT, allowed by D-35) behind a small `Softphone` interface. A WEBRTC
-extension is projected with a WebRTC transport, DTLS media, ICE, AVPF and
-RTCP multiplexing; a SIP extension is unchanged. The dev rig serves PJSIP
-WebSocket at `ws://localhost:8088/ws` through Asterisk's HTTP server; a
-production deployment terminates TLS at its reverse proxy and sets
-`SIP_WEBRTC_URL` to `wss://…`, or uses the documented `transport-wss`
-with mounted certificates. An extension's `from_domain` is projected from
-the installation's domain, so a browser never sees the engine's container
-hostname in a SIP URI.
+**Decision:** A tenant outbound policy (`tenant_outbound_policies`) holds
+daily and monthly spend caps, blocked destination prefixes, an anomaly
+threshold and window, and business hours (UTC). Every trunk-bound,
+non-emergency attempt is checked under a per-tenant lock; an attempt over
+the anomaly threshold outside business hours suspends outbound and alerts
+the administrators. Answered calls are rated from
+`carrier_routes.cost_per_minute` and their answered duration into a daily
+ledger; reaching a cap blocks the next call and alerts at most hourly.
+- New calls are refused; calls in progress are never cut off (AC-08.1).
+- Emergency calls bypass every guard (AC-08.3).
+- Suspension is state with a reason and timestamp; an administrator
+  resumes explicitly, the one-click reactivation HLD 05 §4.2 asks for.
+- Defaults: no cap, no blocked prefix, anomaly at 20 international calls
+  in 10 minutes outside 08:00–18:00 UTC.
 
-Because Phase A has no user↔extension ownership (D-65), the administrator
-chooses a **WEBRTC extension** and enters its one-time SIP password. The
-password lives in the form and then in SIP.js for that page only — never
-in storage, a URL, a log, or a toast. The browser phone offers
-connect/disconnect, dial, incoming answer/reject, mute and hang up. It is
-the same extension call path as a desk phone, so routing, call history and
-the API call session see it unchanged. Hold, transfer, park and conference
-are Phase B.
+**Context:** D-82 confines one extension; AC-08.1/08.2 need a tenant
+control and a detection rule before a pilot. A full `compliance` context
+(DNC, calling hours, dialer abandonment) is LLD-04 work and not needed
+for manual Phase A calls.
 
-**Context:** FBR-R1-01/EPIC-03 require browser calling. The engine
-projection already knew `WEBRTC` as a device type but `core/conf` had no
-WebSocket transport and `ps_endpoints` lacked the browser-media columns;
-the projector's own comment warned that a WEBRTC extension pointed at a
-transport that did not exist. The console had no SIP stack.
+**Alternatives:**
+- *Prepay/balance rating.* Rejected for Phase A: there is no billing
+  currency or rated CDR yet; route cost and answered duration are the
+  facts the platform actually has.
+- *A timer that auto-resumes.* Rejected: HLD 05 requires an operator to
+  review the destination analysis before reactivation.
+- *Detect with call history only.* Rejected: concurrent attempts would
+  all read an under-threshold count; the attempt log is locked and
+  transactional.
 
-**Alternatives rejected:**
-- JsSIP: also MIT, but SIP.js's TypeScript API and browser media handling
-  fit the console better.
-- A hand-written SIP stack: unsafe and out of scope.
-- A committed self-signed certificate: fails in a real browser and is a
-  bad example. Dev uses WS on localhost; production requires WSS.
-- Opus-only media: the engine image has no `codec_opus`; browsers support
-  PCMU/PCMA, so WEBRTC endpoints negotiate ulaw/alaw. A deployment that
-  installs codec_opus may add it.
-- User↔extension ownership now: it is Phase B (D-65); the administrator
-  chooses the extension until then.
-- TURN in this change: Phase A is host candidates only. A symmetric-NAT
-  browser needs a relay; production must add TURN, recorded as a gap.
+**Consequences:** Caps are enforced on the next call after usage is
+recorded, not mid-call. The anomaly rule is deliberately blunt (volume,
+international form, outside hours) and a false positive needs a manual
+resume. Company SSO, MFA and the compliance dialer remain separate.
 
-**Trade-off accepted:** a password prompt per browser session (the secret
-is not recoverable), no TURN, and no hold/transfer in Phase A.
+**Traceability:** HLD 05 §4.2, LLD-03 §10.2; change `pbx-fraud-guard`
 
-**Related Decisions:** D-35, D-36, D-43, D-65, D-68, D-79
-**Traceability:** BRD FBR-R1-01, §16; PRD EPIC-03, AC-03.1; HLD-12, HLD-19;
-`openspec/changes/console-browser-phone` (design D1–D8); specs
-`pbx-core/endpoint-projection`, `pbx-core/extension-management`
+---
+
+**D-86 · The Asterisk runtime is a minimal multi-stage image; the image
+gate fails on fixable HIGH/CRITICAL and ignores unfixed base-OS CVEs,
+with the full report retained (2026-11-04).**
+
+**Decision:** Build Asterisk in a builder stage and copy only the
+installed tree and the shared libraries its binary and modules link into
+a clean `debian:bookworm-slim` runtime. The compiler, Python and the
+`-dev` packages no longer ship, and the image is ~0.8 GB instead of
+~3.3 GB.
+- Trivy fails a production image on **fixable** HIGH/CRITICAL
+  vulnerabilities. The API image is scanned strictly. The Asterisk
+  runtime is scanned with `--ignore-unfixed`, because its remaining
+  findings are Debian base-OS CVEs with no fixed version; the unfiltered
+  SARIF report is written to `quality-reports/trivy-core.sarif` for
+  review and the SBOM remains attached.
+- `TRIVY_JAVA_DB_REPOSITORY` prefers GHCR; a cached Java DB is used when
+  an update is unreachable, so the scan does not depend on a mirror that
+  can 404.
+
+**Context:** The previous single-stage image shipped its whole build
+toolchain, and its scan could not pass: 20 fixable HIGH Python 3.11
+findings plus unfixed base CVEs. The discrepancy was recorded as the
+last open item in `quality-and-supply-chain-gates`.
+
+**Alternatives:**
+- *Ignore every unfixed finding on both images.* Rejected: the API image
+  is clean and should stay strict.
+- *Use a non-Debian runtime.* Rejected for now: the Asterisk build and
+  its modules expect the Debian glibc and library layout; a distroless
+  runtime would need a full module audit.
+- *Keep the single stage and purge packages.* Rejected: `install_prereq`
+  and `make install` leave too many paths to prove; a fresh runtime
+  stage is the smaller, inspectable artifact.
+
+**Consequences:** Fixable CVEs still fail CI. Unfixed base CVEs are
+visible in the retained report but do not block a release; re-check them
+on each Debian base bump. The runtime image must be rebuilt when a
+module gains a new shared library (the gather step is automatic).
+
+**Traceability:** `quality-and-supply-chain-gates` task 5.3; LLD-01 §9;
+change `quality-and-supply-chain-gates`
+
+---
+
+**D-87 · Phase B opens with extension ownership; per-person call
+attribution follows with reporting (2026-11-04).**
+
+**Decision:** Ship `pbx-extension-ownership` first: the audited
+`ExtensionAssignment` link, "assigned to" in the console, and the API to
+assign/unassign. The call-participant attribution (`extension_id` and
+`principal_id` on `call_participants`) and person-scoped history land
+with LLD-09 `reporting`, where the immutable CDR and the per-second
+usage ledger already read those columns.
+- An extension has 0..1 owner; a membership may own several.
+- Assignment is a tenant-scoped pbx-core aggregate keyed by principal;
+  identity is untouched and its store is read only for the member's
+  display name/email.
+- Deleting an extension removes its assignment (FK cascade); assigning a
+  disabled membership is refused.
+- An unassigned line keeps working exactly as in Phase A.
+
+**Context:** D-65 put both ownership and participant attribution in one
+change. Ownership is small, unblocks voicemail/IVR/queues, and can ship
+without touching telephony; participant attribution needs the telephony
+participant columns and belongs with the reporting slice that consumes
+them. Splitting avoids a large cross-context change for no Phase B
+blocker.
+
+**Alternatives:**
+- *One large assignment change including telephony participant columns.*
+  Deferred: it would touch every call path and its tests without a
+  Phase B consumer yet.
+- *Keep ownership in identity.* Rejected by D-65: identity does not know
+  extensions exist.
+
+**Consequences:** "Assigned to" is available now. "My calls" and
+person-scoped history wait for LLD-09. The D-65 invariant remains: the
+link lives in pbx-core and is keyed by the membership.
+
+**Traceability:** D-65; LLD-03 §3.1/§12; change `pbx-extension-ownership`
+
+---
+
+**D-88 · Reporting ships as a read-only service over terminated calls,
+with participant attribution and audited CSV export (2026-11-04).**
+
+**Decision:** Add `ReportingService` (LLD-09's first slice):
+- It reads **terminated calls only**, so every record is final; the
+  caller, participants, duration, outcome and per-participant usage
+  seconds come from `calls`, `call_participants` and `usage_seconds`.
+- `call_participants.extension_id`/`principal_id` are filled at call
+  creation from the extension's owner at that moment. A carrier caller
+  and an external destination have no attribution; a desk phone and an
+  internal destination do.
+- An agent (a membership without an administrator or supervisor role)
+  sees only records where they are a participant; administrators and
+  supervisors see the tenant. The filter cannot widen an agent's scope.
+- CSV export is bounded, same filters, and writes one audit entry naming
+  the person and the range (AC-07.5). Nothing is mutated.
+- Quality scores, retention and recording links remain the rest of
+  LLD-09 / recording governance; this change does not fake them.
+
+**Context:** The existing call history is operational state; reporting
+needs final CDRs, attribution and an export that compliance can use. The
+data already exists (D-65/D-87); this is the read model and its audit.
+
+**Alternatives:**
+- *Export from the calls table directly in the console.* Rejected: role
+  scoping and the export audit belong on the server.
+- *Include in-flight calls.* Rejected: a record that changes after it is
+  read is not a CDR.
+- *Build the full quality/retention slice now.* Deferred: those need
+  recording storage and RTCP-XR data that do not exist yet.
+
+**Consequences:** Reports show terminated calls only. Per-person history
+and agent scoping are now available; recording/quality and immutable
+retention remain in the reporting/recording roadmap.
+
+**Traceability:** HLD 04 §5; PRD EPIC-07/AC-07.5; LLD-09; changes
+`pbx-reporting`, `pbx-extension-ownership` (D-87)
+
+---
+
+**D-89 · IVR ships in two slices: time-based flow routing first, the
+DTMF menu next (2026-11-04).**
+
+**Decision:** `pbx-ivr-routing` ships the routing half of an
+auto-attendant: a DID-owned flow with immutable revisions, an open and a
+closed destination, UTC business hours and a holiday calendar. Publish
+and rollback move the active pointer. The DTMF menu/prompt execution is
+`pbx-ivr-menu`, built on ARI answer/play/DTMF.
+- The prompt field is reserved and stored but not played in this slice.
+- A DID cannot be both a flow and a direct inbound number.
+- Closed with no destination refuses rather than leaving the caller in
+  silence.
+- Revisions are immutable; only the active pointer changes.
+
+**Context:** D-65/LLD-03 put flow execution with a menu in one change.
+The routing model is independently useful (after-hours routing), small
+enough to prove end-to-end, and does not need ARI event-state changes. A
+menu needs playback/DTMF state and is a separate risk surface.
+
+**Alternatives:**
+- *One change with the menu.* Deferred: it would mix routing with ARI
+  media state and delay after-hours routing for every tenant.
+- *Use the dialplan for IVR.* Rejected: the platform controls calls over
+  ARI, and generated dialplan would split call control across two planes.
+
+**Consequences:** Customers can route by hours/holiday today. A caller
+hears no prompt yet; the menu follows. Prompt storage is forward-
+compatible.
+
+**Traceability:** PRD US-03, D-65; LLD-03 §12; change `pbx-ivr-routing`
+
+---
+
+**D-90 · The IVR menu executes over ARI with a prompt, one DTMF digit
+and explicit no-input/invalid fallbacks (2026-11-05).**
+
+**Decision:** Extend the D-89 flow revision with a prompt, up to ten
+digit branches (0–9), a timeout and no-input/invalid destinations.
+Telephony answers the caller, starts an ARI `Playback`, stores the
+playback id and a timer, and routes on `ChannelDtmfReceived`. It stops the
+prompt and timer on a digit. No dialplan is generated.
+- The prompt is a built-in `sound:` reference in this slice; uploaded
+  prompts wait for the media/object-store decision.
+- A closed/holiday flow never enters the menu.
+- Missing destinations are refused at publish; a playback failure ends
+  the call with `ivr_prompt_failed` rather than routing blindly.
+- The chosen destination is attributed exactly like a direct route.
+- A live call keeps the revision it entered; publish/rollback does not
+  affect it.
+
+**Context:** 3CX documents a 10-option IVR with prompt upload, office-hour
+inheritance and no/invalid fallbacks; Vodia and FusionPBX document
+auto-attendants and DTMF menus. ARI is the platform's existing call-control
+surface (LLD-01/D-47), so this is a telephony state machine, not generated
+dialplan.
+
+**Alternatives:**
+- *Generate dialplan for the menu.* Rejected: two call-control planes and
+  reload semantics (D-47).
+- *Play a prompt and route after a fixed delay.* Rejected: no caller
+  choice and no invalid handling.
+- *Ship prompt upload now.* Deferred: it needs the recording storage
+  decision; built-in sound proves the menu loop first.
+
+**Consequences:** A caller hears a built-in prompt and can press a digit;
+uploaded greetings and recording-linked prompts follow with LLD-09.
+Live DTMF is a handset UAT until the rig can drive RTP DTMF.
+
+**Traceability:** PRD US-03.7/03.8, AC-03.6–03.8; LLD-03 §3.2; change
+`pbx-ivr-menu`
+
+---
+
+**D-91 · The IVR keeps its versioning and ARI execution, and is
+refactored to typed destinations, a small node graph and tenant
+schedules before queues (architecture review, 2026-11-07).**
+
+**Context:** An architecture review of `develop` compared what D-89 and
+D-90 shipped against D-22 ("IVR and call flows are data the domain
+interprets … a node graph"), BRD FBR-R1-06 (multi-level menus, business
+hours, holidays, department routing, versioning and rollback, AI
+generation of a starting flow) and current vendor practice: 3CX
+(10 options, no-input/invalid fallbacks, office/out-of-office/holiday
+destinations, department time zones, manual open/close override),
+VitalPBX and FreePBX (time groups with several ranges per weekday, time
+conditions with temporary/permanent overrides, IVR options to any
+destination), FusionPBX (IVR menus, time conditions, call flows), and
+Amazon Connect (publishing creates immutable, monotonically increasing
+flow versions). Sources are listed in `docs/lld/PRIOR-ART.md`.
+
+**Kept: these match the industry and are the right base.**
+- Immutable numbered revisions, an active pointer, publish and rollback,
+  both audited (as Amazon Connect versions).
+- A live call keeps the revision it entered.
+- Execution over ARI (answer, `Playback`, `ChannelDtmfReceived`), with no
+  generated dialplan (D-47).
+- Up to ten digit options with separate no-input and invalid fallbacks
+  (as 3CX).
+- A tenant holiday calendar; a closed flow with no destination refuses
+  instead of leaving the caller in silence; publish validation refuses a
+  missing destination or a prompt-less menu.
+
+**Flagged for refactor: below the industry standard.**
+1. **Destinations are extensions only.** Every vendor routes an IVR
+   option to an extension, ring group, queue, another IVR, voicemail, an
+   announcement, an external number or hang-up. The revision gains a
+   typed `Destination {kind, ref}`; kinds that do not exist yet (queue,
+   ring group, voicemail) are refused at publish until their context
+   ships, so `pbx-queues` adds a kind, not a migration. An external
+   number obeys the outbound class and fraud guard (D-82, D-85).
+2. **One fixed-shape revision, so one menu level.** This contradicts D-22
+   and FBR-R1-06. A revision becomes a small typed graph stored as JSONB:
+   `schedule` (time condition), `menu`, `play`, `goto` (a destination)
+   and `hangup` nodes. The interpreter stays a pure function from (node,
+   event) to (next node, commands). Publish refuses dead ends,
+   unreachable nodes and menu nesting deeper than five. This graph is
+   also the format the visual builder and AI flow generation (FBR-R1-06)
+   write.
+3. **Business hours are one UTC window applied to every day.** Weekends
+   therefore read as open, and a tenant outside UTC must convert by hand.
+   A named schedule replaces it: an IANA time zone (the tenant default,
+   overridable per schedule), several ranges per weekday, and holidays
+   evaluated in that zone. A manual override (open or closed until the
+   next transition, or until cleared) matches 3CX and VitalPBX.
+4. **Menu behaviour gaps.** Add a bounded re-prompt (default 2) before the
+   no-input/invalid fallback, which LLD-03 §3.2 already specifies; direct
+   dial of an extension number from a menu (3CX's direct-dial toggle);
+   and `*`/`#` keys.
+5. **Referential integrity.** Revisions hold extension ids without a
+   foreign key, and deleting an extension does not check the active
+   revisions that name it. Deletion must refuse, or name the flows it
+   breaks, before the extension goes.
+
+**Migration:** revisions are immutable, so v1 rows are never rewritten.
+The column set becomes `schema_version` plus `graph JSONB`; a v1 row is
+converted on read into the equivalent graph (schedule → menu →
+destinations); new publishes write v2 only; rollback to a v1 revision
+keeps working.
+
+**Alternatives:**
+- *Keep the flat config and add a column per feature.* Rejected: each
+  new destination is a migration, there is never a second menu level, and
+  it contradicts D-22.
+- *A FreePBX-style table per module (IVR, time condition, announcement)
+  linked by goto strings.* Rejected: the console's visual builder and the
+  API would have to reassemble a graph that the store never held.
+- *A general workflow engine (BPMN, Twilio-Studio-sized widget set).*
+  Rejected: five node kinds cover the R1.0 requirement; more can be added
+  as kinds.
+
+**Consequences:** `pbx-ivr-flow-graph` is next, before `pbx-queues`.
+D-89 and D-90 remain the record of what shipped; their "UTC business
+window" and "extension destination" are superseded by this entry.
+
+**Related Decisions:** D-22, D-47, D-82, D-85, D-89, D-90
+**Traceability:** BRD FBR-R1-06; PRD US-03.6–03.8, AC-03.6–03.8; LLD-03
+§3.2; `openspec/changes/pbx-ivr-flow-graph`
+
+---
+
+**D-92 · Reporting's direct read of telephony tables is a recorded,
+temporary deviation; an event-fed, append-only CDR replaces it before the
+R1.0 gate (architecture review, 2026-11-07).**
+
+**Context:** D-88 built `ReportingService` as a read model over
+terminated calls. Its store reads `calls`, `call_participants` and
+`usage_seconds`, which are owned by `telephony-core`. HLD 04 (dependency
+table) says `reporting` depends only on telephony events (NATS), and
+D-20/D-31 forbid one context reading another's tables. BR-07 and
+FBR-R1-10 also require records that are immutable, append-only and
+tamper-evident. A view over operational rows is none of those. D-88 did
+not record the deviation.
+
+**Decision:**
+- **Kept, because it is right:** terminated calls only, participant
+  attribution at call creation, agent-scoped reads that a filter cannot
+  widen, a bounded and audited CSV export, and a Reports page separate
+  from the operational Call history.
+- **Accepted temporarily:** the read of telephony's tables, read-only,
+  until `reporting-cdr-ledger`.
+- **Flagged for refactor:** `reporting-cdr-ledger` makes reporting
+  consume the call-terminated event (through the outbox, D-57), write its
+  own `cdr_records` with INSERT-only grants and a per-tenant hash chain,
+  and make corrections separate adjustment rows. An `archtest` rule then
+  forbids `reporting` from naming telephony tables.
+
+**Alternatives:**
+- *Leave it and amend the HLD.* Rejected: it gives up BR-07, the
+  commercial promise partners bill from.
+- *Refactor now.* Deferred: IVR (D-91) blocks queues; the ledger blocks
+  only the R1.0 gate.
+
+**Related Decisions:** D-20, D-24, D-31, D-57, D-88
+**Traceability:** BRD BR-07, FBR-R1-10; HLD 04 §5; LLD-09
 
 ---
 
