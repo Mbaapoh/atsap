@@ -300,6 +300,7 @@ a dispatcher never wait on each other.
 | `Reserved` | `OfferMissed{ref}` | `missed_in_row + 1 ≥ autopause_after` (default 2) | `NotReady(missed)` | `AGENT_PAUSE` reason `missed`; console toast "You missed 2 calls and were set to Not ready" |
 | `Reserved` | `OfferCancelled{ref}` (caller abandoned, another agent answered under ring-all, entry overflowed) | — | `Ready` (or pending) | not counted as missed |
 | `Reserved` | `ReservationExpired` (sweeper, `reserved_until < now()`) | — | `Ready` | `RESERVATION_EXPIRED` (orphan recovery, §3.3.1 item 9) |
+| `Reserved` (`reserved_kind = campaign`) | dialler `ReservationReleased{ref}` (attempt ended without a connect: no answer, machine, blocked, abandoned) | `ref` = current `reserved_ref` | `Ready` (or pending) | not counted as missed; `missed_in_row` unchanged |
 | `Busy` | `WorkEnded{ref}` (customer or agent left; transfer out) | queue `wrapup_seconds > 0` (inbound) or campaign wrap-up | `WrapUp` | `wrapup_until = now + seconds`; `last_call_ended_at = now` |
 | `Busy` | `WorkEnded{ref}` | wrap-up 0 | `Ready` or pending | `last_call_ended_at = now` |
 | `WrapUp` | `WrapUpEnded` (agent clicks Finish, or dialler `Disposed`) | — | `Ready` or pending | — |
@@ -408,6 +409,13 @@ flag-guarded system read already used by D-77 (migration 0016 pattern),
 returning ids only. Retention: one row per agent, no history (history is
 `queue_events`, §3.3.5).
 
+**Wake-ups on commit.** Every transaction that moves an agent **into**
+`Ready` (login, SetReady, wrap-up end, release, expiry, missed) also runs
+`pg_notify('acd_wake', tenant||':'||queue)` for each member queue and,
+when `campaign_id` is set, `pg_notify('dialer_wake', tenant||':'||campaign)`
+so the dialler pacer (LLD-06 §6.3) wakes without waiting for its tick.
+Payloads carry ids only.
+
 **Reservation SQL (the IC-10 contract; the only way any context leaves
 `Ready`):**
 
@@ -448,10 +456,14 @@ func ResolveReasonDigits(digits string, codes []ReasonCode) (ReasonCode, bool)
 // pbx/ports — implemented by pbx/application over the SQL above; consumed by dialer (LLD-06 §6.3)
 type AgentStates interface {
     CountReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID) (int, error)
-    // Ready→Reserved; reserved_kind=campaign, TTL campaign_reservation_seconds (120 s). false = not Ready.
-    Reserve(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID) (bool, error)
-    // Ready→Busy for the longest-ready agent in the campaign; nil when none.
-    ClaimLongestReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID) (*shared.PrincipalID, error)
+    // Ready→Reserved; reserved_kind=campaign, reserved_ref = the dialler attempt id,
+    // reserved_until = now + campaign_reservation_seconds (120 s): the cap the dialler respects —
+    // it must convert (CustomerBridged) or release (ReservationReleased) before then, or the
+    // sweeper releases it. false = the agent was not Ready.
+    Reserve(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID, reservedRef uuid.UUID) (bool, error)
+    // Ready→Busy for the longest-ready agent in the campaign (dial-ahead); ok=false when none.
+    // Returns the agent and the reservation id written to agents.reservation_id (reserved_ref = attempt).
+    ClaimLongestReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, attempt uuid.UUID) (principal shared.PrincipalID, reservationID uuid.UUID, ok bool, err error)
     // Every other event (LegConnected, CustomerBridged, CustomerLeft, Disposed, WrapUpExpired,
     // SetPause{code}, SetReady, LegFailed, LegLost, CampaignStopped, ReservationReleased, Join/LeaveCampaign).
     Transition(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID, ev AgentEvent) error
@@ -495,7 +507,7 @@ calls_since_login, campaign_id, version}`; never an engine identifier.
 | `autopause_after_missed` | 2 | 0 (off)–10 | queue (§3.3); the dispatching queue's value applies |
 | `wrapup_seconds` | 15 | 0–600 | queue (inbound); campaign `wrapup_max_s` (LLD-06) |
 | `queue_reservation_ttl` | ring time + 10 s | derived | queue |
-| `campaign_reservation_seconds` | 120 | 30–300 | installation |
+| `campaign_reservation_seconds` | 120 | 30–300 | installation; the maximum time a dialler reservation may stay `Reserved` — LLD-06 sets its ring timeout and AMD within it |
 | Sweep interval | 5 s | 1–30 s | installation |
 | Reason codes | 5 seeded | ≤ 30 | tenant |
 
@@ -855,9 +867,11 @@ Dispatch (one dispatcher per tenant queue):
 8. **Reserve.** Per offered agent, the §3.1.1 reservation SQL with
    `reserved_kind = 'queue'`, `reserved_ref = entry.id`, TTL
    `ring_seconds + 10 s`; zero rows → next candidate. Then `UPDATE
-   queue_entries SET status = 'offered', offer_id = $offer, offered_count
-   = offered_count + 1 WHERE id = $entry AND status IN
-   ('waiting','callback_pending')`; `queue_events` `OFFER`; outbox
+   queue_entries SET status = CASE status WHEN 'waiting' THEN 'offered'
+   ELSE 'callback_dialing' END, offer_id = $offer, offered_count =
+   offered_count + 1 WHERE id = $entry AND status IN
+   ('waiting','callback_pending')` (a live caller becomes `offered`; a
+   callback becomes `callback_dialing`, §3.3.3); `queue_events` `OFFER`; outbox
    `pbx.queue_entry_offered`. `round_robin` updates
    `rr_last_position`. Commit.
 9. **Originate (after commit).** `QueueMedia.Offer{offer_id, entry,
@@ -892,10 +906,9 @@ Dispatch (one dispatcher per tenant queue):
     reason)` → entry `completed` (`COMPLETEAGENT`/`COMPLETECALLER`/
     `TRANSFER`), agent `WorkEnded` → `WrapUp` (queue `wrapup_seconds`).
 
-**Port contract pbx-core needs from telephony.** LLD-01 §11 owns the
-names; these queue operations are **not yet in LLD-01** (open item for
-its next revision; `Hold`/`StartBridgeMOH`/`PlayToBridge`/originate
-primitives exist there and may carry them):
+**Port contract with telephony** — defined in LLD-01 §23.1 (`QueueMedia`,
+`QueueOutcome`, `LiveCalls`); the table summarises it, and LLD-01's Go
+signatures are authoritative:
 
 | Port | Contract | ARI |
 |---|---|---|
@@ -904,9 +917,10 @@ primitives exist there and may carry them):
 | `QueueMedia.Offer(offer)` / `Cancel(offer, reason)` | Originate/cancel agent legs with explicit ids | `POST /channels/{channelId}`, `DELETE /channels/{id}` |
 | `QueueMedia.Connect(offer, principal)` | Optional agent-only prompt, then move the caller from the holding bridge into the call's main bridge with the agent (LLD-01 §23.1) | `channels/{id}/play`, `bridges/{id}/removeChannel`, `addChannel` |
 | `QueueMedia.DialCallback(offer, decision)` | New outbound call whose first party is the agent (MOH) until the customer presses 1 (§3.3.3; LLD-01 §23.1) | `channels` originate, `moh`, `addChannel` |
-| `QueueMedia.Leave(entry, destination)` | Leave the holding bridge and continue at a destination (overflow) through `InboundRouter.Continue` | `removeChannel` |
-| `QueueOutcome` (pbx implements) | `Answered`, `Missed`, `Ended`, `CallerLeft(entry)`, `DtmfPressed(entry, digit)` | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
-| `LiveCalls.List()` | Live calls with their entry/offer ids, for recovery | `GET /channels` |
+| `QueueMedia.Leave(entry, destination, routing)` | Leave the holding bridge and continue at a destination (overflow) through `InboundRouter.Continue`; `routing` is the opaque `{hops, visited}` blob (§3.5.2) | `removeChannel` |
+| `QueueMedia.Prompt(entry, program)` | Stop MOH, run a `Play`/`Collect` `Program` on the queued caller's channel inside `Q` through LLD-01's Program runner (§3.5.1), restart MOH, return the collected digits; used by the callback request (§3.3.3). **Requested from LLD-01 §23.1** (not yet listed there) | `DELETE …/moh`, `channels/{id}/play`, `ChannelDtmfReceived` |
+| `QueueOutcome` (pbx implements) | `Answered(offer, agent)` (synchronous, **2 s deadline**: on timeout or error telephony treats it as `Reject`), `Missed(offer, who PartyRef{Agent principal \| Customer}, cause)`, `Ended`, `CallerLeft(entry)`, `DtmfPressed(entry, digit)` | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
+| `LiveCalls.List(tenant)` | Live calls of one tenant with their entry/offer ids, for recovery | `GET /channels` |
 
 **4. State machines**
 
@@ -922,6 +936,7 @@ Queue entry (`queue_entries.status`):
 | `waiting`/`offered` | max wait, leave-empty, or full overflow at join | §3.3.2 | `overflowed` |
 | `waiting` | caller accepts callback | §3.3.3 | `callback_pending` |
 | `callback_pending` | head of queue, agent reserved | `callback_next_at ≤ now` | `callback_dialing` |
+| `callback_dialing` | the reserved agent misses, rejects or the reservation expires (customer not yet dialled) | — | `callback_pending` (`callback_next_at = now`, attempt **not** counted; never `waiting`, there is no caller on the line) |
 | `callback_dialing` | caller confirmed and bridged | — | `connected` |
 | `callback_dialing` | no answer / busy / no confirmation / capacity refused | attempts < max and not expired | `callback_pending` |
 | `callback_dialing`/`callback_pending` | attempts exhausted or expired | — | `callback_failed` |
@@ -935,7 +950,9 @@ Recovering (item 9) → Active → Standby` (lock or connection lost).
 ```sql
 CREATE TABLE queue_entries (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  queue_id UUID NOT NULL, call_id UUID NOT NULL,
+  queue_id UUID NOT NULL,
+  call_id UUID,                                         -- NULL only for a callback booked without a call
+  origin VARCHAR(8) NOT NULL DEFAULT 'call' CHECK (origin IN ('call','api')),  -- api = RequestCallback without entry_id
   status VARCHAR(16) NOT NULL CHECK (status IN ('waiting','offered','connected','abandoned','overflowed',
          'callback_pending','callback_dialing','callback_failed','completed')),
   priority SMALLINT NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 9),
@@ -951,7 +968,8 @@ CREATE TABLE queue_entries (
   last_announced_at TIMESTAMPTZ, last_periodic_at TIMESTAMPTZ, callback_offered_at TIMESTAMPTZ,
   version BIGINT NOT NULL DEFAULT 0,
   FOREIGN KEY (tenant_id, queue_id) REFERENCES queues (tenant_id, id),
-  CHECK ((status IN ('callback_pending','callback_dialing')) <= (callback_number IS NOT NULL)));
+  CHECK ((status IN ('callback_pending','callback_dialing')) <= (callback_number IS NOT NULL)),
+  CHECK (call_id IS NOT NULL OR (origin = 'api' AND status IN ('callback_pending','callback_dialing','callback_failed','completed'))));
 CREATE UNIQUE INDEX queue_entries_live_call ON queue_entries (tenant_id, call_id)
   WHERE status IN ('waiting','offered','connected','callback_dialing');
 CREATE UNIQUE INDEX queue_entries_one_callback ON queue_entries (tenant_id, queue_id, callback_number)
@@ -1006,13 +1024,14 @@ entry keeps its queue, priority and `entered_at` (AC-03.8 spirit).
 | Situation | Behaviour |
 |---|---|
 | Dispatcher instance dies | Lock released (≤ 25 s keepalive; at once on exit); another instance acquires within 5 s and runs **recovery** |
-| Recovery | For the queue: (a) `LiveCalls.List()`; (b) `offered` entries with no live offer leg → `waiting`, their agents' reservations released (`OfferCancelled`, not missed); (c) `waiting`/`offered`/`connected` entries with no live call → `abandoned`/`completed` with `end_reason = lost`; (d) `connected` entries with a live call → kept, agent `Busy` confirmed; (e) live offer legs without a matching `offered` entry → hung up `answered_elsewhere`; (f) `callback_dialing` without a live call → attempt counted failed → `callback_pending` |
-| Orphaned `Reserved` | The §3.1.1 sweeper (every 5 s, any instance) frees reservations past `reserved_until`; for a queue reservation it also returns the entry to `waiting` |
+| Recovery | For the queue: (a) `LiveCalls.List(tenant)`; (b) `offered` entries with no live offer leg → `waiting`, their agents' reservations released (`OfferCancelled`, not missed); (c) `waiting`/`offered`/`connected` entries with no live call → `abandoned`/`completed` with `end_reason = lost`; (d) `connected` entries with a live call → kept, agent `Busy` confirmed; (e) live offer legs without a matching `offered` entry → hung up `answered_elsewhere`; (f) `callback_dialing` without a live call → attempt counted failed → `callback_pending` |
+| Orphaned `Reserved` | The §3.1.1 sweeper (every 5 s, any instance) frees reservations past `reserved_until`; for a queue reservation it also returns the entry to `waiting` (or a `callback_dialing` entry whose agent never answered to `callback_pending`, attempt not counted) |
 | Originate retried after restart | Explicit channel id; 409 = already originated |
 | Agent answers after the caller hung up | `Answered` finds no `offered` entry → `Reject`; agent leg hung up; agent `Ready` |
+| `Answered` near the 2 s deadline (slow database) | pbx-core runs the `Answered` transaction with `SET LOCAL statement_timeout = '1500ms'` and a 1.5 s context, so it either commits before telephony's deadline or rolls back and returns an error; it can never commit after telephony rejected the leg. On error: leg rejected, entry stays `offered` until the sweeper returns it to `waiting` |
 | Two agents answer a ring-all offer within ms | Conditional update on `offer_id`: the first commits, the second gets `Reject` |
 | Engine restart | All channels gone; recovery marks entries `lost`; agents `Busy` → `WorkEnded` |
-| **Database outage** | Consistent with INV-03: (1) callers already waiting **stay in their holding bridges on MOH** (telephony needs no database); (2) **no new reservations or offers** (the dispatcher's connection is gone, so it cannot write); (3) answered offers already ringing are connected — `Answered` journals the outcome in memory (bounded 10 000 per process) and telephony bridges anyway; the journal is applied when the database returns; (4) announcements continue with the last known position; EWT is suppressed; (5) max-wait overflow is deferred until the database returns (overflow needs `Continue`), then applied at once; (6) new calls follow the existing inbound failure path (`ResolveInbound` error → 503, LLD-03 §4.2); (7) alarm: metric `pbx_acd_db_unavailable` and an operator email after 30 s (BR-08 pattern). On return the dispatcher re-acquires its lock and runs recovery |
+| **Database outage** | Consistent with INV-03: (1) callers already waiting **stay in their holding bridges on MOH** (telephony needs no database); (2) **no new reservations or offers** (the dispatcher's connection is gone, so it cannot write); (3) an agent answering an offer that was already ringing is **not** connected: `Answered` cannot commit `offered → connected` and `Reserved → Busy`, so it returns an error within LLD-01 §23.1's 2 s deadline and telephony treats it as `Reject` — the agent leg is hung up, the caller stays on MOH, and the entry and reservation are restored by recovery and the sweeper when the database returns (the agent is not counted as missed); (4) announcements continue with the last known position; EWT is suppressed; (5) max-wait overflow is deferred until the database returns (overflow needs `Continue`), then applied at once; (6) new calls follow the existing inbound failure path (`ResolveInbound` error → 503, LLD-03 §4.2); (7) alarm: metric `pbx_acd_db_unavailable` and an operator email after 30 s (BR-08 pattern). On return the dispatcher re-acquires its lock and runs recovery |
 | Queue configuration changed mid-call | Next offer uses the new values; no live entry is moved |
 
 **10. Invariants and events**
@@ -1053,8 +1072,10 @@ entry keeps its queue, priority and `entered_at` (AC-03.8 spirit).
 | E | Agent does not answer twice → `NotReady(missed)`; the call goes to the other agent |
 | E | `ring_all` with 2 agents: answer one, the other stops ringing (`answered_elsewhere`) |
 | E | Caller hangs up while an agent rings → offer cancelled, agent `Ready`, not missed; `ABANDON` event |
-| E | Restart the app with one caller waiting and one connected: waiting caller is offered again, connected call continues (INV-03) |
+| E | **Today (FL-04 = end calls, LLD-01 §22, HLD-09):** restart the app with one caller waiting and one connected → both calls end; on startup recovery closes both entries with `end_reason = lost`, agents `Busy` → `WorkEnded`, and no `acdo-`/`atsa-q-` channel survives |
+| E | **Only if FL-04 re-adopts calls:** restart the app with one caller waiting and one connected → the waiting caller is offered again and the connected call continues (INV-03) |
 | E | Stop Postgres for 20 s with a caller waiting: caller keeps MOH, no offer; restart → offer within 2 s |
+| E | Stop Postgres while an offer rings; the agent answers → `Answered` fails within 2 s, agent leg hung up, caller still on MOH; after restart the entry is `waiting` and offered again |
 | C | Queue form validation; member drag-order and penalty; strategy help text |
 | B | Administrator creates a queue, adds two agents, routes a DID to it, a call is answered |
 | A | Two desk phones as agents; caller on a mobile hears position and EWT announcements |
@@ -1163,12 +1184,17 @@ Request (the caller keeps their place: `entered_at` never changes):
 1. Offer prompt (as an announcement, §3.3.1 collisions): "To be called back
    without losing your place, press 1." Re-offered with each
    position/EWT announcement.
-2. `ChannelDtmfReceived` = key → `QueueOutcome.DtmfPressed` →
-   `Program`: `Play("We will call you on" + digits)` → `Collect{1,
+2. `ChannelDtmfReceived` = key → `QueueOutcome.DtmfPressed` → pbx-core
+   calls `QueueMedia.Prompt(entry, program)` (§3.3.1 port table): MOH stops
+   and LLD-01's Program runner runs this `Program` on the caller's channel
+   **inside the holding bridge `Q`**, so the caller never leaves the queue
+   while answering: `Play("We will call you on" + digits)` → `Collect{1,
    timeout 5 s}`: `1` confirm, `2` enter another (`Collect{max 15,
    interdigit 3 s, terminator #}`, normalised to E.164 with the tenant's
    default country, validated as above; 2 tries) → `Play("Thank you. You
-   keep your place in the queue. Goodbye.")` → hang up.
+   keep your place in the queue. Goodbye.")` → hang up. Timeout or
+   invalid input twice → "Let's continue holding", MOH restarts, the entry
+   stays `waiting` (offer repeated at the next announcement).
 3. pbx-core, one transaction: entry `waiting → callback_pending`
    (`callback_number`, `callback_requested_at`, `callback_next_at = now`,
    `callback_expires_at = now + callback_expiry_minutes`); `queue_events`
@@ -1179,10 +1205,16 @@ Request (the caller keeps their place: `entered_at` never changes):
 Delivery (**agent-first**):
 5. When the entry is at the head (same ordering as live callers) and
    `callback_next_at ≤ now`, the dispatcher reserves an agent exactly as
-   §3.3.1 and sets `callback_dialing`.
-6. Agent leg offered with `agent_announce` "Callback for <queue>" and the
-   caller's number in the console; agent answers → agent `Busy`; agent
-   hears MOH while the caller is dialled.
+   §3.3.1 step 8, which moves the entry `callback_pending →
+   callback_dialing` in the same statement.
+6. `QueueMedia.Offer{Callback{number}}` (`CallID` nil): telephony creates a
+   **new** outbound call whose first Participant is the agent (LLD-01
+   §23.1), announced "Callback for <queue>" with the number in the
+   console; agent answers → `Answered` → agent `Busy`; the agent hears MOH
+   while the customer is dialled. If the agent misses, rejects or the
+   reservation expires → `Missed(offer, PartyRef{Agent})` → agent
+   `OfferMissed` (autopause rules) and the entry returns to
+   `callback_pending` with `callback_next_at = now`, attempt not counted.
 7. Gates before dialling, in one transaction: LLD-04 `Gate.Decide{kind:
    QUEUE_CALLBACK}` (calling-hours rule per LLD-04; DNC does not apply to
    a requested callback, LLD-04 owns that rule); licence
@@ -1191,8 +1223,9 @@ Delivery (**agent-first**):
    originally dialled (`dialled_number`), else the tenant default (§3.12,
    BR-06). Refusal → attempt not counted; `callback_next_at = now +
    callback_retry_seconds`; agent released to `Ready` with no wrap-up.
-8. Originate the caller (route selection §4.1, class `callback_class`);
-   on answer `Program`: "This is your callback from <tenant>. Press 1 to
+8. `QueueMedia.DialCallback(offer, decision)` with the gated route plan
+   (route selection §4.1, class `callback_class`); on answer the
+   decision's confirm `Program`: "This is your callback from <tenant>. Press 1 to
    speak to an agent now." `Collect{1, 10 s}`.
 9. `1` → caller joins the agent in the callback call's main bridge
    (`QueueMedia.DialCallback`, LLD-01 §23.1) →
@@ -1202,7 +1235,9 @@ Delivery (**agent-first**):
     `callback_max_attempts` and before expiry → `callback_pending` with
     `callback_next_at = now + callback_retry_seconds`; else
     `callback_failed` (`end_reason` = last cause); outbox
-    `pbx.callback_failed`. The agent goes `Ready` (no wrap-up; not missed).
+    `pbx.callback_failed`. Telephony reports the customer side as
+    `Missed(offer, PartyRef{Customer}, cause)` and hangs up the agent leg;
+    the agent goes `Ready` (no wrap-up; not missed).
 
 **4. State machine.** §3.3.1 item 4 (`callback_*` rows).
 
@@ -1210,7 +1245,7 @@ Delivery (**agent-first**):
 |---|---|---|
 | Gate/licence refused | no | retry after `callback_retry_seconds` |
 | No answer / busy / rejected / unreachable / no confirmation | yes | retry or `callback_failed` |
-| Agent did not answer the offer | no (agent missed) | next agent at once |
+| Agent did not answer, rejected, or reservation expired | no (agent missed) | `callback_pending`, `callback_next_at = now`; next agent at once — never `waiting` |
 | Expired (`callback_expires_at`) | — | `callback_failed` `expired` |
 
 **5. Data model.** `queue_entries.callback_*` columns and the
@@ -1225,7 +1260,7 @@ LLD-06 §6.3); `RequestCallback` RPC for the console.
 
 | RPC | Fields | Permission | Refusals |
 |---|---|---|---|
-| `RequestCallback` | `{queue_id, number, entry_id?}` (supervisor books a callback for a waiting caller or a web form) | `pbx.queue.live` | `InvalidArgument` "Enter a full phone number"; `PermissionDenied` "This queue may not call international numbers"; `AlreadyExists` "A callback is already booked for this number"; `ResourceExhausted` "The queue has 100 callbacks waiting" |
+| `RequestCallback` | `{queue_id, number, entry_id?}`. With `entry_id`: a supervisor converts a waiting caller (their place kept, the caller's leg is ended with "You will be called back"). Without: a booking with no call (web form, back office) creates an entry with `origin = api`, `call_id` NULL, `status = callback_pending`, `entered_at = now()` (joins at the back) | `pbx.queue.live` | `InvalidArgument` "Enter a full phone number"; `PermissionDenied` "This queue may not call international numbers"; `AlreadyExists` "A callback is already booked for this number"; `ResourceExhausted` "The queue has 100 callbacks waiting" |
 | `CancelCallback` | `{entry_id}` | `pbx.queue.live` | `FailedPrecondition` "The callback is already being dialled" |
 | `ListCallbacks` | `{queue_id, status}` → entries | `pbx.queue.read` | — |
 
@@ -1258,6 +1293,9 @@ are masked to the last 4 digits; the full number is in the row only.
 | U | Offer due after 60 s; not offered at max pending; key press confirmed vs re-entered; withheld CLI forces entry |
 | U | Outcome table: refused gate not counted; 3 failures → `callback_failed` |
 | I | Callback keeps `entered_at`: a caller who joined earlier and chose callback is dispatched before a later live caller of the same priority |
+| I | `RequestCallback` without `entry_id` → row with `call_id` NULL, `origin = api`; a `waiting` row with NULL `call_id` is refused by the CHECK |
+| U | Agent misses a callback offer → entry `callback_pending`, attempts unchanged; `NextEntryState` never yields `waiting` from `callback_dialing` |
+| E | Caller presses 1 while queued → `QueueMedia.Prompt` plays the confirmation inside `Q`, caller presses 1, hears goodbye; no time outside the holding bridge |
 | E | Caller presses 1, confirms, hangs up; agent becomes Ready → agent rings first, then the caller's phone; caller presses 1 → connected (AC-03.17) |
 | E | Caller does not answer three times → `callback_failed`, visible in `ListCallbacks` and the report |
 | B | Supervisor sees the callback in the live view and cancels it |
@@ -2571,7 +2609,7 @@ in the tenant's inventory, except emergency (INV-01).
 | # | Source | Applies when |
 |---|---|---|
 | 0 | **Emergency**: tenant emergency callback number if set, else the next row that resolves, else the trunk default; *never refused, never withheld* | Emergency dial (INV-01) |
-| 1 | Campaign / number pool (OB-12; dialler supplies a pool, pbx picks per LLD-06 rule, e.g. same area code first) | Dialler attempt |
+| 1 | Campaign / number pool (OB-12): **the dialler picks one candidate** from its pool (LLD-06 `PickPoolNumber`, a `tenant_numbers.id`) and passes it as `PoolChoice`; pbx-core verifies it is the tenant's and `verified` and sets it — the dialler never writes caller ID | Dialler attempt |
 | 2 | Per-call request (`PlaceCall.presentation_number`, needs `pbx.callerid.choose`) | Requested |
 | 3 | Original DID (the number the caller dialled) | Forwarded / ring-group / follow-me / transfer legs of an inbound carrier call |
 | 4 | Outbound route's presentation number | Route has one |
@@ -2619,7 +2657,11 @@ CREATE TABLE tenant_numbers (
   cnam VARCHAR(15) NOT NULL DEFAULT '',
   stir_attestation CHAR(1) CHECK (stir_attestation IN ('A','B','C')),  -- placeholder; carriers sign in R1.0
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (tenant_id, number), UNIQUE (tenant_id, id));
+  UNIQUE (tenant_id, number), UNIQUE (tenant_id, id),
+  -- documents prove carrier DIDs only; a presentation-only number is proved by the callback code
+  CHECK (evidence_kind IS NULL
+         OR (kind = 'carrier_did' AND evidence_kind IN ('carrier_inbound','carrier_document','port_document','carrier_did_backfill'))
+         OR (kind = 'presentation_only' AND evidence_kind = 'callback_code')));
 CREATE TABLE tenant_presentation_settings (
   tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
   default_number_id UUID, emergency_callback_number_id UUID,
@@ -2636,11 +2678,28 @@ ALTER TABLE extensions ADD COLUMN withhold_default BOOLEAN NOT NULL DEFAULT FALS
 ```go
 func ChoosePresentation(in PresentationInput) (Presentation, error) // pure; ErrNoPresentation | ErrNotOwned
 type PresentationInput struct {
-    Emergency bool; Origin Origin; Requested *string; PoolChoice *string
+    Emergency bool; Origin Origin; Requested *string; PoolChoice *NumberID // tenant_numbers.id chosen by the dialler
     OriginalDID *string; Route *NumberRef; Extension *NumberRef; TenantDefault *NumberRef
     Withhold bool; Inventory map[string]NumberStatus
 }
 type NumberInventory interface { /* CRUD; Verify; FindByNumber within caller tx */ }
+
+// Implemented by pbx-core for the dialler (LLD-06 §6.12); runs in the dialler's transaction.
+type Presentation interface {
+    // Status of one inventory number: NumberStatus (pending|verified|revoked) and its digits.
+    // ErrNotFound when the id is not this tenant's (INV-10: never reveals another tenant's number).
+    Status(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, numberID NumberID) (NumberStatus, string, error)
+    // Applies ChoosePresentation row 1 to the dialler's candidate. ErrNotOwned when the number is
+    // not verified for the tenant (revoked meanwhile): the attempt is not placed (fail closed, BR-06).
+    Choose(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, in DialerPresentation) (Presented, error)
+}
+type DialerPresentation struct {
+    Origin     Origin    // always OriginDialer
+    PoolChoice NumberID  // the candidate the dialler picked
+    CampaignID shared.CampaignID
+    AttemptID  uuid.UUID // recorded on presentation_refused
+}
+type Presented struct { NumberID NumberID; Digits, CNAM string; Withheld bool /* always false for the dialler */ }
 type CallbackVerifier interface { // presentation-only numbers
     Start(ctx, tenant, numberID) error // places a call (route + class of the tenant) playing a 6-digit code, 10 min validity, 3 tries/day
     Confirm(ctx, tenant, numberID, code string) error
@@ -2653,7 +2712,7 @@ type CallbackVerifier interface { // presentation-only numbers
 |---|---|---|---|
 | `AddNumber` | `{number, kind, cnam?}` | `pbx.number.write` | `AlreadyExists` "This number is already in your list"; `InvalidArgument` "Enter the number in international format" |
 | `UploadNumberEvidence` | `{number_id, upload_id, kind}` → `pending` | write | `InvalidArgument` "PDF or image up to 10 MB" |
-| `VerifyNumber` | `{number_id}` (accept evidence) | `pbx.number.verify` | `FailedPrecondition` "Add evidence first" |
+| `VerifyNumber` | `{number_id}` (accept uploaded document evidence; **carrier DIDs only**) | `pbx.number.verify` | `FailedPrecondition` "Add evidence first"; "Numbers you only present are verified by a callback code" (presentation-only) |
 | `StartCallbackVerification` / `ConfirmCallbackVerification` | `{number_id}` / `{number_id, code}` | write | `ResourceExhausted` "Try again tomorrow"; `InvalidArgument` "That code is not right" |
 | `RevokeNumber` | `{number_id}` | write | `FailedPrecondition` "Used as the default; choose another first" |
 | `ListNumbers` | → `[{id, number, kind, status, cnam, used_by[]}]` | `pbx.routing.read` | — |

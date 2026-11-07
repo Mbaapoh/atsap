@@ -27,7 +27,9 @@ style), because the builder and the API would have to reassemble a graph.
 ## D2. Destination is a value type shared with future contexts
 
 `Destination {kind, ref}` with kinds `extension`, `flow`, `external`,
-`hangup`, plus reserved `queue`, `ring_group` and `voicemail`. A kind is
+`hangup`, plus reserved kinds that later changes register (LLD-03
+§3.2.1): `queue`, `ring_group`, `voicemail`, `voicemail_main`,
+`conference` and `park_lot` (and `ai_agent`, R2, D-96). A kind is
 enabled by a registry the application layer fills at start-up: `pbx-queues`
 registers `queue` and its resolver, with no migration. A `flow` destination
 enters another flow's **active** revision at that flow's entry node; it

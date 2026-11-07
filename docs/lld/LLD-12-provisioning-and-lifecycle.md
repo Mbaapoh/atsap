@@ -12,6 +12,7 @@
 | Date | Change |
 |---|---|
 | 2026-11-07 | Written. AD-07 split into flows A1–A8, AD-09 into B1–B5, each to the D-98 Definition of Ready. Migrations 0070–0074 reserved. Owner decisions OD-1…OD-11 listed in §0.3 |
+| 2026-11-07 | Verification fixes: `device_macs` written only through `SECURITY DEFINER` functions (Delete/Replace needed SELECT); licence precondition removed — `pbx-core` may not call `licensing` (HLD 04 §10.1); OD-2 designed in both branches (§A.3.10) with the `RotateForDevice` contract LLD-03 must add; backup split into a metadata database set and a separate media set (LLD-09 §7.2); AC-09.2, unreachable-target and power-loss tests added |
 | 2026-11-07 | §A.3.9 added: key rendering follows LLD-03 §3.8 presence/BLF (opaque key, pattern hint `atsa-blf`, SPIKE-P1 fallback) and §3.13 feature codes (tenant-effective pickup/DND codes) |
 
 ---
@@ -46,9 +47,14 @@ AC-09.2 requires of the single-machine profile.
 
 ### 0.2 Ownership and the D-48 question
 
-- **Devices belong to `pbx-core`.** The matrix in HLD 04 §10.1 already
-  permits everything Part A needs: `identity` (permissions),
-  `telephony-core` (is this extension on a call?) and nothing else.
+- **Devices belong to `pbx-core`.** HLD 04 §10.1 lets `pbx-core` depend
+  on `telephony-core`, `identity` and `entitlement` only. Part A uses
+  `identity` (permissions, tenant status) and `telephony-core` (is this
+  extension on a call?) and nothing else. **It does not call `licensing`**,
+  which the matrix forbids: whether the installation is activated is
+  enforced where it matters — `telephony-core`'s capacity port refuses
+  calls in Setup (D-52) — so a phone added before activation registers
+  but cannot call, exactly like an extension created then.
   Provisioning does **not** consult `entitlement` (recommendation, OD-10):
   FBR-R1-02 is core PBX, and the Free Community cap of 10 extensions
   already bounds the device count.
@@ -71,7 +77,7 @@ AC-09.2 requires of the single-machine profile.
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
 | OD-1 | R1.0 supported-model matrix (§A8.3) | (a) three families below; (b) add Fanvil and Snom; (c) Yealink only | **(a)** Yealink T4U/T5x, Poly VVX/Edge E, Grandstream GRP26xx — three template packs, ~13 models; Fanvil/Snom R1.1 |
-| OD-2 | **Security trade-off:** the SIP secret of a device-bound extension is kept sealed (AES-256-GCM) so configs can be re-rendered. LLD-03 §7.3 currently says the plaintext is never written anywhere | (a) seal, device-bound lines only; (b) rotate the SIP secret on every config fetch, store nothing; (c) no provisioning of credentials (engineer types them) | **(a).** (b) locks a phone out whenever a response is lost; (c) fails AC-03.5. 3CX, FreePBX and FusionPBX all keep SIP passwords readable in their database; we keep fewer (only device-bound lines) and encrypted |
+| OD-2 | **Security trade-off:** the SIP secret of a device-bound extension is kept sealed (AES-256-GCM) so configs can be re-rendered. LLD-03 §7.3 currently says the plaintext is never written anywhere | (a) seal, device-bound lines only; (b) rotate the SIP secret on every config fetch, store nothing; (c) no provisioning of credentials (engineer types them) | **(a).** (b) as designed in §A.3.10 (one-shot rotation, confirmed by registration) is safe and is the fallback if (a) is rejected; (c) fails AC-03.5. Both (a) and (b) are fully designed, selected by `PROV_SIP_SECRET_MODE`. 3CX, FreePBX and FusionPBX all keep SIP passwords readable in their database; we keep fewer (only device-bound lines) and encrypted |
 | OD-3 | **Security trade-off:** a "claim window" for DHCP-only phones with no factory certificate — first unauthenticated fetch accepted once, from an allowed network, within N minutes of the admin arming it | (a) not offered; (b) offered, off by default, CIDR required; (c) on by default | **(b)**, default off, 30 min, CIDR mandatory |
 | OD-4 | Vendor redirect services (Yealink RPS, Poly ZTP, Grandstream GDMS): whose accounts, and automation | (a) partner's own accounts, manual entry assisted by CSV export; (b) API automation with partner's keys stored per installation; (c) our vendor-level accounts | **(a) for R1.0**, (b) R1.1. (c) makes us an operator of partner devices, contrary to D-01 |
 | OD-5 | Upgrade started from the console | (a) CLI only; (b) console, app container gets the Docker socket | **(a)**. The Docker socket is root on the host; the console shows status and the exact command |
@@ -122,7 +128,7 @@ credential or config.
 | Precondition | Checked by | When it fails |
 |---|---|---|
 | Installation provisioning enabled: `PROV_PUBLIC_HOST`, server certificate and `ATSAPBX_PROVISIONING_KEY` set | App start; `GetProvisioningSettings` | Listener not started; console "Phone provisioning isn't set up on this system. Your provider sets the provisioning address and certificate." RPCs that create devices return `FailedPrecondition` |
-| Licence state not **Setup** (D-52) | `licensing` capacity port at `CreateDevice` | `FailedPrecondition` "Activate this system before adding phones." Degraded does **not** block (D-12) |
+| Licence state | **Not checked by provisioning** (§0.2). Calls from a provisioned phone in Setup are refused by `telephony-core` at call admission, as for any extension; Degraded never blocks (D-12) | — |
 | Tenant active (not suspended) | `identity` tenant status, on RPC and on every fetch | RPC `FailedPrecondition` "This organisation is suspended."; fetch `404` |
 | Model in the supported catalogue (§A8.3) | `domain.LookupModel` | `InvalidArgument` "This model isn't supported yet." with the list |
 | Every bound extension exists, is type `SIP` (not `WEBRTC`), same tenant, not bound to another device | `BindLines` in the create/update tx | `NotFound` / `FailedPrecondition` (wording in §A.7) |
@@ -140,8 +146,8 @@ credential or config.
 | 1 | Admin enters MAC (any of `AA:BB:..`, `aa-bb-..`, `aabb..`), model, label, line 1 extension, optional key template | console |
 | 2 | `ProvisioningService.CreateDevice`; handler authorizes `device.create` | `pbx/provisioning/rpc` |
 | 3 | `domain.ParseMAC` → canonical 12 lower-hex; `LookupModel`; `ValidateAuthMode`; `ValidateOverrides`; `PlanKeys` (all pure) | `pbx/provisioning/domain` |
-| 4 | `BEGIN`; `SET LOCAL app.tenant_id`; `INSERT device_macs` (PK collision → AlreadyExists); `INSERT devices` (`INVENTORIED`), `device_lines`, `device_keys` | `pbx/provisioning/postgres` |
-| 5 | For each bound line: LLD-03 `RotateSecretForDevice(tx, ext)` → new plaintext + HA1; HA1 projected to `ps_auths.md5_cred` in the same tx (LLD-03 §7.2); plaintext sealed into `device_line_secrets` (OD-2) | `pbx-core` (extension) + provisioning |
+| 4 | `BEGIN`; `SET LOCAL app.tenant_id`; `SELECT prov_claim_mac(mac, device_id)` (MAC already claimed → AlreadyExists); `INSERT devices` (`INVENTORIED`), `device_lines`, `device_keys` | `pbx/provisioning/postgres` |
+| 5 | For each bound line, per `PROV_SIP_SECRET_MODE` (§A.3.10): **sealed** — `RotateForDevice(tx, tenant, ext)` → plaintext sealed into `device_line_secrets`; **one_shot** — nothing rotated yet, `device_lines.secret_state = PENDING` (rotation happens at the first fetch) | `pbx-core` (extension) + provisioning |
 | 6 | If `auth_mode = basic`: `GeneratePassword` (crypto/rand, 32 chars base32 ≈ 160 bits) → Argon2id hash into `device_credentials` | provisioning |
 | 7 | `INSERT audit_logs` (`device.created`), outbox `tenant.<id>.event.pbx.device.created`; `COMMIT` | same tx |
 | 8 | Response: device, `provisioning_url`, **one-time** `provisioning_username` (= MAC) and `provisioning_password`, and the per-vendor redirect-service values to paste (OD-4) | rpc |
@@ -172,7 +178,7 @@ How the phone learns the URL:
 | 5 | `prov_resolve_mac(mac)` — a `SECURITY DEFINER` function over `device_macs` (the one cross-tenant read, like LLD-03's carrier-ingress match) → `(tenant_id, device_id)` or nothing → `404` with a constant body | postgres |
 | 6 | Authenticate: `mtls` → `MACFromCert(family, leaf)` must equal the path MAC and the chain must verify against the family's vendor CA bundle; `basic` → Argon2id verify of `Authorization: Basic`. Missing → `401 WWW-Authenticate: Basic realm="atsapbx-provisioning"`; wrong → `401`, failure counter++ | provisioning |
 | 7 | Device `REVOKED` or tenant suspended → `404` (indistinguishable from unknown); audit `device.fetch_refused` | provisioning |
-| 8 | `BEGIN`; `SET LOCAL app.tenant_id`; load device, lines, keys, extensions, firmware pin, registrar settings (LLD-03 `GetSipRegistrar` source: `SIP_PUBLIC_HOST/PORT/TRANSPORT`), tenant phonebook URL; `Open` sealed line secrets | provisioning + `pbx-core` reads |
+| 8 | `BEGIN`; `SET LOCAL app.tenant_id`; load device, lines, keys, extensions, firmware pin, registrar settings (LLD-03 `GetSipRegistrar` source: `SIP_PUBLIC_HOST/PORT/TRANSPORT`), tenant phonebook URL; obtain each line's secret per §A.3.10 (sealed: `Open`; one_shot: rotate or omit) | provisioning + `pbx-core` reads |
 | 9 | `Render(pack, input)` — pure, deterministic → bytes, `sha256` | `pbx/provisioning/domain` |
 | 10 | `UPDATE devices` (last fetch time/IP/UA, served hash and pack version, `Transition(..., EvConfigServed)`), `INSERT device_fetch_log`, outbox event if the state changed; `COMMIT` | postgres |
 | 11 | `200`, `Cache-Control: no-store`, vendor content type; body never logged | provisioning |
@@ -239,9 +245,9 @@ registered since / last seen, firmware (reported vs pinned), config
 
 | Operation | Steps (one transaction) |
 |---|---|
-| `RevokeDevice` | state → `REVOKED`; delete `device_credentials`; delete `device_line_secrets`; **rotate each bound line's SIP secret** (LLD-03) so a config already on the phone stops working; unbind lines; cancel pending actions; audit `device.revoked` with reason; event |
-| `DeleteDevice` | only from `INVENTORIED` or `REVOKED` (else `FailedPrecondition` "Revoke this phone first."); deletes `devices` (cascade) and `device_macs`; audit `device.deleted` |
-| `ReplaceDevice(id, new_mac)` | RMA: old MAC row deleted from `device_macs`, new inserted; credential re-issued (one-time); lines, keys, overrides kept; state → `INVENTORIED`; SIP secrets rotated; audit `device.replaced` with both MACs |
+| `RevokeDevice` | state → `REVOKED`; delete `device_credentials`; delete `device_line_secrets` (sealed mode); **rotate each bound line's SIP secret** with `RotateForDevice`, discarding the plaintext (LLD-03) so a config already on the phone stops working; unbind lines; cancel pending actions; audit `device.revoked` with reason; event |
+| `DeleteDevice` | only from `INVENTORIED` or `REVOKED` (else `FailedPrecondition` "Revoke this phone first."); deletes `devices` (cascade) and calls `prov_release_mac(mac)`; audit `device.deleted` |
+| `ReplaceDevice(id, new_mac)` | RMA: `prov_release_mac(old)` then `prov_claim_mac(new, id)` in one tx; credential re-issued (one-time); lines, keys, overrides kept; state → `INVENTORIED`; SIP secrets rotated; audit `device.replaced` with both MACs |
 
 **Known limitation:** rotating the SIP secret makes the next `REGISTER`
 and every `INVITE` from the old phone fail at once (Asterisk challenges
@@ -295,6 +301,49 @@ Hot-desking (LLD-03 §3.14) does **not** re-provision a phone: the phone
 keeps its own line, and hot-desk login changes routing in `pbx-core`
 only. A phone used as a hot desk is a normal device whose line 1 is the
 hot-desk extension.
+
+### A.3.10 SIP line secrets — both OD-2 branches
+
+LLD-03 §7.3 stores only the HA1 and shows the plaintext once. A phone's
+config must contain the plaintext. Both branches below satisfy AC-03.5;
+the owner picks one (OD-2) and the code ships both behind
+`PROV_SIP_SECRET_MODE` (`sealed` | `one_shot`; installation scope; default
+set by the owner's ruling, `one_shot` until then because it changes
+nothing in LLD-03 §7.3's storage rule).
+
+**Contract LLD-03 must add (used by both branches):**
+
+```go
+// pbx-core extension service (LLD-03 §7.3). Runs in the caller's transaction.
+// Generates a new secret with NewExtensionCredential (crypto/rand), writes
+// extensions.secret_digest and ps_auths.md5_cred (same tx, §7.2), writes
+// audit extension.secret_rotated {cause: "device", device_id}, and returns
+// the plaintext to the caller only. Never logs it, never stores it.
+// Errors: ErrExtensionNotFound; ErrNotSIPExtension (WEBRTC);
+//         ErrExtensionNotBound (ext not in device_lines for deviceID).
+// Established dialogs are unaffected; the next REGISTER/INVITE must use
+// the new secret.
+RotateForDevice(ctx context.Context, tx pgx.Tx, tenant shared.TenantID,
+    ext shared.ExtensionID, deviceID shared.ID) (plaintext string, err error)
+```
+
+| | **Branch S — OD-2 approved (`sealed`)** | **Branch O — OD-2 rejected (`one_shot`)** |
+|---|---|---|
+| Stored | HA1 (as today) + plaintext sealed AES-256-GCM in `device_line_secrets`, AAD `tenant_id‖extension_id`, key `ATSAPBX_PROVISIONING_KEY` | HA1 only. `device_line_secrets` stays empty; nothing recoverable |
+| When rotated | Once at bind (A1 step 5), at `RotateDeviceCredential`, revoke, replace | At a **fetch** of the per-device config when the line's `secret_state` is `PENDING`, or the device has no live contact (factory reset, or never registered) |
+| What the config carries | The password on every fetch (idempotent re-render, stable hash) | The fresh password on a rotating fetch; on every other fetch the account password parameters are **omitted**, so the phone keeps the one it stored (all three families keep unspecified parameters) |
+| `secret_state` (on `device_lines`) | `SEALED` | `PENDING` → `DELIVERED` (served in a committed fetch) → `CONFIRMED` (a contact for the endpoint appears with `user_agent` MAC = device MAC after `secret_rotated_at`) |
+| Lost response | Harmless — next fetch renders the same secret | Phone keeps its old password and fails to register (`401`); because it has no live contact, its next fetch rotates again and recovers. Worst case = one resync interval, or a reboot |
+| Factory reset | Next fetch renders the sealed secret | Phone has no contact → next fetch rotates → `DELIVERED` → `CONFIRMED` |
+| Resync of a registered phone | Full config | Config without password; no rotation (a registered phone is never rotated by a fetch) |
+| Key loss / rotation | `Open` fails → render fails for that device; dashboard "re-issue SIP password" | Not applicable |
+| Config hash | Stable across fetches | Computed with the password parameters excluded, so drift detection still works |
+| Extra risk | Reversible secret at rest (the trade-off) | Each rotating fetch logs `extension.secret_rotated`; a fetch storm is bounded by the per-IP and per-MAC limits |
+
+Rule for branch O, step A2.8 (pure, `domain.SecretAction(state, hasLiveContact) → Rotate | Omit`):
+`PENDING` → Rotate; `DELIVERED`/`CONFIRMED` with no live contact → Rotate; otherwise Omit.
+`device_lines` gains `secret_state TEXT NOT NULL DEFAULT 'PENDING' CHECK (secret_state IN ('PENDING','DELIVERED','CONFIRMED','SEALED'))`
+and `secret_rotated_at TIMESTAMPTZ` (migration 0070).
 
 ## A.4 State machines
 
@@ -383,19 +432,38 @@ CREATE TABLE devices (
 CREATE INDEX devices_tenant_state_idx ON devices (tenant_id, state);
 
 -- Installation-wide MAC uniqueness. NO tenant_id policy: a phone belongs to
--- one tenant on this installation. Read only through prov_resolve_mac().
+-- one tenant on this installation. atsapbx_app has NO direct privilege on it
+-- (a DELETE ... WHERE mac = would need SELECT, i.e. a cross-tenant read);
+-- every access goes through the three SECURITY DEFINER functions below.
 CREATE TABLE device_macs (
     mac       CHAR(12) PRIMARY KEY CHECK (mac ~ '^[0-9a-f]{12}$'),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     device_id UUID NOT NULL
 );
 REVOKE ALL ON device_macs FROM PUBLIC;
-GRANT INSERT, DELETE ON device_macs TO atsapbx_app;   -- no SELECT
 CREATE FUNCTION prov_resolve_mac(p_mac CHAR(12))
   RETURNS TABLE (tenant_id UUID, device_id UUID)
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
   $$ SELECT tenant_id, device_id FROM device_macs WHERE mac = p_mac $$;
-GRANT EXECUTE ON FUNCTION prov_resolve_mac(CHAR(12)) TO atsapbx_app;
+-- Claim: inserts for the CURRENT tenant only; false when the MAC is taken anywhere.
+CREATE FUNCTION prov_claim_mac(p_mac CHAR(12), p_device UUID) RETURNS BOOLEAN
+  LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS
+  $$ INSERT INTO device_macs (mac, tenant_id, device_id)
+     VALUES (p_mac, (NULLIF(current_setting('app.tenant_id', true), ''))::uuid, p_device)
+     ON CONFLICT (mac) DO NOTHING
+     RETURNING true $$;          -- NULL (no row) = already claimed → AlreadyExists
+-- Release: deletes only a row owned by the CURRENT tenant; returns rows deleted (0 or 1).
+CREATE FUNCTION prov_release_mac(p_mac CHAR(12)) RETURNS INTEGER
+  LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS
+  $$ WITH d AS (DELETE FROM device_macs
+                WHERE mac = p_mac
+                  AND tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid
+                RETURNING 1)
+     SELECT count(*)::int FROM d $$;
+REVOKE ALL ON FUNCTION prov_resolve_mac(CHAR(12)), prov_claim_mac(CHAR(12), UUID), prov_release_mac(CHAR(12)) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prov_resolve_mac(CHAR(12)), prov_claim_mac(CHAR(12), UUID), prov_release_mac(CHAR(12)) TO atsapbx_app;
+-- The functions are owned by the migration role. With app.tenant_id unset,
+-- claim inserts NULL and fails NOT NULL; release deletes nothing.
 
 CREATE TABLE device_lines (
     tenant_id    UUID NOT NULL,
@@ -403,6 +471,9 @@ CREATE TABLE device_lines (
     line_no      SMALLINT NOT NULL CHECK (line_no BETWEEN 1 AND 16),
     extension_id UUID NOT NULL REFERENCES extensions(id) ON DELETE RESTRICT,
     label        VARCHAR(32) NOT NULL DEFAULT '',
+    secret_state TEXT NOT NULL DEFAULT 'PENDING'
+                 CHECK (secret_state IN ('PENDING','DELIVERED','CONFIRMED','SEALED')),  -- §A.3.10
+    secret_rotated_at TIMESTAMPTZ,
     PRIMARY KEY (tenant_id, device_id, line_no),
     UNIQUE (tenant_id, extension_id),               -- an extension is on at most one phone
     FOREIGN KEY (tenant_id, device_id) REFERENCES devices (tenant_id, id) ON DELETE CASCADE
@@ -447,7 +518,7 @@ CREATE TABLE device_credentials (
     PRIMARY KEY (tenant_id, device_id),
     FOREIGN KEY (tenant_id, device_id) REFERENCES devices (tenant_id, id) ON DELETE CASCADE
 );
--- OD-2: the only reversible SIP secret in the schema, and only for
+-- Branch S of OD-2 only (empty in one_shot mode): the only reversible SIP secret in the schema, and only for
 -- extensions bound to a phone. AAD = tenant_id || extension_id.
 CREATE TABLE device_line_secrets (
     tenant_id    UUID NOT NULL,
@@ -555,6 +626,7 @@ func UAMac(userAgent string) (MAC, bool)                                        
 func FirmwareFromUA(f Family, userAgent string) (string, bool)                    // pure
 func NotifyEventFor(f Family, a ActionKind) (string, error)                       // pure
 func Transition(cur State, ev Event, now time.Time) (State, error)                // pure
+func SecretAction(st SecretState, hasLiveContact bool) SecretDecision           // pure: Rotate | Omit (branch O, §A.3.10)
 func Render(p Pack, in RenderInput) (Rendered, error)                             // pure, deterministic: same input → same bytes/sha
 func RenderPhonebook(p Pack, entries []DirectoryEntry) (Rendered, error)          // pure
 func GeneratePassword(r io.Reader) (string, error)                                // deterministic given r
@@ -605,7 +677,7 @@ type Tx interface {
 }
 // Implemented by pbx-core's extension service (LLD-03), in the caller's tx.
 type ExtensionSecrets interface {
-    RotateForDevice(ctx context.Context, tx pgx.Tx, ext shared.ExtensionID) (plaintext string, err error)
+    RotateForDevice(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, ext shared.ExtensionID, deviceID shared.ID) (plaintext string, err error) // contract in §A.3.10
 }
 // Implemented in pbx/acl/asterisk: reads ps_contacts.
 type RegistrationReader interface {
@@ -672,7 +744,6 @@ simulated phone. `docs/API.md` is updated by each change that lands an RPC.
 | Delete a non-revoked device | `FailedPrecondition` | "Revoke this phone first." |
 | Delete pinned firmware | `FailedPrecondition` | "This firmware is pinned for T54W. Unpin it first." |
 | Provisioning not set up | `FailedPrecondition` | "Phone provisioning isn't set up on this system." |
-| Setup licence state | `FailedPrecondition` | "Activate this system before adding phones." |
 | Import > 500 rows | `InvalidArgument` | "Import up to 500 phones at a time." |
 | Missing permission | `PermissionDenied` | "You don't have permission to manage phones." |
 
@@ -727,7 +798,8 @@ registrar not configured (`Retry-After: 300`); `500` render failure
 | Engine (AMI) down | Actions retry 3×, then `FAILED`; status sweeper keeps last known state and marks the dashboard "Status unavailable since …" | AMI reconnect loop (existing) |
 | App restart | Actions are durable rows; `SENT` actions older than 15 min are re-evaluated; no in-memory queue | — |
 | Concurrent `UpdateDevice` | `version` guard → `Aborted` | Reload |
-| Concurrent add of one MAC in two tenants | `device_macs` PK — exactly one wins | — |
+| Concurrent add of one MAC in two tenants | `device_macs` PK inside `prov_claim_mac` — exactly one wins | — |
+| Branch O: rotating response lost | Phone not registered → next fetch rotates again (§A.3.10) | Self-heals at the next fetch or reboot |
 | Reboot requested during a call | `DEFERRED_BUSY`, rechecked each minute until `expires_at` | — |
 | Phone reboots itself mid-call because firmware arrived outside window | Cannot happen through us: firmware URL is only rendered inside the window | — |
 | Firmware roll-out failures | Pause at threshold, email administrators | Admin unpins or resumes |
@@ -786,7 +858,11 @@ live Asterisk) · **C** console component · **B** browser e2e · **A** UAT
 | A-T7 | Given vendor sample certificates (fixtures) / When `MACFromCert` / Then the MAC is extracted; a cert for another MAC fails | U |
 | A-T8 | Given each family's request filenames / When `ParseRequestPath` / Then kind and MAC as §A.3.2; traversal (`../`), `%2f`, upper-case variants handled | U |
 | A-T9 | Given tenant A has MAC M / When tenant B creates M / Then `AlreadyExists` with the "another organisation" wording and no row in B | I |
-| A-T10 | Given a created device / When reading `device_credentials` and `device_line_secrets` / Then no plaintext; `ps_auths.md5_cred` equals HA1 of the opened secret | I |
+| A-T10 | (Branch S) Given a created device / When reading `device_credentials` and `device_line_secrets` / Then no plaintext; `ps_auths.md5_cred` equals HA1 of the opened secret | I |
+| A-T10b | (Branch O) Given a created device / When reading every table / Then no recoverable secret exists; the first config fetch carries a password whose HA1 equals `ps_auths.md5_cred`, `secret_state = DELIVERED` | I |
+| A-T10c | (Branch O) Given a `CONFIRMED` line with a live contact / When the phone resyncs / Then the config has no password parameters and the HA1 is unchanged; with no live contact the fetch rotates | U, I |
+| A-T10d | (Branch O) Given a rotating fetch whose response is dropped by the harness / When the phone fetches again / Then it gets a new password and registers | E |
+| A-T10e | Given device of tenant A / When `DeleteDevice` and `ReplaceDevice` run as `atsapbx_app` / Then `prov_release_mac`/`prov_claim_mac` succeed; with tenant B's context `prov_release_mac(A's MAC)` returns 0 | I |
 | A-T11 | Given tenant A context / When selecting devices, lines, secrets of tenant B / Then zero rows; `SELECT` on `device_macs` as `atsapbx_app` is denied | I |
 | A-T12 | Given `asterisk_engine` / When selecting any 0070–0073 table / Then permission denied | I |
 | A-T13 | Given an import of 3 rows, one with a WEBRTC extension / When `ImportDevices` / Then nothing is created and `row_errors` names row 2 | W |
@@ -1028,7 +1104,7 @@ follow a call through the logs without seeing who it was.
 | # | Backup step | Owner |
 |---|---|---|
 | 1 | Scheduler in the app (cron spec, installation time zone) or `RunBackupNow` → `lifecycle_operations` row `BACKUP`, state `RUNNING`. The app runs `pg_dump` itself against Postgres (16 client tools in the API image, U-12.4) and writes to the mounted backup volume; no container control is needed, so no Docker socket (OD-5) | app |
-| 2 | Contents: `db.dump` (`pg_dump -Fc`, whole DB incl. `ps_*` and `licensing_state`), `etc/` (compose, env, secrets, TLS material), `media/` (recordings, voicemail, prompts, firmware) when stored on the local volume — when on S3, a manifest of object keys and a note that bucket versioning/replication is the media backup | app |
+| 2 | Contents of the **database set**: `db.dump` (`pg_dump -Fc`, whole DB incl. `ps_*` and `licensing_state` — **metadata only; no audio is ever stored in Postgres**, consistent with LLD-09 §7.2) and `etc/` (compose, env, secrets, TLS material). Media is **not** in this set; it is the separate media set below | app |
 | 3 | Stream through AES-256-GCM (chunked, 64 KiB frames, frame counter in the nonce) under a key from Argon2id(passphrase, salt; m = 64 MiB, t = 3, p = 4) | app |
 | 4 | Write `atsapbx-<instance>-<version>-<UTC timestamp>.atsbak` + `.sha256` to the local target; then copy to the offsite target (OD-6) | app |
 | 5 | `VERIFYING`: re-read and hash; weekly (`verify_restore`) also `pg_restore` the dump into a scratch database `atsapbx_restore_verify`, check table counts against the dump's TOC, drop it | app |
@@ -1037,12 +1113,25 @@ follow a call through the logs without seeing who it was.
 
 Backups run online, with `nice`/`ionice` class idle, and never drain.
 
+**Two backup sets, separately scheduled and retained (LLD-09 §7.2):**
+
+| | Database set | Media set |
+|---|---|---|
+| Holds | `db.dump` + `etc/`: configuration, call and recording **metadata**, tombstones, licence | Objects: recordings, voicemail, prompts, firmware images |
+| Schedule | Daily 02:30, installation time zone | Daily 03:30, incremental: objects created since the last successful run (by object key + ETag) |
+| Retention | 7 daily + 4 weekly (span ≤ 35 days, OD-7) | An object copy is kept until its source is deleted **plus** `media_backup_retention_days` (default **35**, range 1–35 = `backup.retention_days` of LLD-09 §7.2); the media sweep reads `recording_deletions` tombstones and deletes the copies past that window |
+| Deletion promise | A deleted recording's metadata survives in older dumps ≤ 35 days | Audio is unrecoverable at `retention_until + 35 days` (AC-07.3), matching LLD-09's stated window |
+| Encryption | AES-256-GCM, passphrase-derived key | Same key; each object a separate sealed file |
+| Target | Local + offsite (OD-6) | Same targets, separate prefix `media/` |
+| Object-store versioning | — | LLD-09 §7.2 rule kept: non-current versions ≤ 1 day; the media set, not bucket versioning, is the media backup |
+| Restore | Whole set (B5 restore step 4) | Whole set or by key list; restored objects whose metadata row is absent in the restored DB are discarded |
+
 | # | Restore step (`atsapbx-ctl restore <file>`) |
 |---|---|
 | 1 | Verify hash, decrypt header with the passphrase, read the embedded version; refuse on mismatch with the installed version |
 | 2 | Take a safety snapshot of the current database (so a restore can itself be undone) |
 | 3 | Drain (B2.6 rules) — a restore replaces live configuration |
-| 4 | Stop app and Asterisk; drop and recreate the database; `pg_restore`; restore `etc/` (ctl asks before overwriting TLS material) and `media/` |
+| 4 | Stop app and Asterisk; drop and recreate the database; `pg_restore`; restore `etc/` (ctl asks before overwriting TLS material); then restore the media set for objects referenced by the restored metadata |
 | 5 | Start; health gate |
 | 6 | Licence: the restored `licensing_state` is re-verified on load. On new hardware the 3-of-5 fingerprint (D-13) may not match → **Degraded, never Setup** (D-12, D-52); ctl prints "Re-apply your licence from the portal" |
 | 7 | `RESTORED`; audit written into the restored database as the first row after restore |
@@ -1088,7 +1177,7 @@ Backups run online, with `nice`/`ionice` class idle, and never drain.
 -- Installation-scoped like licensing_state (0005): NO tenant_id, NO RLS.
 CREATE TABLE lifecycle_operations (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    kind          TEXT NOT NULL CHECK (kind IN ('INSTALL','UPGRADE','ROLLBACK','COMMIT','BACKUP','RESTORE','BUNDLE')),
+    kind          TEXT NOT NULL CHECK (kind IN ('INSTALL','UPGRADE','ROLLBACK','COMMIT','BACKUP','MEDIA_BACKUP','RESTORE','BUNDLE')),
     state         TEXT NOT NULL,                 -- §B.4 names, validated in Go
     from_version  VARCHAR(32),
     to_version    VARCHAR(32),
@@ -1112,7 +1201,8 @@ CREATE TABLE backup_settings (                   -- single row
     time_zone          VARCHAR(64) NOT NULL DEFAULT 'UTC',
     keep_daily         SMALLINT NOT NULL DEFAULT 7 CHECK (keep_daily BETWEEN 1 AND 35),
     keep_weekly        SMALLINT NOT NULL DEFAULT 4 CHECK (keep_weekly BETWEEN 0 AND 5),
-    include_media      BOOLEAN NOT NULL DEFAULT true,
+    media_schedule_cron VARCHAR(64) NOT NULL DEFAULT '30 3 * * *',
+    media_backup_retention_days SMALLINT NOT NULL DEFAULT 35 CHECK (media_backup_retention_days BETWEEN 1 AND 35),
     offsite_kind       TEXT NOT NULL DEFAULT 'none' CHECK (offsite_kind IN ('none','s3')),
     offsite_endpoint   VARCHAR(255),
     offsite_bucket     VARCHAR(255),
@@ -1255,6 +1345,7 @@ rollback and restore have **no** RPC (OD-5): they need container control.
 | AC-09.5 | Allowlisted config, rules R1–R10, fail-closed exclusion, never-included list, PII opt-in audited |
 | AC-09.6 | Media without `UPGRADE.md`/`ROLLBACK.md` fails the pipeline and ctl |
 | D-12 / D-52 | Restore and upgrade never put a licensed system into Setup |
+| AC-09.2 | One media, two profiles (Compose single-machine, Ansible multi-node), one test suite — B-T23 |
 | AC-07.3 / AC-23.2 / T-9 | Backup retention ceiling (OD-7) below the stated deletion window |
 | Secrets | Backups encrypted; offsite keys and passphrase only in `/etc/atsapbx/secrets` |
 
@@ -1296,6 +1387,11 @@ ctl writes `actor_type = operator_cli` under the bootstrap tenant):
 | B-T19 | System screen shows version, upgrade state, rollback deadline, drain count, last backup; PII checkbox requires a reason | C |
 | B-T20 | A PLATFORM_ADMIN creates a bundle and downloads it once; a second download is refused | B |
 | B-T21 | A certified engineer installs on a clean Debian 12 VM from media, unaided, in < 60 min, then makes a call between two phones (AC-09.1) | A |
+| B-T23 | (AC-09.2) Given the single-machine Compose profile and the multi-node Ansible profile built from the same media / When the full E and A suites (calls, provisioning, upgrade/rollback B-T9–B-T11, backup/restore B-T15–B-T17) run against each / Then both pass the identical suite; CI job `deployment-profiles` blocks the release on any difference | E, A |
+| B-T24 | Given the offsite target is unreachable (S3 endpoint refuses) / When the scheduled backup runs / Then the local copy is written and verified, the run ends `FAILED` with `location: local`, operators are e-mailed; a second consecutive failure raises the console banner; the next success clears it | I, E |
+| B-T25 | Given the local backup path is unwritable / When `RunBackupNow` / Then `FAILED`, no partial file remains after the next start, alert sent | I |
+| B-T26 | Given an upgrade killed (SIGKILL ctl, then host power-off simulated by `docker kill` of every container) at each of `SNAPSHOT`, `EXPANDING`, `DRAINING`, `SWITCHING`, `VERIFYING` / When `atsapbx-ctl upgrade` is run again / Then it reads `state.json`, offers resume or rollback, and either path ends `SERVING_UNCOMMITTED` or `ROLLED_BACK` with no dropped call and no dirty migration | E |
+| B-T27 | Given a recording deleted on day 0 / When media backups run daily / Then its media-set copy is gone by day 35 and absent from any restore after that (AC-07.3) | I |
 | B-T22 | Upgrade N-1 → N with two baresip phones mid-call: neither call drops; then rollback; the phones re-register and call | A |
 
 ## B.12 Industry parity
@@ -1340,7 +1436,7 @@ rollback that does not depend on a backup.
 | S-12.2 | Confirm NOTIFY event strings for reboot/resync on Grandstream GRP and Poly Edge E firmware in the matrix | A3 |
 | S-12.3 | How to remove a realtime `ps_contacts` contact on revoke without editing the engine's table | A7 known limitation |
 | U-12.1 | BLF lamps depend on LLD-03 SPIKE-P1 (pattern hint `atsa-blf`); fallback rendering defined in §A.3.9 | BLF lamps only |
-| U-12.2 | `RotateForDevice` and the `DeleteExtension` refusal are LLD-03 changes; OD-2 amends LLD-03 §7.3 | A1 |
+| U-12.2 | LLD-03 must add `RotateForDevice` (contract in §A.3.10) and the `DeleteExtension` refusal; under branch S, OD-2 also amends LLD-03 §7.3's storage rule | A1 |
 | U-12.3 | `MaintenanceGate` is consulted in `telephony-core` call admission; LLD-01 needs the matching line | B2 |
 | U-12.4 | API image must carry `pg_dump`/`pg_restore` 16 client tools (D-86 image size impact ≈ +10 MB) | B5 |
 | U-12.5 | D-48 numbering (OD-9) | Index accuracy |

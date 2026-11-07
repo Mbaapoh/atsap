@@ -83,9 +83,11 @@ Rules:
 | `cdr.recorded` | reporting | Ledger row appended (LLD-09 RC-05) | full CDR incl. participants and billing fields (AC-05.4) | yes | yes |
 | `cdr.adjusted` | reporting | Adjustment appended | `call_id, adjustment_id, kind, delta_seconds?, delta_cost_micros?, reason, actor_id` | yes | yes |
 | `cdr.anchored` | reporting | Chain head anchored | `records_seq, records_head, adjustments_seq, adjustments_head, anchored_at` | yes | yes |
-| `recording.started` | telephony-core | Capture began after consent | `recording_id, call_id, policy_id, consent: announced\|not_required` | yes | yes |
-| `recording.paused` / `recording.resumed` | telephony-core | PCI pause/resume (RC-07) | `recording_id, call_id, at, actor_id?, auto: bool` | yes | yes |
-| `recording.stored` | telephony-core | Object written and verified | `recording_id, call_id, size_bytes, sha256, duration_seconds, retention_until` | yes | yes |
+| `recording.started` | telephony-core | Capture began after consent | `recording_id, call_id, segment_no, policy_id, consent: announced\|not_required\|on_demand_announced` | yes | yes |
+| `call.pci_paused` / `call.pci_resumed` | telephony-core | PCI pause/resume of the call, recorded or not (LLD-09 RC-07) | `call_id, at, actor_id?, auto: bool` | yes | yes |
+| `call.consent_satisfied` / `call.consent_failed` | telephony-core | Recording announcement finished / failed (LLD-09 §4.3 step 4) | `call_id, at, method: announced, reason?` | yes | yes |
+| `recording.paused` / `recording.resumed` | telephony-core | Per live segment during a PCI pause (RC-07) | `recording_id, call_id, at, actor_id?, auto: bool` | yes | yes |
+| `recording.stored` | telephony-core | Object written and verified | `recording_id, call_id, segment_no, size_bytes, sha256, duration_seconds, retention_until` | yes | yes |
 | `recording.failed` | telephony-core | Start or upload failed | `recording_id?, call_id, stage: start\|consent\|upload, reason` | yes | yes |
 | `recording.deleted` | reporting | Retention/erasure deletion | `recording_id, call_id, deleted_at, cause: retention\|erasure` | yes | yes |
 | `ai.stream_started` / `ai.stream_stopped` / `ai.stream_failed` | ai-pipeline | LLD-10 AI-01/AI-06 | `stream_id, call_id, participant_id, provider_id, seconds?, frames_dropped?, reason?` | yes | yes |
@@ -110,7 +112,7 @@ existing publisher, D-57), e.g. `tenant.<id>.event.recording.stored`.
 | Trigger | A published domain event on `tenant.*.event.>` matching an active subscription; or `ReplayWebhookDelivery` / `TestWebhook` |
 | Actors | Partner developer or tenant administrator (PRD persona) manages subscriptions with `webhook.manage`; reads history with `webhook.read`; the system delivers |
 | Preconditions | Tenant active; subscription `active` or `unhealthy` (a `disabled` one holds, §4.4); destination passes the SSRF check at create **and** before each attempt; entitlement: none in R1.0 (webhooks are core, not a paid module) |
-| Not met | Create with an unsafe URL → `InvalidArgument`; tenant suspended → events still fan out and are `held` (no outbound POST) |
+| Not met | Create with an unsafe URL → `InvalidArgument`; tenant suspended → events still fan out and are `held` with `held_reason = tenant_suspended` (no outbound POST; release in §4.4) |
 
 ### 4.2 Sequence (DoR 3)
 
@@ -120,7 +122,7 @@ existing publisher, D-57), e.g. `tenant.<id>.event.recording.stored`.
 | 2 | outbox worker | Publishes to JetStream `tenant.<id>.event.<type>` with `Nats-Msg-Id = outbox id` |
 | 3 | webhook-delivery fan-out | Durable consumer `webhook-fanout` (explicit ack, `MaxAckPending 1000`, `AckWait 30s`) receives the message |
 | 4 | fan-out | `ToPublic` (pure) maps it; not in catalogue → ack and stop |
-| 5 | fan-out | In **one transaction** under the subscription row lock: for each matching subscription, `seq = next_seq`, `next_seq += 1`, INSERT `webhook_deliveries` (frozen payload) and `webhook_queue` (`pending`, or `held` if subscription `disabled`). Conflict on `(subscription_id, event_id)` → skip (idempotent redelivery, D-58) |
+| 5 | fan-out | In **one transaction** under the subscription row lock: for each matching subscription, `seq = next_seq`, `next_seq += 1`, INSERT `webhook_deliveries` (frozen payload) and `webhook_queue` (`pending`; or `held` with `held_reason = subscription_disabled` if the subscription is `disabled`, or `tenant_suspended` if the tenant is suspended). Conflict on `(subscription_id, event_id)` → skip (idempotent redelivery, D-58) |
 | 6 | fan-out | Commit, then ack the NATS message. Crash before ack → redelivery → step 5 skips |
 | 7 | sender | Every 1 s: `ClaimDue` selects due queue rows with `FOR UPDATE SKIP LOCKED`, batch ≤ 100; for an `ordered` subscription only its lowest-`seq` undelivered row is eligible (head of line) |
 | 8 | sender | Resolve host → `ValidateDestination` against resolved IPs (pure) → refuse = attempt outcome `ssrf_refused` |
@@ -159,7 +161,7 @@ existing publisher, D-57), e.g. `tenant.<id>.event.recording.stored`.
 | `unhealthy` | a delivery reaches `dead` (its +24 h retry failed) **or** `now − failing_since ≥ 24 h` | `disabled` (`disabled_reason = sustained_failure`) | All `pending`/`retrying` rows → `held`; alert at high severity |
 | any | HTTP `410 Gone` | `disabled` (`endpoint_gone`) | as above |
 | any | `DisableWebhook` | `disabled` (`manual`) | as above; audited |
-| `disabled` | `EnableWebhook` | `active` | `held` rows → `pending` (`attempts = 0`, `next_attempt_at = now`), oldest `seq` first; audited |
+| `disabled` | `EnableWebhook` | `active` | rows `held(subscription_disabled)` → `pending` (`attempts = 0`, `next_attempt_at = now`), oldest `seq` first; audited |
 | any | `DeleteWebhook` | deleted (`deleted_at`) | queue rows → `expired`; history kept for retention |
 
 While `unhealthy`, the schedule is unchanged — it is already slow. In
@@ -174,8 +176,10 @@ failure", so the two `disabled` guards coincide.
 | `pending`/`retrying` | 2xx | `delivered` |
 | `pending`/`retrying` | failure, retries left | `retrying` (`next_attempt_at` per §4.5) |
 | `retrying` | failure after the +24 h retry | `dead` |
-| `held` | `EnableWebhook` | `pending` |
-| `dead`/`delivered`/`held` | `ReplayWebhookDelivery` | (original unchanged) a **new** delivery row `pending`, `replay_of` = original |
+| `held(subscription_disabled)` | `EnableWebhook` | `pending` |
+| `held(tenant_suspended)` | identity event `tenant.reinstated` (consumer `webhook-tenant`), subscription not `disabled` | `pending`, oldest `seq` first; a subscription that is `disabled` keeps them as `held(subscription_disabled)` |
+| `held` (either reason) | older than `webhook.retention_days`, or beyond `webhook.held_cap` (oldest first) | `expired` (by the retention sweep; alert `webhook.backlog_truncated`) |
+| `dead`/`delivered`/`held` | `ReplayWebhookDelivery` | (original unchanged) a **new** delivery row `pending`, `replay_of` = original, and a **new `seq = next_seq`** taken under the subscription lock (a replay joins the tail of the ordered queue; it never reuses the original seq, so `UNIQUE (subscription_id, seq)` holds) |
 | any non-terminal | retention elapsed | `expired` |
 
 ### 4.5 Retry schedule (single source; HLD-09 F-04 follows this)
@@ -219,6 +223,18 @@ CREATE TABLE webhook_secrets (
   expires_at TIMESTAMPTZ                                 -- set on rotation
 );
 
+-- Shared guard for every append-only table in 0060–0066 (first migration of
+-- the range, so 0061–0066 can attach it). LLD-09 §3.6 defines the retention
+-- role that may purge.
+CREATE OR REPLACE FUNCTION atsapbx_forbid_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND current_user = 'atsap_retention'
+     AND current_setting('atsapbx.retention_purge', true) = 'on' THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION '% on % is forbidden: append-only (BR-07, INV-08)', TG_OP, TG_TABLE_NAME;
+END $$;
+
 -- Evidence: INSERT-only (BR-07). Payload frozen at fan-out.
 CREATE TABLE webhook_deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -226,7 +242,7 @@ CREATE TABLE webhook_deliveries (
   subscription_id UUID NOT NULL REFERENCES webhook_subscriptions(id),
   event_id UUID NOT NULL, event_type TEXT NOT NULL, event_version SMALLINT NOT NULL,
   seq BIGINT NOT NULL, payload JSONB NOT NULL,
-  replay_of UUID REFERENCES webhook_deliveries(id), replayed_by UUID,
+  replay_of UUID, replayed_by UUID,                     -- no FK: the original may be purged first; a FK SET NULL would be an UPDATE
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (subscription_id, seq)
 );
@@ -250,6 +266,8 @@ CREATE TABLE webhook_queue (
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   subscription_id UUID NOT NULL, seq BIGINT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('pending','retrying','held','delivered','dead','expired')),
+  held_reason TEXT CHECK (held_reason IN ('subscription_disabled','tenant_suspended')),
+  CHECK ((status = 'held') = (held_reason IS NOT NULL)),
   attempts SMALLINT NOT NULL DEFAULT 0,
   first_attempt_at TIMESTAMPTZ, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -261,17 +279,23 @@ CREATE INDEX webhook_queue_head ON webhook_queue (subscription_id, seq) WHERE st
 - **RLS** on all five tables, `ENABLE` + `FORCE`, policy
   `FOR ALL USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)`.
 - **Grants:** `REVOKE UPDATE, DELETE, TRUNCATE ON webhook_deliveries, webhook_delivery_attempts FROM atsapbx_app`
-  plus the shared `atsapbx_forbid_mutation()` trigger (defined in `0061`,
-  LLD-09 §RC-05) on both, which permits DELETE only for the retention role.
+  plus `BEFORE UPDATE OR DELETE … FOR EACH ROW EXECUTE FUNCTION atsapbx_forbid_mutation()`
+  and a `BEFORE TRUNCATE` statement trigger on both. The function is
+  created in this migration (above); DELETE passes only for the retention
+  role during a purge.
 - **Worker role:** `atsap_webhook_worker` (`BYPASSRLS`, created by the
   deploy bootstrap like `atsap_outbox_worker`) with `SELECT, UPDATE` on
   `webhook_queue`, `webhook_subscriptions`; `INSERT, SELECT` on
   `webhook_deliveries`, `webhook_delivery_attempts`; `SELECT` on
   `webhook_secrets`. It needs cross-tenant claim; RPCs use the app role
   under RLS.
-- **Retention:** `delivered` and `expired` rows (and their attempts) are
-  purged after `webhook.retention_days`; `dead`/`held` likewise
-  (PRD: "the tenant's retention window").
+- **Retention:** the retention sweep (role `atsap_retention`, grants in
+  LLD-09 §3.6 "Retention role grants", which list these tables) first
+  marks `held` rows past `webhook.retention_days` `expired` (`UPDATE` on
+  `webhook_queue` only), then for deliveries whose queue row is
+  `delivered`/`dead`/`expired` and older than `webhook.retention_days`
+  deletes, in FK order, `webhook_delivery_attempts` → `webhook_queue` →
+  `webhook_deliveries` (PRD: "the tenant's retention window").
 
 ### 4.7 Ports (DoR 6) — `internal/webhooks/...`
 
@@ -325,6 +349,14 @@ step 8). The archtest `httpclient` rule already forbids default clients.
 | `ListWebhookDeliveries` | `subscription_id?, status?, event_type?, from?, to?, page` → `deliveries[]` with attempts | `webhook.read` | `InvalidArgument` "Time range is limited to 31 days." |
 | `ReplayWebhookDelivery` | `delivery_id` → `new_delivery_id` | `webhook.manage` | `FailedPrecondition` "This delivery is still being retried." · `NotFound` |
 | `ReplayWebhookDeliveries` | `subscription_id, status ∈ {dead, held}, from, to` → `queued_count` (≤ 10,000) | `webhook.manage` | `ResourceExhausted` "More than 10,000 deliveries: narrow the range." |
+
+**Default role mapping** (identity `DefaultPermissions`; `TENANT_ADMIN`
+and `PLATFORM_ADMIN` keep `*`): `webhook.manage`, `webhook.read` —
+TENANT_ADMIN only; `event.stream` — SUPERVISOR (tenant-wide) and AGENT
+(server-filtered to `call.*`, `participant.*`, `recording.*` and
+`call.pci_*` events of calls where the agent's principal is a
+participant; other types are never sent to an agent). API keys carry
+explicit actions.
 
 Every mutation writes an identity audit entry (`webhook.create`,
 `webhook.update`, `webhook.delete`, `webhook.disable`, `webhook.enable`,
@@ -408,6 +440,10 @@ Internal events (outbox, not webhook-deliverable): `webhook.endpoint_unhealthy`,
 | W-13 | E | Given the receiver returns 500, When a call ends, Then the call still completes normally and the delivery shows `retrying` (INV-06) |
 | W-14 | C | Given the console Webhooks page, When an admin creates a webhook, Then the secret is shown once with a copy button and never again |
 | W-15 | B | Given a disabled webhook, When the admin opens it, Then the console shows "Disabled after 24 hours of failures", the held count and an Enable button; Enable is audited |
+| W-17 | I | Given an endpoint returning `410 Gone`, When one attempt is made, Then the subscription is `disabled(endpoint_gone)` at once and later events are `held` |
+| W-18 | I | Given a host whose DNS answers a public IP at validation and `127.0.0.1` at dial (fake resolver), When the attempt runs, Then the dialler's re-check refuses it with `ssrf_refused` and no connection is opened |
+| W-19 | I | Given a secret sealed under a removed keyring key, When a delivery is due, Then no POST is made, the attempt is `connect_error/secret_unavailable` and a critical alert fires |
+| W-20 | I | Given a suspended tenant with 3 `held(tenant_suspended)` rows, When `tenant.reinstated` arrives, Then they deliver in seq order; a replay of seq 2 gets a new seq at the tail |
 | W-16 | A | Given a partner's receiver, When it is stopped for 10 minutes and restarted, Then the partner sees `unhealthy`, then recovery, and every event arrives once in sequence order (UAT, product-owner) |
 
 ## 5. Observability and security
@@ -467,6 +503,7 @@ Internal events (outbox, not webhook-deliverable): `webhook.endpoint_unhealthy`,
 | `events.max_lifetime` | 24 h (then graceful close with cursor) | 1–72 h | installation |
 | `events.heartbeat` | 15 s | 5–60 s | installation |
 | `events.reauth_interval` | 60 s | 15–300 s | installation |
+| `events.cursor_key` | 32-byte AES-256-GCM key in the secret store (`/etc/atsapbx/secrets` or Vault), with a key id sealed into each cursor | rotate any time | installation; on rotation the previous key stays valid for decryption for `events.stream_max_age`, then is removed; a cursor under an unknown key id → `OutOfRange` (client resyncs) |
 
 - **Backpressure:** the server never blocks the JetStream consumer behind
   a slow client and never silently drops: when the per-stream buffer is

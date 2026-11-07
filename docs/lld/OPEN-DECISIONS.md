@@ -33,6 +33,9 @@ owner may simply accept.
 | A17 | PRD additions: AC-03.18 (queue position/EWT) and a minimal R1.0 manual inbound disposition (US-03.18/AC-03.19) | Add both | LLD-03 §3.3.6 OD-7, OD-8 | **Scope (PRD)** |
 | A18 | Paging/intercom | Out of R1.0 | LLD-03 OD-1 | **Scope** |
 | A19 | Voicemail drop | One-click agent drop in R1.0; AMD and automatic drop in R2 | LLD-06 | **Scope** |
+| A21 | Abandonment breach: AC-15.3 says "stops". Proposed: breach stops the campaign (`STOPPED_COMPLIANCE`); a compliance officer may restart it, in reserved mode (ratio 1.0) | Stop, restart in reserved mode only | LLD-06 OB-06, HLD-21 §4 | **Legal / PRD** |
+| A22 | Tenant hold music loaded from database tables widens D-47 ("only static registration objects are projected") | Amend D-47 after SPIKE-M1 passes; until then one installation-wide MOH class | LLD-03 §3.15 | **Architecture (D-47)** |
+| A23 | PRD has no AC for voicemail (US-03.5) or hot-desking (US-03.4) | Add the ACs proposed in LLD-03 §3.4 and §3.14 | LLD-03 | **Scope (PRD)** |
 | A20 | LLD numbering: LLD-12 covers pbx-core devices plus lifecycle tooling, against D-48's "one LLD per context" | Amend D-48 to allow a cross-cutting operations LLD | LLD-12 OD-9 | **Process** |
 
 ## 2. Product defaults (accept unless the owner objects)

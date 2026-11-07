@@ -319,7 +319,7 @@ against a PRD criterion.
 
 | Concern | Owner | How it crosses |
 |---|---|---|
-| Bridges, channels, MOH, snoop, device-state writes, Participant states, operation rows, parked-call rows, timers that move media | `telephony-core` (this LLD) | — |
+| Bridges, channels, MOH, snoop, device-state writes, Participant states, operation rows (`call_operations`, including the park's history), the park timer and every other timer that moves media | `telephony-core` (this LLD) | — |
 | Who may do what, destination resolution (D-91) into a `RingPlan`/`Program`, outbound class and fraud screening of an external target, feature codes, recall and fallback chains, park lots **and slot allocation (`parked_calls`)**, pickup groups and candidate selection, rooms and PIN checks, MOH classes, monitoring policy and its audit, presence and lamp values | `pbx-core` ([LLD-03 §3.5–§3.15](LLD-03-pbx-core.md)) | Console RPCs live on `PbxService` (the `PlaceCall` precedent): `pbx-core` authorises, resolves, then calls the telephony inbound ports `CallControl` and `ConferenceControl` (§11.5). Phone-originated actions and every recall/fallback enter telephony first and ask `pbx-core` through `InboundRouter.ResolveInbound` / `InboundRouter.Continue`, the LLD-03 §4.2 pattern. Telephony reports facts back in process through `CallEventSink` |
 | Capacity | `licensing` via `LicenseManager` | Reservation keys per §11.8 |
 | Recording start/stop/pause | LLD-09 | Recording is on the call's main bridge `M`, which every flow keeps (§11.4), so call control never restarts it |
@@ -335,7 +335,7 @@ are added. HLD-03, HLD-16 and HLD-21 now use exactly this set.
 | `Ringing` | Endpoint alerting (SIP 180/183). Was `Alerting` in HLD-21 and LLD-03 | no | as `Invited` | exists |
 | `Connected` | In a conversation bridge (`M`, consult `K`, room), or answered by an in-platform application (IVR, voicemail) | yes | yes | exists |
 | `OnHold` | Out of the conversation, hearing MOH: held by a party, by its own phone's peer, as the caller during a consult, or waiting in a queue (`hold_origin=queue`, §23.1) | yes | yes | exists |
-| `Parked` | In a park bridge `P`, owning a slot; no other party | yes | yes | **new** |
+| `Parked` | Alone in the call's main bridge `M` with bridge MOH, owning a slot (`pbx-core`'s `parked_calls` row); no other party | yes | yes | **new** |
 | `Transferring` | The **transferee** while a blind-transfer target, recall or fallback rings; hears ringback or MOH | yes | yes | exists (meaning fixed) |
 | `Disconnected` | Terminal. `left_reason` says why. Was `Left` in HLD-03/21 | stops | no | exists |
 
@@ -374,20 +374,36 @@ goes to `Disconnected` on `Left(reason)`.
 | Ringing | `PickedUp` | a picker claimed this leg (§17) | Disconnected | `left_reason=picked_up` |
 | Ringing | `AnsweredElsewhere` | sibling leg answered (ring group, pickup) | Disconnected | `left_reason=answered_elsewhere` |
 | Connected | `Held(origin)` | not already held | OnHold | `hold_origin`; `call.held` |
-| OnHold | `Resumed` | the hold's operation is open | Connected | `call.resumed` |
+| OnHold | `Resumed` | `hold_origin` ∈ {api, phone, consult}: the hold's operation is open | Connected | `call.resumed` |
+| OnHold | `QueueConnected` | `hold_origin=queue`: no hold op exists; `QueueMedia.Connect` for this caller's entry (§23.1) | Connected | `call.resumed{hold_origin: queue}` |
+| OnHold | `QueueLeft` | `hold_origin=queue`: `QueueMedia.Leave` (§23.1) | Transferring | as `BlindTransferStarted` |
 | Connected, OnHold | `Parked(slot)` | slot reserved | Parked | `call.parked` |
-| Parked | `Retrieved` / `RecallAnswered` | park row won (§16) | Connected | `call.unparked` |
+| Parked | `Retrieved` | `pbx-core`'s park row won (§16) | Connected | `call.unparked` |
+| Parked | `ComebackStarted` | `Continue{park_timeout}` returned a ring plan (§16) | Transferring | `call.park_recalling` |
+| Parked | `ComebackToApplication` | `Continue{park_timeout}` returned voicemail/IVR (§16) | Connected | counterpart is the application; `call.park_fallback` |
 | Connected, OnHold | `BlindTransferStarted` | subject of the operation | Transferring | `call.transfer_started` |
 | Transferring | `TargetAnswered` | — | Connected | `call.transferred` |
-| Transferring | `FallbackToApplication` | fallback is voicemail/IVR/queue | Connected | counterpart is the application |
+| Transferring | `FallbackToApplication` | fallback is voicemail or IVR | Connected | counterpart is the application |
+| Transferring | `FallbackToQueue` | fallback is a queue | OnHold | `hold_origin=queue` (§23.1) |
 | OnHold | `ConsultCompleted` | subject of an attended op | Connected | `call.transferred` |
 | Connected | `Rehomed(newCall)` | §11.6 | Disconnected | `left_reason=rehomed`; a new Participant on the new call continues the same channel |
 | any non-terminal | `Left(reason)` | — | Disconnected | `left_at`; ticks stop; `participant.left` |
 
-**`left_reason` values:** `normal`, `api_hangup`, `transferred`, `parked`,
-`picked_up`, `answered_elsewhere`, `cancelled`, `busy`, `no_answer`,
+**`left_reason` — closed list** (CHECK `call_participants_left_reason_ck`
+in 0030; Go `domain.LeftReason` with an exhaustive switch): `normal`,
+`api_hangup`, `transferred`, `transfer_failed`, `parked`, `picked_up`,
+`pickup_failed`, `answered_elsewhere`, `cancelled`, `busy`, `no_answer`,
 `rejected`, `unreachable`, `rehomed`, `kicked`, `pin_failed`,
-`hold_abandoned`, `monitor_stopped`, `engine_lost`, `app_restart`.
+`no_moderator`, `room_ended`, `hold_abandoned`, `monitor_stopped`,
+`voicemail_dropped`, `leg_lost`, `engine_lost`, `app_restart`.
+
+**`Continue` reasons — closed list** (Go `ports.ContinueReason`; recorded
+in `call_operations.reason`, whose CHECK includes them): `plan_terminal`
+(a plan's `Destination` terminal), `hold_orphaned` (§12, and §14 when the
+transferor leaves without drop-completes), `transfer_no_answer` (§13),
+`transfer_recall` (§13: `pbx-core` returns the transferor's recall plan
+with this reason echoed), `park_timeout` (§16), `pickup_failed` (§17),
+`queue_overflow` (§23.1).
 
 **Call end rule (replaces "fewer than two Connected").** Pure:
 `(c *Call) EndDecision() (end bool, reason string)`. The code's current
@@ -406,18 +422,23 @@ Every multi-step action is one `CallOperation` row. It says what was in
 flight when something fails (§22), and its partial unique indexes make
 "already held" and "two transfers at once" impossible.
 
-| Kind | States (→ terminal outcome) |
-|---|---|
-| `hold` | `Held` → `Resumed` · `Recalling` → `Resumed` · `FellBack` · `Ended` |
-| `blind_transfer` | `TargetRinging` → `Completed` · `Recalling` → `Recalled` · `FellBack` · `Failed` |
-| `attended_transfer` | `ConsultRinging` → `Consulting` → `Completed` · `Cancelled` · `Failed`; flag `active_side` = `caller` or `target` (swap) |
-| `park` | `Parked` → `Retrieved` · `Recalling` → `Retrieved` · `FellBack` · `Abandoned` · `Lost`. This row is the park's history; `pbx-core`'s `parked_calls` row is the slot claim and is deleted at the end (LLD-03 §3.10) |
-| `pickup` | `Claimed` → `Completed` · `Lost` |
-| `adhoc_add` | `TargetRinging` → `Completed` · `Failed` |
-| `monitor` | mirrors `monitor_sessions` (§20) |
+| Kind | Open states | Terminal outcomes (`state` = `outcome` once `ended_at` is set) | Subject / target |
+|---|---|---|---|
+| `hold` | `Held`, `Recalling` | `Resumed`, `FellBack`, `Abandoned`, `Ended` (subject left), `Superseded`, `Lost` | held party / recall leg |
+| `blind_transfer` | `TargetRinging`, `Recalling` | `Completed`, `Recalled`, `FellBack`, `Failed`, `TransfereeLeft`, `Lost` | transferee / answering leg |
+| `attended_transfer` | `ConsultRinging`, `Consulting` (flag `active_side` = `caller`/`target`) | `Completed`, `Cancelled`, `ConvertedToBlind`, `TransfereeLeft`, `Failed`, `Lost` | transferee / consult target |
+| `park` | `Parked`, `Recalling` | `Retrieved`, `FellBack`, `Abandoned`, `Lost` | parked party / retriever. This row is the park's history; `pbx-core`'s `parked_calls` row is the slot claim and is deleted at the end (LLD-03 §3.10) |
+| `pickup` | `Claimed` | `Completed`, `CallerLeft`, `Lost` | claimed ringing leg / picker |
+| `adhoc_add` | `TargetRinging` | `Completed`, `NoAnswer`, `Cancelled`, `Lost` | the added party / — (initiator in `initiator_participant_id`) |
 
-Each kind's full state × event table is in its flow section. Terminal
-outcomes are immutable (INV-08).
+- **Monitoring writes no operation row:** `monitor_sessions` (§20) is its
+  record and carries its own partial unique indexes.
+- `Lost` is the outcome of every kind when the engine or app is lost
+  (§22); `Failed` exists only for transfers, where a plan can end with
+  nobody answering.
+- Migration 0031 enforces the per-kind sets with CHECKs (§11.9). Each
+  kind's full state × event table is in its flow section. Terminal
+  outcomes are immutable (INV-08).
 
 ### 11.4 Bridge topology and ARI primitives
 
@@ -425,15 +446,17 @@ outcomes are immutable (INV-08).
 |---|---|---|---|
 | `M` main | `POST /bridges?type=mixing&bridgeId=atsa-m-<call>&name=…` | `atsa-m-<call_id>` | Life of the Call (today's code) |
 | `K` consult | `type=mixing` | `atsa-k-<operation_id>` | Life of an attended operation |
-| `P` park | `type=holding` + `POST /bridges/{P}/moh?mohClass=` | `atsa-p-<park operation_id>` | Life of the park |
 | `S` snoop | `type=mixing` | `atsa-s-<monitor_session_id>` | Life of a monitor session |
 | `Q` queue wait | `type=holding` + bridge MOH | `atsa-q-<queue_entry_id>` | While the caller waits in a queue (§23.1, LLD-03 §3.3.1) |
 
 - **Hold has no bridge.** Hold = `POST /bridges/{M}/removeChannel` then
   `POST /channels/{id}/moh?mohClass=<class>`; resume = `DELETE
   /channels/{id}/moh` then `POST /bridges/{M}/addChannel`. A channel in
-  Stasis outside a bridge keeps its media. This avoids a bridge per hold;
-  `P` is a bridge only so reconcile can find parks by name (§22).
+  Stasis outside a bridge keeps its media. This avoids a bridge per hold.
+- **Park has no bridge either (D-99).** The parked party stays alone in
+  `M` with `POST /bridges/{M}/moh`; retrieve stops the bridge MOH and adds
+  the retriever to `M`. Reconcile finds a park by its open `park` row and
+  `M` (§22).
 - **`M` is never replaced.** Every flow adds and removes channels on `M`,
   so a bridge recording (LLD-09) is continuous through hold, transfer,
   park and pickup. Asterisk changes a mixing bridge's technology (native
@@ -1171,108 +1194,130 @@ Decided design for both branches; the spike picks the branch, not the behaviour.
 
 `pbx-core` owns the lot, the slot claim (`parked_calls`, conditional
 updates, `ChooseSlot`, `Sweep`) and the comeback chain (LLD-03 §3.10).
-Telephony owns the media, the timer and the park's history.
+Telephony owns the media, the timer and the park's history
+(`call_operations` kind `park`). The parked party stays in the call's main
+bridge `M` (D-99): no park bridge exists.
 
-1. **Trigger and actors.** Park: console `ParkCall` (LLD-03 RPC; call
-   party), a phone's blind or attended REFER to the lot number or a slot
-   number (§15, `Purpose=transfer` → `Feature=Park`). Retrieve: a phone
-   dialling the slot number, console `RetrieveParkedCall`, a BLF key.
-   Timer: telephony's, armed at `expires_at`.
-2. **Preconditions.** Subject `Connected` or `OnHold`; `pbx-core` has
-   claimed a slot (else the parker hears `pbx-park-full`, LLD-03, and the
-   call is untouched). Retrieve: `pbx-core`'s conditional
-   `PARKED → RETRIEVED` succeeded.
+1. **Trigger and actors.** Park: console `ParkCall` (LLD-03 RPC,
+   permission `call.park`, actor is a party to the call), a phone's blind
+   or attended REFER to the lot number or a slot number (§15,
+   `Purpose=transfer` → `Feature=Park`). Retrieve: a phone dialling the
+   slot number, console `RetrieveParkedCall` (`call.park.retrieve`), a
+   BLF key. Timer: telephony's, armed at `expires_at`.
+2. **Preconditions.** Subject `Connected` or `OnHold`; after the parker
+   leaves, the subject is the only live party in `M` (a three-party call
+   cannot be parked: `FAILED_PRECONDITION` "Only a two-party call can be
+   parked"); `pbx-core` has claimed a slot (else the parker hears
+   `pbx-park-full` and the call is untouched; console "All parking spaces
+   are in use."). Retrieve: `pbx-core`'s conditional `PARKED → RETRIEVED`
+   succeeded.
 3. **Sequence.**
    1. `pbx-core` `AllocateSlot` (its tx) → `CallControl.Park{call,
       subject, lot, slot, MOHClass, ExpiresAt}`.
    2. telephony (one tx): op `park/Parked`, A → `Parked`, parker B →
       `Disconnected(parked)`, `call.parked`; `CallEventSink(ParticipantParked)`.
-   3. ACL: create `P` (`type=holding`, `atsa-p-<op>`), `POST /bridges/{P}/moh?mohClass=`,
-      `removeChannel` A from `M`, `addChannel` A to `P`; hang up B (API) or
+   3. ACL: if A is held, `DELETE /channels/{A}/moh` and `addChannel` A
+      back to `M`; `removeChannel` B from `M`; `POST /bridges/{M}/moh?mohClass=`
+      (A is alone, so only A hears it); hang up B (API) or
       `transfer_progress=channel_answered` (REFER).
    4. **Slot announcement to the parker:** API → the RPC returns `slot`;
       attended phone park → `POST /channels/{B'}/play?media=digits:<slot>`
       on the consult leg before the phone completes; blind phone park →
       not audible (B's leg has gone): the lamp (§21) and console show it.
-   5. Arm the timer at `ExpiresAt` (survives nothing; re-armed by `Sweep`
-      after a restart, LLD-03).
-   6. Retrieve: `pbx-core` `RetrieveSlot` wins the conditional update →
+   5. Arm the timer at `ExpiresAt` (re-armed by `pbx-core` `Sweep` after
+      a restart, LLD-03).
+   6. Retrieve: `pbx-core` `RetrieveSlot` wins its conditional update →
       `CallControl.Retrieve{call, parked, retriever}`: the retriever's
-      provisional Call is re-homed into A's Call (§11.6); answer it; move A
-      from `P` to `M`, add R to `M`, destroy `P`; op `Retrieved`;
-      `call.unparked`. Telephony keeps `M` (recording continuity) — the
-      port's "retrieve into a new bridge" (LLD-03 §3.5.1) is met by `M`.
+      provisional Call is re-homed into A's Call (§11.6), or the console
+      path originates the retriever's device first (`Leg.Originate`);
+      answer it; `DELETE /bridges/{M}/moh`; `addChannel` R to `M`; A, R
+      `Connected`; op `Retrieved`; `call.unparked`.
    7. Timeout: `InboundRouter.Continue{reason: park_timeout}` → `pbx-core`
-      `ParkTimeout` (conditional `PARKED → COMEBACK`, slot freed) returns a
-      `RingPlan` (parker's devices `comeback_seconds`, caller-id
-      "Parked 701: <caller>", then the lot fallback). Op `Recalling`; A stays
-      in `P` with MOH while the plan rings; a leg answers → A to `M` with
-      that leg, op `Retrieved`. If `pbx-core` lost the race (already
+      `ParkTimeout` (conditional `PARKED → COMEBACK`, slot freed) returns
+      a `RingPlan` (parker's devices `comeback_seconds`, caller-id "Parked
+      701: <caller>", then the lot fallback). Op `Recalling`; A →
+      `Transferring` (`ComebackStarted`) and keeps hearing the bridge MOH
+      while the plan rings; a leg answers → stop MOH, add that leg to `M`,
+      A `Connected`, op `Retrieved`. If `pbx-core` lost the race (already
       retrieved) it returns no decision and telephony does nothing.
-   8. Plan reaches voicemail/queue → op `FellBack`; `Refuse` or exhausted
-      → announcement, A `Disconnected(hold_abandoned)` (not for emergency:
-      `Continue` again).
+   8. Plan reaches voicemail/IVR → `DELETE /bridges/{M}/moh`, A →
+      `Connected` to the application (`ComebackToApplication`), op
+      `FellBack`. A queue → A `OnHold(queue)` (§23.1), op `FellBack`.
+      `Refuse` or exhausted → announcement, A
+      `Disconnected(hold_abandoned)`, op `Abandoned` (an emergency call is
+      never dropped: `Continue` again).
 4. **State machine** (op `park`; LLD-03's row states in brackets):
 
-   | From | Event | Guard | To | Side effect |
-   |---|---|---|---|---|
-   | — | `Park` | slot claimed | Parked [`PARKED`] | `call.parked`, lamp `INUSE` |
-   | Parked | `Retrieve` | pbx conditional update won | Retrieved [row deleted] | `call.unparked` |
-   | Parked | timer | `Continue` returned a plan | Recalling [`COMEBACK`, slot free] | `call.park_recalling` |
-   | Parked | timer | `Continue` returned nothing (lost race) | Parked | none |
-   | Recalling | plan leg answers | — | Retrieved | comeback siblings `answered_elsewhere` |
-   | Recalling | application terminal | — | FellBack | `call.park_fallback` |
-   | Recalling | exhausted, not emergency | — | FellBack(`abandoned`) | announcement, A hung up |
-   | Parked, Recalling | A hangs up | — | Abandoned [`ABANDONED`] | `call.parked_abandoned` |
-   | Parked, Recalling | engine lost / reconcile finds no channel | — | Lost [`LOST`] | `call.parked_lost` |
+   | From | Event | Guard | To | Participant A | Side effect |
+   |---|---|---|---|---|---|
+   | — | `Park` | slot claimed, A alone after B leaves | Parked [`PARKED`] | Connected/OnHold → Parked | `call.parked`, lamp `INUSE` |
+   | Parked | `Retrieve` | pbx conditional update won | Retrieved [row deleted] | Parked → Connected | `call.unparked` |
+   | Parked | timer | `Continue` returned a plan | Recalling [`COMEBACK`, slot free] | Parked → Transferring | `call.park_recalling` |
+   | Parked | timer | `Continue` returned an application | FellBack | Parked → Connected (application) | `call.park_fallback` |
+   | Parked | timer | `Continue` returned nothing (lost race) | Parked | — | none |
+   | Recalling | plan leg answers | — | Retrieved | Transferring → Connected | comeback siblings `answered_elsewhere` |
+   | Recalling | application terminal | — | FellBack | Transferring → Connected / OnHold(queue) | `call.park_fallback` |
+   | Recalling | exhausted, not emergency | — | Abandoned | → Disconnected(hold_abandoned) | announcement |
+   | Parked, Recalling | A hangs up | — | Abandoned [`ABANDONED`] | → Disconnected(normal) | `call.parked_abandoned` |
+   | Parked, Recalling | engine or app lost (§22) | — | Lost [`LOST`] | → Disconnected(engine_lost/app_restart) | `call.parked_lost` |
 
    **Races.** Retrieve vs timeout and two retrievers are decided by
    `pbx-core`'s conditional update on its row; telephony acts only on the
    winner's call. Retrieve during `Recalling` is not possible: the slot is
-   already free (FreePBX behaviour; the comeback leg is the way back).
-   A `Retrieve` arriving for an op that is no longer `Parked` returns
-   `ErrNotParked` (`ABORTED`, "That call has already been picked up").
+   already free (FreePBX behaviour; the comeback leg is the way back). A
+   `Retrieve` for an op that is no longer `Parked` returns `ErrNotParked`.
 5. **Data model.** `call_operations` (kind `park`, `deadline_at` =
    `ExpiresAt`); `parked_calls` is LLD-03's (0041).
 6. **Ports.** `CallControl.Park/Retrieve`; `InboundRouter.Continue`;
    `CallEventSink(ParticipantParked)`; `DeviceStatePublisher` (called by
-   `pbx-core`); pure `NextOperationState(park, …)`.
-7. **API.** LLD-03 `ParkCall`, `RetrieveParkedCall`, `ListParkedCalls`.
-   Telephony errors map: subject not Connected/OnHold →
-   `FAILED_PRECONDITION` "This call can't be parked right now"; P/move
-   failure → `UNAVAILABLE`; `ErrNotParked` → `ABORTED`.
+   `pbx-core`); `MediaGateway.StartBridgeMOH/StopBridgeMOH`; pure
+   `NextOperationState(park, …)`.
+7. **API.** LLD-03 `ParkCall` (`call.park`), `RetrieveParkedCall`
+   (`call.park.retrieve`), `ListParkedCalls`. Telephony errors map:
+   subject not Connected/OnHold → `FAILED_PRECONDITION` "This call can't
+   be parked right now"; three-party call → `FAILED_PRECONDITION` "Only a
+   two-party call can be parked"; lot full (pbx-core) →
+   `RESOURCE_EXHAUSTED` "All parking spaces are in use."; engine failure →
+   `UNAVAILABLE`; `ErrNotParked` → `ABORTED` "That call has already been
+   picked up."
 8. **Configuration.** LLD-03 §3.10: slots 701–720, timeout 60 s,
    comeback 20 s, fallback (parker's mailbox, else hang up), lot MOH.
-9. **Failure and recovery.** `P` create or move fails → A back to `M`,
-   `CallControl.Park` returns `UNAVAILABLE` and `pbx-core` deletes its
-   row in compensation. App restart, engine alive → `P` found by name
-   (`GET /bridges`), op kept, `Sweep` re-arms timers. Engine restart →
-   op `Lost`; `pbx-core` `Sweep` marks its row `LOST`.
+9. **Failure and recovery.** Bridge MOH start fails → A stays in `M` in
+   silence is not allowed: `CallControl.Park` returns `UNAVAILABLE`, B is
+   not hung up, A is restored to its previous state, and `pbx-core`
+   deletes its row in compensation. App restart, engine alive → the open
+   `park` row and `M` with A identify the park; `Sweep` re-arms timers.
+   Engine restart → op `Lost`; `pbx-core` `Sweep` marks its row `LOST`.
 10. **Invariants and events.** INV-10 (slot numbers tenant-local, RLS on
-    both tables; bridge ids carry op ids), INV-01 (an emergency call is
-    never dropped by the no-fallback path), INV-03. Telephony events
-    `call.parked`, `call.park_recalling`, `call.unparked`,
-    `call.park_fallback`, `call.parked_abandoned`, `call.parked_lost`
-    (LLD-03 emits its `pbx.call_parked…` for config-side consumers).
+    both tables), INV-01 (an emergency call is never dropped by the
+    no-fallback path), INV-03. Recording: `M` is unchanged, so a park adds
+    **no** recording segment; the recording captures the MOH while parked.
+    Telephony events `call.parked`, `call.park_recalling`,
+    `call.unparked`, `call.park_fallback`, `call.parked_abandoned`,
+    `call.parked_lost` (LLD-03 emits its `pbx.call_parked…` for
+    configuration-side consumers).
 11. **Tests.**
 
     | Given | When | Then | Tier |
     |---|---|---|---|
-    | A⇄B | `Park` | A in `P` hearing MOH; B gone; op Parked | U, E |
+    | A⇄B | `Park` | A alone in `M` hearing MOH; B gone; op Parked; no new bridge on `GET /bridges` | U, E |
+    | A⇄B⇄C | `Park` A | `FAILED_PRECONDITION` | U, W |
     | parked | `Retrieve` with R's provisional call | A⇄R in `M`; R's usage continuous across re-home | I, E |
     | parked | timer fires after a retrieve won | `Continue` returns nothing; no ringing | U |
-    | comeback plan answered by parker | — | A⇄parker; op Retrieved | U, E |
-    | comeback exhausted, fallback voicemail | — | A in voicemail; FellBack | E |
-    | A hangs up while parked | — | Abandoned, `P` destroyed, no orphan bridge | U, E |
+    | comeback plan answered by parker | — | A `Transferring → Connected`; op Retrieved | U, E |
+    | comeback returns voicemail | — | A in voicemail; FellBack | U, E |
+    | A hangs up while parked | — | Abandoned; no orphan channel | U, E |
     | Asterisk restarted with a parked call | reconnect | op Lost, `call.parked_lost` | E |
-    | `removeChannel` fails (fake) | `Park` | A still in `M`, `UNAVAILABLE` | U |
+    | bridge MOH fails (fake) | `Park` | B still connected to A, `UNAVAILABLE` | U |
+    | recorded call parked and retrieved | — | one recording file covers before, during (MOH) and after | E |
     | console | park, retrieve | panel follows events | C, B |
-    | AC-03.2 | park on a desk phone, retrieve in the browser | works both ways | A |
+    | AC-03.2 | external caller on a desk phone is parked, then retrieved in the browser | external party hears MOH, then the retriever; both directions | A |
+    | AC-03.2 | browser user parks an internal call, desk phone retrieves | works | A |
 12. **Industry parity.** As LLD-03 §3.10 (FreePBX 70/71–78, 45 s,
     comeback then destination; 3CX shared park; VitalPBX/FusionPBX valet
-    with BLF). **Difference:** the parked caller stays the same Participant
-    in the same Call and recording, and a park lost to an engine restart is
-    recorded as `parked_lost`.
+    with BLF). **Difference:** the parked caller stays the same
+    Participant in the same Call, bridge and recording, and a park lost to
+    an engine restart is recorded as `parked_lost`.
 
 ## 17. Call pickup (PB-12, AC-03.13)
 

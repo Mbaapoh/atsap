@@ -36,7 +36,7 @@ recordings (R2 option, §7.10).
 |---|---|---|
 | Recording policy rows and their resolution | `pbx-core` (config) + pure resolver | Consulted in the call path at routing time; `reporting` may never be called synchronously (HLD 04 §10.1) |
 | Announcement, `bridges/{id}/record`, mute/unmute, upload | `telephony-core` ACL | The only code that touches ARI |
-| `StartCallRecording` / `StopCallRecording` / `PauseCallRecording` / `ResumeCallRecording` RPCs | `telephony-core` `CallService` | They act on a live call |
+| `StartCallRecording` / `StopCallRecording` / `PauseCallRecording` / `ResumeCallRecording` RPCs | `telephony-core` `TelephonyService` (LLD-01, `telephony.proto`) | They act on a live call |
 | Recording metadata, access, retention, holds, CDR ledger, quality, exports | `reporting` | Fed by events only (D-92) |
 | Object store adapter | shared infrastructure `internal/objectstore` (like `internal/postgres`) | Used by telephony (put) and reporting (get, delete) through their own ports |
 
@@ -94,6 +94,17 @@ except `control`, `report.read`, `report.export`, `cdr.verify`,
 | 9 | reporting | Consumer `reporting-cdr-pending` on `call.initiated` inserts `cdr_pending(call_id, initiated_at)` (`ON CONFLICT DO NOTHING`); a call already recorded is skipped |
 | 10 | reporting | Hourly: pending rows older than `cdr.missing_after` (24 h) → alert `reporting.cdr_missing` naming call ids (AC-07.5) |
 | 11 | reporting | Anchor timer (§3.8) |
+| 12 | reporting | Consumer `reporting-ai-usage` on `tenant.*.event.ai.stream_stopped` and `ai.stream_failed` (both carry `stream_id, call_id, participant_id, provider_id, seconds`, LLD-05 §3.2): `AppendAIStream` = `INSERT cdr_ai_streams … ON CONFLICT (stream_id) DO NOTHING`; ack after commit. Not chained (the evidence ledger for AI seconds is `ai_usage_seconds` in LLD-10) |
+
+**Ordering vs `cdr.recorded` (AC-05.4).** A stream may stop before or
+after the call's ledger row, so `cdr_ai_streams` has no FK to
+`cdr_records` and `cdr.recorded` does **not** carry AI seconds (they
+could be incomplete). `ai_stream_seconds` is computed at read/export
+time as `SUM(seconds)` per call/participant. An export row for a call
+that ended less than `cdr.ai_settle` (5 min) ago, or that has a
+participant with an AI stream not yet stopped, carries
+`ai_seconds_final = false`; billing exports should use a period that
+ended at least 5 min earlier.
 
 Adjustment: `AdjustCallRecord` → same lock on `'cdr_adjustments:' || tenant_id`
 → head of the adjustments chain → `HashAdjustment` → INSERT
@@ -104,6 +115,16 @@ Adjustment: `AdjustCallRecord` → same lock on `'cdr_adjustments:' || tenant_id
 `call_id, direction, source_digits, dest_digits, started_at, answered_at?, ended_at, termination_reason, disposition (answered|no_answer|busy|failed|rejected|cancelled), service_type (pbx|contact_centre|campaign), department_id?, route_id?, carrier_id?, trunk_id?, cost_micros, participants[]{participant_id, role, extension_id?, principal_id?, joined_at, answered_at?, left_at, billable_seconds, usage_seconds, cost_micros}`.
 Times are UTC, microsecond precision (Postgres precision; the hash input
 must not depend on a precision the database discards).
+
+**Derived totals (pure `DeriveCallTotals`, reporting):** the payload
+carries no call-level totals, so the projector derives them, and LLD-01
+need not add fields:
+- `duration_seconds = floor((ended_at − started_at) / 1 s)`;
+- `billable_seconds = answered_at = null ? 0 : floor((ended_at − answered_at) / 1 s)`
+  — the call's answered talk time; per-participant `billable_seconds`
+  stay as published (they are what partners rate per leg);
+- both are clamped at ≥ 0 (clock skew between `answered_at` and
+  `ended_at` refuses the event into `cdr_rejects` if negative by > 1 s).
 
 ### 3.4 State
 
@@ -117,31 +138,59 @@ projection has a short lifecycle in `cdr_pending`:
 | `pending` | age > 24 h | `missing` (alert; stays pending until the event arrives or the outbox is republished) |
 | `recorded` | `AdjustCallRecord` | `recorded` + adjustment (effective values = record + Σ adjustments) |
 
-### 3.5 Hash chain
+### 3.5 Hash chain — exact canonical input
 
 - Two chains per tenant: records and adjustments. `chain_seq` starts at 1;
-  `UNIQUE (tenant_id, chain_seq)` makes a fork impossible.
-- `row_hash = SHA-256("atsapbx-cdr-v1" ‖ prev_hash ‖ enc(f1) ‖ … ‖ enc(fn))`,
-  where `enc(x)` is a 4-byte big-endian length followed by UTF-8 bytes;
-  times are RFC 3339 UTC with exactly six fractional digits; absent
-  values encode as length `0xFFFFFFFF`; participants are encoded in
-  `participant_id` order after the record fields. The field order is the
-  DDL column order below and is versioned by `hash_version`.
-- Canonical binary, not JSON, so no JSON canonicalisation library is
-  needed and a key-ordering bug cannot break verification.
+  `UNIQUE (tenant_id, chain_seq)` makes a fork impossible. Genesis
+  `prev_hash` = 32 zero bytes.
+- `row_hash = SHA-256(domain_tag ‖ prev_hash ‖ enc(f1) ‖ … ‖ enc(fn))` with
+  `domain_tag` = ASCII `atsapbx-cdr-record-v1` or `atsapbx-cdr-adjustment-v1`
+  (no length prefix) and `prev_hash` as 32 raw bytes.
+- `enc(x)` = 4-byte big-endian byte length, then the bytes; an absent
+  (NULL) value is the 4 bytes `FF FF FF FF` and nothing else.
+- Value encodings (all ASCII/UTF-8): UUID lowercase 36-char canonical
+  text; integers base-10 with optional leading `-`, no `+`, no leading
+  zeros; text as stored (UTF-8, no normalisation); timestamps
+  `YYYY-MM-DDTHH:MM:SS.ffffffZ` (UTC, exactly six fractional digits).
+- **Record fields, in this order (all hashed):** `hash_version`,
+  `tenant_id`, `chain_seq`, `call_id`, `direction`, `source_digits`,
+  `dest_digits`, `started_at`, `answered_at`, `ended_at`,
+  `duration_seconds`, `billable_seconds`, `termination_reason`,
+  `disposition`, `service_type`, `department_id`, `route_id`,
+  `carrier_id`, `trunk_id`, `cost_micros`, `source`, `source_event_id`,
+  `recorded_at`; then `enc(participant_count)`; then per participant in
+  ascending `participant_id` (byte order of the text): `participant_id`,
+  `role`, `extension_id`, `principal_id`, `joined_at`, `answered_at`,
+  `left_at`, `billable_seconds`, `usage_seconds`, `cost_micros`.
+- **Adjustment fields, in order:** `hash_version`, `tenant_id`,
+  `chain_seq`, `id`, `call_id`, `participant_id`, `kind`,
+  `delta_seconds`, `delta_cost_micros`, `new_disposition`, `reason`,
+  `actor_principal_id`, `created_at`.
+- `recorded_at` (records) and `created_at` (adjustments) are set **by the
+  application**, truncated to microseconds, before hashing and inserted
+  explicitly; the columns have **no DB default** so the stored value is
+  the hashed value.
+- Canonical binary, not JSON: no canonicalisation library, and a
+  key-ordering bug cannot break verification. L-01 publishes the golden
+  vector.
+
+**What tamper-evidence this gives (stated honestly).** The chain is an
+unkeyed SHA-256 chain so that a tenant can verify an export offline with
+no secret. Alone, it detects an edit, deletion or insertion made by
+anyone who does not also recompute every later hash. Someone with
+write access to the database *and* time to rewrite the chain from the
+edit point onward is detected **only** by comparing with anchors held
+outside the database: anchors delivered by webhook/stream, or downloaded
+through `ListCDRAnchors`/`ExportCDRChain` (§3.9). A keyed chain
+(HMAC with a key in the secret store/Vault) was considered: it stops a
+database-only attacker but not one with the application host, and it
+removes the tenant's ability to verify without our key. **OWNER
+DECISION (§11 item 9)** — recommended: unkeyed chain + external anchors.
 
 ### 3.6 Data model — migration `0061_cdr_ledger`
 
 ```sql
--- Shared guard for every append-only table in 0060–0066.
-CREATE FUNCTION atsapbx_forbid_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'DELETE' AND current_user = 'atsap_retention'
-     AND current_setting('atsapbx.retention_purge', true) = 'on' THEN
-    RETURN OLD;
-  END IF;
-  RAISE EXCEPTION '% on % is forbidden: append-only (BR-07, INV-08)', TG_OP, TG_TABLE_NAME;
-END $$;
+-- atsapbx_forbid_mutation() is created by 0060 (LLD-05 §4.6).
 
 CREATE TABLE cdr_records (
   tenant_id UUID NOT NULL REFERENCES tenants(id),
@@ -153,13 +202,13 @@ CREATE TABLE cdr_records (
   duration_seconds INT NOT NULL CHECK (duration_seconds >= 0),
   billable_seconds INT NOT NULL CHECK (billable_seconds >= 0),
   termination_reason TEXT NOT NULL,
-  disposition TEXT NOT NULL,
-  service_type TEXT NOT NULL,
+  disposition TEXT NOT NULL CHECK (disposition IN ('answered','no_answer','busy','failed','rejected','cancelled')),
+  service_type TEXT NOT NULL CHECK (service_type IN ('pbx','contact_centre','campaign')),
   department_id UUID, route_id UUID, carrier_id UUID, trunk_id UUID,
   cost_micros BIGINT NOT NULL DEFAULT 0,
   source TEXT NOT NULL CHECK (source IN ('event','backfill')),
   source_event_id UUID,
-  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  recorded_at TIMESTAMPTZ NOT NULL,           -- set by the app (hashed); no default
   hash_version SMALLINT NOT NULL DEFAULT 1,
   prev_hash BYTEA NOT NULL CHECK (length(prev_hash) = 32),
   row_hash BYTEA NOT NULL CHECK (length(row_hash) = 32),
@@ -193,7 +242,7 @@ CREATE TABLE cdr_adjustments (
   delta_seconds INT, delta_cost_micros BIGINT, new_disposition TEXT,
   reason TEXT NOT NULL CHECK (length(reason) BETWEEN 10 AND 500),
   actor_principal_id UUID NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL,            -- set by the app (hashed); no default
   hash_version SMALLINT NOT NULL DEFAULT 1,
   prev_hash BYTEA NOT NULL, row_hash BYTEA NOT NULL,
   UNIQUE (tenant_id, chain_seq),
@@ -238,10 +287,23 @@ CREATE TABLE cdr_rejects (
   plus a `BEFORE TRUNCATE` statement trigger. The table owner could
   re-grant itself; the trigger is the guard the owner cannot bypass
   without a migration (which CI reviews).
-- **Retention role** `atsap_retention` (`NOBYPASSRLS`, created by the deploy
-  bootstrap): `SELECT, DELETE` on ledger and recording tables; sets
-  `app.tenant_id` per tenant and `atsapbx.retention_purge = on` per
-  transaction.
+- **Retention role grants (single source for 0060–0066).**
+  `atsap_retention` is `NOBYPASSRLS`, created by the deploy bootstrap; it
+  sets `app.tenant_id` per tenant and `atsapbx.retention_purge = on` per
+  transaction. Each owning migration grants it:
+
+  | Migration / LLD | `SELECT, DELETE` | Extra |
+  |---|---|---|
+  | 0060 / LLD-05 | `webhook_deliveries`, `webhook_delivery_attempts`, `webhook_queue` | `UPDATE (status, held_reason, updated_at)` on `webhook_queue` (expire held rows) |
+  | 0061 / LLD-09 | `cdr_records`, `cdr_participants`, `cdr_adjustments`, `cdr_ai_streams`, `cdr_anchors` (anchors older than the oldest retained month only), `cdr_rejects` | `SELECT` on `recording_legal_hold_calls`, `recording_legal_hold_releases` |
+  | 0062 / LLD-09 | `cdr_quality_windows`, `cdr_quality_summary` | — |
+  | 0064 / LLD-09 | `recordings`, `recording_paused_intervals`, `recording_tickets` | `INSERT` on `recording_deletions`, `outbox` |
+  | 0065 / LLD-09 | `report_exports` | `UPDATE (status)` |
+  | 0066 / LLD-10 | `ai_usage_seconds`, `audio_streams`, `ai_flow_generations` | — |
+
+  Tables not listed (`recording_access`, holds, `recording_deletions`,
+  `recording_failures`) are kept for the life of the tenant: they are the
+  proof that access and deletion happened.
 - **Partitioning:** `cdr_records`/`cdr_participants` become monthly range
   partitions on `started_at` when a tenant passes 5 M rows (AC-07.8);
   the PK then includes `started_at`. Not in the first migration.
@@ -284,8 +346,21 @@ type EventConsumer interface { Run(ctx context.Context, subject string, h func(c
 - `VerifyCDRChain` recomputes hashes from `from_seq` (starting from the
   `prev_hash` stored at `from_seq`, or from the earliest retained anchor
   after a purge) and compares every anchor in range.
-- Purge: before dropping month M, an anchor at the last seq of M is
-  written; verification thereafter starts from it.
+- **CDR month purge** (monthly job, role `atsap_retention`, per tenant):
+
+  | # | Step |
+  |---|---|
+  | 1 | Month M is eligible when its end is older than `cdr.retention_months` |
+  | 2 | Take `pg_advisory_xact_lock(hashtextextended('hold:' || tenant_id, 0))` (the same lock legal holds take, §7.3) |
+  | 3 | If any active hold covers a `call_id` with `started_at` in M → defer the whole month, alert `reporting.cdr_purge_deferred{hold_ids}`, stop |
+  | 4 | Write an anchor at the highest `chain_seq` of each chain within M (if not already the latest anchor) |
+  | 5 | With `atsapbx.retention_purge = on`: delete `cdr_quality_*`, `cdr_ai_streams`, `cdr_adjustments` of those calls, `cdr_participants`, `cdr_records` of M (by partition `DETACH` + `DROP` once partitioned) |
+  | 6 | Commit; verification thereafter starts from the step-4 anchor's head |
+
+  An adjustment made in a later month to a call in M is purged with M; the
+  adjustments chain therefore has gaps by design after a purge, which
+  `VerifyCDRChain` reports as `purged_range`, not `seq_gap`, when an
+  anchor covers it.
 
 ### 3.9 API — `ReportingService`
 
@@ -295,6 +370,8 @@ type EventConsumer interface { Run(ctx context.Context, subject string, h func(c
 | `GetCallRecord` | `call_id` → record, participants, adjustments, quality summary, recordings, AI streams | as above | `NotFound` "No record for this call yet. Calls appear after they end." |
 | `AdjustCallRecord` | `call_id, participant_id?, kind, delta_seconds?, delta_cost_micros?, new_disposition?, reason` → adjustment | `cdr.adjust` | `InvalidArgument` "A reason of at least 10 characters is required." · `FailedPrecondition` "The adjustment would make billable time negative." |
 | `VerifyCDRChain` | `chain (records\|adjustments\|both), from_seq?, to_seq?` (≤ 1,000,000 rows) → `ok, verified, first_bad_seq?, problem (hash_mismatch\|seq_gap\|anchor_mismatch), head_seq, head_hash, last_anchor_at` | `cdr.verify` | `ResourceExhausted` "Verify at most 1,000,000 records per request." |
+| `ListCDRAnchors` | `from?, to?, page` → anchors (`anchored_at, records_seq, records_head, adjustments_seq, adjustments_head`) — for tenants without webhooks to keep their own copy | `cdr.verify` | — |
+| `ExportCDRChain` | `chain, from_seq, to_seq` (≤ 1,000,000) → CSV/NDJSON of every hashed field plus `prev_hash, row_hash`, async above 10,000 rows; verifiable offline with the published reference verifier (`cmd/atsap-verify-cdr`) | `cdr.verify` | `ResourceExhausted` as `VerifyCDRChain` |
 | `ExportCallRecords` (existing) | unchanged, now from the ledger; adds effective values | `report.export` | existing |
 | `ExportUsage` | `from, to, granularity (call\|participant)` → CSV with AC-05.4 fields incl. `ai_stream_seconds`; > 10,000 rows → async job, `report.export_ready` | `report.export` | `InvalidArgument` "Choose a range of at most 31 days." |
 
@@ -305,6 +382,7 @@ type EventConsumer interface { Run(ctx context.Context, subject string, h func(c
 | `cdr.missing_after` | 24 h | 1–72 h | installation |
 | `cdr.anchor_interval` | 1 h | 5 min–24 h | installation |
 | `cdr.verify_max_rows` | 1,000,000 | fixed | installation |
+| `cdr.ai_settle` | 5 min | 1–60 min | installation |
 | `cdr.retention_months` | 24 (OWNER DECISION) | 12–120 | tenant |
 | `report.sync_export_max_rows` | 10,000 | fixed | installation |
 
@@ -357,6 +435,9 @@ Events: `cdr.recorded`, `cdr.adjusted`, `cdr.anchored` (public),
 | L-09 | I | Given the archtest rule, When a reporting file names `call_participants` in SQL, Then the test fails |
 | L-10 | E | Given a real call, When it ends, Then a ledger row with attributed participants exists and `cdr.recorded` reaches a webhook within 2 s |
 | L-11 | C | Given the Reports page, When an admin adjusts a record, Then the reason dialog is mandatory and the row shows original and effective values |
+| L-13 | I | Given `ai.stream_stopped` for a call delivered before that call's `call.terminated`, When both are consumed, Then `ExportUsage` shows the AI seconds on the call and a duplicate `ai.stream_stopped` adds nothing |
+| L-14 | I | Given a hold covering one call in month M, When the month purge runs, Then nothing in M is deleted and `cdr_purge_deferred` fires; after release, M is purged and verification from the boundary anchor is ok |
+| L-15 | U | Given an exported chain, When `cmd/atsap-verify-cdr` runs against `ListCDRAnchors` output, Then it reports ok; editing one row and recomputing all later hashes is caught by the anchor comparison |
 | L-12 | A | Given a full day of rig traffic, When ledger rows are compared with the call list, Then none is missing or duplicated (AC-07.5) and `VerifyCDRChain` is ok |
 
 ### 3.15 Industry parity
@@ -395,7 +476,6 @@ CREATE TABLE recording_settings (             -- one row per tenant
   default_retention_days INT NOT NULL DEFAULT 90 CHECK (default_retention_days BETWEEN 1 AND 3650),
   default_prompt TEXT NOT NULL DEFAULT 'sound:atsapbx/call-may-be-recorded',
   auto_resume_seconds INT NOT NULL DEFAULT 180 CHECK (auto_resume_seconds BETWEEN 30 AND 900),
-  ai_tap_requires_consent BOOLEAN NOT NULL DEFAULT TRUE,   -- OWNER DECISION §11
   updated_by UUID NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE recording_policies (
@@ -607,7 +687,7 @@ func ResolveRecording(f CallFacts, ps []RecordingPolicy, s RecordingSettings, j 
 func ValidatePolicy(p RecordingPolicy, s RecordingSettings, j map[string]Jurisdiction) error
 
 // telephony-core ports
-type RecordingControl interface { // inbound port used by CallService and routing
+type RecordingControl interface { // inbound port used by TelephonyService and routing
     Arm(ctx context.Context, call CallID, d RecordingDirective) error
     Start(ctx context.Context, call CallID, actor *PrincipalID) (RecordingID, error)
     Stop(ctx context.Context, call CallID, actor PrincipalID) error
@@ -656,7 +736,7 @@ Policy (`RecordingPolicyService`, pbx-core):
 | `ExplainRecordingPolicy` | `direction, did?, trunk_id?, extension_id?, queue_id?, external_number?` → directive + explanation | `recording.policy.manage` | — |
 | `ListRecordingJurisdictions` | → rows | `recording.policy.manage` | — |
 
-Live control (`CallService`, telephony-core):
+Live control (`TelephonyService`, telephony-core):
 
 | RPC | Fields | Permission | Refusals → console words |
 |---|---|---|---|
@@ -754,7 +834,7 @@ the new segment muted.
 `ChannelDtmfReceived` digits (they may be card digits); it logs only
 "dtmf received while paused".
 
-### 5.5 API (`CallService`, telephony-core)
+### 5.5 API (`TelephonyService`, telephony-core)
 
 | RPC | Fields | Permission | Refusals → console words |
 |---|---|---|---|
@@ -1146,7 +1226,7 @@ are prefixed with `'` (injection).
 | 3 | **OWNER DECISION — jurisdiction seed content** | Seed country-level consent classes from a cited public source, label them "not legal advice", treat US and CA as `all_party` (strictest) because state/province is not derivable in R1.0, unknown → `all_party` |
 | 4 | **OWNER DECISION — CDR retention** | 24 months, partner exports before purge |
 | 5 | **OWNER DECISION — compliance-officer role preset** (§2) | Add it |
-| 6 | **OWNER DECISION — AI tap needs recording consent** (`ai_tap_requires_consent`) | Yes by default: AI streaming is processing of the same audio |
+| 6 | **OWNER DECISION — AI tap needs recording consent** (`ai_stream_policies.require_consent`, owned by ai-pipeline, LLD-10 §3.1) | Yes by default: AI streaming is processing of the same audio |
 | 7 | **OWNER DECISION — external anchor** | Anchors delivered to partners by webhook/stream/export; no third-party timestamp authority in R1.0 |
 | 8 | Legal hold in R1.0 | Yes (resolved: specified in §7) |
 
