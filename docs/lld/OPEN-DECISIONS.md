@@ -36,6 +36,7 @@ owner may simply accept.
 | A21 | Abandonment breach: AC-15.3 says "stops". Proposed: breach stops the campaign (`STOPPED_COMPLIANCE`); a compliance officer may restart it, in reserved mode (ratio 1.0) | Stop, restart in reserved mode only | LLD-06 OB-06, HLD-21 §4 | **Legal / PRD** |
 | A22 | Tenant hold music loaded from database tables widens D-47 ("only static registration objects are projected") | Amend D-47 after SPIKE-M1 passes; until then one installation-wide MOH class | LLD-03 §3.15 | **Architecture (D-47)** |
 | A23 | PRD has no AC for voicemail (US-03.5) or hot-desking (US-03.4) | Add the ACs proposed in LLD-03 §3.4 and §3.14 | LLD-03 | **Scope (PRD)** |
+| A24 | LLD-03 migration 0045 adds `UNIQUE (tenant_id, id)` to identity's `principals` so pbx-core tables can hold composite foreign keys (INV-10) | Accept; identity owns the migration | LLD-03 §3.1.1, LLD-02 | **Cross-context schema** |
 | A20 | LLD numbering: LLD-12 covers pbx-core devices plus lifecycle tooling, against D-48's "one LLD per context" | Amend D-48 to allow a cross-cutting operations LLD | LLD-12 OD-9 | **Process** |
 
 ## 2. Product defaults (accept unless the owner objects)

@@ -24,6 +24,7 @@
 | 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
 | 2026-11-04 | **§3.2–3.4 added: IVR menu, queues/agents/hot-desk and voicemail design**, grounded in 3CX/FusionPBX/Vodia/Asterisk documentation. `pbx-ivr-routing` (time routing), ownership and participant attribution have since shipped; the menu/queue/voicemail execution remains. |
 | 2026-11-07 | **§3.2.1 added: IVR review against 3CX, VitalPBX, FreePBX, FusionPBX and Amazon Connect** (D-91). The shipped single-level, extension-only, UTC-window menu is recorded; the target is typed destinations, a five-kind node graph, weekly schedules in an IANA time zone with a manual override, re-prompt and direct dial, delivered by `pbx-ivr-flow-graph` before `pbx-queues`. |
+| 2026-11-09 | **Verifier fixes (D-98).** ACD aligned to LLD-01 §23.1 (2 s `Answered` deadline; DB outage rejects late answers; `Leave` routing, `LiveCalls.List(tenant)`, `Missed(PartyRef)`, new `QueueMedia.Prompt` request); callback state fixes and API-booked callbacks (`call_id` nullable); restart tests split by FL-04; `AgentStates` takes/returns the reservation ref, `ReservationReleased`, `dialer_wake`; dialler `Presentation` port; voicemail settings, email notifier, shared-mailbox PIN; busy/unavailable tests and interim presence reader; pickup `directed_any` and cross-LLD `call.*` permissions; full `parked_calls` states; room moderators table and PIN lock; paging reserved at `*60`; MOH pending a D-47 amendment; hot-desk migration 0034; OD-11, OD-12. |
 | 2026-11-07 | **§3.1, §3.3 and §3.17: contact centre to the Flow Definition of Ready** (D-97, D-98). Agent states adopt HLD-21 (`LoggedOut`, `Ready`, `Reserved`, `Busy`, `WrapUp`, `NotReady(reason)`) with a full transition table, a shared reason-code catalogue and the `AgentStates` reservation port the dialler uses (LLD-06); six R1.0 strategies in penalty tiers (skills and penalty escalation R2); durable `queue_entries`, one dispatcher per queue under a session advisory lock with LISTEN/NOTIFY wake and recovery; announcements, EWT, overflow/join/leave rules, agent-first queue callback (AC-03.17); live view pushed on commit by LISTEN/NOTIFY with a 2 s stale marker (AC-16.3) and no Redis (D-56); `queue_events` log, SL and abandon-rate definitions; supervision policy over LLD-01 §20 primitives (AC-16.1–16.2). Migrations 0045–0049; OD-7..OD-10; SPIKE-Q1..Q3. Cross-file: Participant states `Ringing`/`Disconnected`, `ErrNotRinging`, `Stasis:` device states, park retrieve into the kept main bridge (LLD-01). |
 | 2026-11-07 | **§3.2.1 cross-references and §3.4–§3.16: routing features to the Flow Definition of Ready** (D-98). Voicemail rewritten (DDL, phone menu, MWI over ARI mailboxes); new shared foundations (telephony port contract, `RingPlan`, permissions, migrations 0035–0044, numbering plan); per-extension evaluation order (unconditional forward → DND → unavailable → busy → ring/follow-me → no answer, 5-hop guard); ring groups (six strategies); presence/BLF via custom device state; pickup groups; park lots; conference rooms; caller-ID inventory and precedence (BR-06); feature codes; hot-desking; MOH classes; owner decisions OD-1..OD-6 and spikes P1, M1, V1. §3.1/§3.3 untouched. |
 | 2026-10-11 | **§3.1 added: extensions and the people who use them (D-65), Phase B design.** `ExtensionAssignment` (owner) and `Agent` (queue membership, state, hot-desk device), both keyed by `PrincipalID`; call participants gain the extension and owner. New Phase B change `pbx-extension-assignment` heads §12's Phase B list. Phase A is unchanged, and its console works without the link (HLD 18 §7). |
@@ -360,9 +361,13 @@ CREATE TABLE agent_reason_codes (
   PRIMARY KEY (tenant_id, code), UNIQUE (tenant_id, phone_digits));
 CREATE UNIQUE INDEX ON agent_reason_codes (tenant_id) WHERE is_default;
 
+-- Composite FKs to principals need a (tenant_id, id) key; identity's table has only the PK.
+-- Added here with identity's agreement (no data change; id is already unique):
+ALTER TABLE principals ADD CONSTRAINT principals_tenant_id_key UNIQUE (tenant_id, id);
+
 CREATE TABLE agents (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  principal_id UUID NOT NULL REFERENCES principals(id) ON DELETE CASCADE,
+  principal_id UUID NOT NULL,
   state VARCHAR(10) NOT NULL DEFAULT 'LoggedOut'
     CHECK (state IN ('LoggedOut','Ready','Reserved','Busy','WrapUp','NotReady')),
   reason_code VARCHAR(24),                       -- tenant or system code; NotReady only
@@ -381,6 +386,7 @@ CREATE TABLE agents (
   state_since TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   version BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (tenant_id, principal_id),
+  FOREIGN KEY (tenant_id, principal_id) REFERENCES principals (tenant_id, id) ON DELETE CASCADE,
   UNIQUE (tenant_id, extension_id),
   FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE SET NULL,
   CHECK ((state = 'NotReady') = (reason_code IS NOT NULL)),
@@ -398,7 +404,8 @@ CREATE TABLE tenant_agent_settings (
 -- RLS on every table above (the §3.4 block):
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY; ALTER TABLE agents FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON agents
-  USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid);
+  USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)
+  WITH CHECK (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid);
 GRANT SELECT, INSERT, UPDATE, DELETE ON agents TO atsapbx_app;
 ```
 
@@ -649,14 +656,16 @@ not shipped (D-91).
 
 | Kind | `ref` | Registered by | Resolves to |
 |---|---|---|---|
-| `extension` | extension id | shipped | §3.6 per-extension evaluation (no longer a direct ring) |
-| `ring_group` | ring group id | §3.7 | a `RingPlan` (§3.5.2) |
-| `voicemail` | mailbox id + greeting (`unavailable`\|`busy`) | §3.4 | the deposit program |
-| `voicemail_main` | none (caller's own mailbox) or mailbox id | §3.4 | the retrieval program |
-| `conference` | room id | §3.11 | the room entry program |
-| `park_lot` | lot id | §3.10 | park in the next free slot (transfer target only) |
-| `external` | E.164 number | shipped (D-91) | an external leg under §3.6.4's class and §3.12's caller ID |
-| `queue` | queue id + `priority` (0–9, default 0) | §3.3 | a queue entry (§3.3.1) |
+| `extension` | extension id | shipped (`pbx-ivr-menu`, D-90) | §3.6 per-extension evaluation once `pbx-extension-routing` ships; a direct ring until then |
+| `flow` | flow id (nested menu) | proposed in `pbx-ivr-flow-graph` (D-91) | the flow's current revision, depth ≤ 5 |
+| `hangup` | reason | proposed in `pbx-ivr-flow-graph` (D-91; a graph node, also usable as a terminal) | end the call with the reason |
+| `external` | E.164 number | **proposed** in `pbx-ivr-flow-graph` (D-91), not shipped | an external leg under §3.6.4's class and §3.12's caller ID |
+| `ring_group` | ring group id | `pbx-ring-groups` (§3.7) | a `RingPlan` (§3.5.2) |
+| `voicemail` | mailbox id + greeting (`unavailable`\|`busy`) | `pbx-voicemail` (§3.4) | the deposit program |
+| `voicemail_main` | none (caller's own mailbox) or mailbox id | `pbx-voicemail` (§3.4) | the retrieval program |
+| `park_lot` | lot id | `pbx-pickup-park` (§3.10) | park in the next free slot (transfer target only) |
+| `conference` | room id | `pbx-conference-rooms` (§3.11) | the room entry program |
+| `queue` | queue id + `priority` (0–9, default 0) | `pbx-queues` (§3.3) | a queue entry (§3.3.1) |
 
 A **park slot** and a **feature code** are not destinations: they are
 dialled numbers recognised by §3.13, never stored in a revision.
@@ -772,7 +781,8 @@ CREATE TABLE queue_members (
 CREATE TABLE queue_supervisors (
   tenant_id UUID NOT NULL, queue_id UUID NOT NULL, principal_id UUID NOT NULL,
   PRIMARY KEY (tenant_id, queue_id, principal_id),
-  FOREIGN KEY (tenant_id, queue_id) REFERENCES queues (tenant_id, id) ON DELETE CASCADE);
+  FOREIGN KEY (tenant_id, queue_id) REFERENCES queues (tenant_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id, principal_id) REFERENCES principals (tenant_id, id) ON DELETE CASCADE);
 -- RLS + grants as §3.4 / §3.1.1 on all three.
 ```
 
@@ -1490,7 +1500,7 @@ migration `0043`; the phone PIN is shared with hot-desking (§3.14).
 | Condition | When it does not hold |
 |---|---|
 | Mailbox exists and `enabled` | A `voicemail` terminal without one falls through to the plan's `Refuse(Unavailable)` (480); publish/config refuses a destination naming a missing mailbox |
-| Messages < `max_messages` | Caller hears `vm-mailbox-full`, call ends `voicemail_full`; owner emailed at most once a day |
+| Messages < `max_messages` | Caller hears `vm-mailbox-full`, call ends `voicemail_full`; owner emailed at most once a day: `UPDATE voicemail_mailboxes SET full_notified_on = current_date WHERE id = $1 AND full_notified_on IS DISTINCT FROM current_date RETURNING id` — a row returned sends the email (tenant time zone date) |
 | Object store reachable | Recording is kept on the engine volume and retried (§9 below); caller is never told |
 | Phone retrieval: PIN set | `*97` plays "no PIN set, use the console" and hangs up |
 
@@ -1516,10 +1526,30 @@ Deposit (`voicemail` terminal; telephony runs the `Program` pbx-core returns):
    → ARI `PUT /mailboxes/vm_<hex>?newMessages=&oldMessages=`; each
    extension endpoint carrying that mailbox has `mailboxes=vm_<hex>`
    projected (§7 ACL), so its phones get a SIP NOTIFY (MWI).
-6. Mailer consumer sends the email (§8 below).
+6. **Voicemail to email.** Owner: pbx-core's `VoicemailNotifier`, a
+   consumer of `pbx.voicemail_deposited` (outbox → NATS, durable consumer
+   `pbx-voicemail-notify`), which sends through the existing SMTP adapter
+   in `internal/mail` (the adapter behind LLD-02's `Mailer`; pbx-core gets its own narrow
+   port `VoicemailMailer.SendVoicemailNotice(ctx, to, notice)` wired in
+   `cmd/`, identity's port is not reused). Steps: (a) load the message and
+   mailbox under RLS; skip if `voicemail_messages.notified_at` is set
+   (idempotent redelivery); (b) recipients = `notify_email`, else the
+   owner's sign-in email, else (shared) every member's; (c) link =
+   console URL `/voicemail/<message id>` (sign-in required; the link carries
+   no token and expires after `email_link_days`: after that the console
+   shows "This link has expired; open Voicemail"); audio attached only when
+   `attach_audio` (OD-3); (d) send; on success `UPDATE voicemail_messages
+   SET notified_at = now()`; on failure NAK with backoff 30 s, 2 min, 10 min,
+   1 h, then give up and record `notify_failed` (no call impact). Target:
+   email within 60 s of deposit.
 
-Phone retrieval (`*97`): `Answer` → `Collect{PIN, max 10, '#'}` → verify
-(pbx-core `VerifyPin`, Argon2id) → menu below, each key a `Program` step
+Phone retrieval (`*97`, own mailbox): `Answer` → **PIN-less path** when the
+call comes from the mailbox's own extension (or the extension hot-desked
+to it, §3.14) **and** the tenant's `require_pin_own_device = false`: go
+straight to the menu. Otherwise `Collect{PIN, max 10, '#'}` → verify
+(pbx-core `VerifyPin`, Argon2id; owned mailboxes check `extension_pins`,
+shared mailboxes `voicemail_mailboxes.pin_hash`) → menu below. `*98`
+always asks for the PIN. each key a `Program` step
 over `Play`/`Collect`; message playback uses the object's short-lived URL
 or a pre-staged engine copy (SPIKE-V1).
 
@@ -1563,6 +1593,10 @@ CREATE TABLE voicemail_mailboxes (
   attach_audio BOOLEAN NOT NULL DEFAULT FALSE,   -- OWNER DECISION OD-3
   max_messages INT NOT NULL DEFAULT 100 CHECK (max_messages BETWEEN 10 AND 1000),
   max_message_seconds INT NOT NULL DEFAULT 180 CHECK (max_message_seconds BETWEEN 10 AND 600),
+  full_notified_on DATE,                 -- last "mailbox full" email (one per day)
+  pin_hash TEXT,                         -- shared mailboxes only (Argon2id); owned mailboxes use extension_pins
+  pin_failures INT NOT NULL DEFAULT 0, pin_locked_until TIMESTAMPTZ,
+  CHECK (extension_id IS NULL OR pin_hash IS NULL),
   UNIQUE (tenant_id, number),
   UNIQUE (tenant_id, extension_id),
   FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE CASCADE
@@ -1581,8 +1615,15 @@ CREATE TABLE voicemail_messages (
   call_id UUID NOT NULL, caller_number VARCHAR(32) NOT NULL, caller_name VARCHAR(100) NOT NULL DEFAULT '',
   folder VARCHAR(8) NOT NULL DEFAULT 'NEW' CHECK (folder IN ('NEW','SAVED')),
   object_key TEXT NOT NULL, duration_ms INT NOT NULL CHECK (duration_ms >= 2000),
-  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL);
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL,  -- received_at + retention_days
+  notified_at TIMESTAMPTZ, notify_failed BOOLEAN NOT NULL DEFAULT FALSE);
 CREATE INDEX ON voicemail_messages (tenant_id, mailbox_id, folder, received_at DESC);
+CREATE INDEX ON voicemail_messages (expires_at);           -- retention sweeper
+CREATE TABLE tenant_voicemail_settings (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  retention_days INT NOT NULL DEFAULT 180 CHECK (retention_days BETWEEN 7 AND 3650),
+  email_link_days INT NOT NULL DEFAULT 7 CHECK (email_link_days BETWEEN 1 AND 30),
+  require_pin_own_device BOOLEAN NOT NULL DEFAULT TRUE);
 CREATE TABLE extension_pins (                 -- phone PIN: voicemail and hot-desk
   tenant_id UUID NOT NULL, extension_id UUID NOT NULL,
   pin_hash TEXT NOT NULL,                     -- Argon2id; never logged, never returned
@@ -1637,6 +1678,8 @@ type MailboxStore interface { /* CRUD within caller tx */ }
 | `DeleteMailboxGreeting` | `{mailbox_id, kind}` | owner / write | `NotFound` |
 | `CreateSharedMailbox` / `DeleteSharedMailbox` / `SetMailboxMembers` | `{number, name, principal_ids[]}` | `pbx.voicemail.write` | `AlreadyExists` "That number is already used" |
 | `SetPhonePin` | `{extension_id, pin}` | owner `pbx.self.voicemail` / `pbx.voicemail.write` | `InvalidArgument` "Use 4–10 digits that are not easy to guess" |
+| `SetSharedMailboxPin` | `{mailbox_id, pin}` | `pbx.voicemail.write` | as above; `FailedPrecondition` "This mailbox uses its extension's phone PIN" |
+| `UpdateVoicemailSettings` | `{retention_days, email_link_days, require_pin_own_device}` | `pbx.voicemail.write` | `InvalidArgument` "Keep messages between 7 and 3650 days" |
 
 The PIN is write-only; no RPC returns it or its hash. No RPC returns an
 object key or engine path (PRD principle 4).
@@ -1649,11 +1692,11 @@ object key or engine path (PRD principle 4).
 | `min_message_seconds` | 2 | fixed | installation |
 | `max_silence_seconds` | 10 | fixed | installation |
 | `max_messages` | 100 | 10–1000 | mailbox |
-| Retention | 180 days | 7–3650 | tenant (shared policy with recordings, BR-11) |
+| Retention | 180 days | 7–3650 | tenant `tenant_voicemail_settings.retention_days` (BR-11) |
 | PIN length | 4–10 | fixed | installation |
 | PIN attempts per call / lockout | 3 / 5 in 15 min → 15 min | fixed | installation |
-| Email link expiry | 7 days, opens the console (sign-in required) | 1–30 | tenant |
-| Require PIN from own device | true | bool | tenant |
+| Email link expiry | 7 days, opens the console (sign-in required) | 1–30 | tenant `email_link_days` |
+| Require PIN from own device | true | bool | tenant (`tenant_voicemail_settings`) |
 
 **9. Failure and recovery**
 
@@ -1662,7 +1705,7 @@ object key or engine path (PRD principle 4).
 | Caller hangs up during greeting | Nothing stored; no event |
 | Caller hangs up while recording | Stored if ≥ 2 s (industry norm) |
 | Object store down | File kept on the engine recording volume; telephony retries `Store` at 10 s, 30 s, 2 min, 10 min, 30 min, then `Failed` + operator alert; deposit row written only after the object exists |
-| App restart mid-recording | Engine keeps recording; on start telephony lists `GET /recordings/stored` older than 1 min with no message row and replays step 3 |
+| App restart mid-recording | **Today (FL-04 = end calls, LLD-01 §22):** startup hangs up the caller, which finishes the engine recording; telephony then lists `GET /recordings/stored` older than 1 min with no message row and replays step 3 (stored if ≥ 2 s). **If FL-04 re-adopts:** the recording continues and finishes normally |
 | Engine restart mid-recording | Partial file (if any) is stored when ≥ 2 s, else lost; call recorded with `engine_lost` |
 | MWI publish fails | Logged; re-published by the 60 s MWI reconciler, which re-PUTs every mailbox whose counts changed in the last 10 min and all on start |
 | Concurrent deposit when 1 slot left | Insert counts under `SELECT … FOR UPDATE` on the mailbox; the loser gets the full prompt |
@@ -1695,6 +1738,11 @@ object key or engine path (PRD principle 4).
 | W | Non-owner `GetVoicemailPlaybackURL` without a reason → `InvalidArgument`; with one → URL + audit row |
 | E | Given an unanswered extension call, When the caller speaks 5 s and hangs up, Then a message exists, the event is in the outbox and `PUT /mailboxes` shows 1 new |
 | E | Object store stopped during deposit → recovered after restart, row created |
+| E | **Today (FL-04 = end calls):** app restarted 5 s into a message → call ends, the partial message is stored (≥ 2 s) and appears after startup. **Only if FL-04 re-adopts:** the caller keeps recording and the message is complete |
+| U | `VoicemailNotifier` picks recipients (notify_email → owner → shared members); skips when `notified_at` is set; link expiry computed from `email_link_days` |
+| I | Redelivered `pbx.voicemail_deposited` sends one email (`notified_at`); mailbox full twice in a day → one `full_notified_on` email; retention sweeper deletes rows past `expires_at` and their objects |
+| E | Leave a message → an email reaches the rig's SMTP sink (MailHog) within 60 s with a console link, no audio by default |
+| E | `require_pin_own_device = false`: `*97` from the owner's extension goes straight to the menu; from another extension `*98` asks for the PIN |
 | C | Voicemail list renders new/saved, play, delete with confirm |
 | B | Owner signs in, plays a message from the email link |
 | A | Real phone: leave a message, MWI lamp lights, `*97` + PIN plays it, `7` deletes, lamp goes out |
@@ -1779,7 +1827,10 @@ type Program struct { Entry Command; /* D-91 command set + Collect + Record */ }
 | `pbx.routing.read` | SUPERVISOR, TENANT_ADMIN | Read the above |
 | `pbx.self.voicemail` / `pbx.voicemail.read_any` / `pbx.voicemail.write` | AGENT+ / TENANT_ADMIN / TENANT_ADMIN | §3.4 |
 | `pbx.presence.read` | AGENT, SUPERVISOR, TENANT_ADMIN | §3.8 |
-| `pbx.pickup.any` | none (grant to receptionists) | Directed pickup outside one's groups |
+| `call.control` / `call.control.any` | AGENT+ / SUPERVISOR, TENANT_ADMIN | Hold, transfer, park one's own call / anyone's (cross-LLD names, LLD-01) |
+| `call.pickup` / `call.pickup.any` | AGENT+ / none (grant to receptionists) | Console pickup within one's groups / of any extension (§3.9) |
+| `call.park` / `call.park.retrieve` | AGENT+ / AGENT+ | `ParkCall` / `RetrieveParkedCall` (§3.10) |
+| `conference.moderate` | AGENT+ (room moderators only) | Mute, remove, lock in a room (§3.11) |
 | `pbx.number.write` / `pbx.number.verify` | TENANT_ADMIN | §3.12 inventory |
 | `pbx.callerid.choose` | TENANT_ADMIN | Per-call presentation number on `PlaceCall` |
 | `pbx.self.hotdesk` / `pbx.hotdesk.write` | AGENT+ / TENANT_ADMIN | §3.14 |
@@ -1811,7 +1862,8 @@ phone PIN; no principal is involved. Actions are added to
 | `0041_park_lots` | `park_lots`, `parked_calls` | §3.10 |
 | `0042_conference_rooms` | `conference_rooms` | §3.11 |
 | `0043_voicemail` | mailboxes, messages, greetings, `extension_pins` | §3.4 |
-| `0044_hot_desk_presence` | `hot_desk_sessions`, `extension_presence` | §3.14, §3.8 |
+| `0034_hot_desk` | `extensions.hot_desk_device`, `hot_desk_sessions`, `tenant_hot_desk_settings` (number released by LLD-01) | §3.14 |
+| `0044_presence` | `extension_presence` | §3.8 |
 
 #### 3.5.5 Numbering plan
 
@@ -1937,11 +1989,13 @@ CREATE TABLE forward_rules (
 CREATE TABLE follow_me_steps (
   tenant_id UUID NOT NULL, extension_id UUID NOT NULL, position SMALLINT NOT NULL CHECK (position BETWEEN 1 AND 5),
   ring_seconds INT NOT NULL DEFAULT 20 CHECK (ring_seconds BETWEEN 5 AND 120),
-  targets JSONB NOT NULL,                     -- [{kind: own|extension|external, ref}] ≤ 5
-  PRIMARY KEY (tenant_id, extension_id, position));
+  targets JSONB NOT NULL,                     -- [{kind: own|extension|external, ref}] ≤ 5; extension refs re-checked same-tenant on save
+  PRIMARY KEY (tenant_id, extension_id, position),
+  FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE CASCADE);
 CREATE TABLE dnd_exceptions (
   tenant_id UUID NOT NULL, extension_id UUID NOT NULL, number VARCHAR(32) NOT NULL,
-  PRIMARY KEY (tenant_id, extension_id, number));
+  PRIMARY KEY (tenant_id, extension_id, number),
+  FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE CASCADE);
 -- RLS + grants on all four, as §3.4
 ```
 
@@ -1968,6 +2022,16 @@ type RoutingService interface {
     GetExtensionRouting(ctx, tenant, ext) (ExtensionRoutingView, error)
     UpdateExtensionRouting(ctx, cmd UpdateExtensionRoutingCommand) error
     SetDnd(ctx, tenant, ext, on bool, actor Actor) error // console, feature code
+}
+// PresenceSnapshot source. Until pbx-presence (§3.8) ships, an interim
+// SnapshotReader builds it per call from two reads, with no hub and no table:
+//   registered contacts — the extension's registration status (the Phase A
+//     engine read used by ListExtensions, §9 "Registration status is read on demand");
+//   active participants — telephony CallControl.LiveParticipants(tenant) filtered
+//     to the extension (LLD-01 §11), plus hot_desk_sessions when §3.14 has shipped.
+// pbx-presence later swaps in the hub-backed reader behind the same interface.
+type PresenceSnapshotReader interface {
+    Snapshot(ctx context.Context, tenant shared.TenantID, ext ExtensionID) (PresenceSnapshot, error)
 }
 ```
 
@@ -2010,6 +2074,9 @@ Audit: every update, including feature-code changes (actor = extension).
 | U | CFU always + DND on → CFU wins (step 2 before 3) |
 | U | DND on, caller in exceptions → rings |
 | U | No contacts, unavailable rule absent, no-answer rule to 1002 → plan goes to 1002 at once |
+| U | **Busy:** 1 active participant, `call_waiting = false`, busy rule to 1003 → plan goes to 1003; `call_waiting = true` → rings (busy only at 2); no busy rule → mailbox busy greeting; no mailbox → `Refuse(Busy)` 486 |
+| U | **Unavailable:** no registered contact, unavailable rule to `+237…` (class permits) → external leg; unavailable rule absent → no-answer rule; hot-desk device registered → not unavailable |
+| I | Interim `PresenceSnapshotReader`: an extension with a live participant reports 1 active; an unregistered one reports no contacts; tenant B's participants never appear |
 | U | A→B (no answer), B→A (no answer) → after B, A rings devices only, then A's mailbox; hops never exceed 5 |
 | U | Ring-group leg to a member with CFU → member's devices ring, CFU ignored |
 | U | `ValidateRuleSet` refuses A→B→A unconditional `always`; accepts the same with `out_of_schedule` |
@@ -2018,6 +2085,8 @@ Audit: every update, including feature-code changes (actor = extension).
 | W | NATIONAL extension forwards to `+44…` → `PermissionDenied` |
 | E | Call 1001 with no-answer → 1002 after 20 s ± 1 s; CFU change applies to the next call, not the ringing one |
 | E | Follow-me to an external number: confirm prompt, `1` bridges, no key → next step |
+| E | **Busy forward:** 1001 on a call with `call_waiting = false`, second call to 1001 → 1003 rings at once |
+| E | **Unavailable forward:** stop 1001's softphone (unregistered), call 1001 → the unavailable destination rings at once (no 20 s wait) |
 | C/B | Owner toggles DND in the console; the badge and next call reflect it |
 | A | Desk phone `*78` → DND on, call goes to voicemail; `*79` off |
 
@@ -2195,7 +2264,7 @@ Park slots publish `Stasis:atsa-park-<lot hex>-<slot>` `INUSE` while
 occupied (§3.10). Agent state (§3.1.1) does not change presence values;
 the live view (§3.3.4) shows it separately.
 
-**5. Data model — migration `0044` part**
+**5. Data model — migration `0044_presence`**
 
 ```sql
 CREATE TABLE extension_presence (
@@ -2265,7 +2334,9 @@ agree and no dialplan hint is generated per extension (D-47).
 **SPIKE-P1 — BLF subscriptions without generated dialplan.** PJSIP
 answers a dialog-info `SUBSCRIBE` only for an extension with a hint.
 Candidate: a static `[atsa-blf]` context in `core/` with one *dynamic
-pattern hint* (`exten => _X.,hint,Stasis:atsa-${EXTEN}`), projected
+pattern hint* (`exten => _[0-9a-f].,hint,Stasis:atsa-${EXTEN}`: the
+key is the extension UUID's 32 lower-case hex digits, so `_X.` (digits
+only) would not match), projected
 `ps_endpoints.subscribe_context = atsa-blf`, and BLF keys provisioned
 with the target's opaque key (extension UUID hex) rather than its number.
 Prove: pattern hints work on the pinned Asterisk 22; a subscription to
@@ -2278,20 +2349,27 @@ the console) and desk BLF with AD-07 provisioning.
 **1. Trigger and actors.** A registered extension dials the group pickup
 code (`*8`) or directed pickup (`**` + extension), or a console user
 clicks "Answer" on a ringing colleague in the presence view
-(`PickupCall` RPC). No principal permission for phone codes: group
-membership is the permission; `pbx.pickup.any` widens directed pickup.
+(`PickupCall` RPC). Phone codes carry no principal: group membership is
+the permission, and directed pickup of **any** tenant extension from a
+phone is allowed when the picker is in a pickup group marked
+`directed_any` (a receptionist group). Console: `call.pickup` (pick within
+one's groups) and `call.pickup.any` (any extension) — the cross-LLD names
+decided with LLD-01.
 
 **2. Preconditions.** A pickable call: a Participant `Ringing` on an
 extension leg (direct, forwarded, follow-me or ring-group leg). **Queue
-offers are not pickable** (the agent is `Reserved`, §3.1.1). Picker and target share a pickup group (directed with
-`pbx.pickup.any` excepted). A picker never picks a call ringing itself.
+offers are not pickable** (the agent is `Reserved`, §3.1.1). Picker and target share a pickup group (directed pickup
+excepted when the picker holds `call.pickup.any` in the console, or is in
+a `directed_any` group on the phone). A picker never picks a call ringing itself.
 
 **3. Sequence**
 
 1. Extension source dials the code → `ResolveInbound` → §3.13 recognises it.
-2. pbx-core reads `PresenceHub` alerting legs for the picker's groups →
-   `SelectPickup` (pure): **oldest-first** by `alerting_since`, ties by
-   call id.
+2. pbx-core reads `PresenceHub` ringing legs for the picker's groups (or
+   the whole tenant when `any`) → `SelectPickup` (pure): **oldest-first**
+   by `ringing_since`, ties by call id. `any` = console `call.pickup.any`,
+   or on the phone: the picker's extension is in a group with
+   `directed_any = true`.
 3. Decision `Pickup{call_id, participant_id}` → `CallControl.Pickup`:
    answer the picker, cancel the ringing leg(s) of that call with
    `picked_up`, bridge caller ⇄ picker.
@@ -2308,7 +2386,9 @@ Disconnected(picked_up)` and picker `Connected` are LLD-01's).
 ```sql
 CREATE TABLE pickup_groups (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  name VARCHAR(100) NOT NULL, UNIQUE (tenant_id, name), UNIQUE (tenant_id, id));
+  name VARCHAR(100) NOT NULL,
+  directed_any BOOLEAN NOT NULL DEFAULT FALSE,   -- members may ** any tenant extension from a phone
+  UNIQUE (tenant_id, name), UNIQUE (tenant_id, id));
 CREATE TABLE pickup_group_members (
   tenant_id UUID NOT NULL, pickup_group_id UUID NOT NULL, extension_id UUID NOT NULL,
   PRIMARY KEY (tenant_id, pickup_group_id, extension_id),
@@ -2320,15 +2400,16 @@ CREATE TABLE pickup_group_members (
 **6. Ports**
 
 ```go
-func SelectPickup(picker ExtensionID, pickerGroups []GroupID, ringing []AlertingLeg, target *ExtensionID, any bool) (AlertingLeg, error) // pure; ErrNothingToPickup | ErrNotPermitted
+func SelectPickup(picker ExtensionID, pickerGroups []GroupID, ringing []RingingLeg, target *ExtensionID, any bool) (RingingLeg, error) // pure; ErrNothingToPickup | ErrNotPermitted
+func PhoneMayPickAny(pickerGroups []PickupGroup) bool // pure: any group with DirectedAny
 ```
 
 **7. API**
 
 | RPC | Fields | Permission | Refusals |
 |---|---|---|---|
-| `Create/Update/Delete/ListPickupGroups` | `{name, extension_ids[]}` | `pbx.routing.write` / read | `AlreadyExists` "A group with this name exists" |
-| `PickupCall` | `{picker_extension_id, target_extension_id?}` | owner of picker `pbx.self.routing` | `FailedPrecondition` "Nothing is ringing that you can answer"; `PermissionDenied` "1004 is not in your pickup group" |
+| `Create/Update/Delete/ListPickupGroups` | `{name, directed_any, extension_ids[]}` | `pbx.routing.write` / read | `AlreadyExists` "A group with this name exists" |
+| `PickupCall` | `{picker_extension_id, target_extension_id?}` | owner of the picker extension with `call.pickup`; a target outside the picker's groups needs `call.pickup.any` | `FailedPrecondition` "Nothing is ringing that you can answer"; `PermissionDenied` "1004 is not in your pickup group"; `PermissionDenied` "You don't own extension 1002" |
 
 **8. Configuration.** ≤ 16 groups per extension; ≤ 200 members per
 group. Codes in §3.13.
@@ -2351,6 +2432,10 @@ config only.
 | I | Group membership RLS; cross-tenant extension refused by FK |
 | E | 1001 rings, 1002 dials `*8` → 1002 bridged, 1001 stops with `picked_up`, CDR shows 1002 answered |
 | E | Two pickers at once → exactly one bridged, the other hears the prompt |
+| U | `PhoneMayPickAny`: member of a `directed_any` group → `**1009` outside the groups allowed; otherwise `ErrNotPermitted` |
+| W | `PickupCall` without `call.pickup` → `PermissionDenied`; target outside groups without `call.pickup.any` → `PermissionDenied` "1004 is not in your pickup group"; nothing ringing → `FailedPrecondition` |
+| C | Presence view shows "Answer" only on ringing colleagues the user may pick up; the button is disabled while the request is in flight; refusal text shown inline |
+| B | 1001 rings; a signed-in colleague with a browser phone on 1002 clicks "Answer" on 1001 → the browser phone is connected, 1001 stops ringing, call history shows 1002 answered |
 | A | Desk phone `**1001` answers a ringing colleague |
 
 **12. Industry parity.** FreePBX `*8` group / `**ext` directed with
@@ -2367,7 +2452,7 @@ the slot number (or console "Retrieve", or a BLF key). Config:
 `pbx.routing.write`.
 
 **2. Preconditions.** Lot exists and has a free slot (else the parker
-hears `pbx-park-full` and the call stays where it was — the transfer
+hears `pbx-park-full` ("All parking spaces are in use.") and the call stays where it was — the transfer
 fails, LLD-01 restores the bridge). Retriever is in the same tenant.
 
 **3. Sequence**
@@ -2375,7 +2460,7 @@ fails, LLD-01 restores the bridge). Retriever is in the same tenant.
 1. Transfer target resolves to `park_lot` (or a slot number inside a
    lot's range) → pbx-core `AllocateSlot` in one transaction:
    `SELECT … FOR UPDATE` on the lot, chosen slot if free else lowest
-   free, `INSERT parked_calls` (unique `(tenant, lot, slot)`), outbox
+   free, `INSERT parked_calls` (unique `(tenant, lot, slot)` while `PARKED`), outbox
    `pbx.call_parked`.
 2. `CallControl.Park{participant, slot ref, moh class, timeout}` → holding
    bridge `P_S` with MOH; slot announced to the parker if their channel is
@@ -2400,12 +2485,16 @@ fails, LLD-01 restores the bridge). Retriever is in the same tenant.
 | — | allocate | `PARKED` |
 | `PARKED` | retrieve (state precondition) | `RETRIEVED` (slot free) |
 | `PARKED` | `expires_at` reached | `COMEBACK` (slot free; ringing parker) |
-| `COMEBACK` | parker answers / fallback taken | ended (row deleted) |
-| `PARKED` | parkee hangs up | `ABANDONED` (slot free) |
-| `PARKED` | engine lost / reconcile finds no channel | `LOST` (slot free; call end reason `parked_lost`) |
+| `COMEBACK` | parker answers | `RETRIEVED` |
+| `COMEBACK` | fallback taken | `FELL_BACK` |
+| `PARKED`/`COMEBACK` | parkee hangs up | `ABANDONED` (slot free) |
+| `PARKED`/`COMEBACK` | engine lost / reconcile finds no channel | `LOST` (slot free; call end reason `parked_lost`) |
 
-Terminal rows are deleted after the event is written; history is in the
-CDR.
+`COMEBACK` is LLD-01's park operation `Recalling`; `FELL_BACK` its
+`FellBack`. The slot is held only in `PARKED` (partial unique index).
+Terminal rows (`RETRIEVED`, `FELL_BACK`, `ABANDONED`, `LOST`) keep
+`ended_at` and are deleted by `Sweep` 24 h later; history is in LLD-01's
+operation row and the CDR.
 
 **5. Data model — migration `0041_park_lots`**
 
@@ -2421,12 +2510,15 @@ CREATE TABLE park_lots (
   CHECK (slot_end >= slot_start AND slot_end - slot_start < 100),
   UNIQUE (tenant_id, number), UNIQUE (tenant_id, name), UNIQUE (tenant_id, id));
 CREATE TABLE parked_calls (
-  tenant_id UUID NOT NULL, lot_id UUID NOT NULL, slot INT NOT NULL,
+  id UUID PRIMARY KEY, tenant_id UUID NOT NULL, lot_id UUID NOT NULL, slot INT NOT NULL,
   call_id UUID NOT NULL, participant_id UUID NOT NULL, parked_by_extension_id UUID,
-  state VARCHAR(10) NOT NULL DEFAULT 'PARKED' CHECK (state IN ('PARKED','COMEBACK')),
-  parked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (tenant_id, lot_id, slot), UNIQUE (tenant_id, call_id),
+  state VARCHAR(10) NOT NULL DEFAULT 'PARKED'
+    CHECK (state IN ('PARKED','COMEBACK','RETRIEVED','FELL_BACK','ABANDONED','LOST')),
+  parked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL, ended_at TIMESTAMPTZ,
+  CHECK ((state IN ('PARKED','COMEBACK')) = (ended_at IS NULL)),
   FOREIGN KEY (tenant_id, lot_id) REFERENCES park_lots (tenant_id, id) ON DELETE RESTRICT);
+CREATE UNIQUE INDEX parked_calls_slot ON parked_calls (tenant_id, lot_id, slot) WHERE state = 'PARKED';
+CREATE UNIQUE INDEX parked_calls_live_call ON parked_calls (tenant_id, call_id) WHERE state IN ('PARKED','COMEBACK');
 -- RLS + grants as §3.4
 ```
 
@@ -2451,15 +2543,15 @@ type ParkService interface {
 |---|---|---|---|
 | `Create/Update/Delete/ListParkLots` | §5 fields | `pbx.routing.write` / read | `AlreadyExists` "701 is already extension 701"; `FailedPrecondition` "A call is parked here; retrieve it first" |
 | `ListParkedCalls` | `{lot_id?}` → `[{lot, slot, caller, parked_by, parked_at, expires_at}]` | `pbx.presence.read` | — |
-| `ParkCall` | `{call_id, participant_id, lot_id, slot?}` → `{slot}` | call party (`pbx.self.routing`) | `ResourceExhausted` "All parking spaces are in use" |
-| `RetrieveParkedCall` | `{lot_id, slot, extension_id}` | owner of extension | `NotFound` "Nothing is parked in 705" |
+| `ParkCall` | `{call_id, participant_id, lot_id, slot?}` → `{slot}` | a party to the call with `call.park` (`call.control.any` for someone else's call) | `ResourceExhausted` "All parking spaces are in use." |
+| `RetrieveParkedCall` | `{lot_id, slot, extension_id}` | owner of the extension with `call.park.retrieve` | `NotFound` "Nothing is parked in 705" |
 
 **8. Configuration.** Defaults in DDL (lot 700, slots 701–720 suggested by
 the console); ≤ 10 lots per tenant; ≤ 100 slots per lot.
 
 **9. Failure and recovery.** App restart: rows survive; `Sweep` checks
-each against telephony's live channels — present → re-arm timer, absent →
-`LOST`. Engine restart: parked channels die → `LOST`. Parker gone at
+each against telephony's live channels — present (only if FL-04 re-adopts)
+→ re-arm timer; absent (today: LLD-01 §22 ends the calls) → `LOST`. Engine restart: parked channels die → `LOST`. Parker gone at
 comeback → plan rings no device → fallback at once. Two retrievers →
 conditional update; loser hears `pbx-slot-empty`.
 
@@ -2479,7 +2571,8 @@ nothing. INV-03: deleting/changing a lot never drops a parked call
 | I | Tenant A and B both park in 701 at once → both succeed, isolated |
 | E | Park via transfer to 700, retrieve from another extension by dialling the slot |
 | E | Timeout 15 s → parker's phone rings with "Parked 701", no answer → fallback |
-| E | App restart with a parked call → timer re-armed, retrieve still works |
+| E | **Today (FL-04 = end calls, LLD-01 §22, HLD-09):** app restart with a parked call → the parked call ends; after startup the row is `LOST` (`parked_lost`), the slot is free and its lamp `NOT_INUSE` |
+| E | **Only if FL-04 re-adopts calls:** app restart with a parked call → timer re-armed from `expires_at`, retrieve still works |
 | A | Desk phone attended transfer to 700 hears the slot number |
 
 **12. Industry parity.** FreePBX park 70/71–78, timeout 45 s, comeback to
@@ -2492,7 +2585,8 @@ recorded explicitly.
 
 **1. Trigger and actors.** A `conference` destination (DID, IVR) or the
 room number dialled internally. Moderator console actions with
-`pbx.routing.write` or the room's moderator extension owner.
+`conference.moderate` by an owner of one of the room's moderator
+extensions, or `pbx.routing.write`.
 
 **2. Preconditions.** Room exists; capacity not reached; PIN correct
 when set; recording consent (BR-03) when the room records.
@@ -2532,7 +2626,6 @@ CREATE TABLE conference_rooms (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   number VARCHAR(16) NOT NULL, name VARCHAR(100) NOT NULL,
   pin_hash TEXT, moderator_pin_hash TEXT,          -- Argon2id; 4–10 digits; must differ
-  moderator_extension_ids UUID[] NOT NULL DEFAULT '{}',
   max_participants INT NOT NULL DEFAULT 25 CHECK (max_participants BETWEEN 2 AND 100),
   pin_attempts INT NOT NULL DEFAULT 3 CHECK (pin_attempts BETWEEN 1 AND 5),
   mute_on_entry BOOLEAN NOT NULL DEFAULT FALSE,
@@ -2542,8 +2635,18 @@ CREATE TABLE conference_rooms (
   announce_count BOOLEAN NOT NULL DEFAULT TRUE,
   record BOOLEAN NOT NULL DEFAULT FALSE,
   moh_class_id UUID,
-  UNIQUE (tenant_id, number), UNIQUE (tenant_id, name));
--- RLS + grants as §3.4
+  pin_failures INT NOT NULL DEFAULT 0,             -- in the current window
+  pin_window_started_at TIMESTAMPTZ,               -- 10-minute failure window
+  pin_locked_until TIMESTAMPTZ,                    -- set after 10 failures in the window
+  UNIQUE (tenant_id, number), UNIQUE (tenant_id, name), UNIQUE (tenant_id, id));
+CREATE TABLE conference_room_moderators (          -- extensions that enter as moderator without a PIN
+  tenant_id UUID NOT NULL, room_id UUID NOT NULL, extension_id UUID NOT NULL,
+  PRIMARY KEY (tenant_id, room_id, extension_id),
+  FOREIGN KEY (tenant_id, room_id) REFERENCES conference_rooms (tenant_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE CASCADE);
+-- RLS + grants as §3.4 on both. A PIN failure: UPDATE … SET pin_failures = CASE WHEN
+-- pin_window_started_at < now() - interval '10 minutes' THEN 1 ELSE pin_failures + 1 END, …;
+-- reaching 10 sets pin_locked_until = now() + interval '10 minutes' (audited).
 ```
 
 **6. Ports**
@@ -2559,7 +2662,8 @@ func RoleForPin(r Room, entered string, verify func(hash, pin string) bool) (Rol
 |---|---|---|---|
 | `Create/Update/Delete/ListConferenceRooms` | §5 fields; `pin`, `moderator_pin` write-only | `pbx.routing.write` / read | `InvalidArgument` "The moderator PIN must differ from the PIN" |
 | `GetConferenceLive` | `{room_id}` → `[{participant_id, caller, role, muted, joined_at}]`, locked | moderator / read | `NotFound` "Nobody is in this room" |
-| `MuteConferenceParticipant` / `RemoveConferenceParticipant` / `LockConference` | `{room_id, participant_id?, on}` | moderator / write | `NotFound` |
+| `MuteConferenceParticipant` / `RemoveConferenceParticipant` / `LockConference` | `{room_id, participant_id?, on}` | `conference.moderate` (owner of a moderator extension) / write | `NotFound` |
+| `SetConferenceModerators` | `{room_id, extension_ids[]}` | write | `NotFound` "Extension 1009 no longer exists" |
 
 In-call DTMF: `*` toggles self-mute (unless muted by a moderator).
 
@@ -2567,9 +2671,13 @@ In-call DTMF: `*` toggles self-mute (unless muted by a moderator).
 entrant is a call for licensing (LLD-08 counting unchanged).
 
 **9. Failure and recovery.** Engine restart ends the room (all legs
-lost, recorded); app restart: telephony re-adopts the mixing bridge on
-reconcile; PIN brute force bounded per call (attempts) and per room (10
-failures/10 min → 10-minute PIN lock for that room, audited).
+lost, recorded). App restart: **today (FL-04 = end calls, LLD-01 §22)**
+every room leg is hung up at startup and the session closes with
+`app_restart`; no bridge is re-adopted. Only if FL-04 later chooses
+re-adoption does LLD-01's per-operation reconcile keep surviving members.
+PIN brute force is bounded per call (attempts) and per room (10
+failures in 10 min → `pin_locked_until` 10 min; entrants hear "This room is
+locked, try later"; audited).
 
 **10. Invariants and events.** INV-10 (room per tenant, bridge named by
 room UUID); BR-03 (consent before recording). Events
@@ -2585,6 +2693,8 @@ room UUID); BR-03 (consent before recording). Events
 | I | PIN hashes never selected into views; RLS |
 | E | Three extensions join; the 4th with capacity 3 hears "full" |
 | E | Moderator mutes a participant; their audio is not mixed (energy check) |
+| I | 10 wrong PINs within 10 min → `pin_locked_until` set; the 11th entrant with the right PIN is refused until it passes; moderator extension FK refuses tenant B's extension |
+| E | **Today (FL-04 = end calls):** app restart with three in a room → all legs end, session `Ended(app_restart)`, no `atsa-` bridge left. **Only if FL-04 re-adopts:** members stay connected |
 | A | Desk phones join a PIN room and hear each other |
 
 **12. Industry parity.** FreePBX/Asterisk ConfBridge (user/admin PIN,
@@ -2786,7 +2896,7 @@ hang-up, or a collect step when the argument is missing) or a decision
 | `*11` / `*12` | Hot-desk login / logout (§3.14) | extension |
 | `*67` | Withhold caller ID for this call | number |
 | `*45` / `*46` | Agent login/logout toggle / Ready ↔ Not ready toggle (§3.1.1) | `*46`: optional reason digits |
-| `*80` | **Reserved** — paging/intercom (OD-1) | — |
+| `*60` | **Reserved** — paging/intercom (OD-1). Not FreePBX's `*80`: `*8` (group pickup) would be its prefix and `ValidateFeatureCodes` refuses prefixes | — |
 
 Park and retrieve use the lot and slot numbers (§3.10), not codes.
 
@@ -2797,7 +2907,10 @@ Park and retrieve use the lot and slot numbers (§3.10), not codes.
 ```sql
 CREATE TABLE feature_codes (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  feature VARCHAR(32) NOT NULL,            -- 'pickup_group', 'dnd_on', … (enum in code)
+  feature VARCHAR(32) NOT NULL CHECK (feature IN (
+    'pickup_group','pickup_directed','cf_unconditional_on','cf_unconditional_off','cf_busy_on','cf_busy_off',
+    'cf_no_answer_on','cf_no_answer_off','dnd_on','dnd_off','dnd_toggle','voicemail_own','voicemail_any',
+    'hotdesk_login','hotdesk_logout','withhold_cid','agent_login_toggle','agent_ready_toggle','paging_reserved')),
   code VARCHAR(8) NOT NULL CHECK (code ~ '^\*[0-9*#]{1,7}$'),
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   PRIMARY KEY (tenant_id, feature), UNIQUE (tenant_id, code));
@@ -2827,7 +2940,8 @@ emit the feature's own event (`pbx.dnd_changed` …) with `source: phone`
 and are audited with the extension as actor.
 
 **11. Tests.** U: matcher longest prefix, argument split, prefix
-collisions refused. I: override row and RLS. E: `*72 1002` then a call
+collisions refused; **the default code set passes `ValidateFeatureCodes`**
+(no default is a prefix of another — `*8` vs `*60`, `*4x`, `**`). I: override row and RLS. E: `*72 1002` then a call
 to the extension lands on 1002; `112` from the same phone is still
 emergency. A: `*78`/`*79` on a desk phone.
 
@@ -2873,7 +2987,7 @@ extension per device), insert `hot_desk_sessions`, outbox
 | `Active` | `expires_at` reached (max hours) or the tenant's daily logout time | none |
 | `Active` | the person's membership disabled or extension deleted | none |
 
-**5. Data model — migration `0044` part**
+**5. Data model — migration `0034_hot_desk`** (released to pbx-core by LLD-01)
 
 ```sql
 ALTER TABLE extensions ADD COLUMN hot_desk_device BOOLEAN NOT NULL DEFAULT FALSE;
@@ -2946,7 +3060,8 @@ quota.
 
 **3. Sequence.** Upload (as §3.2 prompts) → server converts to 8 kHz
 16-bit mono WAV (and 16 kHz for wideband endpoints) → object store →
-ACL projects the class into the engine (SPIKE-M1) → hold uses
+ACL projects the class into the engine (SPIKE-M1; **pending a D-47
+amendment** — realtime `musiconhold` is outside D-47's PJSIP scope) → hold uses
 `HoldClass` resolved by precedence: object's class (queue, ring group,
 park lot, room) → DID's class (`inbound_numbers.moh_class_id`) → tenant
 default class → the installation's `default` class.
@@ -2965,10 +3080,12 @@ CREATE UNIQUE INDEX ON moh_classes (tenant_id) WHERE is_default;
 CREATE TABLE moh_files (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL, class_id UUID NOT NULL,
   position SMALLINT NOT NULL, object_key TEXT NOT NULL, duration_ms INT NOT NULL,
-  status VARCHAR(10) NOT NULL CHECK (status IN ('converted','projected','rejected')),
+  status VARCHAR(10) NOT NULL DEFAULT 'uploaded' CHECK (status IN ('uploaded','converted','projected','rejected')),
   FOREIGN KEY (tenant_id, class_id) REFERENCES moh_classes (tenant_id, id) ON DELETE CASCADE);
 ALTER TABLE inbound_numbers ADD COLUMN moh_class_id UUID;
--- RLS + grants as §3.4. Engine projection tables (musiconhold, musiconhold_entry)
+-- RLS + grants as §3.4. **Pending D-47 amendment after SPIKE-M1:** D-47 covers the PJSIP
+-- realtime tables only; projecting realtime musiconhold widens it and needs an owner decision.
+-- Engine projection tables (musiconhold, musiconhold_entry)
 -- follow the ps_* rule: ACL-owned, no tenant_id, no RLS, SELECT-only for asterisk_engine;
 -- class name "m_" + hex(moh_classes.id).
 ```
@@ -3018,12 +3135,14 @@ class as a looped bridge playback driven by telephony.
 
 | Id | Question | Recommendation |
 |---|---|---|
-| OD-1 | Paging/intercom (PB-21) in R1.0? | **Out of R1.0.** It is not in BRD FBR-R1-01 or PRD EPIC-03; it needs auto-answer headers per phone vendor (AD-07 provisioning first). `*80` stays reserved |
+| OD-1 | Paging/intercom (PB-21) in R1.0? | **Out of R1.0.** It is not in BRD FBR-R1-01 or PRD EPIC-03; it needs auto-answer headers per phone vendor (AD-07 provisioning first). `*60` stays reserved |
 | OD-2 | Self-attested number evidence enough for carrier DIDs? | **Yes for carrier DIDs** (the carrier delivering the DID on the tenant's trunk is the evidence); **callback code mandatory for presentation-only numbers** |
 | OD-3 | Voicemail email carries the audio? | **Link only by default**; tenant may enable attachment (audited setting) |
 | OD-4 | Forwarded external legs show the original caller's number? | **No** (BR-06 literal); present the DID that was dialled. Revisit only with carrier diversion-header support and a BR-06 amendment |
 | OD-5 | Hot-desk device's own number while someone is logged in? | **Does not ring**; follows its unavailable chain |
 | OD-6 | Two tenants authorised for the same presentation-only number? | **Allowed** (each with its own evidence); carrier DIDs stay single-tenant by D-77 attribution |
+| OD-11 | Voicemail (US-03.5) has no acceptance criterion: AC-03.5 is desk-phone provisioning. Add one to PRD EPIC-03? | **Yes, as AC-03.20:** "A caller who reaches an unanswered or busy extension can leave a message of up to 3 minutes; the owner receives an email notice with a console link within 1 minute, sees the message in the console, plays it from their phone with a PIN, and the phone's message lamp shows unread messages within 10 seconds. Messages are kept for the tenant's retention period, then deleted." |
+| OD-12 | Hot-desking (US-03.4) has no acceptance criterion. Add one? | **Yes, as AC-03.21:** "A person logs in at a hot-desk phone with their extension and PIN; within 5 seconds calls to their extension ring that phone, calls from it present their number and use their calling permissions, and its message lamp shows their voicemail; logging out, the maximum session time or the daily logout time restores the phone, and a call in progress is never ended by logout." |
 
 **Open spikes:** SPIKE-P1 (BLF pattern hints, §3.8), SPIKE-M1 (realtime
 MOH, §3.15), SPIKE-V1 (voicemail playback to the phone: object-store URL
@@ -3081,10 +3200,11 @@ Start (mode m):
    snoop into mixing bridge `S`; supervisor originated (ring 20 s) and
    added to `S`; barge adds the supervisor to the call's main bridge `M`.
    Session `Active`.
-3. Optional agent notice (`agent_notice = beep`): `POST
-   /channels/{agentChannel}/play?media=sound:beep` on start and on a change
-   to whisper or barge. Barge **always** beeps to both parties (a third
-   voice must not appear unannounced). No notice in listen by default
+3. Monitoring notice (`agent_notice = beep`, decided cross-LLD): on start
+   and on a change to whisper, `POST /channels/{agentChannel}/play?media=sound:beep`
+   (agent only); on a change to or start in **barge**, `POST
+   /bridges/{M}/play?media=sound:beep` so **both parties** hear it. With
+   `agent_notice = none` (default) nothing is played in any mode
    (US-16.2 "without either party knowing").
 
 Switch mode (`ChangeMonitoring`): one transaction (`MONITOR_MODE`, audit
@@ -3142,7 +3262,7 @@ CREATE TABLE tenant_supervision_settings (
 func MayMonitor(sup SupervisorView, target AgentCallView, s SupervisionSettings, q QueuePolicy, mode MonitorMode) error // pure
 // telephony ports (LLD-01 §11): CallControl.StartMonitor(ctx, MonitorCommand) (MonitorSessionID, error),
 // ChangeMonitorMode(ctx, id, mode), StopMonitor(ctx, id). Session endings reach pbx-core through
-// CallEventSink (call.monitor_stopped), which appends MONITOR_STOP to queue_events.
+// CallEventSink event kind `call.monitor_stopped` (LLD-01 adds it), which appends MONITOR_STOP to queue_events.
 type SupervisionService interface {
     Start(ctx context.Context, sup Actor, agent shared.PrincipalID, mode MonitorMode, reason string) (MonitorSessionID, error)
     Change(ctx context.Context, sup Actor, id MonitorSessionID, mode MonitorMode) error
@@ -3210,7 +3330,7 @@ browser phone disconnects → `supervisor_left`.
 | 3CX listen, whisper, barge-in for queue/group managers | Same scoping by supervised queue |
 | Amazon Connect monitor and barge with security-profile permissions and logged events | Permissions per mode; audit before media |
 | VICIdial blind monitor, whisper, barge from the real-time report | Same from the live view |
-| Deliberate | Tenant/queue switch (AC-16.2), one monitor per call, mandatory beep on barge, audit-before-media |
+| Deliberate | Tenant/queue switch (AC-16.2), one monitor per call, barge beep to both parties when the notice setting is on, supervisor stays when the agent leaves a barge, audit-before-media |
 
 ## 4. Ports and the dependency direction
 
@@ -3909,12 +4029,12 @@ after the Phase A console slice exists, per D-46.
 | `pbx-ivr-flow-graph` | B | Typed destinations, node-graph revisions, weekly schedules in a time zone, override, re-prompt, direct dial (§3.2.1) | **Proposed 2026-11-07** (D-91); before `pbx-queues` |
 | `pbx-number-inventory` | B | §3.12 owned numbers, evidence, presentation precedence (BR-06, AC-03.16); migration 0035 | **Designed (D-98).** First routing feature, after `pbx-ivr-flow-graph`; unblocks OB-12 (LLD-06) |
 | `pbx-extension-routing` | B | §3.6 forwarding, follow-me, DND; §3.13 codes for them (AC-03.15); 0037, 0039 | **Designed (D-98).** After `pbx-number-inventory` |
-| `pbx-presence` | B | §3.8 presence hub, console stream, `Stasis:` device state (AC-03.3); 0044 part | **Designed (D-98).** After `pbx-extension-routing`; desk BLF after SPIKE-P1 |
+| `pbx-presence` | B | §3.8 presence hub, console stream, `Stasis:` device state (AC-03.3); 0044 | **Designed (D-98).** After `pbx-extension-routing`; desk BLF after SPIKE-P1 |
 | `pbx-ring-groups` | B | §3.7 six strategies (AC-03.14); 0038 | **Designed (D-98).** After `pbx-presence` (skip busy/DND) |
 | `pbx-voicemail` | B | §3.4 mailboxes, deposit/retrieval, MWI, voicemail to email (US-03.5); 0043 | **Designed (D-98).** After `pbx-ring-groups`; SPIKE-V1 |
 | `pbx-pickup-park` | B | §3.9 pickup groups, §3.10 park lots (AC-03.13); 0040, 0041 | **Designed (D-98).** After `telephony-call-control` (LLD-01) |
 | `pbx-conference-rooms` | B | §3.11; 0042 | **Designed (D-98).** After `telephony-call-control` |
-| `pbx-hot-desk` | B | §3.14 (US-03.4); 0044 part | **Designed (D-98).** After `pbx-voicemail` (shared phone PIN) |
+| `pbx-hot-desk` | B | §3.14 (US-03.4); 0034 | **Designed (D-98).** After `pbx-voicemail` (shared phone PIN) |
 | `pbx-moh-classes` | B | §3.15; 0036 | **Designed (D-98).** After SPIKE-M1; earlier changes use the installation `default` class |
 | `pbx-agents` | B | §3.1.1 agent states, reason codes, `*45`/`*46`, `AgentStates` port for the dialler; 0045 | **Designed (D-98).** After `pbx-presence` and `pbx-hot-desk`; before LLD-06 `dialer-agent-session` |
 | `pbx-queues` | B | §3.3–§3.3.2, §3.3.4–§3.3.5: queues, members, dispatcher, announcements/EWT, overflow, live view, `queue_events`, `queue` destination kind (IC-01/02/04; OD-7); 0046–0048 | **Designed (D-98).** After `pbx-agents` and `pbx-ivr-flow-graph`; SPIKE-Q2, SPIKE-Q3 |

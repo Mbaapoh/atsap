@@ -1926,6 +1926,10 @@ are the names LLD-03 uses.
        Connect(ctx context.Context, offer OfferID, agent shareddomain.PrincipalID) error              // ErrCallGone, ErrOfferGone
        Leave(ctx context.Context, entry QueueEntryID, dest Destination, routing []byte) error
        DialCallback(ctx context.Context, offer OfferID, target InboundDecision) error
+       // Prompt runs a Program (LLD-03 §3.5.2, e.g. callback confirm/re-entry) on a queued
+       // caller inside the holding bridge; MOH stops for the program and resumes after.
+       // Collected digits return through QueueOutcome.DtmfPressed. ErrCallGone, ErrNotQueued.
+       Prompt(ctx context.Context, entry QueueEntryID, program Program) error
    }
    type QueueOffer struct {
        OfferID OfferID; Entry QueueEntryID; TenantID shareddomain.TenantID
