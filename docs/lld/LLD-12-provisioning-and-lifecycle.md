@@ -1161,7 +1161,7 @@ Backups run online, with `nice`/`ionice` class idle, and never drain.
 |---|---|---|
 | Holds | `db.dump` + `etc/`: configuration, call and recording **metadata**, tombstones, licence | Objects: recordings, voicemail, prompts, firmware images |
 | Schedule | Daily 02:30, installation time zone | Daily 03:30, incremental: objects created since the last successful run (by object key + ETag) |
-| Retention | 7 daily + 4 weekly (span ≤ 35 days, OD-7) | An object copy is kept until its source is deleted **plus** `media_backup_retention_days` (default **35**, range 1–35 = `backup.retention_days` of LLD-09 §7.2); the media sweep (below) reads deletion tombstones through `backup_recording_tombstones` and deletes the copies past that window |
+| Retention | 7 daily + 4 weekly (span ≤ 35 days, OD-7) | An object copy is kept until its source is deleted **plus** `media_backup_retention_days` (default **35**, range 1–35, the same setting as LLD-09 §7.2); the media sweep (below) reads deletion tombstones through `backup_recording_tombstones` and deletes the copies past that window |
 | Deletion promise | A deleted recording's metadata survives in older dumps ≤ 35 days | Audio is unrecoverable at `retention_until + 35 days` (AC-07.3), matching LLD-09's stated window |
 | Encryption | AES-256-GCM, passphrase-derived key | Same key; each object a separate sealed file |
 | Target | Local + offsite (OD-6) | Same targets, separate prefix `media/` |
@@ -1219,7 +1219,7 @@ GRANT SELECT, INSERT, UPDATE ON media_backup_index TO atsap_backup;
 | 5 | Metrics: copied, purged, oldest unpurged tombstone age; alert when > `media_backup_retention_days` + 1 day (AC-07.3 at risk) |
 
 `media_backup_retention_days` (default 35, range 1–35) is the
-`backup.retention_days` in LLD-09 §7.2's stated window. A test connects
+same setting LLD-09 §7.2 names for its stated window. A test connects
 as `atsap_backup` and proves `SELECT` on `recordings`,
 `recording_deletions` and `calls` is denied while the functions work.
 

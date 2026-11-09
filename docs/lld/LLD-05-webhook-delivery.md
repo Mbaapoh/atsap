@@ -76,8 +76,8 @@ Rules:
 |---|---|---|---|---|---|
 | `call.initiated` | telephony-core | Call created | `call_id, direction, from, to, started_at` | yes | yes |
 | `call.active` | telephony-core | ≥2 participants connected (answered) | `call_id, answered_at` | yes | yes |
-| `call.terminated` | telephony-core | Call reaches Terminated | `call_id, ended_at, termination_reason, duration_seconds` | yes | yes |
-| `participant.joined` | telephony-core | Participant connected | `call_id, participant_id, role, extension_id?, principal_id?` | yes | yes |
+| `call.terminated` | telephony-core | Call reaches Terminated | `call_id, ended_at, termination_reason, disposition, duration_seconds, billable_seconds` — the two totals are copied from the internal `call.terminated` v2 fields of the same names (LLD-01); webhook-delivery derives nothing and does not depend on reporting | yes | yes |
+| `participant.joined` | telephony-core | Participant connected | `call_id, participant_id, role, extension_id?, principal_id?, joined_at` — the internal `consent` and `pci_paused` fields are **not** in public v1 (consent is published as `call.consent_*`, pause as `call.pci_*`) | yes | yes |
 | `participant.left` | telephony-core | Participant disconnected | `call_id, participant_id, left_at, billable_seconds` | yes | yes |
 | `participant.quality` | reporting | 30 s quality window closed (LLD-09 RC-06) | `call_id, participant_id, window_start, window_end, mos?, jitter_ms?, loss_pct?, rtt_ms?, direction` | opt-in | yes |
 | `cdr.recorded` | reporting | Ledger row appended (LLD-09 RC-05) | full CDR incl. participants and billing fields (AC-05.4) | yes | yes |
@@ -85,7 +85,7 @@ Rules:
 | `cdr.anchored` | reporting | Chain head anchored | `records_seq, records_head, adjustments_seq, adjustments_head, anchored_at` | yes | yes |
 | `recording.started` | telephony-core | Capture began after consent | `recording_id, call_id, segment_no, policy_id, consent: announced\|not_required\|on_demand_announced` | yes | yes |
 | `call.pci_paused` / `call.pci_resumed` | telephony-core | PCI pause/resume of the call, recorded or not (LLD-09 RC-07) | `call_id, at, actor_id?, auto: bool` | yes | yes |
-| `call.consent_satisfied` / `call.consent_failed` | telephony-core | Recording announcement finished / failed (LLD-09 §4.3 step 4) | `call_id, at, method: announced, reason?` | yes | yes |
+| `call.consent_satisfied` / `call.consent_failed` | telephony-core | Recording announcement finished / failed (LLD-09 §4.3 step 4) | satisfied: `call_id, at, method: announced\|on_demand_announced, policy_id`; failed: `call_id, at, reason: playback_failed\|timeout\|hangup` | yes | yes |
 | `recording.paused` / `recording.resumed` | telephony-core | Per live segment during a PCI pause (RC-07) | `recording_id, call_id, at, actor_id?, auto: bool` | yes | yes |
 | `recording.stored` | telephony-core | Object written and verified | `recording_id, call_id, segment_no, size_bytes, sha256, duration_seconds, retention_until` | yes | yes |
 | `recording.failed` | telephony-core | Start or upload failed | `recording_id?, call_id, stage: start\|consent\|upload, reason` | yes | yes |
@@ -177,10 +177,24 @@ failure", so the two `disabled` guards coincide.
 | `pending`/`retrying` | failure, retries left | `retrying` (`next_attempt_at` per §4.5) |
 | `retrying` | failure after the +24 h retry | `dead` |
 | `held(subscription_disabled)` | `EnableWebhook` | `pending` |
-| `held(tenant_suspended)` | identity event `tenant.reinstated` (consumer `webhook-tenant`), subscription not `disabled` | `pending`, oldest `seq` first; a subscription that is `disabled` keeps them as `held(subscription_disabled)` |
+| `held(tenant_suspended)` | `tenant.status_changed{status: active}` (consumer `webhook-tenant`), subscription not `disabled` | `pending`, oldest `seq` first; a subscription that is `disabled` keeps them as `held(subscription_disabled)` |
 | `held` (either reason) | older than `webhook.retention_days`, or beyond `webhook.held_cap` (oldest first) | `expired` (by the retention sweep; alert `webhook.backlog_truncated`) |
 | `dead`/`delivered`/`held` | `ReplayWebhookDelivery` | (original unchanged) a **new** delivery row `pending`, `replay_of` = original, and a **new `seq = next_seq`** taken under the subscription lock (a replay joins the tail of the ordered queue; it never reuses the original seq, so `UNIQUE (subscription_id, seq)` holds) |
 | any non-terminal | retention elapsed | `expired` |
+
+**Tenant status projection (no synchronous call to identity).** Identity
+publishes `tenant.status_changed{tenant_id, status: active|suspended|deleted, at}`
+through its outbox (LLD-02). Consumer `webhook-tenant` (durable, ordered
+per tenant by subject) upserts `webhook_tenant_status(tenant_id, status,
+changed_at)` and ignores an event older than `changed_at`; fan-out and the
+sender read this local row. Unknown tenant → treated as `active` (the
+projection is seeded from a bootstrap replay at first deploy).
+
+| Status change | Effect on existing queue rows |
+|---|---|
+| → `suspended` | One transaction: every `pending`/`retrying` row of the tenant becomes `held(tenant_suspended)` with `attempts` and `first_attempt_at` kept; a POST already in flight completes and is recorded normally; the sender also re-checks the projection at claim time so nothing is sent after the commit |
+| → `active` | `held(tenant_suspended)` rows of non-disabled subscriptions → `pending`, `next_attempt_at = now`, oldest `seq` first; the retry schedule restarts from the release (time suspended does not count toward the 24 h) |
+| → `deleted` | All queue rows → `expired`; subscriptions deleted; history purged by retention |
 
 ### 4.5 Retry schedule (single source; HLD-09 F-04 follows this)
 
@@ -191,7 +205,7 @@ After the +24 h retry fails the delivery is `dead`. Failure = any non-2xx,
 timeout, connect/TLS error or SSRF refusal; 3xx is a failure (no
 redirects).
 
-### 4.6 Data model (DoR 5) — migration `0060_webhook_delivery`
+### 4.6 Data model (DoR 5) — migration `0060_webhook_delivery` (number provisional, D-100)
 
 ```sql
 CREATE TABLE webhook_subscriptions (
@@ -272,6 +286,11 @@ CREATE TABLE webhook_queue (
   first_attempt_at TIMESTAMPTZ, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE webhook_tenant_status (          -- local projection of identity's tenant.status_changed
+  tenant_id UUID PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('active','suspended','deleted')),
+  changed_at TIMESTAMPTZ NOT NULL
+);                                              -- no RLS: installation-wide, read by the worker role only (GRANT SELECT, INSERT, UPDATE TO atsap_webhook_worker)
 CREATE INDEX webhook_queue_due ON webhook_queue (next_attempt_at) WHERE status IN ('pending','retrying');
 CREATE INDEX webhook_queue_head ON webhook_queue (subscription_id, seq) WHERE status IN ('pending','retrying','held');
 ```
@@ -353,10 +372,8 @@ step 8). The archtest `httpclient` rule already forbids default clients.
 **Default role mapping** (identity `DefaultPermissions`; `TENANT_ADMIN`
 and `PLATFORM_ADMIN` keep `*`): `webhook.manage`, `webhook.read` —
 TENANT_ADMIN only; `event.stream` — SUPERVISOR (tenant-wide) and AGENT
-(server-filtered to `call.*`, `participant.*`, `recording.*` and
-`call.pci_*` events of calls where the agent's principal is a
-participant; other types are never sent to an agent). API keys carry
-explicit actions.
+(scoped by the call-participation projection, §6.2a; other types are
+never sent to an agent). API keys carry explicit actions.
 
 Every mutation writes an identity audit entry (`webhook.create`,
 `webhook.update`, `webhook.delete`, `webhook.disable`, `webhook.enable`,
@@ -443,7 +460,7 @@ Internal events (outbox, not webhook-deliverable): `webhook.endpoint_unhealthy`,
 | W-17 | I | Given an endpoint returning `410 Gone`, When one attempt is made, Then the subscription is `disabled(endpoint_gone)` at once and later events are `held` |
 | W-18 | I | Given a host whose DNS answers a public IP at validation and `127.0.0.1` at dial (fake resolver), When the attempt runs, Then the dialler's re-check refuses it with `ssrf_refused` and no connection is opened |
 | W-19 | I | Given a secret sealed under a removed keyring key, When a delivery is due, Then no POST is made, the attempt is `connect_error/secret_unavailable` and a critical alert fires |
-| W-20 | I | Given a suspended tenant with 3 `held(tenant_suspended)` rows, When `tenant.reinstated` arrives, Then they deliver in seq order; a replay of seq 2 gets a new seq at the tail |
+| W-20 | I | Given a suspended tenant with 3 `held(tenant_suspended)` rows, When `tenant.status_changed{status: active}` arrives, Then they deliver in seq order; a replay of seq 2 gets a new seq at the tail |
 | W-16 | A | Given a partner's receiver, When it is stopped for 10 minutes and restarted, Then the partner sees `unhealthy`, then recovery, and every event arrives once in sequence order (UAT, product-owner) |
 
 ## 5. Observability and security
@@ -477,10 +494,43 @@ Internal events (outbox, not webhook-deliverable): `webhook.endpoint_unhealthy`,
 | 1 | Interceptor authenticates; handler checks `event.stream` |
 | 2 | Decode cursor: AES-256-GCM-sealed `{stream_seq, tenant_id, issued_at}` under `events.cursor_key` (opaque; global sequence numbers would leak other tenants' volume — INV-10) |
 | 3 | Create an **ordered ephemeral JetStream consumer**, filter `tenant.<id>.event.>`, `DeliverByStartSequence(stream_seq+1)` or `DeliverNew` |
-| 4 | For each message: `ToPublic` + type filter (globs like `call.*`), send `StreamEventsResponse{cursor, event}` |
+| 4 | For each message: `ToPublic` + type filter (globs like `call.*`) + agent scope (§6.2a), send `StreamEventsResponse{cursor, event}` |
 | 5 | Every 15 s with no event: send a heartbeat `{cursor}` |
 | 6 | Every 60 s: re-validate the credential and permission (never cached, D-56); revoked → close `Unauthenticated`/`PermissionDenied` |
 | 7 | Client disconnects → consumer deleted; the client reconnects with its last cursor |
+
+### 6.2a Agent scoping without a synchronous call
+
+A principal with only agent scope receives `call.*`, `participant.*`,
+`recording.*`, `call.pci_*` and `call.consent_*` events **only** for calls
+in which that principal is or was a participant. The handler never calls
+telephony; it consults a local projection:
+
+```sql
+CREATE TABLE event_call_participation (        -- in 0060; RLS standard policy
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  call_id UUID NOT NULL, principal_id UUID NOT NULL,
+  first_joined_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,              -- last left/terminated + events.stream_max_age
+  PRIMARY KEY (tenant_id, call_id, principal_id)
+);
+```
+
+- Fed by durable consumer `event-participation` on
+  `participant.joined` (insert, principal from the payload) and
+  `participant.left`/`call.terminated` (set `expires_at`). Rows are
+  **never removed on leave**: membership "was a participant" stays true
+  until `expires_at`, so a cursor resume within `events.stream_max_age`
+  sees the same scope as the original stream. Hourly purge after
+  `expires_at`.
+- Events carrying no principal list (`recording.*`, `call.pci_*`,
+  `call.consent_*`) are resolved by `call_id` through this table; no
+  producer change is needed.
+- **Race:** the projection may lag the stream (the stream reads JetStream
+  directly). For an agent stream, an event whose `call_id` is not yet in
+  the projection is held in the per-stream buffer for up to 2 s while the
+  projection is re-read, then dropped for that agent (it was not theirs,
+  or the projection is down — logged). Supervisors are unaffected.
 
 ### 6.3 Contract
 
@@ -530,6 +580,7 @@ Internal events (outbox, not webhook-deliverable): `webhook.endpoint_unhealthy`,
 | S-03 | I | Given a client that stops reading, When 1,001 events arrive, Then the stream closes `ResourceExhausted` and other tenants' streams are unaffected |
 | S-04 | I | Given an API key revoked mid-stream, When the 60 s re-check runs, Then the stream closes `Unauthenticated` |
 | S-05 | E | Given a console session, When a call is answered, Then the call-history page updates within 2 s (AC-05.2) without polling |
+| S-07 | I | Given agent A on call X and not on call Y, When events for X and Y are published, Then A's stream receives only X's events, including `recording.stored` for X; after A resumes with a cursor taken during X, X's later events still arrive |
 | S-06 | B | Given a NATS restart, When the console's cursor is out of range, Then the page reloads data and shows no error dialog |
 
 Parity: 3CX exposes a WebSocket event feed; Amazon Connect streams agent

@@ -97,16 +97,17 @@ except `control`, `report.read`, `report.export`, `cdr.verify`,
 | 9 | reporting | Consumer `reporting-cdr-pending` on `call.initiated` inserts `cdr_pending(call_id, initiated_at)` (`ON CONFLICT DO NOTHING`); a call already recorded is skipped |
 | 10 | reporting | Hourly: pending rows older than `cdr.missing_after` (24 h) → alert `reporting.cdr_missing` naming call ids (AC-07.5) |
 | 11 | reporting | Anchor timer (§3.8) |
-| 12 | reporting | Consumer `reporting-ai-usage` on `tenant.*.event.ai.stream_stopped` and `ai.stream_failed` (both carry `stream_id, call_id, participant_id, provider_id, seconds`, LLD-05 §3.2): `AppendAIStream` = `INSERT cdr_ai_streams … ON CONFLICT (stream_id) DO NOTHING`; ack after commit. Not chained (the evidence ledger for AI seconds is `ai_usage_seconds` in LLD-10) |
+| 12 | reporting | Consumer `reporting-ai-usage` on `ai.stream_started` (→ row `kind = opened`, `seconds` NULL) and on `ai.stream_stopped` / `ai.stream_failed` (→ row `kind = closed` with `seconds`; this includes the `failed{restart}` close that LLD-10 §3.10 publishes when it sweeps streams after a restart). `AppendAIStream` = `INSERT cdr_ai_streams … ON CONFLICT (stream_id, kind) DO NOTHING`; ack after commit. Not chained (the evidence ledger for AI seconds is `ai_usage_seconds` in LLD-10) |
 
 **Ordering vs `cdr.recorded` (AC-05.4).** A stream may stop before or
 after the call's ledger row, so `cdr_ai_streams` has no FK to
 `cdr_records` and `cdr.recorded` does **not** carry AI seconds (they
 could be incomplete). `ai_stream_seconds` is computed at read/export
-time as `SUM(seconds)` per call/participant. An export row for a call
-that ended less than `cdr.ai_settle` (5 min) ago, or that has a
-participant with an AI stream not yet stopped, carries
-`ai_seconds_final = false`; billing exports should use a period that
+time as `SUM(seconds)` over `closed` rows per call/participant. An
+export row carries `ai_seconds_final = false` when the call ended less
+than `cdr.ai_settle` (5 min) ago **or** any `opened` row of the call has
+no matching `closed` row (a stream not yet stopped, known because
+`ai.stream_started` is consumed); billing exports should use a period that
 ended at least 5 min earlier.
 
 Adjustment: `AdjustCallRecord` → same lock on `'cdr_adjustments:' || tenant_id`
@@ -115,19 +116,16 @@ Adjustment: `AdjustCallRecord` → same lock on `'cdr_adjustments:' || tenant_id
 
 ### 3.3 `call.terminated` v2 payload (published by telephony-core)
 
-`call_id, direction, source_digits, dest_digits, started_at, answered_at?, ended_at, termination_reason, disposition (answered|no_answer|busy|failed|rejected|cancelled), service_type (pbx|contact_centre|campaign), department_id?, route_id?, carrier_id?, trunk_id?, cost_micros, participants[]{participant_id, role, extension_id?, principal_id?, joined_at, answered_at?, left_at, billable_seconds, usage_seconds, cost_micros}`.
+`call_id, direction, source_digits, dest_digits, started_at, answered_at?, ended_at, duration_seconds, billable_seconds, termination_reason, disposition (answered|no_answer|busy|failed|rejected|cancelled), service_type (pbx|contact_centre|campaign), department_id?, route_id?, carrier_id?, trunk_id?, cost_micros, participants[]{participant_id, role, extension_id?, principal_id?, joined_at, answered_at?, left_at, billable_seconds, usage_seconds, cost_micros}`.
 Times are UTC, microsecond precision (Postgres precision; the hash input
 must not depend on a precision the database discards).
 
-**Derived totals (pure `DeriveCallTotals`, reporting):** the payload
-carries no call-level totals, so the projector derives them, and LLD-01
-need not add fields:
-- `duration_seconds = floor((ended_at − started_at) / 1 s)`;
-- `billable_seconds = answered_at = null ? 0 : floor((ended_at − answered_at) / 1 s)`
-  — the call's answered talk time; per-participant `billable_seconds`
-  stay as published (they are what partners rate per leg);
-- both are clamped at ≥ 0 (clock skew between `answered_at` and
-  `ended_at` refuses the event into `cdr_rejects` if negative by > 1 s).
+**Call totals come from the payload.** `duration_seconds` and
+`billable_seconds` are fields of `call.terminated` v2 (LLD-01 computes
+them); the projector copies them and derives nothing. `ValidateTerminated`
+refuses (into `cdr_rejects`) a payload whose totals are negative or whose
+`duration_seconds` differs from `floor(ended_at − started_at)` by more than
+1 s.
 
 ### 3.4 State
 
@@ -190,7 +188,7 @@ database-only attacker but not one with the application host, and it
 removes the tenant's ability to verify without our key. **OWNER
 DECISION (§11 item 9)** — recommended: unkeyed chain + external anchors.
 
-### 3.6 Data model — migration `0061_cdr_ledger`
+### 3.6 Data model — migration `0061_cdr_ledger` — number provisional (D-100)
 
 ```sql
 -- atsapbx_forbid_mutation() is created by 0060 (LLD-05 §4.6).
@@ -252,14 +250,18 @@ CREATE TABLE cdr_adjustments (
   FOREIGN KEY (tenant_id, call_id) REFERENCES cdr_records (tenant_id, call_id)
 );
 
-CREATE TABLE cdr_ai_streams (                 -- AI stream duration per call (AC-05.4)
+CREATE TABLE cdr_ai_streams (                 -- AI stream open/close per call (AC-05.4)
   tenant_id UUID NOT NULL REFERENCES tenants(id),
-  stream_id UUID PRIMARY KEY,
+  stream_id UUID NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('opened','closed')),
   call_id UUID NOT NULL, participant_id UUID NOT NULL, provider_id UUID NOT NULL,
-  seconds INT NOT NULL CHECK (seconds >= 0),
-  source_event_id UUID NOT NULL,
-  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  seconds INT CHECK (seconds >= 0),            -- NULL on 'opened' (LLD-05: seconds? on ai.stream_started)
+  source_event_id UUID NOT NULL UNIQUE,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (stream_id, kind),
+  CHECK ((kind = 'opened') = (seconds IS NULL))
 );
+CREATE INDEX cdr_ai_streams_call ON cdr_ai_streams (tenant_id, call_id);
 
 CREATE TABLE cdr_anchors (
   tenant_id UUID NOT NULL REFERENCES tenants(id),
@@ -293,14 +295,16 @@ CREATE TABLE cdr_rejects (
 - **Retention role grants (single source for 0060–0066).**
   `atsap_retention` is `NOBYPASSRLS`, created by the deploy bootstrap; it
   sets `app.tenant_id` per tenant and `atsapbx.retention_purge = on` per
-  transaction. Each owning migration grants it:
+  transaction. It enumerates tenants through `GRANT SELECT (id, status) ON tenants TO atsap_retention`
+  (in 0060; `tenants` has no RLS, and the name column is not granted).
+  Each owning migration grants it (numbers are provisional labels, D-100):
 
   | Migration / LLD | `SELECT, DELETE` | Extra |
   |---|---|---|
-  | 0060 / LLD-05 | `webhook_deliveries`, `webhook_delivery_attempts`, `webhook_queue` | `UPDATE (status, held_reason, updated_at)` on `webhook_queue` (expire held rows) |
-  | 0061 / LLD-09 | `cdr_records`, `cdr_participants`, `cdr_adjustments`, `cdr_ai_streams`, `cdr_anchors` (anchors older than the oldest retained month only), `cdr_rejects` | `SELECT` on `recording_legal_hold_calls`, `recording_legal_hold_releases` |
+  | 0060 / LLD-05 | `webhook_deliveries`, `webhook_delivery_attempts`, `webhook_queue`, `event_call_participation` | `UPDATE (status, held_reason, updated_at)` on `webhook_queue` (expire held rows) |
+  | 0061 / LLD-09 | `cdr_records`, `cdr_participants`, `cdr_adjustments`, `cdr_ai_streams`, `cdr_anchors` (anchors older than the oldest retained month only), `cdr_rejects` | — |
   | 0062 / LLD-09 | `cdr_quality_windows`, `cdr_quality_summary` | — |
-  | 0064 / LLD-09 | `recordings`, `recording_paused_intervals`, `recording_tickets` | `INSERT` on `recording_deletions`, `outbox` |
+  | 0064 / LLD-09 | `recordings`, `recording_paused_intervals`, `recording_tickets` | `INSERT` on `recording_deletions`, `outbox`; `SELECT` on `recording_legal_hold_calls`, `recording_legal_hold_releases` (created here; used by the recording sweep and the CDR month purge) |
   | 0065 / LLD-09 | `report_exports` | `UPDATE (status)` |
   | 0066 / LLD-10 | `ai_usage_seconds`, `audio_streams`, `ai_flow_generations` | — |
 
@@ -440,6 +444,7 @@ Events: `cdr.recorded`, `cdr.adjusted`, `cdr.anchored` (public),
 | L-11 | C | Given the Reports page, When an admin adjusts a record, Then the reason dialog is mandatory and the row shows original and effective values |
 | L-13 | I | Given `ai.stream_stopped` for a call delivered before that call's `call.terminated`, When both are consumed, Then `ExportUsage` shows the AI seconds on the call and a duplicate `ai.stream_stopped` adds nothing |
 | L-14 | I | Given a hold covering one call in month M, When the month purge runs, Then nothing in M is deleted and `cdr_purge_deferred` fires; after release, M is purged and verification from the boundary anchor is ok |
+| L-16 | I | Given `ai.stream_started` for a call and no stop event, When `ExportUsage` runs after `cdr.ai_settle`, Then the row has `ai_seconds_final = false`; after `ai.stream_failed{restart}` it is final |
 | L-15 | U | Given an exported chain, When `cmd/atsap-verify-cdr` runs against `ListCDRAnchors` output, Then it reports ok; editing one row and recomputing all later hashes is caught by the anchor comparison |
 | L-12 | A | Given a full day of rig traffic, When ledger rows are compared with the call list, Then none is missing or duplicated (AC-07.5) and `VerifyCDRChain` is ok |
 
@@ -463,7 +468,7 @@ Events: `cdr.recorded`, `cdr.adjusted`, `cdr.anchored` (public),
 | Preconditions | Entitlement: recording is core in R1.0 (no module gate); object store configured and reachable at startup (else recording is `unavailable` and §4.8 applies); Asterisk recording directory has ≥ `recording.min_free_disk` free |
 | Emergency calls | **Never gated by recording** (INV-01): no announcement, no decline; recorded only if the policy says so and capture starts without delay |
 
-### 4.2 Policy model (US-07.1) — migration `0063_recording_policies` (owned by `pbx-core`)
+### 4.2 Policy model (US-07.1) — migration `0063_recording_policies` (owned by `pbx-core`) — number provisional (D-100)
 
 ```sql
 CREATE TABLE recording_jurisdictions (        -- installation-wide reference data, no tenant_id
@@ -583,7 +588,7 @@ bucket has versioning **off** (or a 1-day non-current expiry) so deletion
 is real; tenant-supplied KMS keys are R2. Adding an S3 client
 (`minio-go` v7) is a new dependency and needs the owner's approval.
 
-### 4.6 Data model — migration `0064_recordings` (owned by `reporting`)
+### 4.6 Data model — migration `0064_recordings` (owned by `reporting`) — number provisional (D-100)
 
 ```sql
 CREATE TABLE recordings (                     -- inserted from recording.stored; INSERT-only (retention role may delete)
@@ -883,7 +888,7 @@ follow: `Recording ⇄ Paused` (§4.4); a segment in
 | `mute` returns an error | RPC returns `Unavailable` "Could not pause; do not read out card details." and **does not** report paused; alert |
 | Snoop delete fails | Retry once; still failing → `DELETE /channels/aixm-<stream>` (the tap stream fails, the call does not); the RPC succeeds only when no AI audio path remains |
 | Snoop recreate on resume fails | Recording resumes; the AI stream goes `failed{resume}` (LLD-10 AI-06); the call is unaffected |
-| App restart while paused | Asterisk keeps the recording muted (mute is engine state) and AI taps are gone; the timer is lost — on restart the ACL unmutes any muted live recording older than `auto_resume_seconds` (SPIKE R-S2 confirms a muted state is observable) |
+| App restart while paused | As §4.8: until LLD-01 channel re-adoption lands, an app crash ends the call, so there is no live recording to unmute; on restart the finished file (with its silent interval) is uploaded and the open interval is closed at the file end with `auto_resumed = false`. Once re-adoption lands, the re-adopted call keeps `pci_paused` from persisted call state and the auto-resume timer restarts for the remaining time |
 | Agent leaves while paused | Auto-resume still fires; a supervisor may resume |
 
 Invariants: AC-07.2 (no audio in the interval, checked on the file);
@@ -926,7 +931,10 @@ AI tap stop in the same operation, and intervals as audited metadata.
 | 1 | Console shows the call; the player is locked behind a dialog: reason code + reason text (10–500 chars) |
 | 2 | `CreateRecordingAccess(recording_id, purpose, reason_code, reason)` → one transaction: INSERT `recording_access`, INSERT `recording_tickets` (token hash), identity audit `recording.play`/`recording.download` |
 | 3 | Response: `media_url = /media/recordings/<token>` (same origin, D-69), `expires_at` |
-| 4 | Browser `<audio>` (play) or download fetches `GET /media/recordings/<token>`; the handler hashes the token, checks expiry, tenant and purpose, streams from `ObjectStore.Get` with HTTP `Range` support; `Content-Disposition: inline` (play) or `attachment` (download) |
+| 4 | Browser `<audio>` (play) or download fetches `GET /media/recordings/<token>` (same origin, so the console session cookie is sent) |
+| 4a | **Tenant before RLS.** The token is `base64url(tenant_id[16] ‖ random[32])`; the handler parses the tenant id, opens a transaction with `app.tenant_id` set to it, and looks up `recording_tickets` by `SHA-256(token)` under RLS — no `SECURITY DEFINER` function and no cross-tenant read. A forged tenant prefix finds nothing (404) |
+| 4b | **Session check.** The request must carry a valid session (console cookie, or `Authorization` for API clients) whose principal equals `recording_tickets.principal_id` and whose active tenant equals the ticket's tenant; validated per request (D-56, never cached). Mismatch or no session → 404 (never 403: no existence oracle, INV-10). Expired → 410 |
+| 4c | Increment `uses`; stream from `ObjectStore.Get` with HTTP `Range`; `Content-Disposition: inline` (play) or `attachment` (download) |
 | 5 | Each fetch increments `uses`; > `recording.ticket_max_uses` → 410 |
 
 ### 6.3 API (`RecordingService`, reporting)
@@ -967,7 +975,7 @@ recording in an export, so US-07.5's "every occasion" is a query.
 |---|---|---|
 | A-01 | U | Given reason "ok", When validated, Then refused; 10 chars accepted |
 | A-02 | I | Given a supervisor, When they create a play ticket, Then one access row with reason and one audit entry exist in the same transaction |
-| A-03 | I | Given a tenant-A ticket, When used with a tenant-B session cookie or alone after expiry, Then 404/410 |
+| A-03 | I | Given a tenant-A ticket issued to principal P, When fetched with a tenant-B session, another tenant-A principal's session, no session, or the tenant prefix rewritten to tenant B, Then 404; after expiry with P's session, Then 410 |
 | A-04 | I | Given a deleted recording, When `GetRecording` is called, Then `NotFound` with the deletion date |
 | A-05 | E | Given a stored recording, When played with seeking (Range), Then bytes match the stored SHA-256 when fully read |
 | A-06 | B | Given the call detail page, When Play is pressed, Then the reason dialog appears before any audio loads; paused intervals are greyed on the timeline |
@@ -1003,18 +1011,22 @@ Erasure (`DeleteRecording`) runs the same steps synchronously with
 and audit `recording.delete`.
 
 **Backups (AC-07.3).** Two backup sets, both owned by LLD-12 B5:
-- **Database backups** (`pg_dump`) hold recording **metadata only**,
-  never audio; retained `backup.retention_days` (default 35).
-- **Media backup set**: on a local volume, LLD-12 B5's `media/` directory
-  in each backup; on S3, a replica bucket with a lifecycle expiry of
-  `backup.media_retention_days` (default 35). The **primary** bucket keeps
-  versioning off (or non-current expiry ≤ 1 day), so the primary delete is
-  final.
+- **Database set** (`pg_dump`): configuration, call and recording
+  **metadata** and tombstones, never audio; 7 daily + 4 weekly, span
+  ≤ 35 days.
+- **Media set**: objects copied incrementally under the separate
+  encrypted prefix `media/` on the backup targets (AES-256-GCM, each
+  object a sealed file). A copy is kept until its source is deleted
+  **plus** `media_backup_retention_days` (default 35, range 1–35); the
+  media sweep reads `recording_deletions` tombstones and deletes copies
+  past that window. No bucket replica or lifecycle rule is used; the
+  **primary** bucket keeps versioning off (or non-current expiry ≤ 1 day),
+  so the primary delete is final.
 
 The stated window for "unrecoverable, including from backups" is
-`retention_until + max(backup.retention_days, backup.media_retention_days)`
-(default 35 days), published in the partner agreement. Crypto-shredding
-to close the backup window is an R2 option.
+`retention_until + 35 days` (both sets at their maximum), published in
+the partner agreement. Crypto-shredding to close the window is an R2
+option.
 
 ### 7.3 Legal hold
 
@@ -1047,8 +1059,8 @@ already deleted.
 | `recording.retention_sweep_interval` | 15 min | 5–60 min | installation |
 | `recording.retention_batch` | 500 | 50–5,000 | installation |
 | retention days | policy → jurisdiction → tenant default 90 (OWNER DECISION) | 1–3,650 | tenant/object |
-| `backup.retention_days` | 35 | 1–365 | installation (LLD-12 B5; stated in the partner agreement) |
-| `backup.media_retention_days` | 35 | 1–365 | installation (LLD-12 B5) |
+| database backup span | 7 daily + 4 weekly (≤ 35 days) | — | installation (LLD-12 B5; stated in the partner agreement) |
+| `media_backup_retention_days` | 35 | 1–35 | installation (LLD-12 B5 `backup_settings`) |
 
 Retention is fixed at capture (`retention_until`); a later policy change
 applies to new recordings only.
@@ -1140,7 +1152,7 @@ MOS  = 1 if R < 0; 4.5 if R > 100; else 1 + 0.035R + R(R − 60)(100 − R)·7e�
 Without RTT (no DLSR yet) `rtt` defaults to 0 and the window is flagged
 `rtt_estimated`.
 
-### 8.5 Data — migration `0062_cdr_quality`
+### 8.5 Data — migration `0062_cdr_quality` — number provisional (D-100)
 
 ```sql
 CREATE TABLE cdr_quality_windows (
@@ -1220,7 +1232,7 @@ store the model version so scores are reproducible.
 
 Unchanged behaviour: terminated calls only; agent scope cannot widen;
 bounded audited CSV. After step 5 of §3.12 the reads come from the
-ledger. `report_exports` (migration `0065_report_exports`) records async
+ledger. `report_exports` (migration `0065_report_exports`, provisional per D-100) records async
 exports:
 
 ```sql

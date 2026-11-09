@@ -59,9 +59,10 @@ logs, exports or errors; INV-06 accounting is asynchronous.
 
 | # | Owner | Step |
 |---|---|---|
+| 0 | ai-pipeline | **One ordered consumer per call.** Durable consumer `ai-tap` on `participant.joined`, `participant.left`, `call.terminated`, `call.consent_satisfied`, `call.consent_failed`, `call.pci_paused`, `call.pci_resumed` and internal `ai.tap_lost`; messages are dispatched to a per-call actor keyed by `call_id` (hash-partitioned onto `ai.tap.partitions` workers, each processing its calls' messages strictly in stream order); acks after the actor has persisted the resulting state. JetStream order per call holds because all these subjects are in one stream and published by one telephony call actor |
 | 1 | ai-pipeline | Receives `participant.joined`; `DecideTap(policy, participant, state)` (pure) |
-| 2 | ai-pipeline | `require_consent = false` → proceed. Else by `participant.joined.consent`: `satisfied`/`not_required` → proceed; `pending` → wait for `call.consent_satisfied` (subject `tenant.<id>.event.call.consent_satisfied`) up to `ai.tap.consent_wait`, then proceed, or on `call.consent_failed`/timeout write `unavailable{consent}`; `not_evaluated`/`failed` → `unavailable{consent}` (no announcement was played for this call) |
-| 3 | ai-pipeline | INSERT `audio_streams` (`connecting`); opens a UDP relay socket on `127.0.0.1:<port>` from `ai.tap.port_range` |
+| 2 | ai-pipeline | `require_consent = false` → proceed. Else by `participant.joined.consent`: `satisfied`/`not_required` → proceed; `pending` → INSERT `audio_streams` with status **`awaiting_consent`** and `consent_deadline = now + ai.tap.consent_wait` (persisted, so a restart resumes the wait) and stop here; the call actor moves it on `call.consent_satisfied` (→ step 3) or `call.consent_failed` (→ `unavailable{consent}`); a sweeper every 5 s moves rows past `consent_deadline` to `unavailable{consent_timeout}`. `not_evaluated`/`failed` → `unavailable{consent}` (no announcement was played for this call) |
+| 3 | ai-pipeline | INSERT (or move the `awaiting_consent` row to) `audio_streams` `connecting`; opens a UDP relay socket on `127.0.0.1:<port>` from `ai.tap.port_range` |
 | 4 | ai-pipeline → telephony | `MediaTap.Start(ctx, TapRequest{CallID, ParticipantID, StreamID, RelayAddr})` (telephony inbound port) |
 | 5 | telephony ACL | `POST /channels/{participantChannel}/snoop?spy=in&whisper=none&app=atsapbx&appArgs=aitap,<streamId>&snoopId=aitap-<streamId>` — `spy=in` is what that speaker says; `whisper=none` means nothing can be injected into the call |
 | 6 | telephony ACL | `POST /channels/externalMedia?app=atsapbx&channelId=aixm-<streamId>&external_host=127.0.0.1:<port>&encapsulation=rtp&transport=udp&connection_type=client&format=slin16&direction=both` |
@@ -112,13 +113,17 @@ never waits on any step: every step is after the media path exists.
 | `streaming`/`connecting` | `call.pci_paused` | `paused` | billing stops; tap snoop already deleted by telephony |
 | — | joined while `pci_paused` | `paused` | no tap channels yet |
 | `paused` | `call.pci_resumed` | `streaming` (or `connecting` if the tap was deferred) | billing resumes |
-| `paused` | snoop recreate fails (`ai.tap_lost{resume}`) | `failed` | call untouched |
+| `paused`/`streaming` | `ai.tap_lost{reason: resume_failed}` (LLD-01 emits it when `MediaTap.Resume` fails) | `failed{resume_failed}` | `MediaTap.Stop` to remove the remaining `aixm-`/bridge; adapter closed; usage closed; `ai.stream_failed`; breaker **not** counted (engine-side failure, not the provider) |
+| any live | `ai.tap_lost{reason: other}` | `failed{tap_lost}` | as above |
+| — | `participant.joined` with `consent = pending` and `require_consent` | `awaiting_consent` | `consent_deadline` set |
+| `awaiting_consent` | `call.consent_satisfied` | `connecting` (or `paused` if `pci_paused`) | — |
+| `awaiting_consent` | `call.consent_failed` / deadline / `participant.left` | `unavailable{consent…}` / `stopped` | — |
 | any non-terminal | participant left / call ended / policy disabled | `stopped` | `ai.stream_stopped` |
 
 During `reconnecting` the relay keeps reading and dropping (frames are
 counted as dropped) so Asterisk never sees back-pressure.
 
-### 3.6 Data model — migration `0066_ai_pipeline`
+### 3.6 Data model — migration `0066_ai_pipeline` — number provisional (D-100)
 
 ```sql
 CREATE TABLE ai_providers (
@@ -147,11 +152,20 @@ CREATE TABLE ai_stream_policies (                -- one per tenant
   updated_by UUID NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (NOT enabled OR provider_id IS NOT NULL)
 );
+CREATE TABLE ai_text_policies (                 -- AI-02 text generation, separate from audio streaming
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id),
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  provider_id UUID REFERENCES ai_providers(id), -- must have capability 'generate_text'
+  redact BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_by UUID NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (NOT enabled OR provider_id IS NOT NULL)
+);
 CREATE TABLE audio_streams (                     -- operational state + final counters
   id UUID PRIMARY KEY,
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   call_id UUID NOT NULL, participant_id UUID NOT NULL, provider_id UUID NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('connecting','streaming','reconnecting','paused','stopped','failed','unavailable')),
+  status TEXT NOT NULL CHECK (status IN ('awaiting_consent','connecting','streaming','reconnecting','paused','stopped','failed','unavailable')),
+  consent_deadline TIMESTAMPTZ,                 -- set only while awaiting_consent
   status_reason TEXT,
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(), ended_at TIMESTAMPTZ,
   frames_sent BIGINT NOT NULL DEFAULT 0, frames_dropped BIGINT NOT NULL DEFAULT 0,
@@ -249,6 +263,7 @@ SDK dependency needs the owner (AGENTS.md).
 | `DeleteAIProvider` | `id` | `ai.manage` | `FailedPrecondition` "This provider is in use by your streaming policy." |
 | `ListAIProviders` | → providers (no credentials, `has_credentials: bool`) | `ai.read` | — |
 | `TestAIProvider` | `id` → `ok, latency_ms, message` (sends 1 s of a fixed tone, no call audio) | `ai.manage` | `Unavailable` "The provider did not respond within 5 seconds." |
+| `GetAITextPolicy` / `UpdateAITextPolicy` | `enabled, provider_id, redact` | `ai.read` / `ai.manage` | `FailedPrecondition` "This provider cannot generate text." |
 | `GetAIStreamPolicy` / `UpdateAIStreamPolicy` | `enabled, provider_id, roles, directions, send_caller_number` | `ai.read` / `ai.manage` | `FailedPrecondition` "Choose a provider before enabling streaming." · `PermissionDenied` (entitlement) "AI streaming is not included in your plan." |
 | `ResumeAIForTenant` | — | `ai.manage` | `FailedPrecondition` "AI is not suspended." |
 | `ListAudioStreams` | `call_id? from, to, status?` → streams with counters and gaps | `ai.read` | `InvalidArgument` "Range ≤ 31 days." |
@@ -268,6 +283,7 @@ the new provider immediately; live streams finish on the old one.
 | `ai.tap.buffer_frames` | 12 (240 ms) | 5–100 | installation |
 | `ai.tap.port_range` | 40000–40999 | any UDP range | installation |
 | `ai.tap.consent_wait` | 30 s | 5–60 s | installation |
+| `ai.tap.partitions` | 16 per-call worker partitions | 1–256 | installation |
 | `ai.connect_timeout` | 3 s | 1–10 s | installation |
 | `ai.stall_timeout` | 3 s | 1–10 s | installation |
 | `ai.reconnect_window` | 5 s | 2–30 s | installation |
@@ -284,7 +300,7 @@ the new provider immediately; live streams finish on the old one.
 | Provider down / slow | AI-06 states; call untouched (INV-04) |
 | `externalMedia` or snoop creation fails | Stream `failed{tap_setup}`; any created tap channel deleted; call untouched |
 | Participant hangs up mid-setup | Snoop creation 404 → stream `stopped`; created channels/bridge deleted |
-| App restart | Relay sockets gone; Asterisk tap channels remain and send RTP to a closed port (harmless). On start the ACL lists `GET /channels` and `GET /bridges` and deletes every `aitap-*`, `aixm-*`, `aitapbr-*`; open `audio_streams` rows are closed `failed{restart}` with `ended_at = now` (seconds counted up to the last bucket written) |
+| App restart | Relay sockets gone; Asterisk tap channels remain and send RTP to a closed port (harmless). On start the ACL lists `GET /channels` and `GET /bridges` and deletes every `aitap-*`, `aixm-*`, `aitapbr-*`; open `audio_streams` rows (`connecting`/`streaming`/`reconnecting`/`paused`) are closed `failed{restart}` with `ended_at = now` (seconds counted up to the last bucket written) and **each publishes `ai.stream_failed{reason: restart, seconds}`** in the same transaction, so reporting's open/closed pairing (LLD-09 §3.2 step 12) completes; `awaiting_consent` rows keep waiting until their deadline |
 | Asterisk restart | Tap channels vanish with the call (LLD-01) |
 | Relay port exhausted | Stream `unavailable{no_port}`; alert |
 | Concurrent stop + reconnect | All transitions for a stream go through one goroutine (stream actor) |
@@ -325,6 +341,9 @@ Audit: `ai.provider.create/update/delete`, `ai.policy.update`,
 | E-03 | E | Given a provider that reads 1 frame/s, Then frames drop and the call's RTP jitter is unchanged (AC-04.4) |
 | E-04 | E | Given PCI pause, Then the fake provider receives no frame in the interval |
 | E-05 | E | Given full load (installation capacity) with AI on vs off, Then MOS and jitter distributions are equal within measurement noise (AC-04.1) |
+| I-06 | I | Given a call's `participant.joined`, `call.pci_paused` and `participant.left` delivered in order to the per-call actor, Then the stream ends `stopped` and never re-taps; a restart between messages resumes from persisted state |
+| I-07 | I | Given a stream in `paused`, When `ai.tap_lost{resume_failed}` arrives, Then it becomes `failed{resume_failed}`, the breaker count is unchanged and `ai.stream_failed` is published |
+| I-08 | I | Given an `awaiting_consent` row and an app restart, When `call.consent_satisfied` arrives after restart, Then the tap starts; with no event, Then after the deadline the row is `unavailable{consent_timeout}` |
 | I-05 | I | Given `require_consent` and `participant.joined.consent = pending`, When `call.consent_failed` arrives, Then the stream is `unavailable{consent}` and no ARI tap call is made; with `satisfied` the tap starts |
 | C-01 | C | Given the AI settings page, When credentials are saved, Then the field shows "Saved" and never the value |
 | A-01 | A | Given one self-hosted and one commercial provider, When the admin switches by configuration only, Then the next call streams to the new provider (AC-04.6) |
@@ -348,7 +367,7 @@ E-02/E-03 become the regression tests.
 |---|---|
 | Trigger | Console IVR builder "Generate from description", or a partner calling `GenerateIVRDraft` (FBR-R1-06: public API) |
 | Actors | Tenant administrator (`ivr.generate`) |
-| Preconditions | Tenant AI enabled **and** a provider with capability `generate_text`; not suspended; rate limit not exceeded. AI off → the RPC refuses and the builder hides the button (the builder works fully without AI) |
+| Preconditions | **"AI enabled for text"** means exactly: `ai_text_policies.enabled = true` **and** its `provider_id` names an enabled `ai_providers` row whose `capabilities` contain `generate_text` **and** `ai_stream_policies.suspended_at IS NULL` (tenant AI suspension applies to both). It is independent of audio streaming: a tenant may generate flows without streaming any call audio, and vice versa. Rate limit not exceeded. Not met → the RPC refuses and the builder hides the button (the builder works fully without AI) |
 
 ### 4.2 Sequence
 
@@ -357,7 +376,7 @@ E-02/E-03 become the regression tests.
 | 1 | console | Loads known destinations through pbx-core's public list RPCs (extensions, queues, ring groups, voicemail, schedules) |
 | 2 | console/partner | `AIService.GenerateIVRDraft{description, language, time_zone, known_destinations[]{id, kind, label}}` |
 | 3 | ai-pipeline | `Redact(description)` (pure, §6) → `BuildPrompt` (pure): fixed system prompt + the D-91 graph JSON Schema + rules + the destination list + the redacted description |
-| 4 | ai-pipeline | `TextGenerator.Generate` with JSON-schema-constrained output where the adapter supports it; timeout 30 s |
+| 4 | ai-pipeline | `TextGenerator.Generate` on the adapter for `ai_text_policies.provider_id`, with JSON-schema-constrained output where the adapter supports it; timeout 30 s |
 | 5 | ai-pipeline | Parse → `ivrgraph.Validate(graph, known)` (pure, shared with pbx-core publish) |
 | 6 | ai-pipeline | Invalid → **one** repair round sending the issues back; still invalid → `outcome = invalid`, return issues, no graph |
 | 7 | ai-pipeline | INSERT `ai_flow_generations`; audit `ivr.generate` |
@@ -393,7 +412,7 @@ outcome (`valid`, `valid_with_unresolved`, `invalid`, `provider_error`,
 | `ai.gen.timeout` | 30 s | 5–120 s | installation |
 | `ai.gen.rate_limit` | 20 per tenant per hour | 1–500 | tenant |
 | `ai.gen.max_tokens` | 4,000 output | 500–16,000 | installation |
-| `ai.gen.redact` | on | on/off | tenant (OWNER DECISION §6) |
+| `ai_text_policies.redact` | on | on/off | tenant (OWNER DECISION §6) |
 
 Failure: provider error/timeout → `Unavailable`, row `provider_error`;
 malformed JSON → repair round; nothing is ever saved on failure. INV-05:
