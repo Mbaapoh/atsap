@@ -148,8 +148,12 @@ func GraceState(now, lastConfirmedAt time.Time) GraceStatus
 ```go
 // licensing/ports — HLD 04 §4's four methods.
 type LicenseManager interface {
-    ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, requestedChannels int) (CapacityVerdict, error)
-    ReleaseCapacity(ctx context.Context, callID shareddomain.CallID) error // keyed by call, so idempotent (D-58)
+    ValidateCapacity(ctx context.Context, tenantID shareddomain.TenantID, reservationKey string, requestedChannels int) (CapacityVerdict, error)
+    ReleaseCapacity(ctx context.Context, reservationKey string) error // keyed, so idempotent (D-58)
+    // reservationKey is opaque to licensing and counts one unit per key:
+    // "<call_id>" for a call's own reservation, "<call_id>/<participant_id>"
+    // for an extra leg (consult, ad-hoc party, supervisor) — LLD-01 §11, §23.
+    // This matches the built telephony port (api/internal/telephony/ports).
     ApplyLicenseKey(ctx context.Context, signedPayload []byte) error
     VerifyDailyEntitlement(ctx context.Context) (EntitlementStatus, error)
 }
