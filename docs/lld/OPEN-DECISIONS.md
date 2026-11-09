@@ -70,7 +70,7 @@ owner may simply accept.
 
 ## 4. Cross-LLD follow-ups still open
 
-- LLD-02 (identity) must publish `tenant.status_changed{tenant, status,
+- LLD-02 (identity) must publish `tenant.status_changed{tenant_id, status,
   at}` through the outbox, because webhook holding on suspension needs
   it; today `SetTenantStatus` only writes an audit entry.
 - Design still missing (product-owner review, 2026-11-09): the IVR

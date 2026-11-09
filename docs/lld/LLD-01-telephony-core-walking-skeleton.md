@@ -388,6 +388,7 @@ goes to `Disconnected` on `Left(reason)`.
 | Parked | `Retrieved` | `pbx-core`'s park row won (§16) | Connected | `call.unparked` |
 | Parked | `ComebackStarted` | `Continue{park_timeout}` returned a ring plan (§16) | Transferring | `call.park_recalling` |
 | Parked | `ComebackToApplication` | `Continue{park_timeout}` returned voicemail/IVR (§16) | Connected | counterpart is the application; `call.park_fallback` |
+| Parked | `ComebackToQueue` | `Continue{park_timeout}` returned a queue (comeback disabled or chain ends in a queue, §16) | OnHold | `hold_origin=queue`; bridge MOH of `Q` (§23.1); `call.park_fallback` |
 | Connected, OnHold | `BlindTransferStarted` | subject of the operation | Transferring | `call.transfer_started` |
 | Transferring | `TargetAnswered` | — | Connected | `call.transferred` |
 | Transferring | `FallbackToApplication` | fallback is voicemail or IVR | Connected | counterpart is the application |
@@ -913,7 +914,9 @@ resulting `participant_state`. Errors never include an engine identifier.
    | Held | reminder tick | holder still live | Held | short tone to holder (`POST /channels/{B}/play?media=sound:beep`), `call.hold_reminder` |
    | Held | holder leaves | — | Recalling | `InboundRouter.Continue{reason: hold_orphaned, destination: holder's extension}`; A stays on MOH and runs the returned plan (default: holder's devices 20 s, then their no-answer rule) |
    | Recalling | a plan leg answers | — | Resumed | new holder Participant joins `M`, A unheld |
-   | Recalling | plan reaches an application terminal (voicemail, queue) | — | FellBack | A `Transferring` → `Connected` to the application |
+   | Recalling | `Continue` returns a plan that is not a recall of the holder (the holder's no-answer chain moved on to another ring destination) | — | FellBack | A `OnHold` → `Transferring` (§11.2 `RecallPlanStarted`), then follows that plan |
+   | Recalling | plan reaches voicemail or IVR | — | FellBack | A `OnHold` → `Connected` to the application (§11.2 `FallbackToApplication`) |
+   | Recalling | plan reaches a queue | — | FellBack | A stays `OnHold`, `hold_origin=queue` (§11.2 `FallbackToQueue`, §23.1) |
    | Recalling | plan exhausted / `Refuse`, not emergency | — | Abandoned | play `sound:vm-goodbye`, A `Disconnected(hold_abandoned)` |
    | Recalling | plan exhausted, emergency call | — | Recalling | `Continue` again (INV-01) |
    | Held | subject leaves | — | Ended | MOH gone with the channel |
@@ -1765,7 +1768,7 @@ type ParticipantView struct { // CallControl.LiveParticipants rows (presence res
    `PlayToBridge`; `LicenseManager.ValidateCapacity/ReleaseCapacity`.
 7. **API.** Defined in LLD-03 §3.17. Telephony errors: target not
    Connected → `ErrTargetNotConnected` (`FAILED_PRECONDITION` "That call
-   isn't connected"); call already monitored → `ErrMonitorBusy{SupervisorName}`
+   isn't connected"); call already monitored → `ErrMonitorBusy{SupervisorID}` (telephony holds no display names; pbx-core looks up the name for the console wording)
    (`FAILED_PRECONDITION` "<name> is already monitoring this call.",
    LLD-03 wording); supervisor busy →
    `ErrSupervisorBusy` (`FAILED_PRECONDITION` "You're already monitoring a
@@ -1909,7 +1912,7 @@ their designs are final there. Each lands in the OpenSpec change named.
 | `participant.joined` / `participant.left` | [LLD-10 §3](LLD-10-ai-pipeline.md) (AI-01 starts from it) | Payload gains `role`, `extension_id?`, `principal_id?`, `direction`, `joined_at`/`left_at`, `left_reason`; emitted for every Participant including re-homed and supervisor ones (`audibility` included so the tap can skip monitors). Telephony never calls `ai-pipeline`. Also `consent` (`not_evaluated`, `not_required`, `pending`, `satisfied`, `failed`) and `pci_paused` (bool), both read from the call's state at emission |
 | Consent and PCI events | [LLD-09](LLD-09-reporting.md), [LLD-10](LLD-10-ai-pipeline.md) | `call.consent_satisfied{call_id, at, method, policy_id}` (method includes `on_demand_announced` when an on-demand recording's announcement played) and `call.consent_failed{call_id, at, reason}`, each in the transaction that records the consent outcome. `call.pci_paused` / `call.pci_resumed{call_id, at, actor_id?, auto}`. **`pci_paused` is call state** (`calls.pci_paused`, migration 0030), so a Participant joining while paused is published with `pci_paused=true` and no tap is started. `recording.started` / `recording.stored` carry `segment_no` |
 | Recording RPCs `StartCallRecording`, `StopCallRecording`, `PauseCallRecording`, `ResumeCallRecording` | [LLD-09 §4–§5](LLD-09-reporting.md) (RC-01, RC-07) | On `TelephonyService`; inbound port `RecordingControl{Arm, Start, Stop, Pause, Resume}`; ACL port `EngineRecorder{Play, RecordBridge, StopLive, Mute, Unmute, FetchStored, DeleteStored}` over `POST /bridges/{id}/record`, `POST /recordings/live/{name}/stop|mute|unmute`, `GET /recordings/stored/{name}/file`, `DELETE /recordings/stored/{name}`. Because every flow keeps `M` (§11.4), hold, blind transfer, completed attended transfer, park and pickup need **no** new segment; a park keeps the parked party in `M` (D-99), so **no new segment while parked** (the segment records the MOH). Only a recorded transferor moving into the consult bridge `K` starts a segment there, per LLD-09 §4.3 step 7; a queue caller in `Q` before any agent answers is not yet recorded (LLD-09 starts recording on `M`). **PCI pause** is allowed when the call has a live recording **or** an AI tap (either suffices): it mutes live segments and calls `MediaTap.Suspend` (not `Stop`) on every tap of the call synchronously, sets `calls.pci_paused`, and emits `call.pci_paused`; resume reverses with `MediaTap.Resume` and `call.pci_resumed` |
-| `MediaTap` inbound port | [LLD-10 §3](LLD-10-ai-pipeline.md) (AI-01) | `Start(ctx, TapRequest{CallID, ParticipantID, StreamID, RelayAddr}) (TapHandle, error)` (returns `ErrPCIPaused` while the call is PCI-paused), `Stop(ctx, TapHandle) error`, `Suspend(ctx, TapHandle) error` (deletes the snoop `aitap-<stream>` only; the externalMedia channel and bridge stay, so no audio flows) and `Resume(ctx, TapHandle) error` (a new snoop joins the same bridge): snoop `spy=in&whisper=none&snoopId=aitap-<stream>`, `POST /channels/externalMedia` (`encapsulation=rtp`, `transport=udp`, `format=slin16`, `channelId=aixm-<stream>`), a mixing bridge `aitapbr-<stream>`. `StasisStart` for `aitap-`/`aixm-` ids never creates a Participant, reserves capacity or writes a CDR. The tap follows the Participant: re-home (§11.6) or a new channel ends it (`participant.left`), and AI-01 restarts it on the new `participant.joined`. Gated by SPIKE AI-S1. **Unexpected loss** of `aitap-`/`aixm-` (not caused by `Stop`, `Suspend` or call end) emits internal `ai.tap_lost{stream_id, reason}`; telephony's own deletions never do |
+| `MediaTap` inbound port | [LLD-10 §3](LLD-10-ai-pipeline.md) (AI-01) | `Start(ctx, TapRequest{CallID, ParticipantID, StreamID, RelayAddr}) (TapHandle, error)` (returns `ErrPCIPaused` while the call is PCI-paused), `Stop(ctx, TapHandle) error`, `Suspend(ctx, TapHandle) error` (deletes the snoop `aitap-<stream>` only; the externalMedia channel and bridge stay, so no audio flows) and `Resume(ctx, TapHandle) error` (a new snoop joins the same bridge): snoop `spy=in&whisper=none&snoopId=aitap-<stream>`, `POST /channels/externalMedia` (`encapsulation=rtp`, `transport=udp`, `format=slin16`, `channelId=aixm-<stream>`), a mixing bridge `aitapbr-<stream>`. `StasisStart` for `aitap-`/`aixm-` ids never creates a Participant, reserves capacity or writes a CDR. The tap follows the Participant: re-home (§11.6) or a new channel ends it (`participant.left`), and AI-01 restarts it on the new `participant.joined`. Gated by SPIKE AI-S1. **Unexpected loss** of `aitap-`/`aixm-` (not caused by `Stop`, `Suspend` or call end) emits internal `ai.tap_lost{stream_id, reason}`; telephony's own deletions never do, with the single exception of a failed `Resume` (`reason: resume_failed`). `reason` ∈ {`channel_destroyed`, `bridge_lost`, `engine_lost`, `resume_failed`} (LLD-10 maps anything else to `other`) |
 | `usage_seconds.quality_mos` | [LLD-09 §8](LLD-09-reporting.md) (RC-06) | Migration 0030 also runs `ALTER TABLE usage_seconds ALTER COLUMN quality_mos DROP NOT NULL, ALTER COLUMN quality_mos DROP DEFAULT` (and the same for `quality_jitter`, `quality_loss`): quality comes from RTCP SR/RR windows (`participant.rtcp_window`, SPIKE R-S1), never a fabricated 4.50 |
 | `MaintenanceGate` | [LLD-12 Part B](LLD-12-provisioning-and-lifecycle.md) | Call admission (`Screening`, and arriving-call refusal before it) calls `Admit(ctx, emergency)` first: `ErrDraining` → `RefusalUnavailable` (SIP 503, Q.850 cause 41); emergency always admitted (INV-01). New legs **inside** an existing call (transfer, consult, recall, pickup leg, ad-hoc party) are not call setups and are always admitted (INV-03); a new arriving call for pickup, retrieve or room entry is gated like any other. `ActiveCallStats()` feeds `drain status` |
 | `CallActivity.ActiveOnExtensions` | [LLD-12 §A.6](LLD-12-provisioning-and-lifecycle.md) | Inbound port telephony implements for provisioning (reboot/firmware/resync deferred while a line is busy, INV-03): `ActiveOnExtensions(ctx, tenant shareddomain.TenantID, ids []shareddomain.ExtensionID) (map[shareddomain.ExtensionID]bool, error)`. True when the extension has any non-`Disconnected` Participant (Invited/Ringing included, monitoring supervisors included) on a non-terminated call of that tenant; answered from the in-memory call set (no DB read on the hot path); unknown ids map to false. Tests: ringing extension → true (U); another tenant's extension id → false (U); engine gap during reconcile → answers from the last reconciled state (U) |
@@ -1998,6 +2001,10 @@ are the names LLD-03 uses.
        Missed(ctx context.Context, offer OfferID, who PartyRef, cause string) error // agent or callback customer
        Ended(ctx context.Context, entry QueueEntryID, reason string) error
        CallerLeft(ctx context.Context, entry QueueEntryID) error
+       // CallbackConnected: the callback customer confirmed (pressed 1) and was moved into the
+       // agent's main bridge by DialCallback. ParticipantAnswered fires earlier, before the
+       // confirmation, and must not be used for this.
+       CallbackConnected(ctx context.Context, offer OfferID) error
        // prompt is the PromptID of the Prompt program that collected the digit, or nil for a key
        // pressed during MOH or an announcement (e.g. the callback key).
        DtmfPressed(ctx context.Context, entry QueueEntryID, prompt *PromptID, digit string) error
@@ -2075,7 +2082,7 @@ it: migration 0033 adds
 `CREATE UNIQUE INDEX monitor_sessions_one_per_call ON monitor_sessions
 (tenant_id, call_id) WHERE ended_at IS NULL;` next to the per-supervisor
 index. A second `StartMonitor` on the same call fails the insert and
-returns `ErrMonitorBusy{SupervisorName}` (pbx-core: `FAILED_PRECONDITION`
+returns `ErrMonitorBusy{SupervisorID}` (telephony holds no display names; pbx-core looks up the name for the console wording) (pbx-core: `FAILED_PRECONDITION`
 "<name> is already monitoring this call."). Test: two supervisors start at once →
 exactly one session (I).
 

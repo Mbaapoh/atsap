@@ -3715,6 +3715,47 @@ every reorder would rewrite four documents.
 
 ---
 
+**D-101 · Cross-tenant reads use flag-gated policies (the 0016
+pattern); new database roles come from the installer and upgrade steps,
+never from app migrations (2026-11-09).**
+
+**Context:** Several LLDs (05, 09, 12) gave background workers
+cross-tenant reads through `SECURITY DEFINER` functions and created new
+roles in migrations. The tables are owned by `atsapbx_app`, which has
+no BYPASSRLS, and they are FORCE RLS
+(`deploy/postgres/init/02-atsapbx.sql`). A definer function owned by
+that role therefore still sees zero rows. `atsapbx_app` also has no
+CREATEROLE, so `CREATE ROLE` in a migration fails.
+
+**Decision:**
+- **A cross-tenant read** follows migration 0016 (`carrier_ingress_match`):
+  - a `FOR SELECT` policy on each table read, applying only while a
+    named session flag (`app.<purpose>`) is `on`;
+  - one function that sets the flag for its single query and clears it
+    before returning, within the caller's transaction;
+  - `REVOKE ALL … FROM PUBLIC` on the function, with EXECUTE granted
+    only to the role that needs it;
+  - SELECT only: writes stay per tenant under normal RLS.
+- **A new database role** (`atsap_webhook_worker`, `atsap_retention`,
+  `atsap_backup`, `atsap_device_worker`, …) is created by the installer's
+  bootstrap and, on existing installations, by the upgrade step's
+  privileged role-provisioning stage (LLD-12 Part B). That stage is the
+  only place a superuser credential is used. Migrations may grant to a
+  role only after checking that it exists, and must fail with a clear
+  message naming the upgrade step when it does not.
+
+**Alternatives:**
+- *BYPASSRLS worker roles.* Rejected except for the existing outbox
+  worker: the right is broader than any single purpose.
+- *Definer functions owned by a superuser.* Rejected: migrations do not
+  run as a superuser, and a superuser-owned function is a privilege
+  escalation surface.
+
+**Related Decisions:** D-55, D-56, D-77, D-98, D-100
+**Traceability:** migration 0016; LLD-05, LLD-09, LLD-12
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

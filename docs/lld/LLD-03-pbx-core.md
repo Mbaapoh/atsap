@@ -364,8 +364,12 @@ CREATE TABLE agent_reason_codes (
 CREATE UNIQUE INDEX ON agent_reason_codes (tenant_id) WHERE is_default;
 
 -- Composite FKs to principals need a (tenant_id, id) key; identity's table has only the PK.
--- Added here with identity's agreement (no data change; id is already unique):
-ALTER TABLE principals ADD CONSTRAINT principals_tenant_id_key UNIQUE (tenant_id, id);
+-- Rule (A24, D-100): the FIRST pbx-core change that ships a composite FK to principals
+-- (pbx-voicemail in the §12 order, before pbx-agents) adds this key in its own migration;
+-- every later change repeats it idempotently. No data change; id is already unique.
+DO $$ BEGIN
+  ALTER TABLE principals ADD CONSTRAINT principals_tenant_id_key UNIQUE (tenant_id, id);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL; END $$;
 
 CREATE TABLE agents (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -473,8 +477,9 @@ type AgentStates interface {
     // Ready→Busy for the longest-ready agent in the campaign (dial-ahead); ok=false when none.
     // Returns the agent and the reservation id written to agents.reservation_id (reserved_ref = attempt).
     ClaimLongestReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, attempt uuid.UUID) (principal shared.PrincipalID, reservationID uuid.UUID, ok bool, err error)
-    // Every other event (LegConnected, CustomerBridged, CustomerLeft, Disposed, WrapUpExpired,
-    // SetPause{code}, SetReady, LegFailed, LegLost, CampaignStopped, ReservationReleased, Join/LeaveCampaign).
+    // Every other event, by the transition table's names (LLD-06 uses the same): LegConnected,
+    // CustomerBridged, WorkEnded{ref}, WrapUpEnded, WrapUpExpired, SetNotReady{code}, SetReady,
+    // LegFailed, LegLost, CampaignStopped, ReservationReleased, CallbackAborted, Join/LeaveCampaign.
     Transition(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID, ev AgentEvent) error
     ReasonCodes(ctx context.Context, tx pgx.Tx, tenant shared.TenantID) ([]ReasonCode, error)
 }
@@ -932,7 +937,7 @@ signatures are authoritative:
 | `QueueMedia.DialCallback(offer, decision)` | New outbound call whose first party is the agent (MOH) until the customer presses 1 (§3.3.3; LLD-01 §23.1) | `channels` originate, `moh`, `addChannel` |
 | `QueueMedia.Leave(entry, destination, routing)` | Leave the holding bridge and continue at a destination (overflow) through `InboundRouter.Continue`; `routing` is the opaque `{hops, visited}` blob (§3.5.2) | `removeChannel` |
 | `QueueMedia.Prompt(entry, prompt_id, program)` → `error` | Stop MOH, run a `Play`/`Collect` `Program` on the queued caller's channel inside `Q` through LLD-01's Program runner (§3.5.1), restart MOH. Returns only an error; collected digits arrive through `QueueOutcome.DtmfPressed` carrying the `PromptID` (LLD-01 §23.1). Used by the callback request (§3.3.3) | `DELETE …/moh`, `channels/{id}/play`, `ChannelDtmfReceived` |
-| `QueueOutcome` (pbx implements) | `Answered(offer, agent)` (synchronous, **2 s deadline**: on timeout or error telephony treats it as `Reject`), `Missed(offer, who PartyRef, cause)` with LLD-01's `PartyRef{PrincipalID *PrincipalID (agent leg), Number string (callback customer E.164), ParticipantID}`, `Ended`, `CallerLeft(entry)`, `DtmfPressed(entry, digit, prompt *PromptID)` (nil outside a `Prompt`) | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
+| `QueueOutcome` (pbx implements) | `Answered(offer, agent)` (synchronous, **2 s deadline**: on timeout or error telephony treats it as `Reject`), `Missed(offer, who PartyRef, cause)` with LLD-01's `PartyRef{PrincipalID *PrincipalID (agent leg), Number string (callback customer E.164), ParticipantID}`, `Ended`, `CallerLeft(entry)`, `CallbackConnected(offer)`, `DtmfPressed(entry, prompt *PromptID, digit)` (nil outside a `Prompt`) | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
 | `LiveCalls.List(tenant)` | Live calls of one tenant with their entry/offer ids, for recovery | `GET /channels` |
 
 **4. State machines**
@@ -1197,10 +1202,10 @@ Request (the caller keeps their place: `entered_at` never changes):
 1. Offer prompt (as an announcement, §3.3.1 collisions): "To be called back
    without losing your place, press 1." Re-offered with each
    position/EWT announcement.
-2. `ChannelDtmfReceived` = key → `QueueOutcome.DtmfPressed(entry, key,
-   nil)` → pbx-core calls `QueueMedia.Prompt(entry, prompt_id, program)`
+2. `ChannelDtmfReceived` = key → `QueueOutcome.DtmfPressed(entry, nil,
+   key)` → pbx-core calls `QueueMedia.Prompt(entry, prompt_id, program)`
    (§3.3.1 port table; returns only an error, and each collected digit
-   comes back as `DtmfPressed(entry, digit, &prompt_id)`, which pbx-core
+   comes back as `DtmfPressed(entry, &prompt_id, digit)`, which pbx-core
    feeds to the pure prompt step until it completes): MOH stops
    and LLD-01's Program runner runs this `Program` on the caller's channel
    **inside the holding bridge `Q`**, so the caller never leaves the queue
@@ -1248,8 +1253,11 @@ Delivery (**agent-first**):
    decision's confirm `Program`: "This is your callback from <tenant>. Press 1 to
    speak to an agent now." `Collect{1, 10 s}`.
 9. `1` → caller joins the agent in the callback call's main bridge
-   (`QueueMedia.DialCallback`, LLD-01 §23.1) →
-   `connected`; `CALLBACK_CONNECTED`, outbox `pbx.callback_completed`.
+   (`QueueMedia.DialCallback`, LLD-01 §23.1); telephony then calls
+   `QueueOutcome.CallbackConnected(offer)`, and on it pbx-core moves the
+   entry `callback_dialing → connected` and writes `CALLBACK_CONNECTED`,
+   outbox `pbx.callback_completed`. (`ParticipantAnswered` fires before
+   the confirmation and is not this signal.)
 10. No answer (30 s), busy, rejected, unreachable, or no confirmation in
     10 s (answering machines land here) → `callback_attempts + 1`; if <
     `callback_max_attempts` and before expiry → `callback_pending` with
@@ -1624,7 +1632,7 @@ CREATE TABLE voicemail_mailbox_members (     -- shared mailboxes only
   tenant_id UUID NOT NULL, mailbox_id UUID NOT NULL,
   principal_id UUID NOT NULL, PRIMARY KEY (tenant_id, mailbox_id, principal_id),
   FOREIGN KEY (tenant_id, mailbox_id) REFERENCES voicemail_mailboxes (tenant_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (tenant_id, principal_id) REFERENCES principals (tenant_id, id) ON DELETE CASCADE); -- key added by 0045 (A24)
+  FOREIGN KEY (tenant_id, principal_id) REFERENCES principals (tenant_id, id) ON DELETE CASCADE); -- needs principals_tenant_id_key: added IF NOT EXISTS by whichever pbx-core change ships first (A24, D-100)
 CREATE TABLE voicemail_greetings (
   tenant_id UUID NOT NULL, mailbox_id UUID NOT NULL,
   kind VARCHAR(12) NOT NULL CHECK (kind IN ('unavailable','busy','name')),
