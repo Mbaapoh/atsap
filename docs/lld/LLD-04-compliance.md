@@ -18,6 +18,10 @@
 | "AMD time counts against the connect limit" with no definition of the clock | The connect clock is defined in §7.4: **from answer** when no AMD runs (R1.0), **from greeting end** with AMD (R2), and AMD that has not decided by the deadline is treated as *human* | HLD-21 §4, 47 CFR 64.1200(a)(7)(i) |
 | §9 "emergency always permits" | Emergency **never reaches** compliance: the screening path bypasses it before `Decide`, and the dialler rejects emergency numbers outright (INV-01) | PRD INV-01 |
 | `compliance_policies` keyed by tenant (one policy) while campaigns reference a named profile | A tenant has **several named profiles**; a campaign references one by id | US-15.6 |
+| Minimum ring "measured from dial start" | Measured **from the first 180/183**; the dial timeout is a backstop of setup allowance + ring time (§7.4) | 47 CFR 64.1200(a)(6) |
+| §10 claimed a DB `CHECK` proves the verdict | A CHECK cannot read another table: LLD-06's **trigger** on `dialer_attempts` proves the decision row exists, belongs to the attempt and permitted (§10) | D-98 verifier |
+| Abandonment buckets and events in 0052 | Moved to **0058**, the `compliance-abandonment` change's own migration, so migration numbers rise in handoff order (§14) | golang-migrate ordering |
+| Abandonment events emitted by compliance | The **dialler** owns the evaluator and its `dialer.abandon.*` events; compliance owns counters, profile and rule 12 | one owner per state |
 
 ## 1. Scope and non-goals
 
@@ -98,7 +102,8 @@ type Blackout struct{ Region string; Date civil.Date }
 
 type ContactFacts struct {        // gathered by the orchestration, passed in
     NumberDigits   string         // E.164 without "+"
-    Zones          []string       // candidate IANA zones (§7.1); empty = unknown
+    Zones          []*time.Location // candidate zones (§7.1), loaded by the adapter; empty = unknown.
+                                    // Evaluate does no tz-file I/O: the binary embeds time/tzdata.
     Region         string         // ISO 3166-2 when known
     LineType       LineType       // WIRELESS | LANDLINE | VOIP | UNKNOWN
     Consent        ConsentType    // NONE | EXPRESS | EXPRESS_WRITTEN
@@ -167,7 +172,7 @@ Rule 12 never refuses a reserved-agent attempt, a preview or a manual
 dial: those cannot abandon, so they cannot add to the ratio. This is
 what lets a breached campaign be resumed in reserved mode (LLD-06 §6.4).
 
-## 4. Data model (migrations 0050–0052; 0053–0059 are LLD-06)
+## 4. Data model (migrations 0050–0052 and 0058; LLD-06 holds 0053–0057 and 0059)
 
 RLS policy on every table below, exactly:
 
@@ -280,10 +285,11 @@ CREATE TABLE contact_consents (          -- consent facts by number, written by 
 ```
 
 Grants: `SELECT, INSERT, DELETE` on `dnc_entries`; `SELECT, INSERT` on
-`dnc_sources`, `opt_outs` (no `DELETE` — an opt-out is permanent; a
-correction is an audited `RemoveOptOut` that writes an audit row and is
-restricted to `compliance.optout.remove`, OWNER DECISION §12.5);
-`SELECT, INSERT, UPDATE` on `contact_consents`.
+`dnc_sources`; `SELECT, INSERT, DELETE` on `opt_outs` — the `DELETE` exists
+only for `RemoveOptOut`, which the service allows to holders of
+`compliance.optout.remove` (compliance officer, OWNER DECISION §12.5), never
+for an opt-out the contact made, and audits with before/after in the same
+tx; `SELECT, INSERT, UPDATE` on `contact_consents`.
 
 ### 4.3 `0052_compliance_decisions`
 
@@ -298,6 +304,16 @@ CREATE TABLE compliance_decisions (               -- append-only (INV-08)
 );
 CREATE INDEX compliance_decisions_period ON compliance_decisions (tenant_id, decided_at DESC);
 CREATE INDEX compliance_decisions_campaign ON compliance_decisions (tenant_id, campaign_id, decided_at DESC);
+CREATE UNIQUE INDEX compliance_decisions_attempt ON compliance_decisions (attempt_id) WHERE attempt_id IS NOT NULL;
+```
+
+Grants: `SELECT, INSERT` on `compliance_decisions` (no `UPDATE`/`DELETE`
+for the app role). LLD-06's verdict trigger reads this table under the
+same RLS policy.
+
+### 4.4 `0058_compliance_abandonment` (change `compliance-abandonment`)
+
+```sql
 CREATE TABLE compliance_abandon_buckets (         -- the rolling-ratio counters (§7.3)
   tenant_id UUID NOT NULL, campaign_id UUID NOT NULL, day DATE NOT NULL,   -- UTC day
   live_answered INT NOT NULL DEFAULT 0 CHECK (live_answered >= 0),
@@ -313,8 +329,8 @@ CREATE TABLE compliance_abandon_events (          -- the abandonment record kept
 CREATE INDEX compliance_abandon_events_number ON compliance_abandon_events (tenant_id, number_digits, abandoned_at DESC);
 ```
 
-Grants: `SELECT, INSERT` on `compliance_decisions` and
-`compliance_abandon_events` (no `UPDATE`/`DELETE` for the app role; a
+Grants: `SELECT, INSERT` on `compliance_abandon_events` (no
+`UPDATE`/`DELETE` for the app role; a
 retention job running as the migration owner deletes rows older than the
 policy's `retention_days`); `SELECT, INSERT, UPDATE` on buckets. The
 number is stored in decisions as an HMAC (tenant-keyed) plus last four
@@ -349,8 +365,14 @@ type Gate interface {
     // A Precheck verdict can never be stored on an attempt.
     Precheck(ctx context.Context, tx pgx.Tx, req DecideRequest) (domain.Verdict, error)
 
-    // Bulk pre-check for hopper refill: one round trip for n numbers.
-    PrecheckMany(ctx context.Context, tx pgx.Tx, base DecideRequest, numbers []string) ([]domain.Verdict, error)
+    // Bulk pre-check for hopper refill and import scrub: one round trip for n
+    // contacts, each with its own zone/region/country (base supplies tenant,
+    // policy, campaign, kind, At).
+    PrecheckMany(ctx context.Context, tx pgx.Tx, base DecideRequest, contacts []PrecheckContact) ([]domain.Verdict, error)
+}
+
+type PrecheckContact struct {
+    NumberDigits, Zone, Region, Country string
 }
 
 type DecideRequest struct {
@@ -371,8 +393,11 @@ type Decision struct { ID shared.UUID; Verdict domain.Verdict }
 
 // AbandonLedger is written by the dialler in the same tx as the attempt outcome.
 type AbandonLedger interface {
+    // The dialler passes ONE instant per outcome: for an abandon it calls
+    // RecordLiveAnswer(at) then RecordAbandon(ev{AbandonedAt: at}) with the same
+    // at, so both increments land in the same UTC-day bucket.
     RecordLiveAnswer(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, at time.Time) error
-    RecordAbandon(ctx context.Context, tx pgx.Tx, ev AbandonEvent) error  // also counts as live answer already recorded
+    RecordAbandon(ctx context.Context, tx pgx.Tx, ev AbandonEvent) error
     Stats(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, policy domain.ProfileID, at time.Time) (domain.AbandonStats, error)
 }
 
@@ -381,16 +406,35 @@ type OptOuts interface {
     RecordOptOut(ctx context.Context, tx pgx.Tx, o OptOut) error   // idempotent per (tenant, number)
 }
 
+// Consent is read before a prerecorded message (LLD-06 OB-08 voicemail drop).
+type Consent interface {
+    ConsentFor(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, numberDigits string) (domain.ContactFacts, error) // LineType, Consent filled
+}
+
 // Policies is read by the dialler to configure ring timeout, connect clock, message.
 type Policies interface {
     Get(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, id domain.ProfileID) (domain.Policy, error)
 }
 ```
 
+Pure helper for prerecorded messages (used with `Consent`):
+
+```go
+// PrerecordedAllowed: false under US_FCC unless Consent == EXPRESS_WRITTEN;
+// under CUSTOM follows ConsentRequired. Pure.
+func PrerecordedAllowed(p Policy, c ContactFacts) bool
+```
+
 `telephony-core`'s existing `ports.ComplianceEngine.Evaluate(tenant,
 destNumber)` (Screening) is satisfied by an adapter that calls `Decide`
 with `Kind=MANUAL` in its own transaction; the adapter, not
 `telephony-core`, knows about the profile (LLD-01 §5 seam unchanged).
+A dialler-originated leg carries `ComplianceDecisionID` in LLD-01 §23.3
+`AttemptRequest`: `PlaceAttempt` refuses without it (`ErrNoDecision`),
+and Screening records it on the Call and does not call `Decide` again, so
+one attempt has exactly one decision row. The verdict is proven where it
+is made: LLD-06's trigger on `dialer_attempts`, in the dialler's
+transaction.
 
 ### 5.2 Why two entry points (pre-check vs decide)
 
@@ -434,7 +478,8 @@ Permissions (new action strings; role grants are an LLD-02 change, §12.6):
 | `RemoveOptOut` | `number, reason (≥ 10 chars)` → `{}` | optout.remove | `FAILED_PRECONDITION` "Opt-outs recorded by the contact cannot be removed" when source ∈ {ABANDON_IVR, AGENT} |
 | `GetAbandonmentStatus` | `campaign_id` → `{live_answered, abandoned, ratio_pct, limit_pct, state: OK/APPROACHING/BREACHED, window_start}` | policy.read | `NOT_FOUND` |
 | `ListComplianceDecisions` | `period, campaign_id?, permitted?, reason?, paging` | decision.read | `INVALID_ARGUMENT` "Period may not exceed 92 days" |
-| `ExportComplianceDecisions` | same filter → server-streamed CSV | decision.export | audited; CSV cells formula-escaped |
+| `ExportComplianceDecisions` | same filter, **any period** → `{export_id}`; an async job writes chunked CSV files (≤ 1 M rows each, month by month) to the tenant object store | decision.export | audited; CSV cells formula-escaped; `RESOURCE_EXHAUSTED` "An export is already running" (one per tenant) |
+| `GetComplianceExport` | `export_id` → `{state: RUNNING/DONE/FAILED, rows, files[]{url (signed, 1 h)}}` | decision.export | `NOT_FOUND` |
 
 No RPC overrides a verdict; no request field sets `Permitted`;
 `RemoveOptOut` cannot remove an opt-out the contact made. A compliance
@@ -450,7 +495,7 @@ compliance check is unavailable" — the attempt is not placed.
 |---|---|---|
 | 1 | Contact `timezone` column (valid IANA) | that zone only |
 | 2 | Country +1 (NANP): NPA (or NPA-NXX where split) via `compliance_npa_zones` | the listed zones; **several = evaluate all, permit only if inside every one** |
-| 3 | Other country with exactly one zone (from Go's tz data, `country → zones`) | that zone |
+| 3 | Other country with exactly one zone (from the IANA `zone1970.tab`, vendored in the repo and compiled in with `go:embed`, parsed once at start into `country → zones`; zone rules come from `time/tzdata`, also embedded) | that zone |
 | 4 | Profile `default_timezone` **only when the country has one zone** | that zone |
 | — | none | `timezone_unknown` (refused, never server-local time) |
 
@@ -508,7 +553,7 @@ attempts once breached (rule 12).
 | **Clock start with AMD (R2)** | greeting end = the first `ChannelTalkingFinished` after answer, minus the TALK_DETECT silence threshold (500 ms); no speech within `initial_silence` → clock starts at answer |
 | **Deadline** | `ConnectDeadline = start + abandon_connect_limit` (2 s) |
 | **AMD and the deadline** | under `amd_counts_against_connect` the AMD decision must be made by `deadline − 300 ms`; an undecided AMD is treated as **human**. AMD may not run at all where `amd_permitted=false` (all profiles in R1.0) |
-| **Minimum ring** | `RingTimeout = max(campaign ring_timeout, min_ring)`; becomes the ARI dial `timeout` (seconds). Measured from dial start, which is never shorter than from first ringing. The dialler cannot cancel an unanswered attempt earlier, including on pause (INV-03 extended to ringing attempts) |
+| **Minimum ring** | Measured **from the first 180/183** (`ChannelStateChange` → `Ringing`, or `Dial` `RINGING`/`PROGRESS`) = `ring_started_at`. `RingTimeout = max(campaign ring_timeout, min_ring)` counts from there. The ARI dial `timeout` is only a backstop: `setup_allowance + RingTimeout` (30 + 25 s). No progress within the setup allowance → the leg never rang and is cancelled as a carrier failure. No cancel request (agent, pause, stop, breach, agent-leg loss) takes effect before `ring_started_at + min_ring` (LLD-06 §6.7) |
 | **Message** | played to the customer starting before the deadline: seller identity, a telephone number that accepts DNC requests during business hours, and (prerecorded telemarketing) a key-press opt-out — digit `abandon_optout_digit` writes `opt_outs` source `ABANDON_IVR` and plays a confirmation. Content is the tenant's recording; the console checklist names the three elements, but the platform cannot verify speech |
 | **Evidence** | `compliance_abandon_events.message_started_ms` records how long after the clock start playback began |
 
@@ -537,7 +582,7 @@ Adding one is additive; renaming one is a breaking API change.
 | Power dialler | `Decide` in the attempt tx, at the dial instant | DIALER | Hopper used `Precheck` earlier; irrelevant to the verdict |
 | Preview | `Decide` when the agent clicks Dial | PREVIEW | `NextContact` used `Precheck` |
 | Callback | `Decide` at dial; `Precheck` when scheduled | CALLBACK | A callback time outside the window is refused at scheduling |
-| Manual dial from the agent console | `Decide` before origination | MANUAL | AC-15.1 |
+| Manual dial from the agent console | one `Decide` before origination; telephony Screening records the carried id and does not decide again (LLD-01 §23.3) | MANUAL | AC-15.1 |
 | Phone/API trunk call by a principal in an active dialler session | Screening adapter → `Decide` | MANUAL | OWNER DECISION §12.3 for other PBX calls |
 | Emergency | **never** — matched before Screening (INV-01); the dialler rejects emergency numbers at import and dial | — | |
 | Inbound | none | — | the caller chose to call |
@@ -558,7 +603,7 @@ Adding one is additive; renaming one is a breaking API change.
 
 | Rule | How it holds |
 |---|---|
-| INV-09 / BR-10 | `Evaluate` is the only producer of `Permitted`; the dialler cannot insert an attempt in state DIALING without a non-null `compliance_decision_id` whose verdict permitted (DB `CHECK` in LLD-06 §4) |
+| INV-09 / BR-10 | `Evaluate` is the only producer of `Permitted`. A `CHECK` cannot read another table, so LLD-06 §4.4 adds a **trigger** on `dialer_attempts`: any state past QUEUED requires a `compliance_decisions` row with that id, the same tenant, `attempt_id` = the attempt and `permitted`; BLOCKED requires a refusing one. Screening records the carried id (LLD-01 §23.3) rather than deciding again |
 | INV-01 | No emergency number reaches `Decide`; property test asserts the dialler rejects every number in the tenant's emergency catalogue |
 | INV-03 | Compliance never hangs up a call; breach only stops new attempts |
 | INV-08 | Decisions and abandon events are insert-only for the app role |
@@ -571,10 +616,9 @@ Events (outbox → NATS, subject `tenant.<id>.event.compliance.<action>`):
 | `optout.recorded` | `number_hash, source, campaign_id?, at` |
 | `dnc.imported` | `source_id, scope, accepted, rejected` |
 | `policy.updated` | `policy_id, version, changed_fields[]` |
-| `abandon.approaching` / `abandon.breached` / `abandon.recovered` | `campaign_id, ratio_pct, limit_pct, live_answered, abandoned` (emitted on state change only) |
 | `registry.stale` | `policy_id, synced_at` |
 
-Decisions are **not** events (volume); they are queried. Audit (via
+Abandonment state events are the dialler's (`dialer.abandon.*`, LLD-06 §6.4), because the dialler owns the evaluator. Decisions are **not** events (volume); they are queried. Audit (via
 `AppendAuditTx`, before/after): policy create/update/delete, windows,
 blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 
@@ -600,8 +644,13 @@ blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 | C16 | I | tenants A and B | A lists B's decisions/DNC | zero rows (RLS, INV-10) |
 | C17 | I | DNC REPLACE of 1 M rows, injected failure at row 900 000 | import | old set intact; no source row |
 | C18 | I | 31 daily buckets | `Stats` on day 31 | sums only the last 30 |
+| C18a | I | abandon at 23:59:59.900 UTC | `RecordLiveAnswer(at)` + `RecordAbandon(at)` | both in the same day bucket |
+| C18b | I | a dialler attempt moved to DIALING with another attempt's permitting decision id | update | LLD-06 trigger raises `check_violation`; one decision row per attempt |
+| C18c | U | `PrerecordedAllowed` US_FCC with EXPRESS / EXPRESS_WRITTEN | — | false / true |
+| C18d | I | 3 months of decisions | `ExportComplianceDecisions` | async job, 3 files, row count equals `ListComplianceDecisions` totals (AC-15.5) |
 | C19 | I | US_FCC profile | update `abandon_limit_pct` to 5 | `FAILED_PRECONDITION` (DB CHECK and service) |
 | C20 | I | app role | `UPDATE compliance_decisions` | permission denied |
+| C20a | I | compliance officer / supervisor | `RemoveOptOut` of a CONSOLE-sourced opt-out | deleted with audit row / `PERMISSION_DENIED`; an ABANDON_IVR opt-out → `FAILED_PRECONDITION` |
 | C21 | W | every refusal path of every RPC | call | fixed Connect code and detail; no SQL or legal text; no field named `permitted` in any request message |
 | C22 | B | compliance officer | creates a US profile, adds an FL window, uploads an FTC file | sees counts and masked numbers; console shows the 31-day freshness date |
 | C23 | E | listed number in a running power campaign and via the agent's manual dial | dial | never reaches the trunk (rig SIP trace) (AC-15.1) |
@@ -642,17 +691,20 @@ blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 | Internal/campaign DNC | yes | via Customer Profiles / lists | yes | yes, plus national with freshness gate |
 | Calling hours by state | `state_call_times` | communication time windows | yes | region windows, most-restrictive multi-zone |
 | Zone derivation | phone code + postal | postal, then area code | area code | contact zone, then NPA, then single-zone country |
-| Abandon limit | `drop_rate_group`, adaptive cap | predictive target | per campaign | per campaign rolling 30 days, enforced in pure `Evaluate` |
+| Abandon limit | `drop_rate_group`, adaptive cap | predictive target, no stop | per campaign | per campaign rolling 30 days, enforced in pure `Evaluate`; breach stops the campaign |
+| Minimum ring | dial timeout from originate | ring timeout per campaign | ring timeout | from first ringing, cancel deferred until min ring |
 | Override | admin can disable | n/a | admin can disable | **none** (INV-09) — deliberate difference |
 | Evidence per attempt | logs | CTRs | reports | one immutable decision row per attempt |
 
 ## 14. Handoff
 
-OpenSpec changes, in order (each one change, one commit per task):
-`compliance-profiles-and-gate` (0050–0051, §3, §5, §6 policy/DNC/opt-out),
-`compliance-evidence` (0052 decisions, export),
-`compliance-abandonment` (buckets, events, rule 12, status RPC) — the
-last must merge before LLD-06's power ratio > 1.0 is enabled.
+OpenSpec changes (each one change, one commit per task), interleaved
+with LLD-06's in the order of LLD-06 §15 so that migration numbers rise
+with it (golang-migrate never applies a lower version):
+1. `compliance-profiles-and-gate` — 0050, 0051 (§3, §5 `Precheck`, §6 policy/DNC/opt-out/consent);
+2. `compliance-evidence` — 0052 (decisions, `Decide`, export);
+3. *(LLD-06 0053–0057)*;
+4. `compliance-abandonment` — **0058** (buckets, abandon events, rule 12, `AbandonLedger`, status RPC) — must merge before LLD-06's `dialer-abandonment` enables ratio > 1.0.
 
 **References:** [Asterisk ARI](https://docs.asterisk.org/Configuration/Interfaces/Asterisk-REST-Interface-ARI/),
 [47 CFR 64.1200](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-B/part-64/subpart-L/section-64.1200),

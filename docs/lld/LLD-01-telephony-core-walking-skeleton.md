@@ -2173,7 +2173,7 @@ own `Capacity` port is replaced by this contract.
    |---|---|
    | `/channels/create` or `/dial` fails | capacity released; Call `Terminated(failed)`; `Ended{cause: engine}`; dialler records `NOT_PLACED engine` |
    | Agent leg lost while a customer is bridged | the customer is hung up `normal` (a party left the conversation, LLD-06 §5.4); `AgentLegLost` |
-   | Agent leg lost while a customer rings (not answered) | customer channel hung up (nothing in progress) |
+   | Agent leg lost while a customer rings (not answered) | telephony does **not** hang up the ringing customer: it reports `AgentLegLost` and leaves the leg to the dialler, which calls `Hangup` only after `first_alert_at + min_ring` (47 CFR 64.1200(a)(6); LLD-06 OB-02/OB-07). If the customer answers first, the dialler plays the abandonment message (LLD-04 §7) |
    | Event sink slow | buffered; overflow → `Resync` and the dialler reads `LiveAttempts` |
    | App restart, engine alive | with FL-04 re-adoption: attempts and sessions rebuilt from `appArgs` and `atsa-d-` bridge names; without: §22 sweep ends them and `LiveAttempts` is empty, so LLD-06 reconcile marks attempts `lost` |
    | Engine restart | all legs gone; `Ended{cause: engine_lost}` for each known attempt; sessions `AgentLegLost` |

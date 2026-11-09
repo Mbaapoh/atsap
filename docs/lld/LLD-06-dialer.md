@@ -5,8 +5,8 @@
 | **Bounded context** | `dialer` (Tier 2, HLD 04 §10.1) |
 | **Status** | **Draft — design only, rewritten to the Flow Definition of Ready (D-98) on 2026-11-07.** R1.0 is preview and power with the abandonment rules; predictive pacing and AMD are R2 (D-27, D-45, D-97) |
 | **Traces to** | BRD **FBR-R1-19**, FBR-R2-01, FBR-R2-02, FBR-R2-03, BR-06, BR-10; PRD EPIC-14 (US-14.1–14.7, AC-14.1–14.5), EPIC-15 (US-15.3, US-15.6, AC-15.1–15.6), §12.2; HLD-20 OB-01–OB-12; HLD-21 §3–§4; DECISIONS D-21, D-27, D-45, D-56, D-58, D-65, D-80, D-82, D-85, D-95, D-97, D-98 |
-| **Depends on** | LLD-04 compliance (**release gate**), LLD-03 agents (§3.3) and number inventory/`ChoosePresentation` (§3.12), LLD-08 licence capacity, `telephony-core` media gateway (LLD-01), LLD-09 reporting |
-| **Migrations** | `0053`–`0059` (LLD-04 holds `0050`–`0052`) |
+| **Depends on** | LLD-04 compliance (**release gate**), LLD-03 agents (§3.1.1 `AgentStates`) and number inventory/`ChoosePresentation` (§3.12), `telephony-core` `DialerMedia`/`DialerEvents` ports (LLD-01 §23.3; telephony creates the Call and reserves licence capacity per attempt, LLD-08), LLD-09 reporting |
+| **Migrations** | `0053`–`0057`, `0059` (LLD-04 holds `0050`–`0052` and `0058`); numbers rise in handoff order (§15), because golang-migrate never applies a version lower than the current one |
 | **Why this LLD** | D-45 makes power dialling R1.0. D-27 forbids debugging pacing and telephony at once; this LLD separates the loop (R1.0) from the algorithm (R2, §6.5) |
 
 ## 0. Contradictions resolved in this revision
@@ -21,6 +21,9 @@
 | 6 | AMD time vs FCC 2 s from greeting end, undefined | LLD-04 §7.4: clock **from answer** without AMD (R1.0), from greeting end with AMD (R2); undecided AMD = human | 47 CFR 64.1200(a)(7)(i) |
 | 7 | Hopper "compliance pre-checked" vs LLD-04 writing a row per `Decide` | Hopper uses **`Precheck`** (non-recording, advisory); only `Decide` at the dial instant authorises | LLD-04 §5.2 |
 | 8 | Agent states `Available/OnCall/WrapUp/Paused/LoggedOut` (LLD-03 §3.1) | **HLD-21 §3 set: `LoggedOut`, `Ready`, `Reserved`, `Busy`, `WrapUp`, `NotReady(reason)`**. Mapping: Available→Ready, OnCall→Busy, Paused→NotReady. LLD-03 owns the machine; the dialler never adds an agent state | HLD-21 §3, D-98 audit |
+| 9 | Dialler called `ValidateCapacity` and drove ARI directly | **Telephony originates** through `DialerMedia` (LLD-01 §23.3): it creates the Call and `call_id`, reserves capacity (LLD-08: only telephony calls `ValidateCapacity` per call) and releases it on termination | LLD-08, D-58 |
+| 10 | Minimum ring measured from dial start | **From the first 180/183** (`ChannelStateChange` → `Ringing`, or `Dial` `RINGING`/`PROGRESS`); nothing — system, agent, pause — cancels a ringing leg before `ring_started_at + min_ring` (§6.7) | 47 CFR 64.1200(a)(6) |
+| 11 | Abandonment breach only paused the campaign | Breach **stops** it: state `STOPPED_COMPLIANCE`; only a compliance officer resumes, in reserved mode (OWNER DECISION §14.7) | AC-15.3 "stops" |
 
 ## 1. Scope and non-goals
 
@@ -58,11 +61,11 @@ console script around Asterisk.
 
 | Concern | Owner | Dialler uses |
 |---|---|---|
-| Agent state machine (`Ready`, `Reserved`, `Busy`, `WrapUp`, `NotReady(reason)`) and pause-code catalogue | `pbx-core` (LLD-03) | port `AgentStates` (§5.2) |
+| Agent state machine (`Ready`, `Reserved`, `Busy`, `WrapUp`, `NotReady(reason)`) and pause-code catalogue | `pbx-core` (LLD-03 §3.1.1) | port `AgentStates` (§6.3); wake-up on `NOTIFY dialer_wake` written by LLD-03 on every commit into `Ready` |
 | Verdicts, abandonment counters, profiles | `compliance` (LLD-04) | ports `Gate`, `AbandonLedger`, `OptOuts`, `Policies` |
 | Presentation numbers | `pbx-core` (LLD-03 §3.12 `tenant_numbers`, `ChoosePresentation`) | port `Presentation` (§6.12) |
-| Licence capacity | `licensing` (LLD-08) | port `Capacity` (= `LicenseManager.ValidateCapacity/ReleaseCapacity`, keyed by call, D-58) |
-| Channels, bridges, playback, recording | `telephony-core` | port `Media` (ARI) |
+| Licence capacity | `licensing` (LLD-08), reserved **by telephony** when it originates | nothing directly; `DialerMedia.PlaceAttempt` returns `ErrCapacity` |
+| Calls, channels, bridges, playback, recording | `telephony-core` | ports `DialerMedia` (commands) and `DialerEvents` (sink the dialler implements), §6.3 |
 | Lists, campaigns, leads, hopper, attempts, sessions, callbacks | `dialer` | — |
 
 ### 3.2 System outcome vocabulary (fixed) and default dispositions (editable)
@@ -98,7 +101,19 @@ Default dispositions (agent, two clicks, AC-14.6), each mapped to a
 A campaign may add up to 30 codes; each code's next action is one of
 `COMPLETE | RETRY | CALLBACK | INVALID | OPT_OUT | DNC_CAMPAIGN`.
 
-## 4. Data model (migrations 0053–0059)
+## 4. Data model (migrations 0053–0057, 0059)
+
+| Migration | Change (§15 order) | Tables |
+|---|---|---|
+| 0050, 0051 | `compliance-profiles-and-gate` (LLD-04) | profiles, windows, DNC, opt-outs, consents |
+| 0052 | `compliance-evidence` (LLD-04) | `compliance_decisions` |
+| 0053 | `dialer-lists-import` | lists, contacts, imports |
+| 0054 | `dialer-campaigns` | campaigns, list mix, caller-ID pools, dispositions, retry rules |
+| 0055 | `dialer-agent-session` | `dialer_agent_sessions` |
+| 0056 | `dialer-preview` | leads, hopper, attempts, the INV-09 trigger |
+| 0057 | `dialer-power` | `dialer_campaign_stats` (pacer, carrier and abandonment-evaluator state) |
+| 0058 | `compliance-abandonment` (LLD-04) | `compliance_abandon_buckets`, `compliance_abandon_events` |
+| 0059 | `dialer-callbacks` | `dialer_callbacks` |
 
 Every table below carries `tenant_id UUID NOT NULL` and the standard RLS
 block (LLD-04 §4): `ENABLE` + `FORCE ROW LEVEL SECURITY`, policy
@@ -153,15 +168,15 @@ contacts are deleted only with their list).
 CREATE TABLE dialer_campaigns (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name VARCHAR(128) NOT NULL, mode VARCHAR(10) NOT NULL CHECK (mode IN ('PREVIEW','POWER','PREDICTIVE')),
-  state VARCHAR(10) NOT NULL DEFAULT 'DRAFT' CHECK (state IN ('DRAFT','RUNNING','PAUSED','COMPLETED','STOPPED')),
-  pause_reason VARCHAR(24) NOT NULL DEFAULT '',  -- MANUAL|ABANDON_LIMIT|CARRIER_FAILURE|CALLER_ID_INVALID|COMPLIANCE_BLOCKING|SCHEDULE|NO_AGENTS
+  state VARCHAR(18) NOT NULL DEFAULT 'DRAFT' CHECK (state IN ('DRAFT','RUNNING','PAUSED','COMPLETED','STOPPED','STOPPED_COMPLIANCE')),
+  pause_reason VARCHAR(24) NOT NULL DEFAULT '',  -- MANUAL|CARRIER_FAILURE|CALLER_ID_INVALID|COMPLIANCE_BLOCKING|SCHEDULE|NO_AGENTS; ABANDON_LIMIT with STOPPED_COMPLIANCE
   policy_id UUID NOT NULL,                        -- compliance profile (LLD-04)
   ratio NUMERIC(3,1) NOT NULL DEFAULT 1.0 CHECK (ratio BETWEEN 1.0 AND 3.0),
   effective_ratio NUMERIC(3,1) NOT NULL DEFAULT 1.0,   -- pacer-owned (slow-down)
   max_concurrent INT NOT NULL DEFAULT 10 CHECK (max_concurrent BETWEEN 1 AND 500),
   ring_timeout_s SMALLINT NOT NULL DEFAULT 25 CHECK (ring_timeout_s BETWEEN 10 AND 60),
   wrapup_max_s SMALLINT NOT NULL DEFAULT 120 CHECK (wrapup_max_s BETWEEN 0 AND 900),
-  preview_ttl_s SMALLINT NOT NULL DEFAULT 120 CHECK (preview_ttl_s BETWEEN 30 AND 600),
+  preview_ttl_s SMALLINT NOT NULL DEFAULT 120 CHECK (preview_ttl_s BETWEEN 30 AND 300),  -- and ≤ LLD-03 campaign_reservation_seconds (service check)
   preview_timeout_action VARCHAR(6) NOT NULL DEFAULT 'RETURN' CHECK (preview_timeout_action IN ('RETURN','DIAL')),
   preview_skip_limit_per_hour SMALLINT NOT NULL DEFAULT 0,   -- 0 = unlimited
   callerid_mode VARCHAR(16) NOT NULL DEFAULT 'FIXED' CHECK (callerid_mode IN ('FIXED','POOL','LOCAL_PRESENCE')),
@@ -173,6 +188,8 @@ CREATE TABLE dialer_campaigns (
   schedule_start TIMESTAMPTZ, schedule_end TIMESTAMPTZ,
   daily_start_minute SMALLINT, daily_end_minute SMALLINT,    -- campaign hours, intersected with the profile
   carrier_fail_window SMALLINT NOT NULL DEFAULT 50, carrier_fail_pct SMALLINT NOT NULL DEFAULT 50,
+  callback_fallback_to_any BOOLEAN NOT NULL DEFAULT TRUE,
+  setup_allowance_s SMALLINT NOT NULL DEFAULT 30 CHECK (setup_allowance_s BETWEEN 5 AND 60),  -- dial → first 180/183
   version INT NOT NULL DEFAULT 1, created_by UUID NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), state_changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, name),
@@ -217,7 +234,7 @@ ALTER TABLE dialer_campaigns ADD COLUMN max_attempts_total SMALLINT NOT NULL DEF
 
 Grants: `SELECT, INSERT, UPDATE, DELETE`.
 
-### 4.3 `0055_dialer_leads_hopper`
+### 4.3 `0056_dialer_preview` (part 1: leads and hopper)
 
 ```sql
 CREATE TABLE dialer_leads (                 -- a contact's state within one campaign (lazy-created)
@@ -229,6 +246,8 @@ CREATE TABLE dialer_leads (                 -- a contact's state within one camp
   attempts_day DATE, carrier_fails_today SMALLINT NOT NULL DEFAULT 0,
   outcome_counts JSONB NOT NULL DEFAULT '{}',          -- per outcome_key, for max_for_outcome
   last_outcome VARCHAR(24) NOT NULL DEFAULT '', last_attempt_at TIMESTAMPTZ,
+  priority SMALLINT NOT NULL DEFAULT 0 CHECK (priority IN (0, 50, 100)),  -- copied to the hopper: 100 callback, 50 retry/missed callback, 0 list order
+  blocked_reason VARCHAR(32) NOT NULL DEFAULT '',                         -- why BLOCKED_WAIT (data fix resets next_eligible_at)
   next_eligible_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (campaign_id, contact_id)
 );
@@ -248,7 +267,7 @@ CREATE INDEX dialer_hopper_pick ON dialer_hopper (campaign_id, state, priority D
 
 Grants: `SELECT, INSERT, UPDATE, DELETE`; `USAGE, SELECT` on the sequence.
 
-### 4.4 `0056_dialer_attempts`
+### 4.4 `0056_dialer_preview` (part 2: attempts)
 
 ```sql
 CREATE TABLE dialer_attempts (
@@ -262,12 +281,28 @@ CREATE TABLE dialer_attempts (
   agent_principal_id UUID, agent_reserved BOOLEAN NOT NULL DEFAULT FALSE,
   call_id UUID, compliance_decision_id UUID, block_reason VARCHAR(32) NOT NULL DEFAULT '',
   q850_cause SMALLINT, sip_code SMALLINT, dial_status VARCHAR(12) NOT NULL DEFAULT '',
-  queued_at TIMESTAMPTZ NOT NULL, dialed_at TIMESTAMPTZ, answered_at TIMESTAMPTZ,
+  queued_at TIMESTAMPTZ NOT NULL, dialed_at TIMESTAMPTZ, ring_started_at TIMESTAMPTZ, cancel_requested_at TIMESTAMPTZ, answered_at TIMESTAMPTZ,
   connect_clock_at TIMESTAMPTZ, bridged_at TIMESTAMPTZ, ended_at TIMESTAMPTZ, disposed_at TIMESTAMPTZ,
-  -- INV-09 in the schema: nothing past QUEUED without a decision
   CHECK (state IN ('QUEUED','NOT_PLACED') OR compliance_decision_id IS NOT NULL),
   CHECK (state <> 'BLOCKED' OR block_reason <> '')
 );
+-- INV-09: a CHECK cannot see another table, so a trigger proves the verdict.
+CREATE FUNCTION dialer_attempt_verdict_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.compliance_decision_id IS NULL THEN RETURN NEW; END IF;   -- QUEUED / NOT_PLACED
+  IF NEW.state = 'BLOCKED' THEN
+    IF NOT EXISTS (SELECT 1 FROM compliance_decisions d WHERE d.id = NEW.compliance_decision_id
+                   AND d.tenant_id = NEW.tenant_id AND d.attempt_id = NEW.id AND NOT d.permitted) THEN
+      RAISE EXCEPTION 'blocked attempt % without a refusing decision', NEW.id USING ERRCODE = 'check_violation';
+    END IF;
+  ELSIF NOT EXISTS (SELECT 1 FROM compliance_decisions d WHERE d.id = NEW.compliance_decision_id
+                    AND d.tenant_id = NEW.tenant_id AND d.attempt_id = NEW.id AND d.permitted) THEN
+    RAISE EXCEPTION 'attempt % past QUEUED without a permitting decision', NEW.id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER dialer_attempt_verdict_guard BEFORE INSERT OR UPDATE OF state, compliance_decision_id
+  ON dialer_attempts FOR EACH ROW EXECUTE FUNCTION dialer_attempt_verdict_guard();
 CREATE UNIQUE INDEX dialer_attempts_one_live_per_number ON dialer_attempts (tenant_id, number_digits)
   WHERE state IN ('DIALING','RINGING','ANSWERED','BRIDGED');   -- never two live calls to one person
 CREATE INDEX dialer_attempts_contact ON dialer_attempts (tenant_id, contact_id, queued_at DESC);
@@ -278,7 +313,7 @@ Grants: `SELECT, INSERT, UPDATE` (no `DELETE`; retention job as owner,
 **760 days** like LLD-04, because an `ABANDONED` attempt is part of the
 two-year abandonment record).
 
-### 4.5 `0057_dialer_agent_sessions`
+### 4.5 `0055_dialer_agent_sessions`
 
 ```sql
 CREATE TABLE dialer_agent_sessions (
@@ -288,12 +323,13 @@ CREATE TABLE dialer_agent_sessions (
   bridge_id VARCHAR(64), agent_call_id UUID,  -- engine refs kept server-side only
   state VARCHAR(12) NOT NULL CHECK (state IN ('CONNECTING','CONNECTED','RECONNECTING','ENDED')),
   reconnects SMALLINT NOT NULL DEFAULT 0, current_attempt_id UUID,
+  last_offered_at TIMESTAMPTZ NOT NULL DEFAULT 'epoch',   -- reserved-mode fairness (§6.3 step 3)
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(), ended_at TIMESTAMPTZ, end_reason VARCHAR(24) NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX dialer_agent_sessions_one_open ON dialer_agent_sessions (tenant_id, principal_id) WHERE state <> 'ENDED';
 ```
 
-### 4.6 `0058_dialer_callbacks`
+### 4.6 `0059_dialer_callbacks`
 
 ```sql
 CREATE TABLE dialer_callbacks (
@@ -309,7 +345,7 @@ CREATE INDEX dialer_callbacks_due ON dialer_callbacks (due_at) WHERE state = 'SC
 CREATE UNIQUE INDEX dialer_callbacks_one_open ON dialer_callbacks (campaign_id, contact_id) WHERE state IN ('SCHEDULED','DUE','OFFERED','DIALING');
 ```
 
-### 4.7 `0059_dialer_carrier_window`
+### 4.7 `0057_dialer_campaign_stats`
 
 ```sql
 CREATE TABLE dialer_campaign_stats (          -- pacer observations, one row per campaign, overwritten
@@ -317,11 +353,15 @@ CREATE TABLE dialer_campaign_stats (          -- pacer observations, one row per
   recent_results SMALLINT[] NOT NULL DEFAULT '{}', -- ring of last N engine results: 1 = carrier fail
   answered_15m INT NOT NULL DEFAULT 0, attempts_15m INT NOT NULL DEFAULT 0,
   mean_handle_ms INT NOT NULL DEFAULT 0, mean_ring_to_answer_ms INT NOT NULL DEFAULT 0,
+  -- abandonment evaluator state (§6.4), owned by the dialler
+  abandon_state VARCHAR(12) NOT NULL DEFAULT 'WARMUP' CHECK (abandon_state IN ('WARMUP','OK','APPROACHING','BREACHED')),
+  recovery_hold_until TIMESTAMPTZ, last_step_at TIMESTAMPTZ,
+  reserved_only_lock BOOLEAN NOT NULL DEFAULT FALSE,   -- set on breach; cleared when ratio < limit − margin
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-Grants on 0057–0059: `SELECT, INSERT, UPDATE`.
+Grants on 0055, 0057, 0059: `SELECT, INSERT, UPDATE`.
 
 ## 5. State machines
 
@@ -330,16 +370,18 @@ Grants on 0057–0059: `SELECT, INSERT, UPDATE`.
 | From | Event | Guard | To | Side effects |
 |---|---|---|---|---|
 | — | `CreateCampaign` | valid fields; policy exists; mode ≠ PREDICTIVE in R1.0 | DRAFT | audit |
-| DRAFT, PAUSED(MANUAL…) , COMPLETED | `StartCampaign` | ≥ 1 active list; policy valid (`abandon_message_media_uri` set when required); caller-ID numbers and `callback_number_id` `verified` (LLD-03 §3.12); dispositions ≥ 1; inside schedule; for PAUSED(ABANDON_LIMIT) see §6.4 | RUNNING | pacer/hopper start within 5 s; event `campaign.started`/`resumed` |
+| DRAFT, PAUSED(MANUAL…) , COMPLETED | `StartCampaign` | ≥ 1 active list; policy valid (`abandon_message_media_uri` set when required); caller-ID numbers and `callback_number_id` `verified` (LLD-03 §3.12); dispositions ≥ 1; inside schedule | RUNNING | pacer/hopper start within 5 s; event `campaign.started`/`resumed` |
 | RUNNING | `PauseCampaign` | — | PAUSED(MANUAL) | no new attempt after ≤ 10 s (AC-14.4); live and ringing attempts continue |
-| RUNNING | breach (LLD-04 `Breached`) | mode POWER ratio>1 or PREDICTIVE | PAUSED(ABANDON_LIMIT) | `effective_ratio := 1.0`; alert |
+| RUNNING | breach (LLD-04 `Breached`), evaluator §6.4 | mode POWER or PREDICTIVE | STOPPED_COMPLIANCE (reason ABANDON_LIMIT) | `effective_ratio := 1.0`, `reserved_only_lock := true`; hopper emptied; ringing and live attempts continue (INV-03); alert supervisors and compliance officers |
+| STOPPED_COMPLIANCE | `ResumeAfterCompliance{reason ≥ 10 chars}` | caller holds `dialer.campaign.compliance_resume` (COMPLIANCE_OFFICER); profile still valid | RUNNING in reserved mode (`reserved_only_lock` stays until ratio < limit − margin) | audit with reason; event `campaign.resumed{after: ABANDON_LIMIT}` |
+| STOPPED_COMPLIANCE | `StartCampaign` by a manager | — | refused | `PERMISSION_DENIED` "A compliance officer must review and resume this campaign" |
 | RUNNING | carrier detector (§6.11) | — | PAUSED(CARRIER_FAILURE) | alert |
 | RUNNING | caller ID becomes unauthorised | — | PAUSED(CALLER_ID_INVALID) | alert |
 | RUNNING | 20 consecutive `Decide` refusals of a policy-wide reason (`dnc_registry_stale`, `profile_missing`) | — | PAUSED(COMPLIANCE_BLOCKING) | alert |
 | RUNNING | `schedule_end` passed | — | PAUSED(SCHEDULE) | — |
 | RUNNING | no agent session for 30 min | mode ≠ PREVIEW | PAUSED(NO_AGENTS) | — |
 | RUNNING | no lead eligible ever again (all leads terminal, no callbacks open) | checked every 5 min | COMPLETED | event |
-| DRAFT, RUNNING, PAUSED, COMPLETED | `StopCampaign` | — | STOPPED | callbacks cancelled if `cancel_callbacks=true`, else kept for a later campaign clone; hopper emptied; sessions told "campaign stopped" and returned to `NotReady(campaign_stopped)` after their current call |
+| DRAFT, RUNNING, PAUSED, COMPLETED, STOPPED_COMPLIANCE | `StopCampaign` | — | STOPPED | callbacks cancelled if `cancel_callbacks=true`, else kept for a later campaign clone; hopper emptied; sessions told "campaign stopped" and returned to `NotReady(campaign_stopped)` after their current call |
 | STOPPED | any start | — | refused | `FAILED_PRECONDITION` "A stopped campaign cannot restart; duplicate it" |
 
 **COMPLETED vs STOPPED:** COMPLETED is the system's "nothing left to
@@ -364,14 +406,16 @@ may be cloned (`DuplicateCampaign`).
 | IN_HOPPER | `Decide` refuses with `outside_hours`, `blackout_date`, `no_redial_after_abandon`, `abandon_limit`, `dnc_registry_stale` | BLOCKED_WAIT, `next_eligible_at` = next window opening (or +15 min) |
 | IN_HOPPER | `Decide` refuses `dnc_*` | DNC (terminal) |
 | IN_HOPPER | `Decide` refuses `opted_out` | OPTED_OUT (terminal) |
-| IN_HOPPER | `Decide` refuses `consent_missing`, `timezone_unknown`, `number_invalid` | INVALID (terminal; reason on the attempt) |
+| IN_HOPPER | `Decide` (or refill `Precheck`) refuses `consent_missing`, `timezone_unknown` | BLOCKED_WAIT, `blocked_reason` set, `next_eligible_at = now + 24 h`; a consent upsert or contact edit for that number resets `next_eligible_at = now` (retryable: the data may be fixed) |
+| IN_HOPPER | `Decide` refuses `number_invalid` | INVALID (terminal) |
 | IN_HOPPER | attempt placed | DIALING |
-| DIALING | outcome + next action RETRY, caps not reached | RETRY_WAIT (`next_eligible_at = now + delay × backoff^(n−1)`, ≥ `min_redial_minutes`, ≥ profile no-redial after ABANDONED) |
+| DIALING | outcome + next action RETRY, caps not reached | RETRY_WAIT, `priority = 50` (`next_eligible_at = now + delay × backoff^(n−1)`, ≥ `min_redial_minutes`, ≥ profile no-redial after ABANDONED) |
 | DIALING | caps reached (`max_attempts_total`, or `max_for_outcome`) | EXHAUSTED (terminal; recyclable by `RecycleLeads`) |
 | DIALING | `attempts_today = max_attempts_per_day` | RETRY_WAIT until next local midnight |
 | DIALING | next action CALLBACK | CALLBACK |
 | DIALING | COMPLETE / INVALID / OPT_OUT / DNC_CAMPAIGN | COMPLETED / INVALID / OPTED_OUT / DNC |
-| CALLBACK | callback DUE | IN_HOPPER (priority 100) |
+| CALLBACK | callback DUE | IN_HOPPER (`priority = 100`) |
+| CALLBACK | callback MISSED | READY, `priority = 50` |
 | EXHAUSTED, COMPLETED(with chosen dispositions) | `RecycleLeads{statuses, delay ≥ 5 min, limit}` | RETRY_WAIT with `attempts_total` reset only if `reset_attempts=true` |
 
 `attempts_today` resets when `attempts_day` ≠ today in the contact's zone.
@@ -382,14 +426,18 @@ may be cloned (`DuplicateCampaign`).
 |---|---|---|---|
 | — | slot granted, row inserted | QUEUED | `queued_at` |
 | QUEUED | `Decide` refuses | BLOCKED | decision id, `block_reason` |
-| QUEUED | capacity refused / no authorised caller ID / engine refused create | NOT_PLACED | `block_reason` = `capacity` / `callerid` / `engine` |
-| QUEUED | `Decide` permits, capacity reserved, `POST /channels/{id}/dial` accepted | DIALING | `dialed_at`, decision id, `presented_number` |
-| DIALING | `ChannelStateChange` → `Ringing` or `Dial` `dialstatus=RINGING`/`PROGRESS` | RINGING | — |
+| QUEUED | `Presentation.Choose` returns `ErrNotOwned`, or `DialerMedia.PlaceAttempt` returns `ErrCapacity` / `ErrDraining` / `ErrEmergencyRefused` / `ErrSessionDown` / engine error | NOT_PLACED | `block_reason` = `callerid` / `capacity` / `draining` / `emergency` / `session_down` / `engine`; reserved agent released |
+| QUEUED | `Decide` permits and `DialerMedia.PlaceAttempt` accepted (telephony created the Call, reserved capacity, `POST /channels/create` + `/dial`) | DIALING | `dialed_at`, `call_id`, decision id, `presented_number` |
+| DIALING | `DialerEvents.Progress` with `FirstAlertAt` (first 180/183) | RINGING | `ring_started_at` = `FirstAlertAt` (set once) — the minimum-ring clock |
+| DIALING | no progress by `dialed_at + setup_allowance_s` | FAILED (`CARRIER_FAILED`, `no_progress`) | the leg never rang, so no ring time is cut |
+| RINGING | `HangUp`/agent leg lost/stop **before** `ring_started_at + min_ring` | RINGING | `cancel_requested_at`; `DialerMedia.Hangup` runs only at `ring_started_at + min_ring` |
+| RINGING | `ring_started_at + RingTimeout` (dialler timer) or cancel due | NO_ANSWER | `DialerMedia.Hangup` |
 | DIALING/RINGING | `Dial` `dialstatus=ANSWER` | ANSWERED | `answered_at`, `connect_clock_at` |
 | ANSWERED | customer added to the agent bridge before the deadline | BRIDGED | `bridged_at`; ledger live answer |
 | ANSWERED | deadline passed with no agent, or customer hung up before bridge | ABANDONED | ledger abandon; message played? |
 | BRIDGED | agent marks machine and drops / disposes `ANSWERING_MACHINE` | MACHINE (outcome VOICEMAIL_DROPPED if dropped) | ledger: live answer **reversed is not allowed** — see note |
-| DIALING/RINGING | `Dial` `NOANSWER` (timeout) / `BUSY` / `CONGESTION`, `CHANUNAVAIL` / `CANCEL` | NO_ANSWER / BUSY / FAILED / FAILED | `dial_status`, `q850_cause`, `sip_code` |
+| DIALING/RINGING | `Dial` `NOANSWER` (backstop) / `BUSY` / `CONGESTION`, `CHANUNAVAIL` / `CANCEL` | NO_ANSWER / BUSY / FAILED / FAILED | `dial_status`, `q850_cause`, `sip_code`; reserved agent `ReservationReleased` |
+| ANSWERED | app or engine restart, attempt unmatched on reconcile | ABANDONED (conservative; counted in the ledger) | never FAILED: a person answered and was not connected |
 | BRIDGED, ABANDONED, MACHINE, NO_ANSWER, BUSY, FAILED, BLOCKED, NOT_PLACED | disposition (agent) or auto-disposition (system outcomes with no agent) | DISPOSED | `disposed_at`, lead transition (§5.2) |
 
 Note on machines in R1.0: without AMD an answering machine is bridged to
@@ -405,13 +453,14 @@ counters are never corrected downward).
 | — | `JoinCampaign` | CONNECTING | stays as is until connected |
 | CONNECTING | agent leg `StasisStart` (answered) and added to session bridge | CONNECTED | → `Ready` (or `NotReady(reason)` if joined paused) |
 | CONNECTING | originate timeout 30 s / rejected | ENDED(`agent_no_answer`) | `NotReady(leg_failed)` |
-| CONNECTED | attempt reserved (ratio 1.0, preview, callback) | CONNECTED | `Ready → Reserved` (conditional update) |
+| CONNECTED | attempt reserved (ratio 1.0, preview, callback): `Reserve(principal, attemptRef)` | CONNECTED | `Ready → Reserved` (conditional update; TTL `campaign_reservation_seconds`) |
+| CONNECTED | attempt ends NO_ANSWER, BUSY, FAILED, BLOCKED, NOT_PLACED; preview skip or lease expiry | CONNECTED | `Reserved → Ready` (`Transition(ReservationReleased)`) |
 | CONNECTED | customer bridged | CONNECTED | `Reserved/Ready → Busy` |
 | CONNECTED | customer leaves bridge | CONNECTED | `Busy → WrapUp` (timer `wrapup_max_s`) |
 | CONNECTED | disposition recorded | CONNECTED | `WrapUp → Ready` (or `NotReady(reason)` if a pause was requested during the call) |
 | CONNECTED | wrap-up timer expires | CONNECTED | auto-disposition `AGENT_TIMEOUT`; `WrapUp → NotReady(dispo_timeout)` |
 | CONNECTED | `SetPause(code)` | CONNECTED | `Ready → NotReady(code)`; during a call: applied at WrapUp end |
-| CONNECTED | agent leg `StasisEnd`/`ChannelDestroyed` | RECONNECTING | `NotReady(leg_lost)`; a customer in the bridge is hung up (`normal_clearing`) — the conversation ended because a party left, not by platform condition |
+| CONNECTED | `DialerEvents.AgentLegLost` (telephony's 30 s keepalive `GET /channels/{agent}` fails, `StasisEnd`, `ChannelDestroyed`) | RECONNECTING | `NotReady(leg_lost)`; a customer in the bridge is hung up (`normal_clearing`) — the conversation ended because a party left, not by platform condition |
 | RECONNECTING | re-originate (≤ 3 tries, 5 s apart) answered | CONNECTED | `NotReady(leg_lost)` until the agent clicks Ready |
 | RECONNECTING | 3 failures | ENDED(`leg_lost`) | `NotReady(leg_lost)` |
 | any | `LeaveCampaign` / logout / membership disabled | ENDED | after any current call ends: `LoggedOut` or the agent's previous inbound state |
@@ -435,8 +484,8 @@ events/audit (item 10) to §9 unless stated.
    2. Chunks are parsed as they arrive (RFC 4180; delimiter auto-detected from the header among `,` `;` TAB; UTF-8 only, BOM stripped; invalid UTF-8 → whole import FAILED `encoding` with the line).
    3. Each row is normalised: phone → E.164 with the list's `default_country` when no `+`; validation with the phone-number library (OWNER DECISION §14.4: dependency); reject reasons `number_invalid`, `number_too_short`, `emergency_number` (matches the tenant's emergency catalogue, INV-01), `premium_rate`, `timezone_invalid`, `attribute_too_long`, `duplicate_in_file`.
    4. Accepted rows go to `dialer_import_staging`; state VALIDATING.
-   5. Scrub: `Gate.PrecheckMany` over the batch with the tenant default profile; hits set `import_flag` (`dnc`, `opted_out`, `consent_missing`). Rows are **kept and flagged**, not deleted (they are refused at dial anyway; the report shows them).
-   6. One transaction: insert into `dialer_contacts` (`ON CONFLICT (list_id, number_digits) DO NOTHING` → counted as duplicates), upsert `contact_consents` for consent columns, update counts, state COMMITTED. Any error → rollback, FAILED; nothing partial (old LLD rule kept).
+   5. One transaction, in this order: (a) insert into `dialer_contacts` (`ON CONFLICT (list_id, number_digits) DO NOTHING` → counted as duplicates); (b) upsert `contact_consents` from the consent columns; (c) **then** scrub with `Gate.PrecheckMany` over the batch with the tenant default profile and each row's own context (zone, region, country) — after (b), so the file's own consent is seen; hits set `import_flag` (`dnc`, `opted_out`, `consent_missing`); rows are **kept and flagged**, not deleted (they are refused at dial anyway; the report shows them); (d) counts, state COMMITTED. Any error → rollback, FAILED; nothing partial (old LLD rule kept).
+   6. A consent upsert for a number whose lead is BLOCKED_WAIT(`consent_missing`/`timezone_unknown`) sets that lead's `next_eligible_at = now()` (§5.2).
    7. With `dedupe_scope=TENANT_ACTIVE`, numbers already in another ACTIVE list of the tenant are counted as `duplicate_across_lists` and skipped.
    8. Event `import.completed`; audit `dialer.list.import`.
 4. **States:** import RECEIVING → VALIDATING → COMMITTED | FAILED; list IMPORTING → ACTIVE → ARCHIVED; campaign §5.1.
@@ -509,24 +558,29 @@ events/audit (item 10) to §9 unless stated.
 1. **Trigger/actors:** agent (`dialer.agent`) in a CONNECTED session on a
    PREVIEW campaign clicks *Next contact*.
 2. **Preconditions:** session CONNECTED; agent `Ready`; campaign RUNNING;
-   skip budget not exhausted.
+   skip budget not exhausted. **Reservation cap (decided):** a preview lease
+   never outlives the agent's LLD-03 campaign reservation, so
+   `preview_ttl_s ≤ campaign_reservation_seconds` (LLD-03 default 120 s, max
+   300 s) is enforced by `Create/UpdateCampaign` (`INVALID_ARGUMENT` "Preview
+   time cannot exceed the agent reservation limit ({n} s)"); no renewal.
 3. **Sequence:**
-   1. `NextContact` → dialler: `SELECT … FROM dialer_hopper WHERE campaign_id=$1 AND state='READY' AND (owner_principal_id IS NULL OR owner_principal_id=$agent) ORDER BY (owner_principal_id IS NOT NULL) DESC, priority DESC, inserted_at, id FOR UPDATE SKIP LOCKED LIMIT 1`; set `LEASED`, `leased_to`, `lease_expires_at = now + preview_ttl_s`; agent `Ready → Reserved`.
+   1. `NextContact` → dialler: `SELECT … FROM dialer_hopper WHERE campaign_id=$1 AND state='READY' AND (owner_principal_id IS NULL OR owner_principal_id=$agent) ORDER BY (owner_principal_id IS NOT NULL) DESC, priority DESC, inserted_at, id FOR UPDATE SKIP LOCKED LIMIT 1`; set `LEASED`, `leased_to`, `lease_expires_at = now + preview_ttl_s`; insert the attempt row QUEUED (no decision yet) and `AgentStates.Reserve(tx, tenant, agent, attemptID)` (`Ready → Reserved`, `reserved_ref` = attempt) in the same tx; `false` → rollback, `FAILED_PRECONDITION` "You are not Ready".
    2. `Gate.Precheck` (advisory) — if refused, row returns per §5.2 and step 1 repeats (≤ 5 times, then `NOT_FOUND` "No contact can be called right now").
    3. Console shows contact, history, attributes, TTL countdown.
-   4. Agent clicks *Dial* → `DialPreview(lease)`: one tx — insert attempt QUEUED (kind PREVIEW, `agent_reserved=true`); `Gate.Decide`; if refused → BLOCKED, lead per §5.2, console shows reason, agent back to `Ready`.
-   5. `Capacity.ValidateCapacity(tenant, attemptCallID, 1)`; `PickPoolNumber` + `Presentation.Choose` (§6.12); refused → NOT_PLACED.
-   6. `POST /channels/create` (endpoint `PJSIP/<number>@<route>` chosen by `pbx-core` route selection, `app=atsapbx`, `appArgs=dialer,<attempt>`, presentation from OB-12 via `pbx-core` `ChoosePresentation`, which alone sets `CALLERID(num)`/`CALLERID(name)`/`P-Asserted-Identity` (LLD-03 §3.12 archtest); `TALK_DETECT(set)` unset in R1.0); `POST /bridges/{session}/addChannel` (customer, **before** dial, so the agent hears ringback, carrier tones and early media); `POST /channels/{id}/dial?timeout=<RingTimeout>`; attempt DIALING.
+   4. Agent clicks *Dial* → `DialPreview(lease)`: one tx — attempt kind PREVIEW, `agent_reserved=true`; `Gate.Decide`; if refused → BLOCKED, lead per §5.2, console shows reason, `ReservationReleased` → agent `Ready`.
+   5. `PickPoolNumber` (§6.12) → candidate number id.
+   6. `Presentation.Choose(tx, tenant, DialerPresentation{PoolChoice})` (LLD-03; `ErrNotOwned` → NOT_PLACED `callerid`), then `DialerMedia.PlaceAttempt{AttemptID, CampaignID, ComplianceDecisionID, DestinationE164, EndpointURI (pbx-core route), Presentation, Session: &session, RingTimeout: setup_allowance_s + RingTimeout}` → telephony creates the Call (`call_id`), reserves licence capacity (LLD-08), records the decision id without re-deciding, `POST /channels/create` (`appArgs=dialer,<attempt>`), `POST /bridges/{atsa-d-<session>}/addChannel` (customer **before** dial, so the agent hears ringback, carrier tones and early media), `POST /channels/{id}/dial` with the backstop timeout. Errors `ErrCapacity`/`ErrDraining`/`ErrEmergencyRefused`/`ErrSessionDown`/engine → NOT_PLACED, `ReservationReleased`. Attempt DIALING.
    7. `Dial` events → RINGING / ANSWER. On ANSWER: attempt BRIDGED immediately (already in the bridge); agent `Busy`; recording per policy (`POST /bridges/{id}/record` via telephony-core).
-   8. Hang-up (`ChannelDestroyed` customer, or agent's *Hang up* → `DELETE /channels/{customer}`) → agent `WrapUp`; disposition → DISPOSED.
-   9. *Skip* → `SkipPreview(lease, reason)`: hopper row deleted, lead READY with `next_eligible_at = now + 15 min`; skip counted; agent `Ready`.
+   8. Hang-up after answer (`ChannelDestroyed` customer, or agent's *Hang up* → `DialerMedia.Hangup`) → agent `WrapUp`; disposition → DISPOSED; telephony releases capacity on Call termination.
+   8a. Agent *Hang up* while RINGING → `cancel_requested_at` set; the console shows "Ending after the minimum ring ({s} s)"; `DialerMedia.Hangup` fires at `ring_started_at + min_ring` (or immediately if the leg never rang and the setup allowance has passed); outcome NO_ANSWER, agent `ReservationReleased`.
+   9. *Skip* → `SkipPreview(lease, reason)`: hopper row deleted, QUEUED attempt marked NOT_PLACED `skipped`, lead READY with `next_eligible_at = now + 15 min`; skip counted; `ReservationReleased` → agent `Ready`.
    10. TTL expiry (sweeper every 5 s): `RETURN` → as skip with reason `timeout`; `DIAL` → step 4 automatically.
 4. **States:** §5.2–§5.4; preview cannot abandon (the agent is in the bridge before dial), so it is **excluded** from the abandonment ratio (LLD-04 §7.3).
 5. **Data:** hopper lease columns; attempt `kind=PREVIEW`.
-6. **Ports:** `Hopper.Lease(ctx, tx, campaign, agent) (HopperRow, error)`; `Gate`; `Capacity`; `Presentation`; `Media`.
+6. **Ports:** `Hopper.Lease(ctx, tx, campaign, agent) (HopperRow, error)`; `Gate`; `AgentStates`; `DialerMedia`/`DialerEvents` (§6.3).
 7. **API:** `NextContact`, `DialPreview`, `SkipPreview`, `HangUp`, `RecordDisposition`.
-8. **Config:** `preview_ttl_s` 120 (30–600); `preview_timeout_action` RETURN; `preview_skip_limit_per_hour` 0 (0–100); skip re-eligibility 15 min (fixed).
-9. **Failure:** agent closes the browser during preview → lease expires → RETURN; agent leg lost while customer ringing → customer channel hung up only **if not answered** (`DELETE /channels` with `normal_clearing` during ring is permitted: nothing is "in progress"; ring time already ≥ minimum is not required because no abandon can occur — documented); engine refuses create → NOT_PLACED `engine`, capacity released (D-58 idempotent).
+8. **Config:** `preview_ttl_s` 120 (30–300, and ≤ LLD-03 `campaign_reservation_seconds`); `preview_timeout_action` RETURN; `preview_skip_limit_per_hour` 0 (0–100); skip re-eligibility 15 min (fixed).
+9. **Failure:** agent closes the browser during preview → lease expires → RETURN (before the LLD-03 sweeper could release the reservation, because TTL ≤ reservation); agent leg lost while customer ringing → treated as step 8a: cancel only after the minimum ring (**cross-LLD:** LLD-01 §23.3 item 9 currently says telephony hangs up a ringing customer at once when the agent leg is lost; it must instead leave the leg to the dialler, which calls `Hangup` at `ring_started_at + min_ring`, per 47 CFR 64.1200(a)(6)); if the customer answers meanwhile and no agent leg is back by the connect deadline → OB-07 abandon path (message, counted); engine refuses create → NOT_PLACED `engine`; telephony releases any capacity it reserved (D-58 idempotent).
 10. **Invariants/events:** INV-09 (Decide at Dial, not at Next), BR-06. Events `attempt.placed`, `attempt.completed`.
 11. **Tests:**
 
@@ -538,6 +592,9 @@ events/audit (item 10) to §9 unless stated.
     | P4 | I | skip limit 2/h, third skip / — / `RESOURCE_EXHAUSTED` "Skip limit reached for this hour" |
     | P5 | E | preview on rig / Dial / agent hears ringback via bridge; answer → two-way audio < 300 ms after 200 OK |
     | P6 | B | agent sees contact, countdown, dials, disposes in two clicks (AC-14.6) |
+    | P7 | I | agent HangUp 3 s after ring start, min ring 15 s / — / `cancel_requested_at` set; `DialerMedia.Hangup` called at ring start + 15 s, not before (fake clock) |
+    | P8 | I | `preview_ttl_s` 200 with reservation limit 120 / UpdateCampaign / `INVALID_ARGUMENT` |
+    | P9 | I | Skip / — / agent `Reserved → Ready` (`ReservationReleased`) in the same tx |
 12. **Parity:** VICIdial "MANUAL" + "dial timeout"; Five9 preview with
     *skip* and *auto-dial after timeout*; Amazon Connect preview with
     timeout. Difference: the agent's nailed-up leg, so preview and power
@@ -550,60 +607,89 @@ events/audit (item 10) to §9 unless stated.
 2. **Preconditions:** campaign RUNNING; ≥ 1 agent `Ready`; the pacer holds
    the per-campaign advisory lock `pg_try_advisory_lock(hash('dialer', campaign_id))` (one active pacer across app instances; HLD-21 §3 pattern).
 3. **Sequence (each tick, `tick_interval` 1 s):**
+   0. **Wake-up:** the pacer `LISTEN`s on `dialer_wake` (payload `<tenant_id>:<campaign_id>`, `NOTIFY` issued by LLD-03 in every transaction that commits an agent into `Ready`) and also ticks every `tick_interval` (1 s) as a safety net; either runs steps 1–9.
    1. Read campaign row (state, `effective_ratio`, `max_concurrent`); if not RUNNING, stop launching.
-   2. `ready` = agents in this campaign's CONNECTED sessions with state `Ready` (LLD-03 `AgentStates.CountReady`); `in_flight` = attempts of this campaign in QUEUED, DIALING, RINGING, ANSWERED.
-   3. **Reserved mode** (`effective_ratio = 1.0`): `n = ready − in_flight_unbridged`; each slot reserves one specific agent (`Ready → Reserved`, conditional update; HLD-21 blended rule) and the attempt carries `agent_reserved=true`.
+   2. `ready` = `AgentStates.CountReady` — agents of this campaign in `Ready`; it **excludes `Reserved`**, so agents already holding an attempt are not counted; `in_flight` = attempts of this campaign in QUEUED, DIALING, RINGING, ANSWERED.
+   3. **Reserved mode** (`effective_ratio = 1.0` or `reserved_only_lock`): `n = ready` (every counted agent is free and unreserved; no subtraction, because reserved agents are already outside `ready`). For each slot the dialler picks an agent from its CONNECTED sessions ordered by `last_offered_at` and calls `AgentStates.Reserve(tx, tenant, principal, attemptID)`; `false` (raced) → next session; sets `last_offered_at = now()`; the attempt carries `agent_reserved=true`.
       **Dial-ahead mode** (`effective_ratio > 1.0`): `target = floor(effective_ratio × ready + 1e-9)` (only `Ready` agents count; rounding is floor, so 1.5 × 3 = 4); `n = target − in_flight`. No agent is reserved at dial time.
    4. `n = min(n, max_concurrent − in_flight, max_new_per_tick, hopper READY rows)`; `n ≤ 0` → done.
    5. Lease `n` hopper rows: same `FOR UPDATE SKIP LOCKED` query with `LIMIT n`.
-   6. For each, one tx: attempt QUEUED; `Gate.Decide` (kind DIALER, `AgentReserved`); refused → BLOCKED; else `Capacity.ValidateCapacity`; `PickPoolNumber` + `Presentation.Choose`; commit; attempt DIALING after `POST /channels/create` + `POST /channels/{id}/dial?timeout=RingTimeout` (customer **not** in any bridge while ringing; the agent hears nothing).
+   6. For each, one tx: attempt QUEUED (+ `Reserve` in reserved mode); `Gate.Decide` (kind DIALER, `AgentReserved`); refused → BLOCKED and `ReservationReleased`; else `PickPoolNumber`; commit; then `Presentation.Choose` (LLD-03) and `DialerMedia.PlaceAttempt{…, Session: nil, RingTimeout: setup_allowance_s + RingTimeout}` (telephony: Call, capacity, `POST /channels/create`, `POST /channels/{id}/dial` with that backstop timeout) → DIALING; the customer is **not** in any bridge while ringing. The dialler's own ring timer cancels at `ring_started_at + RingTimeout` (§6.7).
    7. On `Dial` ANSWER: start the connect clock (LLD-04 §7.4).
-      - reserved: `POST /bridges/{agentBridge}/addChannel` customer → BRIDGED; zip tone `POST /channels/{agent}/play?media=sound:beep` in parallel when `zip_tone`.
-      - dial-ahead: pick the longest-`Ready` agent of the campaign with `UPDATE agents SET state='Busy' … WHERE state='Ready' … RETURNING` (one row, `SKIP LOCKED`); found → addChannel → BRIDGED. Not found → wait on agent-ready notifications until `deadline − 200 ms`; still none → OB-07 abandon path.
-   8. `ledger.RecordLiveAnswer` in the BRIDGED/ABANDONED tx.
-   9. Customer or agent hang-up → `ChannelLeftBridge`/`ChannelDestroyed` → `Capacity.ReleaseCapacity(callID)`; agent `WrapUp`; disposition → DISPOSED; lead transition.
+      - reserved: `DialerMedia.Bridge(attempt, session)` (`POST /bridges/{session}/addChannel`) → BRIDGED, `Transition(CustomerBridged)` `Reserved → Busy`; optional zip tone inside `Bridge` when `zip_tone`.
+      - dial-ahead: `AgentStates.ClaimLongestReady(tx, tenant, campaign, attemptID)` → `(principal, reservationID, ok)` (`Ready → Busy`, `reserved_ref` = attempt); ok → `DialerMedia.Bridge` → BRIDGED. Not ok → wait for `dialer_wake` for this campaign and retry the claim until `deadline − claim_margin` (200 ms); still none → OB-07 abandon path.
+   8. `ledger.RecordLiveAnswer(at = bridged_at)` in the BRIDGED tx, or `RecordAbandon` in the ABANDONED tx (LLD-04 §5.1: one `at` per outcome).
+   9. Customer or agent hang-up → `DialerEvents.Ended` (customer) / `AgentLegLost` (agent) → agent `Transition(CustomerLeft)` `Busy → WrapUp`; disposition → DISPOSED; lead transition. Telephony ends the Call and releases capacity (LLD-08).
 4. **States:** §5.1–§5.4.
-5. **Data:** §4.3–§4.5.
+5. **Data:** §4.3–§4.5, §4.7.
 6. **Ports (pure parts marked):**
    ```go
    // PowerSlots is pure: how many attempts to launch this tick.
    func PowerSlots(in PacerInput) int
+   // Reserved mode: n = Ready (CountReady already excludes Reserved).
+   // Dial-ahead: n = floor(EffectiveRatio × Ready) − InFlight. Both then capped.
    type PacerInput struct {
-       EffectiveRatio float64; Ready, InFlight, InFlightUnbridged int
+       EffectiveRatio float64; ReservedOnly bool; Ready, InFlight int
        MaxConcurrent, MaxNewPerTick, HopperReady int
    }
-   type AgentStates interface {          // LLD-03 owns the implementation
+   // Same signatures as LLD-03 §3.1.1 (LLD-03 owns the implementation).
+   type AgentStates interface {
        CountReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID) (int, error)
-       Reserve(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID) (bool, error)  // Ready→Reserved
-       ClaimLongestReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID) (*shared.PrincipalID, error) // Ready→Busy
+       Reserve(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID, reservedRef uuid.UUID) (bool, error)
+       ClaimLongestReady(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, attempt uuid.UUID) (principal shared.PrincipalID, reservationID uuid.UUID, ok bool, err error)
        Transition(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, principal shared.PrincipalID, ev AgentEvent) error
+       ReasonCodes(ctx context.Context, tx pgx.Tx, tenant shared.TenantID) ([]ReasonCode, error)
    }
-   type Media interface { // telephony-core's ARI gateway, extended (LLD-01 §11)
-       CreateChannel(ctx context.Context, req CreateChannelRequest) (ChannelRef, error)  // POST /channels/create
-       Dial(ctx context.Context, ch ChannelRef, timeout time.Duration) error            // POST /channels/{id}/dial
-       AddChannelToBridge(ctx context.Context, b BridgeID, ch ChannelRef) error
-       StartPlayback(ctx context.Context, ch ChannelRef, mediaURI string) (string, error)
-       DestroyChannel(ctx context.Context, ch ChannelRef) error
+   // telephony-core, LLD-01 §23.3 "Dialer media" (final there; shown here for reference).
+   // Telephony creates the Call and call_id, reserves and releases licence capacity per
+   // attempt (LLD-08), records the carried compliance decision id without re-deciding,
+   // refuses emergency destinations, and routes StasisStart for appArgs
+   // "dialer,<attempt>" / "dialer-agent,<session>" to the dialler path.
+   type DialerMedia interface {
+       OpenSession(ctx context.Context, s SessionRequest) error                    // nailed-up leg + bridge atsa-d-<session>; idempotent
+       CloseSession(ctx context.Context, session SessionID) error
+       PlaceAttempt(ctx context.Context, a AttemptRequest) (shareddomain.CallID, error) // ErrNoDecision, ErrEmergencyRefused, ErrCapacity, ErrDraining, ErrSessionDown
+       Bridge(ctx context.Context, attempt AttemptID, session SessionID) error     // addChannel (+ optional zip tone); ErrCallGone
+       Play(ctx context.Context, attempt AttemptID, mediaURI string) error         // abandon message
+       Drop(ctx context.Context, attempt AttemptID, mediaURI string) error         // removeChannel from the session bridge, play, hang up
+       Hangup(ctx context.Context, attempt AttemptID, reason string) error         // idempotent; also the "cancel" of a ringing leg
    }
-   type Capacity interface {
-       ValidateCapacity(ctx context.Context, tenant shared.TenantID, callID string, n int) (CapacityVerdict, error)
-       ReleaseCapacity(ctx context.Context, callID string) error
+   type AttemptRequest struct {
+       TenantID shareddomain.TenantID; AttemptID AttemptID; CampaignID CampaignID
+       ComplianceDecisionID uuid.UUID          // required; Screening records it and never re-decides
+       DestinationE164 string; EndpointURI string // route chosen by pbx-core
+       Presentation Presentation               // from pbx-core Presentation.Choose (LLD-03, BR-06)
+       Session *SessionID                      // pre-bridge for preview/manual/reserved
+       RingTimeout time.Duration               // the dialler passes the BACKSTOP: setup_allowance_s + RingTimeout (§6.7)
    }
+   // Implemented by the dialler; non-blocking (buffered).
+   type DialerEvents interface {
+       Progress(ctx context.Context, p AttemptProgress) error // dialing|ringing|progress|answer|busy|…; FirstAlertAt (first 180/183) once
+       Dtmf(ctx context.Context, attempt AttemptID, digit string) error
+       PlaybackDone(ctx context.Context, attempt AttemptID, ok bool) error
+       Ended(ctx context.Context, e AttemptEnded) error        // Q850, SIPCode *int (SPIKE-D1), Cause
+       AgentLegUp(ctx context.Context, session SessionID) error
+       AgentLegLost(ctx context.Context, session SessionID, cause string) error // keepalive every 30 s, StasisEnd, ChannelDestroyed
+   }
+   // Reconcile: DialerMedia.LiveAttempts(tenant) lists live attempts and sessions from appArgs.
    ```
 7. **API:** campaign control (§7); agent `JoinCampaign`, `LeaveCampaign`, `SetPause`, `SetReady`, `RecordDisposition`, `HangUp`.
-8. **Config:** `ratio` 1.0 (1.0–3.0, step 0.1, campaign); `max_concurrent` 10 (1–500, campaign; also ≤ licence capacity); `tick_interval` 1 s (250 ms–5 s, installation); `max_new_per_tick` 10 (1–100, installation); `ring_timeout_s` 25 (≥ profile `min_ring`, ≤ 60).
-9. **Failure:** pacer instance dies → lock released by session end; another instance acquires within one tick; in-flight attempts are reconciled from `dialer_attempts` + live engine channels (`GET /channels`, matched by `appArgs`); an attempt in DIALING with no engine channel for > ring timeout + 10 s → FAILED `lost`, capacity released. Engine (Asterisk) restart → all agent legs and customer legs gone → sessions RECONNECTING, attempts FAILED `engine_restart`, campaign keeps RUNNING but launches nothing until ≥ 1 session reconnects. Agent becomes `NotReady` between reserve and answer (reserved mode) → reservation holds the agent in `Reserved` (cannot pause until released; pause request queued). Two pacers (lock bug) → the partial unique index on live numbers and the conditional agent update prevent double dial and double assignment.
-10. **Invariants/events:** INV-09 by schema CHECK; capacity is a ceiling (AC-14.1a); INV-03 pause never cancels ringing or bridged calls. Events `attempt.placed`, `attempt.answered`, `attempt.completed`.
+8. **Config:** `ratio` 1.0 (1.0–3.0, step 0.1, campaign); `max_concurrent` 10 (1–500, campaign; telephony's capacity check is the hard ceiling); `tick_interval` 1 s (250 ms–5 s, installation); `max_new_per_tick` 10 (1–100, installation); `ring_timeout_s` 25 (≥ profile `min_ring`, ≤ 60).
+9. **Failure:** pacer instance dies → lock released by session end; another instance acquires within one tick; in-flight attempts are reconciled against telephony's live Calls (`call_id` on the attempt); an attempt in DIALING/RINGING with no live Call → FAILED `lost`; an **ANSWERED** attempt with no live Call → **ABANDONED** (counted, conservative). Engine (Asterisk) restart → all legs gone → sessions RECONNECTING, DIALING/RINGING attempts FAILED `engine_restart` (not charged), ANSWERED attempts ABANDONED, BRIDGED attempts end normally (the conversation is over), campaign keeps RUNNING but launches nothing until ≥ 1 session reconnects. Agent requests a pause while `Reserved` → queued until the attempt bridges or is released; an attempt still unresolved at `campaign_reservation_seconds` is impossible in practice (setup allowance 30 s + ring ≤ 60 s < 120 s), and if the LLD-03 sweeper releases it anyway, an answer finds no agent and takes the abandon path. Two pacers (lock bug) → the partial unique index on live numbers and the conditional agent update prevent double dial and double assignment.
+10. **Invariants/events:** INV-09 by the attempt trigger (§4.4); capacity is a ceiling enforced by telephony (AC-14.1a); INV-03 pause never cancels ringing or bridged calls. Events `attempt.placed`, `attempt.answered`, `attempt.completed`.
 11. **Tests:**
 
     | # | Tier | Given / When / Then |
     |---|---|---|
     | PW1 | U | ratio 1.5, ready 3, in-flight 2 / PowerSlots / 2 (floor 4.5 = 4 − 2) |
+    | PW1a | U | reserved mode, ready 2 (CountReady already excludes 3 Reserved), in-flight 3 / PowerSlots / 2 |
     | PW2 | U | max_concurrent 5, in-flight 5 / — / 0 |
     | PW3 | U | property: PowerSlots never exceeds MaxConcurrent − InFlight or HopperReady, never negative |
     | PW4 | I | ratio 1.0, 2 Ready agents / tick / 2 attempts, each `agent_reserved` with a distinct agent |
     | PW5 | I | two pacers on one campaign / ticks / one holds the lock; no duplicate number live (unique index) |
-    | PW6 | I | capacity refuses / slot / attempt NOT_PLACED, lead not charged an attempt, no channel |
+    | PW6 | I | `DialerMedia.PlaceAttempt` returns `ErrCapacity` / slot / attempt NOT_PLACED, lead not charged, agent `Reserved → Ready` |
+    | PW6a | I | an agent commits into `Ready` / — / `NOTIFY dialer_wake` reaches the pacer and a slot launches before the next 1 s tick |
+    | PW6b | I | attempt ANSWERED, app restarted, no live Call / reconcile / ABANDONED and counted in the ledger |
     | PW7 | E | 2 agents, ratio 1.0, rig SIP UAs answering / 10 min / every answered call bridged; zero ABANDONED |
     | PW8 | A | 10 agents, clean list, 2 h (rig load harness) / power at configured ratio / concurrency never > limit; only answered calls reach agents (AC-14.1a) |
 12. **Parity:** VICIdial `auto_dial_level` 1.0–4.0 with `RATIO`; Five9
@@ -613,38 +699,67 @@ events/audit (item 10) to §9 unless stated.
 
 ### 6.4 OB-06 — Abandonment control (R1.0 power, R2 predictive)
 
-1. **Trigger/actors:** the abandonment evaluator (system, per RUNNING campaign, every 10 s); compliance officer configures the profile (`compliance.policy.manage`); manager resumes (`dialer.campaign.control`).
-2. **Preconditions:** campaign mode POWER or PREDICTIVE; profile loaded.
+**Owner (decided):** the **dialler** owns the evaluator, its state and its
+events (`tenant.<id>.event.dialer.abandon.*`). Compliance owns the
+counters, the profile and rule 12 of `Evaluate` (LLD-04 §3, §7.3), and
+emits no abandonment events.
+
+1. **Trigger/actors:** the abandonment evaluator (system, per RUNNING POWER/PREDICTIVE campaign, every 10 s, inside the pacer's advisory lock); compliance officer configures the profile (`compliance.policy.manage`) and resumes after a breach (`dialer.campaign.compliance_resume`).
+2. **Preconditions:** campaign mode POWER or PREDICTIVE; profile loaded. PREVIEW campaigns cannot abandon and are not evaluated.
 3. **Sequence:**
-   1. `AbandonLedger.Stats(campaign, now)` → live, abandoned.
-   2. Pure `AbandonControl(state, stats, policy, cfg) → (effectiveRatio, action)`.
-   3. Warm-up: `live < abandon_min_sample` (100) → `effective_ratio = 1.0` (reserved mode; cannot abandon, so the first abandon cannot be 100 %).
-   4. OK (`ratio < limit − margin`): `effective_ratio` steps up by `+0.1` per 60 s towards the configured `ratio` (after 10 min continuous OK when recovering).
-   5. APPROACHING: `effective_ratio = max(1.0, effective − 0.2)` **immediately** and again every 60 s while approaching — the first step lands within ≤ 10 s, inside AC-15.3's 60 s. Event `abandon.approaching` once on entry.
-   6. BREACHED: campaign → PAUSED(ABANDON_LIMIT), `effective_ratio = 1.0`; LLD-04 rule 12 refuses any unreserved attempt in flight to `Decide`. Event `abandon.breached`; alert to supervisors and compliance officers.
-   7. Resume after breach: `StartCampaign` allowed, but the campaign runs **locked in reserved mode** (`effective_ratio = 1.0`) until the ratio is < limit − margin; the console says so.
-4. **States:** campaign §5.1; evaluator state OK/APPROACHING/BREACHED stored in `dialer_campaign_stats` (derivable; no separate table).
-5. **Data:** LLD-04 `compliance_abandon_buckets`, `compliance_abandon_events`; `dialer_campaigns.effective_ratio`.
-6. **Ports:** `func AbandonControl(cur ControlState, s compliance.AbandonStats, p compliance.Policy, configured float64, now time.Time) (ControlState, float64, ControlAction)` — **pure**.
-7. **API:** `GetAbandonmentStatus` (LLD-04); campaign `GetCampaign` returns `effective_ratio`, `abandon_state`.
-8. **Config:** profile fields (LLD-04 §4.1); evaluator period 10 s (installation, 5–30 s); step down 0.2, step up 0.1/min, recovery hold 10 min (installation).
-9. **Failure:** ledger read fails → treat as BREACHED for this tick (fail closed: reserved mode), alert after 3; evaluator instance dies → it runs inside the pacer lock holder, so failover is the pacer's.
-10. **Invariants/events:** AC-15.3, AC-15.6; INV-03 (pause leaves live calls). Events `compliance.abandon.*` (LLD-04) and `dialer.campaign.paused{reason: ABANDON_LIMIT}`.
+   1. `AbandonLedger.Stats(tx, tenant, campaign, policy, now)` → `{LiveAnswered, Abandoned}` over the rolling window.
+   2. Read `ControlState` from `dialer_campaign_stats`; pure `AbandonControl(cur, stats, policy, configuredRatio, now)` → `(next ControlState, effectiveRatio, ControlAction)`; persist `next` and `effective_ratio` in one tx; emit an event only when `next.State ≠ cur.State`.
+   3. **WARMUP** (`live < abandon_min_sample`, 100): `effective_ratio = 1.0` (reserved mode: cannot abandon, so the first abandon cannot read as 100 %).
+   4. **OK** (`ratio < limit − margin`): if `recovery_hold_until` is past, step up `+0.1` per 60 s (`last_step_at`) towards the configured ratio; `reserved_only_lock` is cleared on the first OK evaluation.
+   5. **APPROACHING** (`ratio ≥ limit − margin`, 2.5 %): `effective_ratio = max(1.0, effective − 0.2)` immediately on entry and every 60 s while it lasts — the first step lands ≤ 10 s after the crossing, inside AC-15.3's 60 s; `recovery_hold_until = now + 10 min` on each step. Event `abandon.approaching` on entry.
+   6. **BREACHED** (`ratio ≥ limit`, 3 %): action `STOP` → campaign `STOPPED_COMPLIANCE` (§5.1) with reason ABANDON_LIMIT, `effective_ratio = 1.0`, `reserved_only_lock = true`, hopper emptied; ringing and live calls continue (INV-03); LLD-04 rule 12 refuses any unreserved attempt that reaches `Decide`. Event `abandon.breached`; alert to supervisors and compliance officers.
+   7. **Resume after breach:** only `ResumeAfterCompliance{campaign_id, reason}` by a compliance officer; the campaign returns to RUNNING **locked in reserved mode** until the ratio falls below limit − margin (then step 4 applies). A manager's `StartCampaign` is refused (OWNER DECISION §14.7).
+   8. Back below limit − margin after APPROACHING: event `abandon.recovered`.
+4. **States:**
+
+   | From | Condition | To | Action |
+   |---|---|---|---|
+   | WARMUP | live ≥ min sample and ratio < limit − margin | OK | `STEP_UP` allowed |
+   | WARMUP / OK | ratio ≥ limit − margin (min sample reached) | APPROACHING | `STEP_DOWN` |
+   | APPROACHING | still approaching, 60 s since `last_step_at` | APPROACHING | `STEP_DOWN` |
+   | APPROACHING | ratio < limit − margin | OK | `HOLD` until `recovery_hold_until` |
+   | any | ratio ≥ limit (min sample **not** required: rule applies from the first live answer) | BREACHED | `STOP` |
+   | BREACHED | compliance-officer resume | OK or APPROACHING by ratio, `reserved_only_lock` kept until OK | `NONE` |
+5. **Data:** LLD-04 `compliance_abandon_buckets`, `compliance_abandon_events` (migration 0058); `dialer_campaign_stats.abandon_state`, `recovery_hold_until`, `last_step_at`, `reserved_only_lock` (0057); `dialer_campaigns.effective_ratio`.
+6. **Ports:**
+   ```go
+   type ControlState struct {
+       State             AbandonState // WARMUP | OK | APPROACHING | BREACHED
+       RecoveryHoldUntil *time.Time
+       LastStepAt        *time.Time
+       ReservedOnlyLock  bool
+   }
+   type ControlAction int // NONE | STEP_DOWN | STEP_UP | HOLD | STOP
+   // Pure: no clock, no I/O.
+   func AbandonControl(cur ControlState, s compliance.AbandonStats, p compliance.Policy,
+       configured, effective float64, now time.Time, cfg ControlConfig) (ControlState, float64, ControlAction)
+   type ControlConfig struct { StepDown, StepUp float64; StepEvery, RecoveryHold time.Duration } // 0.2, 0.1, 60 s, 10 min
+   ```
+7. **API:** `GetAbandonmentStatus` (LLD-04, counters); `GetCampaign` returns `effective_ratio`, `abandon_state`, `reserved_only_lock`; `ResumeAfterCompliance{campaign_id, reason}` (`dialer.campaign.compliance_resume`; `FAILED_PRECONDITION` "This campaign was not stopped for abandonment"; `PERMISSION_DENIED` "A compliance officer must resume this campaign").
+8. **Config:** profile fields (LLD-04 §4.1); evaluator period 10 s (installation, 5–30 s); `ControlConfig` defaults above (installation).
+9. **Failure:** ledger read fails → treat as BREACHED **for pacing only** (reserved mode this tick, no state change, no stop), alert after 3 consecutive; evaluator runs inside the pacer lock holder, so failover is the pacer's (§6.3).
+10. **Invariants/events:** AC-15.3, AC-15.6; INV-03 (stop leaves ringing and live calls). Events `dialer.abandon.approaching|breached|recovered` (`campaign_id, ratio_pct, limit_pct, live_answered, abandoned`) and `dialer.campaign.stopped{reason: ABANDON_LIMIT}`; audit for `ResumeAfterCompliance`.
 11. **Tests:**
 
     | # | Tier | Given / When / Then |
     |---|---|---|
-    | A1 | U | live 50 / AbandonControl / ratio 1.0 (warm-up) |
-    | A2 | U | 1000/26 (2.6 %), effective 2.0 / — / 1.8 now; after 60 s still approaching → 1.6 |
-    | A3 | U | 1000/30 / — / PAUSE(ABANDON_LIMIT), ratio 1.0 |
-    | A4 | U | recovered to 2.0 % for 10 min / — / +0.1 per minute, capped at configured |
-    | A5 | I | buckets seeded at 2.9 %, one abandon pushes to 3.0 % / evaluator tick / campaign PAUSED within 10 s; bridged calls untouched |
-    | A6 | I | breached campaign resumed / pacer / only reserved attempts; Decide permits them |
+    | A1 | U | live 50, abandoned 0 / AbandonControl / WARMUP, ratio 1.0 |
+    | A2 | U | 1000 live / 26 abandoned (2.6 %), effective 2.0 / — / APPROACHING, 1.8; 60 s later still 2.6 % → 1.6 |
+    | A3 | U | 1000 / 30 (3.0 %) / — / BREACHED, action STOP, lock set |
+    | A4 | U | 1000 / 20 (2.0 %) after APPROACHING, hold until T+10 min / at T+9 min → no step; T+10 min → +0.1 per minute up to configured |
+    | A5 | I | buckets seeded **999 live / 29 abandoned** (2.90 %), effective 1.5 / one more abandon (`RecordLiveAnswer` + `RecordAbandon`, same `at`) → **1000 / 30 = 3.00 %** / evaluator tick → `STOPPED_COMPLIANCE` within 10 s; bridged and ringing attempts untouched |
+    | A6 | I | STOPPED_COMPLIANCE / manager `StartCampaign` → `PERMISSION_DENIED`; compliance officer resumes → RUNNING, only reserved attempts, Decide permits them |
     | A7 | A | simulated campaign crossing 2.5 % / — / slow-down observed ≤ 60 s (AC-15.3) |
 12. **Parity:** VICIdial adaptive methods (`ADAPT_HARD_LIMIT`,
-    `ADAPT_TAPERED`) and `drop_rate_group`; Five9 max abandon rate.
-    Difference: warm-up in reserved mode, and a breach stops dial-ahead
-    rather than only lowering the ratio.
+    `ADAPT_TAPERED`) and `drop_rate_group`; Five9 max abandon rate;
+    Amazon Connect predictive keeps an abandonment-rate target but does
+    not stop the campaign. Difference: warm-up in reserved mode, and a
+    breach stops the campaign until a compliance officer resumes it.
 
 ### 6.5 OB-04 — Predictive pacing (R2; specified now)
 
@@ -697,70 +812,87 @@ events/audit (item 10) to §9 unless stated.
 
 1. **Trigger/actors:** every dialler attempt, preview Dial, callback, and agent manual dial (`dialer.manual_dial`).
 2. **Preconditions:** campaign profile (or tenant default for manual dial outside a campaign).
-3. **Sequence:** attempt QUEUED and `Gate.Decide` in **one** transaction (LLD-04 §5); refused → BLOCKED with reason, lead per §5.2; permitted → continue. Hopper refill uses `PrecheckMany` (no rows). **Manual dial:** `ManualDial{number, campaign_id?}` → lead lookup `dialer_contacts` by `(tenant, number_digits)` (most recent list member in an attached list; ambiguity → the console lets the agent pick) → attempt `kind=MANUAL` with `agent_reserved=true` → Decide → OB-02 steps 5–8 through the agent's session bridge (or the agent's device via telephony-core if no session).
+3. **Sequence:**
+   1. Attempt QUEUED and `Gate.Decide(tx, req{AttemptID, …})` in **one** transaction (LLD-04 §5): `Decide` inserts the decision row with `attempt_id`; the attempt is updated with `compliance_decision_id` and its next state in the same tx; the trigger `dialer_attempt_verdict_guard` (§4.4) rejects DIALING/RINGING/… unless that decision row exists for this attempt and `permitted`, and rejects BLOCKED unless it refused. Refused → BLOCKED with reason, lead per §5.2; permitted → `DialerMedia.PlaceAttempt` with the `ComplianceDecisionID`.
+   2. Hopper refill uses `PrecheckMany(tx, base, []PrecheckContact{NumberDigits, Zone, Region, Country})` — per-number context from each contact row; writes nothing; refusals move the lead per §5.2 (`consent_missing`/`timezone_unknown` → BLOCKED_WAIT, retryable).
+   3. **Manual dial from a dialler session** (`ManualDial{number, campaign_id?}`): lead lookup in `dialer_contacts` by `(tenant, number_digits)` (most recent member of a list attached to the agent's campaign; several → the console lets the agent pick; none → attempt without contact); attempt `kind=MANUAL`, `agent_reserved=true` with `Reserve(principal, attemptID)`; **one** `Decide` (kind MANUAL, the campaign's profile or the tenant default); then `DialerMedia.PlaceAttempt{ComplianceDecisionID, Session}`.
+   4. **No double decision:** `AttemptRequest.ComplianceDecisionID` is required (`ErrNoDecision` otherwise); telephony Screening runs only capacity and `MaintenanceGate` for the attempt, records the carried id on `calls.compliance_decision_id`, and never calls `Decide` again (LLD-01 §23.3). The verdict itself is proven in the dialler's transaction by the trigger (§4.4). An emergency destination returns `ErrEmergencyRefused` → NOT_PLACED `emergency` (INV-01). Calls dialled on a phone, not through the dialler, go through Screening's own `Decide` (LLD-04 §8).
 4. **States:** attempt QUEUED → BLOCKED | DIALING.
-5. **Data:** `dialer_attempts.compliance_decision_id` + CHECK.
-6. **Ports:** `compliance.Gate` (LLD-04 §5.1).
+5. **Data:** `dialer_attempts.compliance_decision_id` + the verdict trigger (§4.4); LLD-04 `compliance_decisions.attempt_id`.
+6. **Ports:** `compliance.Gate` (`Decide`, `Precheck`, `PrecheckMany`; LLD-04 §5.1); `DialerMedia.PlaceAttempt`.
 7. **API:** `ManualDial` → `{attempt_id, permitted, reason}`; refused → `FAILED_PRECONDITION` with detail `reason`, console words per reason (`outside_hours`: "It is {local time} for this contact; calling hours are {window}"; `dnc_*`: "This number is on a do-not-call list"; `opted_out`: "This contact has opted out"; `compliance_unavailable`: "Calling is paused: the compliance check is unavailable").
 8. **Config:** none beyond the profile.
 9. **Failure:** Decide error → tx rollback, no attempt row; pacer backs off 5 s; 3 consecutive → alert.
-10. **Invariants:** INV-09/BR-10 (schema CHECK + single entry point); INV-01 (emergency numbers refused by `ManualDial` with `INVALID_ARGUMENT` "Emergency calls are placed from the phone, not the dialler"; the phone path is untouched).
+10. **Invariants:** INV-09/BR-10 (verdict trigger + single entry point + `PlaceAttempt` requires the decision id; Screening records it and never re-decides); INV-01 (emergency numbers refused by `ManualDial` with `INVALID_ARGUMENT` "Emergency calls are placed from the phone, not the dialler"; the phone path is untouched).
 11. **Tests:** LLD-04 §11 C1–C25 plus:
 
     | # | Tier | Given / When / Then |
     |---|---|---|
-    | G1 | I | attempt in DIALING with null decision / insert / DB CHECK violation |
+    | G1 | I | attempt set to DIALING with a null decision, with a refusing decision, or with another attempt's permitting decision / update / `check_violation` from the trigger in all three |
+    | G1a | I | `PrecheckMany` with two contacts in different zones at 20:30 New York / — / NY permitted, LA… per its own zone; a contact with no zone → `timezone_unknown`, lead BLOCKED_WAIT (not INVALID); consent upsert → `next_eligible_at = now` |
+    | G1b | I | manual dial from a session / — / exactly one `compliance_decisions` row for the attempt (Screening recorded the carried id on `calls.compliance_decision_id`, did not re-decide); an emergency destination → NOT_PLACED `emergency` |
     | G2 | W | `ManualDial` to a DNC number / — / `FAILED_PRECONDITION`, `reason=dnc_tenant`; no channel |
     | G3 | E | DNC number via power and via manual dial / — / never on the trunk (AC-15.1, release suite) |
 12. **Parity:** VICIdial checks DNC at hopper load and optionally at
-    manual dial; Five9 scrubs at load. We decide at the dial instant,
-    every path, no override.
+    manual dial; Five9 scrubs at load; Amazon Connect outbound campaigns
+    apply communication time windows and a profile-based suppression at
+    send time. We decide at the dial instant, every path, no override,
+    and keep one decision row per attempt.
 
 ### 6.7 OB-07 — Minimum ring and abandon message (R1.0)
 
-1. **Trigger/actors:** pacer (ring timeout); answer with no agent by the deadline.
+1. **Trigger/actors:** the dialler's ring timer (minimum ring and `RingTimeout`); an agent or system cancel request; answer with no agent by the connect deadline.
 2. **Preconditions:** profile `abandon_message_required` ⇒ media present (start guard §5.1).
 3. **Sequence:**
-   1. Dial with `timeout = RingTimeout(policy, ring_timeout_s)` (US ≥ 15 s; default 25 s ≈ 4 US ring cycles of 6 s). The dialler never cancels a ringing attempt earlier — not on pause, stop, or breach.
-   2. On ANSWER with no agent claimable by `deadline − 200 ms`: `POST /channels/{customer}/answer` is implicit (already up); `POST /channels/{customer}/play?media=<abandon_message_media_uri>` starts **before the deadline**; `message_started_ms` recorded.
-   3. `ChannelDtmfReceived` digit = `abandon_optout_digit` → `OptOuts.RecordOptOut(source=ABANDON_IVR)` in a tx; `POST /channels/{id}/play?media=sound:<confirmation>`.
-   4. `PlaybackFinished` → `DELETE /channels/{customer}?reason=normal`.
-   5. Tx: attempt ABANDONED, `ledger.RecordLiveAnswer` + `RecordAbandon(message_played, started_ms, opted_out)`; lead RETRY_WAIT with `next_eligible_at ≥ abandoned_at + no_redial_after_abandon`.
-   6. Customer hangs up before the deadline while waiting → ABANDONED as well (FCC counts it), message not played.
-   7. An agent becoming Ready **after** the message started is not connected (the customer has been told the call was abandoned).
+   1. **Minimum ring (decided):** the ring clock starts at the **first 180/183** — `DialerEvents.Progress` (`FirstAlertAt`) from `ChannelStateChange` → `Ringing` or `Dial` `dialstatus=RINGING`/`PROGRESS` — stored as `ring_started_at`. `RingTimeout = max(ring_timeout_s, min_ring)` (US ≥ 15 s; default 25 s ≈ 4 US ring cycles of 6 s) is measured **from `ring_started_at`**.
+   2. The ARI dial `timeout` passed by telephony is only a backstop: `setup_allowance_s + RingTimeout` (30 + 25 = 55 s), so it can never fire before `ring_started_at + RingTimeout` as long as ringing starts within the setup allowance.
+   3. No 180/183 by `dialed_at + setup_allowance_s` → `DialerMedia.Hangup`, outcome CARRIER_FAILED `no_progress` (the phone never rang, so no ring time is cut).
+   4. The dialler cancels at `ring_started_at + RingTimeout`. Any earlier request — agent *Hang up*, agent leg lost, `PauseCampaign`, `StopCampaign`, breach — only sets `cancel_requested_at`; `DialerMedia.Hangup` runs at `max(now, ring_started_at + min_ring)`. Nothing cancels a ringing leg before the minimum ring (47 CFR 64.1200(a)(6)).
+   5. On ANSWER with no agent claimable by `deadline − claim_margin` (200 ms): `DialerMedia.Play(attempt, abandon_message_media_uri)` (`POST /channels/{customer}/play`) starts **before the deadline**; `message_started_ms` recorded.
+   6. `DialerEvents.Dtmf` digit = `abandon_optout_digit` → `OptOuts.RecordOptOut(source=ABANDON_IVR)` in a tx; `DialerMedia.Play(sound:<confirmation>)`.
+   7. `DialerEvents.PlaybackDone` → `DialerMedia.Hangup(attempt, normal)`.
+   8. Tx: attempt ABANDONED, `ledger.RecordLiveAnswer(at)` + `RecordAbandon(at, message_played, started_ms, opted_out)` with the **same `at`** (the abandon instant); lead RETRY_WAIT with `next_eligible_at ≥ abandoned_at + no_redial_after_abandon`.
+   9. Customer hangs up before the deadline while waiting → ABANDONED as well (FCC counts it), message not played.
+   10. An agent becoming Ready **after** the message started is not connected (the customer has been told the call was abandoned).
+   11. **Recovery:** an ANSWERED attempt that is unmatched after an app or engine restart is recorded ABANDONED (`message_played=false` unless the playback is known to have started) — never FAILED; same rule as §6.3 item 9 and §11.
 4. **States:** attempt ANSWERED → ABANDONED.
 5. **Data:** LLD-04 `compliance_abandon_events`.
-6. **Ports:** `compliance.Policies`, `AbandonLedger`, `OptOuts`; `Media.StartPlayback`.
+6. **Ports:** `compliance.Policies`, `AbandonLedger`, `OptOuts`; `DialerMedia.Play/Hangup`; pure `RingCancelAt(ringStarted *time.Time, dialed, cancelRequested time.Time, p compliance.Policy, campaignRing, setupAllowance time.Duration) time.Time`.
 7. **API:** profile RPCs (LLD-04); attempt shows `outcome=ABANDONED`, `message_played`.
-8. **Config:** profile `min_ring_seconds` 15, `abandon_connect_limit_ms` 2000, `abandon_optout_digit` "9"; claim margin 200 ms (installation, 100–500).
-9. **Failure:** playback fails (`PlaybackFinished` with failure or media missing) → hang up immediately and record `message_played=false` + alert (a compliance incident, visible to the auditor); engine down mid-message → attempt ABANDONED on reconcile.
+8. **Config:** profile `min_ring_seconds` 15, `abandon_connect_limit_ms` 2000, `abandon_optout_digit` "9"; campaign `ring_timeout_s` 25, `setup_allowance_s` 30 (5–60); claim margin 200 ms (installation, 100–500).
+9. **Failure:** playback fails (`PlaybackFinished` with failure or media missing) → hang up immediately and record `message_played=false` + alert (a compliance incident, visible to the auditor); engine or app down after answer → ABANDONED on reconcile (step 11); app down while ringing → telephony's backstop timeout ends the leg no earlier than the minimum ring.
 10. **Invariants:** AC-15.6. Events `attempt.abandoned`.
 11. **Tests:**
 
     | # | Tier | Given / When / Then |
     |---|---|---|
     | M1 | U | profile 15 s, campaign 10 s / RingTimeout / 15 s |
-    | M2 | I | campaign paused while an attempt rings / — / the attempt runs to its timeout or answer |
+    | M1a | U | dialed T, 183 at T+8 s, cancel requested T+10 s, min ring 15 s / `RingCancelAt` / T+23 s; no progress by T+30 s / → T+30 s, outcome CARRIER_FAILED |
+    | M2 | I | campaign paused 3 s after ring start / — / no cancel before ring start + 15 s; with no request, cancel at ring start + 25 s |
+    | M2a | I | answer, then app restart before bridge / reconcile / ABANDONED, ledger +1/+1 with one `at` |
     | M3 | E | ratio 2.0, 1 agent busy, 2nd customer answers (rig UA) / — / playback starts < 2 s after answer (ARI timestamps); DTMF 9 → opt-out row |
-    | M4 | E | unanswered rig UA / — / hang-up not before 15 s (SIP trace CANCEL time) |
-12. **Parity:** VICIdial `drop_call_seconds` + `safe_harbor_message`;
-    Five9 abandon message. Ours measures from answer (stricter) and
-    stores the message timing per abandon.
+    | M4 | E | unanswered rig UA with a delayed 180 / — / CANCEL not before 180 + 15 s (SIP trace) |
+12. **Parity:** VICIdial `drop_call_seconds` + `safe_harbor_message` and
+    a dial timeout from originate; Five9 abandon message; Amazon Connect
+    plays a configurable message when no agent is available and uses a
+    ring timeout per campaign. Ours measures the connect limit from answer
+    (stricter), the minimum ring from first ringing, and stores the
+    message timing per abandon.
 
 ### 6.8 OB-08 — Voicemail drop and AMD (R1.0 agent drop; R2 AMD)
 
 1. **Trigger/actors:** R1.0 — agent (`dialer.agent`) clicks *Drop voicemail* while BRIDGED. R2 — AMD classifier on answer.
 2. **Preconditions:** campaign `voicemail_drop_media_uri` set; contact consent `EXPRESS_WRITTEN` when the profile is US_FCC (a prerecorded telemarketing message; OWNER DECISION LLD-04 §12.4); button hidden otherwise.
-3. **Sequence (R1.0):** agent hears the greeting and beep → *Drop* → `POST /bridges/{agent}/removeChannel` customer; `POST /channels/{customer}/play?media=<drop>`; agent → `WrapUp` immediately (auto-disposition `ANSWERING_MACHINE`, outcome `VOICEMAIL_DROPPED`); `PlaybackFinished` → `DELETE /channels/{customer}`. The message is never played to a human the agent is talking to (the agent decides).
-   **Sequence (R2 AMD):** before dial, `POST /channels/{id}/variable` `TALK_DETECT(set)=500,128`; on answer, classify from `ChannelTalkingStarted/Finished` (baseline) and optionally an AI plugin on a snoop copy (LLD-10, D-23): parameters `initial_silence` 2500 ms, `greeting` 1500 ms, `after_greeting_silence` 800 ms, `total_analysis_time` 5000 ms (capped by the connect deadline − 300 ms under `amd_counts_against_connect`), `min_word_length` 100 ms, `between_words_silence` 50 ms, `max_words` 2; AI deadline default 1200 ms, on miss → **human**. Machine → wait for silence ≥ 1000 ms after the last `ChannelTalkingFinished` (beep proxy; SPIKE-D3) → play drop (if allowed) → hang up; outcome MACHINE / VOICEMAIL_DROPPED.
+3. **Sequence (R1.0):** console shows *Drop voicemail* only when `compliance.Consent.ConsentFor(tx, tenant, number)` and pure `PrerecordedAllowed(policy, facts)` (LLD-04 §5.1) say so, re-checked on click. Agent hears the greeting and beep → *Drop* → `DialerMedia.Drop(attempt, drop_media)` (telephony: `POST /bridges/{session}/removeChannel`, play on the customer channel, hang up on `PlaybackFinished` with `left_reason=voicemail_dropped`); agent `Transition(CustomerLeft)` → `WrapUp` immediately (auto-disposition `ANSWERING_MACHINE`, outcome `VOICEMAIL_DROPPED`). The message is never played to a human the agent is talking to (the agent decides).
+   **Sequence (R2 AMD):** an R2 extension of LLD-01 §23.3 (`AttemptRequest` AMD flag and a talk-event callback, to be added with `dialer-amd`) sets `TALK_DETECT(set)=500,128` before dial; on answer, classify from `ChannelTalkingStarted/Finished` (baseline) and optionally an AI plugin on a snoop copy (LLD-10, D-23): parameters `initial_silence` 2500 ms, `greeting` 1500 ms, `after_greeting_silence` 800 ms, `total_analysis_time` 5000 ms (capped by the connect deadline − 300 ms under `amd_counts_against_connect`), `min_word_length` 100 ms, `between_words_silence` 50 ms, `max_words` 2; AI deadline default 1200 ms, on miss → **human**. Machine → wait for silence ≥ 1000 ms after the last `ChannelTalkingFinished` (beep proxy; SPIKE-D3) → play drop (if allowed) → hang up; outcome MACHINE / VOICEMAIL_DROPPED.
 4. **States:** attempt BRIDGED → MACHINE (R1.0); ANSWERED → MACHINE (R2).
 5. **Data:** media URIs point into the tenant's object store (same store as recordings; closes old open decision §10.2); upload via the existing media/prompt facility.
-6. **Ports:** `Media`; `func ClassifyTalk(events []TalkEvent, p AMDParams) (Class, decided bool)` — **pure** (R2).
+6. **Ports:** `DialerMedia.Drop`; `compliance.Consent.ConsentFor` + pure `compliance.PrerecordedAllowed`; `func ClassifyTalk(events []TalkEvent, p AMDParams) (Class, decided bool)` — **pure** (R2).
 7. **API:** `DropVoicemail{attempt_id}` → `{}`; refusals `FAILED_PRECONDITION` "This campaign has no voicemail message", "This contact has not given written consent for recorded messages".
 8. **Config:** campaign media; AMD params per campaign (R2) within the ranges of app_amd.
 9. **Failure:** drop playback fails → hang up, outcome MACHINE, alert; AMD/AI failure → human (INV-04).
 10. **Invariants:** INV-04; AC-14.2 is R2. Events `attempt.completed{outcome}`.
-11. **Tests:** V1 (I) drop without media → refused; V2 (E) agent drop on rig → agent free < 1 s, customer UA receives the audio; V3 (U, R2) `ClassifyTalk` table of greetings → class; V4 (A, R2) labelled corpus ≥ 95 % accuracy, ≤ 2 % humans as machine (AC-14.2).
+11. **Tests:** V1 (I) drop without media → refused; V1a (I) US profile, consent EXPRESS → `FAILED_PRECONDITION`, EXPRESS_WRITTEN → allowed; V2 (E) agent drop on rig → agent free < 1 s, customer UA receives the audio; V3 (U, R2) `ClassifyTalk` table of greetings → class; V4 (A, R2) labelled corpus ≥ 95 % accuracy, ≤ 2 % humans as machine (AC-14.2).
 12. **Parity:** VICIdial AMD via app_amd + "AMD send to VM" message;
     Five9 "VM drop" one click; Amazon Connect AMD with "await prompt".
     R1.0 ships the agent click only.
@@ -773,11 +905,23 @@ events/audit (item 10) to §9 unless stated.
    1. `RecordDisposition{attempt, code, note}` → tx: attempt DISPOSED; `NextAction(code)` → lead transition (§5.2) using `RetryPlan` (pure); `OPT_OUT` → `OptOuts.RecordOptOut(AGENT)`; `DNC_CAMPAIGN` → campaign DNC row; agent `WrapUp → Ready`.
    2. System outcomes with no agent (NO_ANSWER, BUSY, ABANDONED, CARRIER_FAILED…) are auto-disposed with the outcome as key.
    3. `ScheduleCallback{attempt, local_datetime, contact_zone (prefilled from LLD-04 zone derivation), owner: AGENT|ANY, note}` → convert to UTC; `Precheck` at that instant → refused `outside_hours` → `FAILED_PRECONDITION` "That time is outside the contact's calling hours ({window})"; insert SCHEDULED; lead CALLBACK.
-   4. **Scheduler:** a worker (one per installation under advisory lock `hash('dialer-callbacks')`, tick 15 s) selects `state='SCHEDULED' AND due_at <= now() + 60 s FOR UPDATE SKIP LOCKED LIMIT 500` → DUE; inserts the hopper row priority 100 (`owner_principal_id` for AGENT). For an AGENT callback whose owner has no CONNECTED session at `due_at + 5 min`: `callback_fallback_to_any` (default true) → hopper row loses the owner; else MISSED `owner_absent`, returned to the owner's list in the console.
-   5. In PREVIEW the row is offered first to its owner (OB-02 query); in POWER it is dialled in reserved mode to the owner if Ready, else waits up to 5 min then falls back.
-   6. Delivered = attempt DIALING; `delivered_at` recorded; COMPLETED after disposition. Not delivered by `due_at + 15 min` (campaign paused, no agents) → MISSED `campaign_paused|no_agents`; lead READY priority 50; event `callback.missed`.
-4. **States:** callback SCHEDULED → DUE → OFFERED → DIALING → COMPLETED | MISSED | CANCELLED; lead §5.2.
-5. **Data:** §4.2 retry rules, §4.6 callbacks.
+   4. **Scheduler:** a worker (one per installation under advisory lock `hash('dialer-callbacks')`, tick 15 s) selects `state='SCHEDULED' AND due_at <= now() + 60 s FOR UPDATE SKIP LOCKED LIMIT 500` → DUE; sets the lead `priority = 100` and inserts the hopper row priority 100 with `callback_id` (and `owner_principal_id` for AGENT). For an AGENT callback whose owner has no CONNECTED session at `due_at + 5 min`: campaign `callback_fallback_to_any` (default true, §4.2) → hopper row loses the owner; else MISSED `owner_absent`, returned to the owner's list in the console.
+   5. **DUE → OFFERED** when its hopper row is leased: in PREVIEW by `NextContact` (owner first, OB-02 query); in POWER by a pacer slot, in reserved mode to the owner if Ready (`Reserve(owner, attemptID)`), else the row waits up to 5 min then falls back. Lease expiry or skip → OFFERED → DUE (row back to READY).
+   6. **OFFERED → DIALING** when its attempt reaches DIALING; `delivered_at` recorded; COMPLETED after disposition. Not delivered by `due_at + 15 min` (campaign paused, no agents) → MISSED `campaign_paused|no_agents`; lead READY with `priority = 50`; event `callback.missed`.
+4. **States:**
+
+   | From | Trigger | To |
+   |---|---|---|
+   | — | `ScheduleCallback` (Precheck permits) | SCHEDULED |
+   | SCHEDULED | scheduler: `due_at ≤ now + 60 s` | DUE (hopper row priority 100) |
+   | DUE | hopper row leased (`NextContact` or pacer slot) | OFFERED |
+   | OFFERED | lease expiry / skip / reservation released | DUE |
+   | OFFERED | attempt DIALING | DIALING |
+   | DIALING | disposition | COMPLETED (or a new SCHEDULED callback if the agent reschedules) |
+   | DUE, OFFERED | `due_at + 15 min` passed, or AGENT owner absent with fallback off | MISSED |
+   | SCHEDULED, DUE | `CancelCallback` / `StopCampaign{cancel_callbacks}` / opt-out | CANCELLED |
+
+5. **Data:** §4.2 retry rules and `callback_fallback_to_any`, §4.3 `dialer_leads.priority`, §4.6 callbacks.
 6. **Ports:**
    ```go
    // RetryPlan is pure.
@@ -850,7 +994,7 @@ events/audit (item 10) to §9 unless stated.
 9. **Failure:** all routes down → every attempt CARRIER_FAILED → trip after 20; no lead is exhausted by carrier failures (cap 3/day).
 10. **Invariants:** INV-03; FL-03 alerting is D-80's. Event `campaign.paused{reason: CARRIER_FAILURE}`.
 11. **Tests:** K1 (U) mapping table, row by row; K2 (U) CarrierTrip at 19 vs 20 samples; K3 (I) 20 × 503 → PAUSED, leads not charged; K4 (E) rig trunk to a UA returning 503 → campaign pauses, bridged call on another route unaffected.
-12. **Parity:** VICIdial dial statuses `CONGESTION`/`DC` and no auto-pause; Five9 carrier failover. Our auto-pause protects contacts from burnt attempts.
+12. **Parity:** VICIdial dial statuses `CONGESTION`/`DC` and no auto-pause; Five9 carrier failover; Amazon Connect records telephony failures per contact and retries per campaign settings, without a carrier-failure stop. Our auto-pause protects contacts from burnt attempts.
 
 ### 6.12 OB-12 — Caller-ID selection (R1.0, BR-06)
 
@@ -858,20 +1002,23 @@ The number inventory (`tenant_numbers`, states `pending → verified →
 revoked`, evidence) and the pure precedence function
 `ChoosePresentation` are **LLD-03 §3.12**. A dialler attempt is its
 precedence row 1 ("campaign / number pool"): the dialler picks a
-candidate from its pool and passes it as `PoolChoice`; `pbx-core`
-verifies it and is the only code that writes the presented number. The
-dialler designs no inventory table.
+candidate from its pool (a `tenant_numbers.id`) and passes it to
+`pbx-core`'s `Presentation.Choose` as `DialerPresentation.PoolChoice`
+(LLD-03 §3.12); `ChoosePresentation` verifies it and returns `Presented`,
+which the dialler passes unchanged in `AttemptRequest.Presentation`;
+telephony writes it to the channel. The dialler
+designs no inventory table and never sets `CALLERID`.
 
 1. **Trigger/actors:** each attempt (system); manager configures pools and campaign caller ID (`dialer.campaign.manage`); numbers are added and verified by the tenant administrator in LLD-03 (`pbx.number.write`, `pbx.number.verify`).
 2. **Preconditions:** every number used is `verified` (not `pending`/`revoked`) in `tenant_numbers`; `callback_number_id` is a verified `carrier_did` (it receives calls on the tenant's trunk, so it can take DNC requests — 16 CFR 310.4(a)(8) expects a number that can be called back).
 3. **Sequence:**
-   1. `StartCampaign` guard: `Presentation.Status` for `callerid_number_id`, every pool member, and `callback_number_id` → all `verified`; else `FAILED_PRECONDITION`.
+   1. `StartCampaign` guard: `Presentation.Status` (LLD-03, in the caller's tx) for `callerid_number_id`, every pool member and `callback_number_id` → all `verified`, callback a `carrier_did`; else `FAILED_PRECONDITION`.
    2. Per attempt, in the attempt tx after `Decide`: dialler's pure `PickPoolNumber(mode, members, contact)`:
       - `FIXED` → `callerid_number_id`;
       - `POOL` → member with the oldest `last_used_at` (`SELECT … FOR UPDATE SKIP LOCKED LIMIT 1`, then set `last_used_at = now()`);
       - `LOCAL_PRESENCE` → member with the contact's NPA, then the contact's region, then the pool LRU (OWNER DECISION §14.3).
-   3. `Presentation.Choose(tx, tenant, {Origin: DIALER, PoolChoice: &number})` → LLD-03 `ChoosePresentation` row 1. `ErrNotOwned` (number revoked meanwhile) → attempt NOT_PLACED `callerid`; for POOL the member is skipped and the next tried once; for FIXED, or a pool with no verified member left → campaign PAUSED(CALLER_ID_INVALID) and alert.
-   4. Telephony sets `CALLERID(num)`, `CALLERID(name)` (inventory `cnam`) and `P-Asserted-Identity` on `POST /channels/create`; `dialer_attempts.presented_number` stores the digits. Withholding is not offered for dialler attempts (TSR requires transmitting caller ID).
+   3. `Presentation.Choose(tx, tenant, DialerPresentation{Origin: OriginDialer, PoolChoice, CampaignID, AttemptID})` → `ChoosePresentation` precedence row 1 → `Presented{NumberID, Digits, CNAM}`. `ErrNotOwned` (number revoked meanwhile) → attempt NOT_PLACED `callerid` (LLD-03 records `presentation_refused`); for POOL the member is skipped and the next tried once; for FIXED, or a pool with no verified member left → campaign PAUSED(CALLER_ID_INVALID) and alert.
+   4. Telephony sets `CALLERID(num)`, `CALLERID(name)` (inventory `cnam`) and `P-Asserted-Identity` on `POST /channels/create`; `Presented.Digits` is stored in `dialer_attempts.presented_number`. Withholding is not offered for dialler attempts (TSR requires transmitting caller ID).
    5. STIR/SHAKEN: signing is the carrier's in R1.0; the inventory's evidence is what the partner shows the carrier to obtain A-attestation (LLD-03 `stir_attestation` placeholder).
 4. **States:** inventory states are LLD-03's; campaign RUNNING → PAUSED(CALLER_ID_INVALID).
 5. **Data:** §4.2 `dialer_callerid_pools`, `dialer_callerid_pool_members`, campaign `callerid_*_id`, `callback_number_id`; `dialer_attempts.presented_number`.
@@ -879,9 +1026,9 @@ dialler designs no inventory table.
    ```go
    // PickPoolNumber is pure: chooses a candidate; it does not authorise it.
    func PickPoolNumber(mode CallerIDMode, members []PoolMember, contactNPA, contactRegion string) (numberID shared.UUID, ok bool)
-   // Implemented by pbx-core over LLD-03 §3.12 (NumberInventory + ChoosePresentation).
+   // Implemented by pbx-core (LLD-03 §3.12), runs in the dialler's tx:
    type Presentation interface {
-       Status(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, numberID shared.UUID) (NumberStatus, string /*digits*/, error)
+       Status(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, numberID NumberID) (NumberStatus, string, error)
        Choose(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, in DialerPresentation) (Presented, error) // ErrNotOwned
    }
    ```
@@ -894,13 +1041,15 @@ dialler designs no inventory table.
 
 ### 6.13 Cross-cutting agent features (R1.0)
 
+The nailed-up leg is opened with `DialerMedia.OpenAgentLeg` on `JoinCampaign` and closed with `CloseSession` on leave (§5.4); `AgentLegLost` (30 s keepalive, `StasisEnd`, `ChannelDestroyed`) drives RECONNECTING.
+
 | Feature | Design |
 |---|---|
-| **Pause codes** | `SetPause{code}` with codes from LLD-03's catalogue (defaults BREAK, LUNCH, TRAINING, MEETING, ADMIN; system codes `leg_lost`, `leg_failed`, `dispo_timeout`, `campaign_stopped` are not selectable). Pause during a call takes effect at end of wrap-up. Time per code is reported (LLD-09) |
-| **Manual dial** | OB-05 §6.6 step 3: lead lookup, compliance, the agent's session bridge |
+| **Pause codes** | `SetPause{code}` with codes from LLD-03's catalogue (`AgentStates.ReasonCodes`) (defaults BREAK, LUNCH, TRAINING, MEETING, ADMIN; system codes `leg_lost`, `leg_failed`, `dispo_timeout`, `campaign_stopped` are not selectable). Pause during a call takes effect at end of wrap-up. Time per code is reported (LLD-09) |
+| **Manual dial** | OB-05 §6.6 steps 3–4: lead lookup, one `Decide`, `DialerMedia.PlaceAttempt` into the session bridge; Screening records the decision id |
 | **Transfer / 3-way with the lead** | Attended/blind transfer and conference are telephony-core call control (HLD-21 §1, LLD-01 §11): the customer leg moves from the session bridge into a call bridge; the agent's nailed leg stays in the session bridge; the attempt keeps the lead and the agent disposes it. An external third party is a normal trunk call through Screening (D-82/D-85), not a dialler attempt |
 | **Recording** | `NONE`, `ALL` (from BRIDGED until the customer leaves), `ON_DEMAND` (agent start/stop); via telephony-core recording into the tenant object store; never records the idle nailed-up leg |
-| **Licence capacity** | One reservation per **customer leg**, keyed by the attempt's call id (D-58), from QUEUED to the leg's end. The nailed-up agent leg is not reserved (OWNER DECISION §14.2) |
+| **Licence capacity** | Reserved **by telephony** inside `DialerMedia.PlaceAttempt`, one per customer leg, keyed by the Call's `call_id` (D-58), released by telephony when the Call terminates (LLD-08: only telephony calls `ValidateCapacity` per call). The dialler never calls licensing. Whether `OpenSession` reserves capacity for the nailed-up leg is OWNER DECISION §14.2 |
 
 ## 7. API contract (`dialer.v1.DialerService`)
 
@@ -912,6 +1061,7 @@ dialler designs no inventory table.
 | `dialer.attempt.export`, `dialer.contact.export` | TENANT_ADMIN, CAMPAIGN_MANAGER (audited) |
 | `dialer.agent` (session, next, dial preview, disposition, callback, drop, pause) | AGENT, SUPERVISOR |
 | `dialer.manual_dial` | AGENT, SUPERVISOR |
+| `dialer.campaign.compliance_resume` | proposed COMPLIANCE_OFFICER only (LLD-04 §12.6) |
 
 | RPC | Key request fields → response | Permission | Refusals (code — console words) |
 |---|---|---|---|
@@ -919,13 +1069,15 @@ dialler designs no inventory table.
 | `ListLists`, `ArchiveList`, `ListContacts`, `PreviewSegment` | paging, `segment` → contacts (masked), count | list.read / list.manage | `INVALID_ARGUMENT` "Filter field {f} is not allowed" |
 | `CreateCampaign`, `UpdateCampaign` (`version`, `update_mask`), `GetCampaign`, `ListCampaigns`, `DuplicateCampaign` | §4.2 fields | campaign.manage / read | `INVALID_ARGUMENT` per field range; `FAILED_PRECONDITION` "Pause the campaign to change this"; `ABORTED` "Someone else changed this campaign; reload"; `FAILED_PRECONDITION` "Predictive dialling is not available in this release" |
 | `AttachList`, `DetachList` | `campaign_id, list_id, weight, priority, segment` | campaign.manage | `NOT_FOUND` |
+| `ResumeAfterCompliance` | `campaign_id, reason (≥ 10 chars)` → campaign | `dialer.campaign.compliance_resume` | `FAILED_PRECONDITION` "This campaign was not stopped for abandonment"; `PERMISSION_DENIED` "A compliance officer must resume this campaign" |
+| `CreateCallerIDPool`, `ReplaceCallerIDPoolMembers`, `ListCallerIDPools` | `name` / `pool_id, number_ids[]` | campaign.manage / read | `FAILED_PRECONDITION` "{number} is not a verified number of this organisation" |
 | `StartCampaign`, `PauseCampaign`, `StopCampaign{cancel_callbacks}` | `campaign_id` → campaign | campaign.control | `FAILED_PRECONDITION` naming the failed guard ("No active list", "Caller ID not authorised", "The abandon message is missing", "Outside the campaign schedule", "A stopped campaign cannot restart; duplicate it") |
 | `JoinCampaign`, `LeaveCampaign` | `campaign_id` → `{session_id, state}` | agent | `FAILED_PRECONDITION` "You are already in campaign {name}"; "No phone is logged in for you" |
 | `SetReady`, `SetPause{code}` | → agent state | agent | `INVALID_ARGUMENT` "Unknown pause code" |
 | `NextContact` | `session_id` → `{lease_id, contact, history[], expires_at}` | agent | `NOT_FOUND` "No contact can be called right now" |
 | `DialPreview`, `SkipPreview{reason}` | `lease_id` → `{attempt_id}` | agent | `FAILED_PRECONDITION` + compliance reason; `RESOURCE_EXHAUSTED` "Skip limit reached for this hour" / "No line is free (licence capacity)" |
 | `ManualDial` | `number, campaign_id?` → `{attempt_id, contact?}` | manual_dial | as OB-05 |
-| `HangUp`, `DropVoicemail` | `attempt_id` | agent | `FAILED_PRECONDITION` as OB-08 |
+| `HangUp`, `DropVoicemail` | `attempt_id` → `{ending_at?}` (HangUp while ringing returns when the cancel will happen) | agent | `FAILED_PRECONDITION` as OB-08 |
 | `RecordDisposition` | `attempt_id, code, note ≤ 1000` | agent | `FAILED_PRECONDITION` "This call is already closed" |
 | `ScheduleCallback`, `CancelCallback`, `ListCallbacks` | `attempt_id, local_datetime, zone, owner, note` | agent | `FAILED_PRECONDITION` "That time is outside the contact's calling hours ({window})" |
 | `RecycleLeads` | `campaign_id, statuses[], delay_minutes, limit, reset_attempts` → `{count}` | campaign.manage | `INVALID_ARGUMENT` "Delay must be at least 5 minutes" |
@@ -942,10 +1094,12 @@ identifiers never appear in any message (D-19).
 |---|---|---|---|
 | Import file size / rows | 50 MB / 100 000 | 1 000–1 000 000 rows | installation |
 | `ratio` | 1.0 | 1.0–3.0 (step 0.1); PREVIEW fixed 1.0 | campaign |
-| `max_concurrent` | 10 | 1–500 and ≤ licence capacity | campaign |
+| `max_concurrent` | 10 | 1–500 (telephony's licence check is the hard ceiling) | campaign |
 | `ring_timeout_s` | 25 | max(10, profile min ring)–60 | campaign |
 | `wrapup_max_s` | 120 | 0–900 (0 = immediate auto-dispose) | campaign |
-| `preview_ttl_s` / action / skips per hour | 120 / RETURN / 0 | 30–600 / RETURN,DIAL / 0–100 | campaign |
+| `preview_ttl_s` / action / skips per hour | 120 / RETURN / 0 | 30–300 and ≤ LLD-03 `campaign_reservation_seconds` / RETURN,DIAL / 0–100 | campaign |
+| `setup_allowance_s` (dial → first 180/183) | 30 | 5–60 | campaign |
+| Pacer wake-up | `LISTEN dialer_wake` + 1 s tick | — | installation |
 | Pacer tick / max new per tick | 1 s / 10 | 250 ms–5 s / 1–100 | installation |
 | Hopper target | `clamp(ceil(ratio × sessions × 5), 20, 2000)` rows | multiplier 2–20 | installation |
 | Hopper refill | when READY < 50 % of target, checked every 5 s | 1–30 s | installation |
@@ -981,10 +1135,11 @@ never contain a full number — `contact_id` and `number_last4` only):
 | `attempt.abandoned` | `attempt_id, message_played, message_started_ms` |
 | `attempt.completed` | `attempt_id, outcome, disposition, q850_cause, sip_code, duration_ms` |
 | `session.joined|lost|ended` | `session_id, principal_id, campaign_id, reason` |
+| `abandon.approaching|breached|recovered` | `campaign_id, ratio_pct, limit_pct, live_answered, abandoned` (on state change only; §6.4) |
 | `callback.scheduled|due|missed|completed` | `callback_id, due_at, owner, reason?` |
 
 Audit (`AppendAuditTx`, before/after): campaign create/update/state
-change, list import/archive, attach/detach, dispositions, retry rules,
+change, `ResumeAfterCompliance` (with reason), caller-ID pools, list import/archive, attach/detach, dispositions, retry rules,
 recycle, attempt/contact export, caller-ID changes, disposition
 overwrite.
 
@@ -997,7 +1152,7 @@ Metrics (Prometheus, labels `tenant`, `campaign`):
 `dialer_agent_occupancy_ratio`, `dialer_carrier_fail_ratio`,
 `dialer_next_contact_seconds` (SLO p95 < 300 ms). Alerts: campaign
 auto-paused (any reason), compliance unavailable, abandon approaching,
-carrier trip, capacity ceiling hit for 5 min, connect latency p95 > 1 s.
+carrier trip, abandonment stop, `NOT_PLACED capacity` sustained for 5 min, connect latency p95 > 1 s.
 
 ## 10. Test plan summary and Definition of Done
 
@@ -1009,7 +1164,7 @@ M4 + L12, run before every release.
 
 DoD R1.0: AC-14.1a, 14.3, 14.4, 14.5, 14.6 (via US-14.6 tests), US-14.5
 (agent drop), AC-15.1–15.6 proven at their tiers; every test above
-tagged R1.0 green; the predictive simulator (R3) exists and passes as a
+tagged R1.0 green; the predictive simulator (OB-04 test R3) exists and passes as a
 unit test even though the mode is disabled. R2: AC-14.1, AC-14.2,
 US-14.4.
 
@@ -1017,10 +1172,10 @@ US-14.4.
 
 | Event | Behaviour | No orphan because |
 |---|---|---|
-| App instance restart | pacer/scheduler locks move; reconcile: attempts in DIALING/RINGING/ANSWERED matched to `GET /channels` by `appArgs`; sessions matched to bridges; unmatched → FAILED `lost`, capacity released | every engine resource carries the attempt/session id in `appArgs`/bridge name |
-| Asterisk restart | all legs gone; attempts FAILED `engine_restart` (not charged); sessions RECONNECTING; capacity released | D-58 idempotent release |
+| App instance restart | pacer/scheduler locks move; reconcile attempts against telephony's live Calls by `call_id` (telephony itself reconciles engine channels by `appArgs`, LLD-01 §22): unmatched DIALING/RINGING → FAILED `lost` (not charged); unmatched **ANSWERED → ABANDONED** (counted); sessions matched to bridges or RECONNECTING | every engine resource carries the attempt/session id in `appArgs`/bridge name; telephony releases capacity with the Call |
+| Asterisk restart | all legs gone; DIALING/RINGING → FAILED `engine_restart` (not charged); ANSWERED → ABANDONED (counted); BRIDGED → ended normally, to WrapUp; sessions RECONNECTING | telephony terminates the Calls and releases capacity (D-58 idempotent) |
 | Compliance store down | no attempt created; pacer backs off; campaign stays RUNNING; alert | fail closed |
-| Customer hangs up while being claimed | `ChannelDestroyed` before addChannel → ABANDONED (if after answer) | agent claim rolled back to Ready |
+| Customer hangs up while being claimed | `DialerEvents.Ended` before `Bridge` → ABANDONED (after answer) | claimed agent `Busy → WrapUp → Ready` via `CustomerLeft` with auto-disposition; a reserved agent `ReservationReleased` |
 | Agent hangs up phone mid-call | session RECONNECTING; customer hung up; attempt to WrapUp with the agent | §5.4 |
 | Concurrent pause and tick | tick re-reads state inside its tx with `FOR SHARE`; pause commits first → tick launches nothing | AC-14.4 |
 | Duplicate contact in two campaigns | partial unique index refuses the second live attempt → NOT_PLACED `duplicate_live`, lead returned | INV: one live call per person |
@@ -1030,11 +1185,11 @@ US-14.4.
 | Rule | Mechanism |
 |---|---|
 | INV-01 | emergency numbers rejected at import (`emergency_number`) and at `ManualDial`; no dialler path uses the emergency matcher |
-| INV-03 | pause/stop/breach/carrier trip never touch BRIDGED, ABANDONED-message or ringing attempts |
+| INV-03 | pause/stop/breach/carrier trip never touch BRIDGED, ABANDONED-message or ringing attempts; no ringing leg is cancelled before `ring_started_at + min_ring` |
 | INV-04 | AMD/AI undecided or failed = human |
-| INV-09 / BR-10 | schema CHECK + `Decide` in the attempt tx; Precheck cannot produce a decision id |
+| INV-09 / BR-10 | verdict trigger on `dialer_attempts` (§4.4) + `Decide` in the attempt tx; Precheck cannot produce a decision id; `PlaceAttempt` refuses without a decision id (`ErrNoDecision`); Screening records it and never re-decides |
 | INV-10 | RLS on every table; advisory-lock keys include tenant-scoped ids only |
-| BR-06 | `Presentation.Status` at start, `Presentation.Choose` per attempt (LLD-03 §3.12); fail closed |
+| BR-06 | `NumberInventory` check at start; `ChoosePresentation` (via telephony) per attempt (LLD-03 §3.12); fail closed |
 
 ## 13. SPIKEs (before the OpenSpec changes)
 
@@ -1051,9 +1206,10 @@ US-14.4.
    only (US-14.5); AMD and automatic drop (US-14.4, AC-14.2) stay R2 with
    FBR-R2-02. HLD-20 OB-08 should read "R1.0 agent drop; R2 AMD + auto
    drop".
-2. **Licence counting for the nailed-up leg.** *Recommend:* count only
-   customer legs; the agent leg is internal, and counting it would halve
-   a tenant's usable channels for the same work. LLD-08 must confirm.
+2. **Licence counting for the nailed-up leg.** Capacity is reserved by
+   telephony (decided). *Recommend:* `OpenSession` does not reserve;
+   only customer legs count, since the agent leg is internal and counting
+   it would halve a tenant's usable channels. LLD-08 must confirm.
 3. **Local presence.** *Recommend:* FIXED and POOL in R1.0;
    LOCAL_PRESENCE available but off by default and only from inventory
    numbers tagged with NPA/region (truthful, owned numbers; counsel to
@@ -1065,18 +1221,32 @@ US-14.4.
    raise it deliberately.
 6. **New role `CAMPAIGN_MANAGER`** (PRD persona) in LLD-02
    `DefaultPermissions`. *Recommend:* add with §7 grants.
+7. **Abandonment breach stops the campaign** (AC-15.3 "stops"): state
+   `STOPPED_COMPLIANCE`; only a compliance officer resumes, with a
+   reason, and the campaign restarts locked in reserved mode until the
+   ratio is below limit − margin. *Recommend:* adopt as written
+   (alternative: an automatic pause a manager may resume — weaker
+   evidence for a regulator). Needs sign-off.
 
 ## 15. Handoff
 
-OpenSpec changes, in order, after LLD-04's `compliance-profiles-and-gate`:
-1. `dialer-lists-import` (0053, OB-01 import/segments);
-2. `dialer-campaigns` (0054, campaign lifecycle, dispositions, retry rules);
-3. `dialer-agent-session` (0057, nailed-up leg, pause, SPIKE-D2/D4 first);
-4. `dialer-preview` (0055–0056 hopper/leads/attempts, OB-02, OB-05, OB-10, OB-12 — after LLD-03 `0035_number_inventory`);
-5. `dialer-power` (pacer, ratio 1.0 only, OB-03, OB-07 min ring, OB-11; 0059);
-6. `dialer-abandonment` (after `compliance-abandonment`: ratio > 1.0, OB-06, OB-07 message);
-7. `dialer-callbacks` (0058, OB-09 scheduler);
-8. R2: `dialer-predictive` (OB-04), `dialer-amd` (OB-08 R2).
+OpenSpec changes in this order across LLD-04 and LLD-06; migration
+numbers rise with the order, because golang-migrate never applies a
+version lower than the database's current one:
+
+| # | Change | Migration | Content |
+|---|---|---|---|
+| 1 | `compliance-profiles-and-gate` (LLD-04) | 0050, 0051 | profiles, windows, DNC, opt-outs, consents, `Evaluate`, `Precheck` |
+| 2 | `compliance-evidence` (LLD-04) | 0052 | decisions, `Decide`, export |
+| 3 | `dialer-lists-import` | 0053 | OB-01 import, segments |
+| 4 | `dialer-campaigns` | 0054 | campaign lifecycle, caller-ID pools, dispositions, retry rules |
+| 5 | `dialer-agent-session` | 0055 | nailed-up leg, pause (SPIKE-D2/D4 first; needs LLD-01 `DialerMedia`) |
+| 6 | `dialer-preview` | 0056 | leads, hopper, attempts + verdict trigger; OB-02, OB-05, OB-10, OB-12 (after LLD-03 `0035_number_inventory`) |
+| 7 | `dialer-power` | 0057 | pacer at ratio 1.0, OB-03, OB-07 minimum ring, OB-11 |
+| 8 | `compliance-abandonment` (LLD-04) | 0058 | buckets, abandon events, rule 12, `AbandonLedger` |
+| 9 | `dialer-abandonment` | — | evaluator, ratio > 1.0, OB-06, OB-07 message |
+| 10 | `dialer-callbacks` | 0059 | OB-09 scheduler |
+| R2 | `dialer-predictive`, `dialer-amd` | next free numbers at propose time | OB-04, OB-08 R2 |
 
 **References:** [PRD EPIC-14/15](../PRD.md), [BRD](../BRD.md),
 [HLD 04 §10.1](../hld/04-bounded-contexts.md),
