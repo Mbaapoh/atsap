@@ -13,8 +13,7 @@
 event-fed ledger (RC-05); `recording_access` had no `reason` (BR-04) —
 added (RC-02); the US-07.1 policy model was missing — added (RC-01); RC-06
 cited "RTCP-XR", which Asterisk 22 does not emit — replaced by RTCP SR/RR
-with a SPIKE; `usage_seconds.quality_mos DEFAULT 4.50` would fabricate a
-score — the ledger never copies it (§8.9).
+with a SPIKE; quality is never defaulted (unknown is stated, never 4.5).
 
 ## 1. Scope and non-goals
 
@@ -61,6 +60,10 @@ call into any context except `entitlement`.
 | `recording.legal_hold` | TENANT_ADMIN only | — |
 | `recording.audit.read` | TENANT_ADMIN only | auditor view of `recording_access` |
 | `recording.control` (start/stop/pause/resume) | AGENT (only calls they are a participant in), SUPERVISOR (tenant) | stop refused when policy is `always` |
+| `webhook.manage`, `webhook.read` | TENANT_ADMIN only | LLD-05 §4.8 |
+| `event.stream` | SUPERVISOR (tenant); AGENT (own calls' events only) | LLD-05 §4.8 |
+| `ai.manage`, `ivr.generate` | TENANT_ADMIN only | LLD-10 §3.8, §4.4 |
+| `ai.read` | SUPERVISOR | LLD-10 §3.8 |
 
 **OWNER DECISION — compliance-officer role.** PRD personas include a
 compliance officer and an auditor, which no role preset serves without
@@ -528,7 +531,7 @@ func ResolveRecording(f CallFacts, ps []RecordingPolicy, s RecordingSettings, j 
 | 1 | telephony | `StasisStart` for the caller; Call created (Screening per LLD-01) |
 | 2 | pbx-core | Routing resolves the destination (D-91); builds `CallFacts`; `ResolveRecording` → directive (pure, < 1 ms; policies loaded per call in the routing transaction) |
 | 3 | telephony | If `Announce`: `POST /channels/{caller}/answer` (if not yet), then `POST /channels/{caller}/play?media=<prompt>&playbackId=consent-<recordingId>`; await `PlaybackFinished` (timeout = prompt duration + 5 s, cap 30 s). DTMF is ignored during the prompt |
-| 4 | telephony | `PlaybackFinished{state: done}` → consent satisfied (`consent_at`). Caller hangs up → no recording, normal termination. `state: failed` or timeout → `OnConsentFailure`: `do_not_record` (call proceeds, `recording.failed{stage: consent}`) or `decline_call` (play `atsapbx/cannot-connect` best effort, hang up with reason `recording_consent_failed`) |
+| 4 | telephony | `PlaybackFinished{state: done}` → consent satisfied (`consent_at`); outbox `call.consent_satisfied` (§4.11). Caller hangs up → no recording, normal termination. `state: failed` or timeout → `OnConsentFailure`: `do_not_record` (call proceeds, `recording.failed{stage: consent}` and `call.consent_failed`) or `decline_call` (play `atsapbx/cannot-connect` best effort, hang up with reason `recording_consent_failed`) |
 | 5 | telephony | Bridge formed (LLD-01). If `OnRecordFailure = decline_call`: start recording while only the caller is in the bridge and add the answering party only after `RecordingStarted`; else add both, then record |
 | 6 | telephony | `POST /bridges/{bridgeId}/record?name=rec-<recordingId>&format=wav&ifExists=fail&beep=false&terminateOn=none&maxDurationSeconds=<recording.max_duration>` → `RecordingStarted` → outbox `recording.started` |
 | 7 | telephony | Bridge change (transfer/consult per HLD-21 §1): `POST /recordings/live/rec-<id>/stop` on the old bridge, new segment `rec-<id>-<n>` on the new bridge; pause state carries over |
@@ -559,6 +562,8 @@ ringback); then step 5. Internal calls follow the policy with
 | `Recording`/`Paused` | `StopCallRecording` (mode ≠ always) / bridge destroyed / max duration | `Finished` |
 | `Finished` | upload ok + verified | `Stored` |
 | `Finished` | upload fails after retries | `UploadPending` (file kept on engine disk; retried every 5 min, §4.8) |
+| `UploadPending` | retry succeeds + verified | `Stored` (`recording.stored`; engine file deleted after commit) |
+| `UploadPending` | app restart | `UploadPending` (restart scan of `GET /recordings/stored`, §4.8) |
 
 ### 4.5 Storage
 
@@ -757,6 +762,22 @@ Live control (`TelephonyService`, telephony-core):
 
 ### 4.11 Invariants, events, audit
 
+**Consent state carried to other contexts (no context reads pbx-core settings):**
+telephony keeps the call's consent state from the directive and stamps it
+on events, so `ai-pipeline` (LLD-10 AI-01) can apply its own
+`require_consent` setting without depending on `pbx-core`.
+
+| Event (owner telephony-core) | Subject | Payload |
+|---|---|---|
+| `participant.joined` (widened) | `tenant.<id>.event.participant.joined` | existing fields + `consent: not_evaluated\|not_required\|pending\|satisfied\|failed` and `pci_paused: bool` |
+| `call.consent_satisfied` | `tenant.<id>.event.call.consent_satisfied` | `call_id, at, method: announced\|on_demand_announced, policy_id` |
+| `call.consent_failed` | `tenant.<id>.event.call.consent_failed` | `call_id, at, reason: playback_failed\|timeout\|hangup` |
+
+`not_evaluated` = no recording directive applied to the call (policy
+`never` or none); `not_required` = directive evaluated and no announcement
+needed. `pbx-core` passes the directive to telephony (LLD-03); telephony
+emits the events (LLD-01).
+
 BR-03 (capture starts only from `Starting`, reachable from
 `AwaitingConsent` only through `PlaybackFinished done` — a unit-tested
 state guard); INV-01 (emergency never declined); INV-03 (a recording
@@ -779,6 +800,9 @@ Events: `recording.started`, `recording.stored`, `recording.failed`
 | R-07 | E | Given an announce policy, When a rig call is answered, Then the stored WAV's first audible speech starts after the prompt length (AC-07.1, checked by energy detection on the file) |
 | R-08 | E | Given `on_record_failure = decline_call` and a stopped object store **and** full disk, When a call arrives, Then the caller is declined and the agent phone never rings |
 | R-09 | E | Given MinIO stopped, When a recorded call ends, Then the call is unaffected and the file uploads after MinIO restarts |
+| R-12 | E | Given an announce policy with `on_consent_failure = do_not_record` and a prompt that does not exist (playback fails), When a call is answered, Then the call connects, no recording exists, `recording_failures` has `stage = consent` and `call.consent_failed` is published |
+| R-13 | E | Given the same with `decline_call`, Then the caller is hung up with `recording_consent_failed` and the destination never rings |
+| R-14 | I | Given a segment in `UploadPending` with MinIO stopped, When MinIO restarts and the 5-min retry fires (fake clock), Then the segment reaches `Stored`, exactly one `recording.stored` is published and the engine file is deleted only after the outbox commit |
 | R-10 | C | Given the console policy page, When an admin creates a queue policy, Then the "Explain" panel shows which policy wins for a sample call |
 | R-11 | A | Given a handset call to an announce-policy queue, When the owner listens to the recording, Then the announcement is not in it and the conversation is (OWNER STEP) |
 
@@ -797,21 +821,25 @@ Events: `recording.started`, `recording.stored`, `recording.failed`
 
 | Item | Value |
 |---|---|
-| Trigger | Agent presses **Pause recording** (console) or a partner payment integration calls `PauseCallRecording`; **Resume** or the auto-resume timer |
+| Trigger | Agent presses **Pause for payment** (console) or a partner payment integration calls `PauseCallRecording`; **Resume** or the auto-resume timer |
 | Actors | Agent on the call (US-07.3, `recording.control` with participant scope); supervisor (tenant scope) |
-| Preconditions | A segment in `Recording`; policy `allow_pause = true`; call not terminated. Not met → refusals in §5.5 |
+| Preconditions | The call is not terminated, **and** it has at least one live recording segment **or** at least one AI tap; recording policy `allow_pause = true` when a segment exists. A call with neither → `FailedPrecondition` (nothing to protect). An AI-tapped call that is not recorded **can** be paused |
+
+PCI pause is a **call-level** state (`pci_paused`) held by telephony, not
+a property of a recording segment.
 
 ### 5.2 Sequence
 
 | # | Owner | Step |
 |---|---|---|
-| 1 | telephony | `PauseCallRecording(call_id)` → authorisation (participant check) |
-| 2 | telephony | For each live segment on the call: `POST /recordings/live/rec-<id>/mute` (SPIKE R-S2: silence is written, timeline kept) |
-| 3 | telephony | For each AI tap snoop on the call's participants (LLD-10 AI-01): `DELETE /channels/{snoopId}` — synchronously, before the RPC returns, so no card audio reaches the AI path |
-| 4 | telephony | Record pause start offset; start auto-resume timer (`auto_resume_seconds`); outbox `recording.paused{actor}` |
-| 5 | telephony | Return `{paused_at, auto_resume_at}` — the console shows a countdown; a warning event 15 s before auto-resume on the agent's stream |
-| 6 | telephony | Resume (RPC or timer): `POST /recordings/live/rec-<id>/unmute`; recreate AI snoops (`POST /channels/{id}/snoop?spy=in&whisper=none…`) and add them to the existing tap bridges; outbox `recording.resumed{actor?, auto}` |
-| 7 | telephony | On call end while paused: the interval closes at segment end |
+| 1 | telephony | `PauseCallRecording(call_id)` → authorisation (participant check) → set call `pci_paused = true` (call actor, serialised) |
+| 2 | telephony | For each live segment: `POST /recordings/live/rec-<id>/mute` (SPIKE R-S2: silence is written, timeline kept) |
+| 3 | telephony | For each AI tap on the call: `MediaTap.Suspend` → `DELETE /channels/aitap-<stream>` (the snoop only; the `aixm-` channel and `aitapbr-` bridge stay) — synchronously, before the RPC returns. The ACL marks the snoop as deleted-by-suspend, so its `StasisEnd` is **not** a tap-loss signal |
+| 4 | telephony | Record pause start offset; start auto-resume timer; outbox `call.pci_paused{actor}` and, per segment, `recording.paused` |
+| 5 | telephony | Return `{paused_at, auto_resume_at}`; warning event 15 s before auto-resume on the agent's stream |
+| 6 | telephony | Resume (RPC or timer): `pci_paused = false`; `POST /recordings/live/rec-<id>/unmute`; `MediaTap.Resume` → `POST /channels/{participantChannel}/snoop?spy=in&whisper=none&app=atsapbx&appArgs=aitap,<stream>&snoopId=aitap-<stream>` then `POST /bridges/aitapbr-<stream>/addChannel?channel=aitap-<stream>`; outbox `call.pci_resumed{actor?, auto}` and `recording.resumed` per segment |
+| 7 | telephony | A participant who **joins while paused**: `participant.joined` carries `pci_paused = true`; `MediaTap.Start` for that participant is refused by telephony with `ErrPCIPaused` (the guard lives in telephony, so no race with the event); ai-pipeline creates the stream row in `paused` and starts the tap on `call.pci_resumed`. A recording segment started for a bridge change during the pause starts muted |
+| 8 | telephony | On call end while paused: intervals close at segment end; auto-resume timer cancelled |
 
 **Why `mute`, not `pause`:** ARI `pause` omits the paused audio so the
 file is shorter and later speech is spliced to earlier speech; `mute`
@@ -821,11 +849,13 @@ period contains no audio") holds for both.
 
 ### 5.3 State
 
-Segment states `Recording ⇄ Paused` (§4.4). Guards: pause while `Paused`
-is idempotent (returns the existing `paused_at`); resume while
-`Recording` is idempotent; pause in `AwaitingConsent`/`Starting` is
-queued and applied at `Recording`; a bridge change while `Paused` starts
-the new segment muted.
+Call-level `pci_paused`: `false → true` (pause) and `true → false`
+(resume, timer); pause while paused is idempotent (returns the existing
+`paused_at`), resume while not paused is idempotent. Segment states
+follow: `Recording ⇄ Paused` (§4.4); a segment in
+`AwaitingConsent`/`Starting` when the call is paused enters `Paused` at
+`RecordingStarted`. AI streams follow: `streaming ⇄ paused` (LLD-10
+§3.5).
 
 ### 5.4 Data
 
@@ -838,8 +868,8 @@ the new segment muted.
 
 | RPC | Fields | Permission | Refusals → console words |
 |---|---|---|---|
-| `PauseCallRecording` | `call_id` → `paused_at, auto_resume_at` | `recording.control` | `FailedPrecondition` "This call is not being recorded." · `FailedPrecondition` "Pausing is not allowed by your recording policy." · `PermissionDenied` "You can only pause calls you are on." · `NotFound` "This call has ended." |
-| `ResumeCallRecording` | `call_id` → `resumed_at` | `recording.control` | `FailedPrecondition` "This call is not being recorded." |
+| `PauseCallRecording` | `call_id` → `paused_at, auto_resume_at, recording_paused: bool, ai_taps_paused: int` | `recording.control` | `FailedPrecondition` "Nothing to pause: this call is not recorded or streamed." · `FailedPrecondition` "Pausing is not allowed by your recording policy." · `PermissionDenied` "You can only pause calls you are on." · `NotFound` "This call has ended." |
+| `ResumeCallRecording` | `call_id` → `resumed_at` | `recording.control` | — (idempotent) |
 
 ### 5.6 Configuration, failure, invariants, events
 
@@ -851,7 +881,8 @@ the new segment muted.
 | Failure | Behaviour |
 |---|---|
 | `mute` returns an error | RPC returns `Unavailable` "Could not pause; do not read out card details." and **does not** report paused; alert |
-| Snoop delete fails | Retry once; still failing → hang up the tap's externalMedia channel (the tap dies, the call does not); the RPC still succeeds only when no AI audio path remains |
+| Snoop delete fails | Retry once; still failing → `DELETE /channels/aixm-<stream>` (the tap stream fails, the call does not); the RPC succeeds only when no AI audio path remains |
+| Snoop recreate on resume fails | Recording resumes; the AI stream goes `failed{resume}` (LLD-10 AI-06); the call is unaffected |
 | App restart while paused | Asterisk keeps the recording muted (mute is engine state) and AI taps are gone; the timer is lost — on restart the ACL unmutes any muted live recording older than `auto_resume_seconds` (SPIKE R-S2 confirms a muted state is observable) |
 | Agent leaves while paused | Auto-resume still fires; a supervisor may resume |
 
@@ -869,6 +900,8 @@ INV-04 (the AI tap stops, the call does not); INV-03. Events
 | P-03 | E | Given a recorded rig call, When paused for 10 s while a test tone plays and resumed, Then the WAV's interval is digital silence and the interval offsets match ±100 ms (AC-07.2) |
 | P-04 | E | Given an AI tap to a fake provider, When paused, Then the provider receives no frame between pause and resume |
 | P-05 | E | Given a pause and no resume, When 180 s pass, Then recording resumes and the interval is marked `auto` |
+| P-07 | E | Given an unrecorded call with an AI tap, When paused and resumed, Then the provider receives no frames in the interval, the stream returns to `streaming` (not `stopped`), and `ai_usage_seconds` excludes the interval |
+| P-08 | I | Given a paused call, When a third participant joins, Then telephony refuses `MediaTap.Start` with `ErrPCIPaused`, the stream row is `paused`, and on resume the tap starts |
 | P-06 | B | Given the agent console on a call, When Pause is pressed, Then a red "Recording paused — resumes in 3:00" banner shows and Resume is one click |
 
 Parity: Amazon Connect offers `SuspendContactRecording`/`ResumeContactRecording`
@@ -959,21 +992,29 @@ difference.
 
 | # | Step |
 |---|---|
-| 1 | For each tenant: `SET app.tenant_id`; select ≤ 500 `recordings` with `retention_until ≤ now()` and no active hold on `call_id`, oldest first |
-| 2 | `ObjectStore.Delete(key)` (not-found = success) |
-| 3 | Transaction with `atsapbx.retention_purge = on`: INSERT `recording_deletions` (tombstone), DELETE paused intervals, DELETE `recordings` row, outbox `recording.deleted{cause: retention}` |
-| 4 | Crash between 2 and 3 → next sweep repeats 2 (idempotent) then 3 |
+| 1 | For each tenant: `SET app.tenant_id`; select ≤ 500 candidate `recordings` with `retention_until ≤ now()`, oldest first (a hint only) |
+| 2 | Per recording, one transaction with `atsapbx.retention_purge = on`: `pg_advisory_xact_lock(hashtextextended('hold:' || tenant_id, 0))` — the **same** lock `PlaceLegalHold`/`AddCallsToLegalHold` take before inserting hold rows — then re-check "no active hold covers `call_id`" |
+| 3 | Still eligible: `ObjectStore.Delete(key)` (not-found = success) inside the transaction, then INSERT `recording_deletions`, DELETE paused intervals, DELETE `recordings`, outbox `recording.deleted{cause: retention}`, commit (lock released) |
+| 4 | Crash after the object delete but before commit → the row survives; the next sweep repeats step 3 (object delete idempotent) |
 | 5 | Metrics: deleted count, oldest overdue age; alert when overdue > 24 h |
 
 Erasure (`DeleteRecording`) runs the same steps synchronously with
 `cause = erasure`, the actor and reason, an access row (`action = delete`)
 and audit `recording.delete`.
 
-**Backups (AC-07.3):** the stated window is
-`retention_until + backup.retention_days` (default 35 days). The object
-store bucket must not keep non-current versions beyond 1 day; database
-backups contain metadata only (no audio). Crypto-shredding to remove the
-backup window is an R2 option.
+**Backups (AC-07.3).** Two backup sets, both owned by LLD-12 B5:
+- **Database backups** (`pg_dump`) hold recording **metadata only**,
+  never audio; retained `backup.retention_days` (default 35).
+- **Media backup set**: on a local volume, LLD-12 B5's `media/` directory
+  in each backup; on S3, a replica bucket with a lifecycle expiry of
+  `backup.media_retention_days` (default 35). The **primary** bucket keeps
+  versioning off (or non-current expiry ≤ 1 day), so the primary delete is
+  final.
+
+The stated window for "unrecoverable, including from backups" is
+`retention_until + max(backup.retention_days, backup.media_retention_days)`
+(default 35 days), published in the partner agreement. Crypto-shredding
+to close the backup window is an R2 option.
 
 ### 7.3 Legal hold
 
@@ -994,7 +1035,7 @@ already deleted.
 | RPC | Fields | Permission | Refusals → console words |
 |---|---|---|---|
 | `DeleteRecording` | `recording_id, reason_code, reason` | `recording.delete` | `FailedPrecondition` "This recording is under legal hold {case_ref} and cannot be deleted." |
-| `PlaceLegalHold` | `case_ref, reason, call_ids[]` → `hold_id, covered_recordings, already_deleted[]` | `recording.legal_hold` | `InvalidArgument` "A hold needs a case reference and a reason." · `ResourceExhausted` "At most 10,000 calls per hold." |
+| `PlaceLegalHold` | `case_ref, reason, call_ids[]` → `hold_id, covered_recordings, already_deleted[]` (taken under the per-tenant `hold:` advisory lock, §7.2) | `recording.legal_hold` | `InvalidArgument` "A hold needs a case reference and a reason." · `ResourceExhausted` "At most 10,000 calls per hold." |
 | `AddCallsToLegalHold` | `hold_id, call_ids[]` | `recording.legal_hold` | `FailedPrecondition` "This hold has been released." |
 | `ReleaseLegalHold` | `hold_id, reason` | `recording.legal_hold` | `FailedPrecondition` "Already released." |
 | `ListLegalHolds` | `active_only` | `recording.legal_hold` | — |
@@ -1006,7 +1047,8 @@ already deleted.
 | `recording.retention_sweep_interval` | 15 min | 5–60 min | installation |
 | `recording.retention_batch` | 500 | 50–5,000 | installation |
 | retention days | policy → jurisdiction → tenant default 90 (OWNER DECISION) | 1–3,650 | tenant/object |
-| `backup.retention_days` | 35 | 1–365 | installation (stated in the partner agreement) |
+| `backup.retention_days` | 35 | 1–365 | installation (LLD-12 B5; stated in the partner agreement) |
+| `backup.media_retention_days` | 35 | 1–365 | installation (LLD-12 B5) |
 
 Retention is fixed at capture (`retention_until`); a later policy change
 applies to new recordings only.
@@ -1016,7 +1058,7 @@ applies to new recordings only.
 | Failure | Behaviour |
 |---|---|
 | Object store down | Sweep skips the batch, alerts after 24 h overdue; never deletes metadata before the object |
-| Hold placed during a sweep | The sweep's select and the delete transaction both re-check the hold (`FOR SHARE` on hold rows) |
+| Hold placed during a sweep | Both sides take the per-tenant `hold:` advisory lock; a hold committed first is seen by the re-check, and a hold that waits for the lock is placed after the deletion and reports the call in `already_deleted[]`. The lock is held for one object delete (≤ `objectstore.timeout` 10 s) |
 
 BR-11 (system-enforced), AC-07.3, INV-08 (tombstone proves deletion
 without content). Events `recording.deleted` (public),
@@ -1030,6 +1072,7 @@ without content). Events `recording.deleted` (public),
 | D-03 | I | Given an expired recording under an active hold, When the sweep runs, Then nothing is deleted; after release it is |
 | D-04 | I | Given the app role, When it deletes a `recordings` row, Then the trigger refuses |
 | D-05 | E | Given MinIO and a 1-day retention with a fake clock, When the sweep runs, Then `GetObject` returns not found and no non-current version exists |
+| D-07 | I | Given a sweep transaction holding the `hold:` lock for call X, When `PlaceLegalHold([X])` runs concurrently, Then it waits and returns X in `already_deleted[]`; Given the hold commits first, Then the sweep's re-check skips X |
 | D-06 | C | Given the legal-hold page, When a hold is placed on 3 calls, one already deleted, Then the console lists the deleted one |
 
 Parity: 3CX and FusionPBX delete recordings older than N days by a
@@ -1173,13 +1216,6 @@ or engine variables; Amazon Connect publishes agent-side network metrics
 in Contact Lens. We measure both directions for every participant and
 store the model version so scores are reproducible.
 
-### 8.9 Note on `usage_seconds.quality_mos`
-
-Migration 0001 defaults `usage_seconds.quality_mos` to 4.50. That column is
-telephony's and is **not** read by the ledger or by any report. The
-telephony change that emits `participant.rtcp_window` should drop the
-default (LLD-01 follow-up).
-
 ## 9. RC-04 — Read and export (built, D-88)
 
 Unchanged behaviour: terminated calls only; agent scope cannot widen;
@@ -1229,6 +1265,7 @@ are prefixed with `'` (injection).
 | 6 | **OWNER DECISION — AI tap needs recording consent** (`ai_stream_policies.require_consent`, owned by ai-pipeline, LLD-10 §3.1) | Yes by default: AI streaming is processing of the same audio |
 | 7 | **OWNER DECISION — external anchor** | Anchors delivered to partners by webhook/stream/export; no third-party timestamp authority in R1.0 |
 | 8 | Legal hold in R1.0 | Yes (resolved: specified in §7) |
+| 9 | **OWNER DECISION — keyed vs unkeyed CDR chain** (§3.5; a security trade-off) | Unkeyed SHA-256 chain so tenants verify offline, plus external anchors (webhook, stream, `ListCDRAnchors`) |
 
 | Spike | Question | Blocks |
 |---|---|---|

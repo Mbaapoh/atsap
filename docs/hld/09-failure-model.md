@@ -48,12 +48,12 @@ AtsaPBX strictly implements semantic correctness in SIP response signaling:
        ▼               ▼               ▼
     SIP 503         SIP 603         SIP 486
  Service Unavailable    Decline       Busy Here
- (Retry-After: 30)
+ (no Retry-After)
 ```
 
 1. **Capacity Limit Exhaustion (`SIP 503 Service Unavailable`):**
    - Informs the carrier that AtsaPBX local resources are temporarily exhausted.
-   - Includes `Retry-After: 30` header, enabling intelligent carrier session border controllers (SBCs) to reroute the call to alternate partner data centers.
+   - **No `Retry-After` header is sent:** the intended `Retry-After: 30` (D-11) cannot be added to an ARI-issued rejection on Asterisk 22 (HLD-20 FL-01). Carriers still treat `503` as "try another route"; adding the header needs an SBC/edge in front (D-77) and is not designed here.
    - **Never use `486 Busy Here` for capacity limits (D-11):** `486` falsely reports that the called party is on the phone, distorting Answer-Seizure Ratios (ASR) and obscuring capacity alerts.
 2. **Fraud / Administrative Suspension (`SIP 603 Decline`):**
    - Informs carrier that the destination or tenant is globally forbidden.
@@ -143,7 +143,7 @@ When the AtsaPBX Go monolithic process restarts (e.g. following an upgrade or ho
 
 1. **Carrier Failover Chaos Test:** Cuts network interface to primary carrier during an active call run; verifies new call setups reroute to secondary carrier in <5s with zero dropped calls on secondary (AC-02.2).
 2. **AI Hard-Kill Test:** Sends `SIGKILL` to the fake/local AI provider during an active conversation; verifies call audio continues with no jitter change, the stream reaches `Failed` within 5 s and an alert fires (AC-04.3; LLD-10 E-02).
-3. **Capacity Rejection Signal Test:** Drives concurrent load to 100% capacity; asserts incoming SIP INVITE receives `503 Service Unavailable` with `Retry-After: 30` header and distinctly tagged telemetry record (BR-05).
+3. **Capacity Rejection Signal Test:** Drives concurrent load to 100% capacity; asserts incoming SIP INVITE receives `503 Service Unavailable` (never `486`; no `Retry-After`, see §2) and a distinctly tagged telemetry record (BR-05).
 4. **Outbox Recovery Soak Test:** Simulates 1-hour database outage while Asterisk maintains active calls; verifies that when DB restores, all accrued usage seconds and outbox events are safely committed.
 5. **Webhook Outage Test:** Stops a receiver for 10 minutes and then 25 hours (fake clock); verifies `Unhealthy` after 3 failures, `Disabled` at 24 h, held events delivered in order after Enable (LLD-05 W-08, W-16).
 6. **Object-Store Outage Test:** Stops MinIO during recorded calls; verifies calls are unaffected and files upload after restart (LLD-09 R-09).
@@ -171,10 +171,13 @@ implements it with liveness vs readiness split (`internal/server`).
 │      │  reconnect loops │ 22.x LTS │  fire-and-     │ Jet- │
 └──────┘  on both sockets └──────────┘  forget        │Stream│
                                                      └──────┘
-Durability lives in Postgres (volume `postgres-data`), not in NATS:
-NATS is intentionally ephemeral (no volume) — a NATS restart only
-delays delivery, it never loses events, because the outbox in Postgres
-is the durable store and the worker republishes from it (INV-06).
+Durability of *unpublished* events lives in Postgres (the outbox).
+In dev compose NATS has no volume. Once an event is published the
+outbox marks it sent, so a NATS restart without persistence loses
+published-but-unconsumed messages for durable consumers (CDR ledger,
+webhooks, F-09): production runs JetStream file storage on a volume,
+and recovery after a state loss is `atsapbx outbox republish --since`
+with idempotent consumers (D-58, LLD-05 §4.10).
 ```
 
 **Liveness vs readiness.** `/healthz` answers 200 whenever the process

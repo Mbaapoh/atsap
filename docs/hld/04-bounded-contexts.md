@@ -372,7 +372,7 @@ waiting for those contexts' real implementations.
 | `compliance` | nothing (pure functions — no I/O, so no dependency is even possible) | every other context |
 | `entitlement` (D-50) | `licensing` (what the installation is entitled to), `identity` (which tenants have it switched on) — and nothing else | `telephony-core`, `pbx-core`, `reporting`, `dialer`, `ai-pipeline`, `webhook-delivery` |
 | `pbx-core` | `telephony-core` (Call/Participant), `identity`, `entitlement` | `dialer`, `ai-pipeline`, `reporting` |
-| `reporting` | `telephony-core` events (async, NATS), `entitlement` | any synchronous call into another context except `entitlement` |
+| `reporting` | `telephony-core`, `pbx-core`, `ai-pipeline` and `identity` published events (async, NATS), `entitlement` (D-92) | any synchronous call into another context except `entitlement` |
 | `webhook-delivery` | `identity` (signing keys), `entitlement`, any context's published events (async) | synchronous calls into any context except `entitlement` |
 | `ai-pipeline` | `telephony-core` (Participant + Snoop), `entitlement` | `dialer`, `pbx-core`, billing/reporting internals |
 | `dialer` (R2) | `telephony-core`, `compliance`, `pbx-core`, `reporting`, `entitlement` | nothing further (it is the top of the graph) |

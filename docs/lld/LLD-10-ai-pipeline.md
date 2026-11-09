@@ -52,7 +52,7 @@ logs, exports or errors; INV-06 accounting is asynchronous.
 |---|---|
 | Trigger | `participant.joined` event (consumer `ai-tap`, durable) — telephony-core never calls ai-pipeline (HLD 04 §10.1) |
 | Actors | Partner engineer configures providers (`ai.manage`, US-04.1/04.2); tenant admin enables streaming (`ai.manage`, US-04.3); the system taps |
-| Preconditions | Tenant `ai_stream_policies.enabled`; a provider configured and enabled; participant role in `roles`; entitlement: AI channel available (LLD-11, OWNER DECISION §7); breaker not open; tenant not AI-suspended; recording consent satisfied when `recording_settings.ai_tap_requires_consent` (LLD-09 §4); recording not paused (RC-07) |
+| Preconditions | Tenant `ai_stream_policies.enabled`; a provider configured and enabled; participant role in `roles`; entitlement: AI channel available (LLD-11, OWNER DECISION §7); breaker not open; tenant not AI-suspended; consent per `ai_stream_policies.require_consent`, read from the `consent` field stamped on `participant.joined` (LLD-09 §4.11) — ai-pipeline never reads pbx-core settings; call not `pci_paused` (else the stream is created `paused`, §3.2 step 14) |
 | Not met | No tap; when the reason is breaker/suspension/entitlement, an `audio_streams` row with status `unavailable` and reason is written so US-04.5 can show it; when AI is off, **nothing** is written and no ARI call is made (AC-04.5) |
 
 ### 3.2 Sequence (exact ARI)
@@ -60,7 +60,7 @@ logs, exports or errors; INV-06 accounting is asynchronous.
 | # | Owner | Step |
 |---|---|---|
 | 1 | ai-pipeline | Receives `participant.joined`; `DecideTap(policy, participant, state)` (pure) |
-| 2 | ai-pipeline | If consent is pending, waits for `recording.started` or `recording.consent_satisfied` up to 30 s, else no tap |
+| 2 | ai-pipeline | `require_consent = false` → proceed. Else by `participant.joined.consent`: `satisfied`/`not_required` → proceed; `pending` → wait for `call.consent_satisfied` (subject `tenant.<id>.event.call.consent_satisfied`) up to `ai.tap.consent_wait`, then proceed, or on `call.consent_failed`/timeout write `unavailable{consent}`; `not_evaluated`/`failed` → `unavailable{consent}` (no announcement was played for this call) |
 | 3 | ai-pipeline | INSERT `audio_streams` (`connecting`); opens a UDP relay socket on `127.0.0.1:<port>` from `ai.tap.port_range` |
 | 4 | ai-pipeline → telephony | `MediaTap.Start(ctx, TapRequest{CallID, ParticipantID, StreamID, RelayAddr})` (telephony inbound port) |
 | 5 | telephony ACL | `POST /channels/{participantChannel}/snoop?spy=in&whisper=none&app=atsapbx&appArgs=aitap,<streamId>&snoopId=aitap-<streamId>` — `spy=in` is what that speaker says; `whisper=none` means nothing can be injected into the call |
@@ -71,8 +71,8 @@ logs, exports or errors; INV-06 accounting is asynchronous.
 | 10 | ai-pipeline relay | Reads RTP: 12-byte header, payload 640 bytes = 20 ms of 16 kHz 16-bit mono **big-endian** L16 (RTP network order; SPIKE AI-S1) → converts to little-endian PCM → `ring.Push` (drop-oldest when full) |
 | 11 | ai-pipeline worker | `ring.Pop` → `stream.Write(frame)` with a 200 ms write deadline; frames counted sent/dropped |
 | 12 | ai-pipeline | Each minute: INSERT `ai_usage_seconds` bucket; on stop the final partial bucket |
-| 13 | stop | On `participant.left`, `call.terminated`, `StasisEnd`/`ChannelDestroyed` of a tap channel, policy disable, or AI-06 fallback: `MediaTap.Stop` → `DELETE /channels/aitap-<id>`, `DELETE /channels/aixm-<id>`, `DELETE /bridges/aitapbr-<id>`; adapter `Close`; status `stopped`; event `ai.stream_stopped{seconds, frames_sent, frames_dropped}` |
-| 14 | PCI pause | Telephony deletes `aitap-<id>` synchronously (LLD-09 §5.2); the stream goes `paused` (no frames; not billed); on resume a new snoop joins the same bridge |
+| 13 | stop | On `participant.left`, `call.terminated`, an unexpected loss of a tap channel reported by telephony as `MediaTap` `TapLost` (a snoop deleted by `Suspend` is **not** a loss and never stops the stream), policy disable, or AI-06 fallback: `MediaTap.Stop` → `DELETE /channels/aitap-<id>`, `DELETE /channels/aixm-<id>`, `DELETE /bridges/aitapbr-<id>`; adapter `Close`; status `stopped`; event `ai.stream_stopped{seconds, frames_sent, frames_dropped}` |
+| 14 | PCI pause | Telephony calls `MediaTap.Suspend` synchronously inside `PauseCallRecording` (deletes only `aitap-<id>`; `aixm-`/`aitapbr-` and the provider session stay). ai-pipeline sets the stream `paused` on `call.pci_paused` (no frames, no billing; the stall detector watches provider writes, not input, so silence does not trigger `reconnecting`). On resume telephony calls `MediaTap.Resume` (new snoop added to the same bridge) and ai-pipeline returns the stream to `streaming` on `call.pci_resumed`. A participant who joins while paused (`participant.joined.pci_paused = true`): stream row created `paused`, `MediaTap.Start` deferred to `call.pci_resumed` (telephony refuses it earlier with `ErrPCIPaused`) |
 
 Stream start target: ≤ 1 s after `participant.joined` (p95). The call
 never waits on any step: every step is after the media path exists.
@@ -109,8 +109,10 @@ never waits on any step: every step is after the media path exists.
 | `streaming` | write errors or no provider ack/keepalive for 3 s | `reconnecting` | gap starts; `ai.stream_reconnecting` |
 | `reconnecting` | reopen succeeds within 5 s (attempts at 0, 0.5, 1, 2 s) | `streaming` | gap closed; `ai.stream_resumed{gap_ms}` |
 | `reconnecting` | 5 s elapsed | `failed` (terminal for this participant on this call) | tap torn down; breaker counts a failure; `ai.stream_failed`; alert |
-| `streaming` | PCI pause | `paused` | — |
-| `paused` | resume | `streaming` | — |
+| `streaming`/`connecting` | `call.pci_paused` | `paused` | billing stops; tap snoop already deleted by telephony |
+| — | joined while `pci_paused` | `paused` | no tap channels yet |
+| `paused` | `call.pci_resumed` | `streaming` (or `connecting` if the tap was deferred) | billing resumes |
+| `paused` | snoop recreate fails (`ai.tap_lost{resume}`) | `failed` | call untouched |
 | any non-terminal | participant left / call ended / policy disabled | `stopped` | `ai.stream_stopped` |
 
 During `reconnecting` the relay keeps reading and dropping (frames are
@@ -140,6 +142,7 @@ CREATE TABLE ai_stream_policies (                -- one per tenant
   roles TEXT[] NOT NULL DEFAULT '{CALLER,AGENT}',
   directions TEXT[] NOT NULL DEFAULT '{inbound,outbound}',
   send_caller_number BOOLEAN NOT NULL DEFAULT FALSE,  -- metadata minimisation (§6)
+  require_consent BOOLEAN NOT NULL DEFAULT TRUE,      -- OWNER DECISION (LLD-09 §11 item 6)
   suspended_at TIMESTAMPTZ, suspended_reason TEXT,
   updated_by UUID NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (NOT enabled OR provider_id IS NOT NULL)
@@ -183,7 +186,11 @@ CREATE TABLE ai_flow_generations (               -- AI-02 evidence, INSERT-only
 - RLS `ENABLE` + `FORCE` with
   `USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)` on all.
 - `ai_usage_seconds`, `ai_flow_generations`: `REVOKE UPDATE, DELETE, TRUNCATE … FROM atsapbx_app`
-  + `atsapbx_forbid_mutation()` trigger (LLD-09 `0061`).
+  + `atsapbx_forbid_mutation()` trigger (function created in `0060`, LLD-05 §4.6).
+- Retention purge by `atsap_retention`: grants per LLD-09 §3.6 "Retention
+  role grants" (`SELECT, DELETE` on `ai_usage_seconds`, `audio_streams`,
+  `ai_flow_generations`), deleting in FK order `ai_usage_seconds` →
+  `audio_streams`.
 - Credentials sealed with the identity keyring (D-66); no read path
   returns them.
 - Retention: `audio_streams` and `ai_usage_seconds` follow
@@ -207,9 +214,13 @@ func (r *Ring) Pop(ctx context.Context) (AudioFrame, error)
 
 // outbound ports
 type MediaTap interface { // implemented by telephony-core (inbound port there)
-    Start(ctx context.Context, req TapRequest) (TapHandle, error)
+    Start(ctx context.Context, req TapRequest) (TapHandle, error) // ErrPCIPaused while the call is paused
     Stop(ctx context.Context, h TapHandle) error
+    Suspend(ctx context.Context, h TapHandle) error // delete the snoop only; called by telephony itself on PCI pause
+    Resume(ctx context.Context, h TapHandle) error  // recreate the snoop into the existing tap bridge
 }
+// Telephony reports unexpected loss of tap channels on an internal event
+// `ai.tap_lost{stream_id, reason}`; deletions it made itself are not reported.
 type Adapter interface {
     Kind() ProviderKind
     Open(ctx context.Context, cfg ProviderConfig, meta StreamMeta) (Stream, error)
@@ -242,6 +253,10 @@ SDK dependency needs the owner (AGENTS.md).
 | `ResumeAIForTenant` | — | `ai.manage` | `FailedPrecondition` "AI is not suspended." |
 | `ListAudioStreams` | `call_id? from, to, status?` → streams with counters and gaps | `ai.read` | `InvalidArgument` "Range ≤ 31 days." |
 | `GetAIUsage` | `from, to, group_by (tenant\|call\|participant\|provider)` → seconds (AC-04.8, US-04.7) | `ai.read` | — |
+
+**Default role mapping** (`TENANT_ADMIN`/`PLATFORM_ADMIN` keep `*`):
+`ai.manage` and `ivr.generate` — TENANT_ADMIN only; `ai.read` —
+SUPERVISOR. AGENT has no `ai.*` action.
 
 Provider switching (US-04.2) is `UpdateAIStreamPolicy`: new streams use
 the new provider immediately; live streams finish on the old one.
@@ -310,6 +325,7 @@ Audit: `ai.provider.create/update/delete`, `ai.policy.update`,
 | E-03 | E | Given a provider that reads 1 frame/s, Then frames drop and the call's RTP jitter is unchanged (AC-04.4) |
 | E-04 | E | Given PCI pause, Then the fake provider receives no frame in the interval |
 | E-05 | E | Given full load (installation capacity) with AI on vs off, Then MOS and jitter distributions are equal within measurement noise (AC-04.1) |
+| I-05 | I | Given `require_consent` and `participant.joined.consent = pending`, When `call.consent_failed` arrives, Then the stream is `unavailable{consent}` and no ARI tap call is made; with `satisfied` the tap starts |
 | C-01 | C | Given the AI settings page, When credentials are saved, Then the field shows "Saved" and never the value |
 | A-01 | A | Given one self-hosted and one commercial provider, When the admin switches by configuration only, Then the next call streams to the new provider (AC-04.6) |
 
@@ -393,6 +409,7 @@ in the prompt or logs; the description itself is logged only as its hash.
 | G-03 | I | Given a fake `TextGenerator` returning invalid JSON then valid JSON, Then one repair round and `outcome = valid` |
 | G-04 | I | Given AI off, Then `FailedPrecondition` and no provider call |
 | G-05 | I | Given the dependency rule, When `internal/ai/**` imports `internal/pbx/**`, Then depguard fails (draft-only guarantee) |
+| G-08 | I | Given a fake `TextGenerator` that never answers, When `GenerateIVRDraft` runs, Then after `ai.gen.timeout` (30 s; fake clock) it returns `Unavailable` "The AI provider did not answer…", an `ai_flow_generations` row with `provider_error`, and nothing is saved |
 | G-06 | B | Given the builder, When a draft is generated, Then it opens unsaved with unresolved nodes highlighted and Publish is disabled until they are resolved |
 | G-07 | A | Given a non-engineer, When they generate and finish a two-level IVR, Then they publish within 30 minutes (AC-03.6 with AI) |
 
