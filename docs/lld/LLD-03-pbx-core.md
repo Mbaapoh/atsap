@@ -24,6 +24,7 @@
 | 2026-10-11 | **§4.2/§11.1 widened for `pbx-inbound-and-emergency`** (design D1/D2/D4): `ResolveInbound` takes a source endpoint and call id, not just tenant + dialled, so `pbx-core` can tell trunk from extension and reserve a trunk channel keyed by the call; DID resolution for trunk sources and desk-phone dialling through the `PlaceCall` dial plan; the tenant arrives on the channel via endpoint-configured `ATSA_TENANT_ID` (D1), never a cross-tenant lookup. `Retry-After` on the 503 is a recorded gap: Asterisk 22.11.0 cannot emit it on an unanswered inbound channel, so a plain 503 with the Q.850 reason ships (design D8). |
 | 2026-11-04 | **§3.2–3.4 added: IVR menu, queues/agents/hot-desk and voicemail design**, grounded in 3CX/FusionPBX/Vodia/Asterisk documentation. `pbx-ivr-routing` (time routing), ownership and participant attribution have since shipped; the menu/queue/voicemail execution remains. |
 | 2026-11-07 | **§3.2.1 added: IVR review against 3CX, VitalPBX, FreePBX, FusionPBX and Amazon Connect** (D-91). The shipped single-level, extension-only, UTC-window menu is recorded; the target is typed destinations, a five-kind node graph, weekly schedules in an IANA time zone with a manual override, re-prompt and direct dial, delivered by `pbx-ivr-flow-graph` before `pbx-queues`. |
+| 2026-11-09 | **Round 3 (D-99, D-100).** Park keeps the parked party in the main bridge with bridge MOH, telephony owns the timer, `ParkTimeout` may return nothing, `FELL_BACK`/`ABANDONED` aligned with LLD-01 §16; `RingLeg.Pickable`; LLD-01 `PartyRef` and sink kinds; `Prompt` returns only an error with digits via `DtmfPressed(PromptID)`; callback capacity is telephony's, `CallbackAborted` agent event, supervisor-booked callback ends through a hangup destination; live view notifies on `MonitorStarted/Stopped`; barge beep follows the notice setting, `ErrMonitorBusy` wording; voicemail composite FKs and PIN window; `call.control` roles; hot-desk INV-01 (OD-13); migration numbers provisional (D-100). |
 | 2026-11-09 | **Verifier fixes (D-98).** ACD aligned to LLD-01 §23.1 (2 s `Answered` deadline; DB outage rejects late answers; `Leave` routing, `LiveCalls.List(tenant)`, `Missed(PartyRef)`, new `QueueMedia.Prompt` request); callback state fixes and API-booked callbacks (`call_id` nullable); restart tests split by FL-04; `AgentStates` takes/returns the reservation ref, `ReservationReleased`, `dialer_wake`; dialler `Presentation` port; voicemail settings, email notifier, shared-mailbox PIN; busy/unavailable tests and interim presence reader; pickup `directed_any` and cross-LLD `call.*` permissions; full `parked_calls` states; room moderators table and PIN lock; paging reserved at `*60`; MOH pending a D-47 amendment; hot-desk migration 0034; OD-11, OD-12. |
 | 2026-11-07 | **§3.1, §3.3 and §3.17: contact centre to the Flow Definition of Ready** (D-97, D-98). Agent states adopt HLD-21 (`LoggedOut`, `Ready`, `Reserved`, `Busy`, `WrapUp`, `NotReady(reason)`) with a full transition table, a shared reason-code catalogue and the `AgentStates` reservation port the dialler uses (LLD-06); six R1.0 strategies in penalty tiers (skills and penalty escalation R2); durable `queue_entries`, one dispatcher per queue under a session advisory lock with LISTEN/NOTIFY wake and recovery; announcements, EWT, overflow/join/leave rules, agent-first queue callback (AC-03.17); live view pushed on commit by LISTEN/NOTIFY with a 2 s stale marker (AC-16.3) and no Redis (D-56); `queue_events` log, SL and abandon-rate definitions; supervision policy over LLD-01 §20 primitives (AC-16.1–16.2). Migrations 0045–0049; OD-7..OD-10; SPIKE-Q1..Q3. Cross-file: Participant states `Ringing`/`Disconnected`, `ErrNotRinging`, `Stasis:` device states, park retrieve into the kept main bridge (LLD-01). |
 | 2026-11-07 | **§3.2.1 cross-references and §3.4–§3.16: routing features to the Flow Definition of Ready** (D-98). Voicemail rewritten (DDL, phone menu, MWI over ARI mailboxes); new shared foundations (telephony port contract, `RingPlan`, permissions, migrations 0035–0044, numbering plan); per-extension evaluation order (unconditional forward → DND → unavailable → busy → ring/follow-me → no answer, 5-hop guard); ring groups (six strategies); presence/BLF via custom device state; pickup groups; park lots; conference rooms; caller-ID inventory and precedence (BR-06); feature codes; hot-desking; MOH classes; owner decisions OD-1..OD-6 and spikes P1, M1, V1. §3.1/§3.3 untouched. |
@@ -302,6 +303,7 @@ a dispatcher never wait on each other.
 | `Reserved` | `OfferCancelled{ref}` (caller abandoned, another agent answered under ring-all, entry overflowed) | — | `Ready` (or pending) | not counted as missed |
 | `Reserved` | `ReservationExpired` (sweeper, `reserved_until < now()`) | — | `Ready` | `RESERVATION_EXPIRED` (orphan recovery, §3.3.1 item 9) |
 | `Reserved` (`reserved_kind = campaign`) | dialler `ReservationReleased{ref}` (attempt ended without a connect: no answer, machine, blocked, abandoned) | `ref` = current `reserved_ref` | `Ready` (or pending) | not counted as missed; `missed_in_row` unchanged |
+| `Busy` (queue callback) | `CallbackAborted{ref}` (gate or capacity refused, customer no answer/busy/no confirmation, §3.3.3 steps 7, 10) | `ref` = current reservation | `Ready` (or pending) | no wrap-up; not missed; `last_call_ended_at` unchanged |
 | `Busy` | `WorkEnded{ref}` (customer or agent left; transfer out) | queue `wrapup_seconds > 0` (inbound) or campaign wrap-up | `WrapUp` | `wrapup_until = now + seconds`; `last_call_ended_at = now` |
 | `Busy` | `WorkEnded{ref}` | wrap-up 0 | `Ready` or pending | `last_call_ended_at = now` |
 | `WrapUp` | `WrapUpEnded` (agent clicks Finish, or dialler `Disposed`) | — | `Ready` or pending | — |
@@ -628,7 +630,8 @@ Node =
   play     { prompt, next: NodeID }
   goto     { destination: Destination }
   hangup   { reason }
-Destination { kind: extension | flow | queue | ring_group | voicemail | external, ref }
+Destination { kind: extension | flow | hangup | queue | ring_group | voicemail | voicemail_main
+              | conference | park_lot | external, ref }   // kinds and refs: table below
 Schedule  { id, name, time_zone (IANA; tenant default), ranges: [{weekday, start, end}],
             override: none | open_until_next | closed_until_next | open | closed }
 ```
@@ -714,7 +717,7 @@ queue that has a waiting entry (queue `weight`, 0–9, default 0).
 | `pbx.supervise.listen` / `.whisper` / `.barge` | SUPERVISOR (scoped), TENANT_ADMIN | §3.17 |
 | `pbx.supervise.settings` | TENANT_ADMIN | Tenant monitoring switch (§3.17) |
 
-**Migrations (reserved 0045–0049)**
+**Migrations (provisional labels 0045–0049, D-100: each change takes the next free number when proposed)**
 
 | Migration | Contents | Section |
 |---|---|---|
@@ -928,8 +931,8 @@ signatures are authoritative:
 | `QueueMedia.Connect(offer, principal)` | Optional agent-only prompt, then move the caller from the holding bridge into the call's main bridge with the agent (LLD-01 §23.1) | `channels/{id}/play`, `bridges/{id}/removeChannel`, `addChannel` |
 | `QueueMedia.DialCallback(offer, decision)` | New outbound call whose first party is the agent (MOH) until the customer presses 1 (§3.3.3; LLD-01 §23.1) | `channels` originate, `moh`, `addChannel` |
 | `QueueMedia.Leave(entry, destination, routing)` | Leave the holding bridge and continue at a destination (overflow) through `InboundRouter.Continue`; `routing` is the opaque `{hops, visited}` blob (§3.5.2) | `removeChannel` |
-| `QueueMedia.Prompt(entry, program)` | Stop MOH, run a `Play`/`Collect` `Program` on the queued caller's channel inside `Q` through LLD-01's Program runner (§3.5.1), restart MOH, return the collected digits; used by the callback request (§3.3.3). **Requested from LLD-01 §23.1** (not yet listed there) | `DELETE …/moh`, `channels/{id}/play`, `ChannelDtmfReceived` |
-| `QueueOutcome` (pbx implements) | `Answered(offer, agent)` (synchronous, **2 s deadline**: on timeout or error telephony treats it as `Reject`), `Missed(offer, who PartyRef{Agent principal \| Customer}, cause)`, `Ended`, `CallerLeft(entry)`, `DtmfPressed(entry, digit)` | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
+| `QueueMedia.Prompt(entry, prompt_id, program)` → `error` | Stop MOH, run a `Play`/`Collect` `Program` on the queued caller's channel inside `Q` through LLD-01's Program runner (§3.5.1), restart MOH. Returns only an error; collected digits arrive through `QueueOutcome.DtmfPressed` carrying the `PromptID` (LLD-01 §23.1). Used by the callback request (§3.3.3) | `DELETE …/moh`, `channels/{id}/play`, `ChannelDtmfReceived` |
+| `QueueOutcome` (pbx implements) | `Answered(offer, agent)` (synchronous, **2 s deadline**: on timeout or error telephony treats it as `Reject`), `Missed(offer, who PartyRef, cause)` with LLD-01's `PartyRef{PrincipalID *PrincipalID (agent leg), Number string (callback customer E.164), ParticipantID}`, `Ended`, `CallerLeft(entry)`, `DtmfPressed(entry, digit, prompt *PromptID)` (nil outside a `Prompt`) | `StasisStart`, `ChannelDestroyed`, `ChannelLeftBridge`, `ChannelDtmfReceived` |
 | `LiveCalls.List(tenant)` | Live calls of one tenant with their entry/offer ids, for recovery | `GET /channels` |
 
 **4. State machines**
@@ -1194,8 +1197,11 @@ Request (the caller keeps their place: `entered_at` never changes):
 1. Offer prompt (as an announcement, §3.3.1 collisions): "To be called back
    without losing your place, press 1." Re-offered with each
    position/EWT announcement.
-2. `ChannelDtmfReceived` = key → `QueueOutcome.DtmfPressed` → pbx-core
-   calls `QueueMedia.Prompt(entry, program)` (§3.3.1 port table): MOH stops
+2. `ChannelDtmfReceived` = key → `QueueOutcome.DtmfPressed(entry, key,
+   nil)` → pbx-core calls `QueueMedia.Prompt(entry, prompt_id, program)`
+   (§3.3.1 port table; returns only an error, and each collected digit
+   comes back as `DtmfPressed(entry, digit, &prompt_id)`, which pbx-core
+   feeds to the pure prompt step until it completes): MOH stops
    and LLD-01's Program runner runs this `Program` on the caller's channel
    **inside the holding bridge `Q`**, so the caller never leaves the queue
    while answering: `Play("We will call you on" + digits)` → `Collect{1,
@@ -1222,17 +1228,21 @@ Delivery (**agent-first**):
    §23.1), announced "Callback for <queue>" with the number in the
    console; agent answers → `Answered` → agent `Busy`; the agent hears MOH
    while the customer is dialled. If the agent misses, rejects or the
-   reservation expires → `Missed(offer, PartyRef{Agent})` → agent
+   reservation expires → `Missed(offer, PartyRef{PrincipalID: agent})` → agent
    `OfferMissed` (autopause rules) and the entry returns to
    `callback_pending` with `callback_next_at = now`, attempt not counted.
 7. Gates before dialling, in one transaction: LLD-04 `Gate.Decide{kind:
    QUEUE_CALLBACK}` (calling-hours rule per LLD-04; DNC does not apply to
-   a requested callback, LLD-04 owns that rule); licence
-   `ValidateCapacity` for the new outbound leg (LLD-08); presentation
+   a requested callback, LLD-04 owns that rule); presentation
    `ChoosePresentation{origin: queue_callback}` = the DID the caller
    originally dialled (`dialled_number`), else the tenant default (§3.12,
-   BR-06). Refusal → attempt not counted; `callback_next_at = now +
-   callback_retry_seconds`; agent released to `Ready` with no wrap-up.
+   BR-06). pbx-core does **not** check licence capacity: telephony
+   reserves the customer leg inside `DialCallback` and is the only
+   `ValidateCapacity` caller (LLD-01 §23.1, LLD-08). A refusal here, or
+   `DialCallback` returning the capacity error → attempt not counted;
+   `callback_next_at = now + callback_retry_seconds`; agent event
+   `CallbackAborted` (`Busy → Ready`, no wrap-up, §3.1.1); telephony hangs
+   up the agent leg.
 8. `QueueMedia.DialCallback(offer, decision)` with the gated route plan
    (route selection §4.1, class `callback_class`); on answer the
    decision's confirm `Program`: "This is your callback from <tenant>. Press 1 to
@@ -1246,14 +1256,15 @@ Delivery (**agent-first**):
     `callback_next_at = now + callback_retry_seconds`; else
     `callback_failed` (`end_reason` = last cause); outbox
     `pbx.callback_failed`. Telephony reports the customer side as
-    `Missed(offer, PartyRef{Customer}, cause)` and hangs up the agent leg;
-    the agent goes `Ready` (no wrap-up; not missed).
+    `Missed(offer, PartyRef{Number: customer}, cause)` and hangs up the
+    agent leg; agent event `CallbackAborted` (`Busy → Ready`, no wrap-up,
+    not missed).
 
 **4. State machine.** §3.3.1 item 4 (`callback_*` rows).
 
 | Attempt outcome | Counted | Next |
 |---|---|---|
-| Gate/licence refused | no | retry after `callback_retry_seconds` |
+| Gate refused (pbx-core) or capacity refused (telephony, in `DialCallback`) | no | retry after `callback_retry_seconds` |
 | No answer / busy / rejected / unreachable / no confirmation | yes | retry or `callback_failed` |
 | Agent did not answer, rejected, or reservation expired | no (agent missed) | `callback_pending`, `callback_next_at = now`; next agent at once — never `waiting` |
 | Expired (`callback_expires_at`) | — | `callback_failed` `expired` |
@@ -1263,14 +1274,14 @@ one-callback-per-number index (§3.3.1).
 
 **6. Ports.** `CallbackOfferDue(q, e, ewt, now) bool`,
 `NormaliseCallbackNumber(digits, country) (E164, error)` (pure);
-`Gate`, `Capacity`, `Presentation` (the same ports the dialler uses,
-LLD-06 §6.3); `RequestCallback` RPC for the console.
+`Gate` and `Presentation` (LLD-04, §3.12); capacity is telephony's inside
+`DialCallback`; `RequestCallback` RPC for the console.
 
 **7. API**
 
 | RPC | Fields | Permission | Refusals |
 |---|---|---|---|
-| `RequestCallback` | `{queue_id, number, entry_id?}`. With `entry_id`: a supervisor converts a waiting caller (their place kept, the caller's leg is ended with "You will be called back"). Without: a booking with no call (web form, back office) creates an entry with `origin = api`, `call_id` NULL, `status = callback_pending`, `entered_at = now()` (joins at the back) | `pbx.queue.live` | `InvalidArgument` "Enter a full phone number"; `PermissionDenied` "This queue may not call international numbers"; `AlreadyExists` "A callback is already booked for this number"; `ResourceExhausted` "The queue has 100 callbacks waiting" |
+| `RequestCallback` | `{queue_id, number, entry_id?}`. With `entry_id`: a supervisor converts a waiting caller; their place is kept and the queued call ends **through a configured destination, never a bare hang-up** (INV-03): pbx-core calls `QueueMedia.Leave(entry, Destination{kind: hangup, ref: callback_booked}, routing)` whose decision is a `Program` — `Play("You will be called back on <number>. Goodbye.")` then the `hangup` destination with reason `callback_booked`. Without: a booking with no call (web form, back office) creates an entry with `origin = api`, `call_id` NULL, `status = callback_pending`, `entered_at = now()` (joins at the back) | `pbx.queue.live` | `InvalidArgument` "Enter a full phone number"; `PermissionDenied` "This queue may not call international numbers"; `AlreadyExists` "A callback is already booked for this number"; `ResourceExhausted` "The queue has 100 callbacks waiting" |
 | `CancelCallback` | `{entry_id}` | `pbx.queue.live` | `FailedPrecondition` "The callback is already being dialled" |
 | `ListCallbacks` | `{queue_id, status}` → entries | `pbx.queue.read` | — |
 
@@ -1330,9 +1341,14 @@ wallboards (AC-16.4) are R2; this R1.0 view is what listen/whisper/barge
 otherwise `PermissionDenied` "You don't supervise this queue".
 
 **3. Sequence — freshness without Redis (D-56):**
-1. Every transaction that changes an agent row, a queue entry or a
-   monitor session calls `pg_notify('pbx_live', tenant_id||':'||queue_id)`
-   (agent changes notify each member queue). Postgres delivers the
+1. Every transaction that changes an agent row or a queue entry calls
+   `pg_notify('pbx_live', tenant_id||':'||queue_id)` (agent changes
+   notify each member queue). Monitor sessions are written by telephony
+   (LLD-01 §20), so pbx-core issues the notify itself when it receives the
+   `CallEventSink` kinds `MonitorStarted` / `MonitorStopped`: it appends the
+   `MONITOR_START`/`MONITOR_STOP` row to `queue_events` and calls
+   `pg_notify('pbx_live', …)` for the monitored agent's queues in that
+   transaction. Postgres delivers the
    notification only at commit, so readers never see uncommitted state.
 2. Each app instance runs one **LiveHub** with one dedicated `LISTEN
    pbx_live` connection.
@@ -1595,28 +1611,35 @@ CREATE TABLE voicemail_mailboxes (
   max_message_seconds INT NOT NULL DEFAULT 180 CHECK (max_message_seconds BETWEEN 10 AND 600),
   full_notified_on DATE,                 -- last "mailbox full" email (one per day)
   pin_hash TEXT,                         -- shared mailboxes only (Argon2id); owned mailboxes use extension_pins
-  pin_failures INT NOT NULL DEFAULT 0, pin_locked_until TIMESTAMPTZ,
+  pin_failures INT NOT NULL DEFAULT 0,
+  pin_window_started_at TIMESTAMPTZ,     -- start of the 15-minute failure window (5 failures → lock)
+  pin_locked_until TIMESTAMPTZ,
   CHECK (extension_id IS NULL OR pin_hash IS NULL),
+  UNIQUE (tenant_id, id),                -- target of the composite FKs below (INV-10)
   UNIQUE (tenant_id, number),
   UNIQUE (tenant_id, extension_id),
   FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE CASCADE
 );
 CREATE TABLE voicemail_mailbox_members (     -- shared mailboxes only
-  tenant_id UUID NOT NULL, mailbox_id UUID NOT NULL REFERENCES voicemail_mailboxes(id) ON DELETE CASCADE,
-  principal_id UUID NOT NULL, PRIMARY KEY (tenant_id, mailbox_id, principal_id));
+  tenant_id UUID NOT NULL, mailbox_id UUID NOT NULL,
+  principal_id UUID NOT NULL, PRIMARY KEY (tenant_id, mailbox_id, principal_id),
+  FOREIGN KEY (tenant_id, mailbox_id) REFERENCES voicemail_mailboxes (tenant_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id, principal_id) REFERENCES principals (tenant_id, id) ON DELETE CASCADE); -- key added by 0045 (A24)
 CREATE TABLE voicemail_greetings (
-  tenant_id UUID NOT NULL, mailbox_id UUID NOT NULL REFERENCES voicemail_mailboxes(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL, mailbox_id UUID NOT NULL,
   kind VARCHAR(12) NOT NULL CHECK (kind IN ('unavailable','busy','name')),
   object_key TEXT NOT NULL, duration_ms INT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (tenant_id, mailbox_id, kind));
+  PRIMARY KEY (tenant_id, mailbox_id, kind),
+  FOREIGN KEY (tenant_id, mailbox_id) REFERENCES voicemail_mailboxes (tenant_id, id) ON DELETE CASCADE);
 CREATE TABLE voicemail_messages (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  mailbox_id UUID NOT NULL REFERENCES voicemail_mailboxes(id) ON DELETE CASCADE,
+  mailbox_id UUID NOT NULL,
   call_id UUID NOT NULL, caller_number VARCHAR(32) NOT NULL, caller_name VARCHAR(100) NOT NULL DEFAULT '',
   folder VARCHAR(8) NOT NULL DEFAULT 'NEW' CHECK (folder IN ('NEW','SAVED')),
   object_key TEXT NOT NULL, duration_ms INT NOT NULL CHECK (duration_ms >= 2000),
   received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL,  -- received_at + retention_days
-  notified_at TIMESTAMPTZ, notify_failed BOOLEAN NOT NULL DEFAULT FALSE);
+  notified_at TIMESTAMPTZ, notify_failed BOOLEAN NOT NULL DEFAULT FALSE,
+  FOREIGN KEY (tenant_id, mailbox_id) REFERENCES voicemail_mailboxes (tenant_id, id) ON DELETE CASCADE);
 CREATE INDEX ON voicemail_messages (tenant_id, mailbox_id, folder, received_at DESC);
 CREATE INDEX ON voicemail_messages (expires_at);           -- retention sweeper
 CREATE TABLE tenant_voicemail_settings (
@@ -1627,7 +1650,8 @@ CREATE TABLE tenant_voicemail_settings (
 CREATE TABLE extension_pins (                 -- phone PIN: voicemail and hot-desk
   tenant_id UUID NOT NULL, extension_id UUID NOT NULL,
   pin_hash TEXT NOT NULL,                     -- Argon2id; never logged, never returned
-  failures INT NOT NULL DEFAULT 0, locked_until TIMESTAMPTZ, changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  failures INT NOT NULL DEFAULT 0, window_started_at TIMESTAMPTZ, locked_until TIMESTAMPTZ,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (tenant_id, extension_id),
   FOREIGN KEY (tenant_id, extension_id) REFERENCES extensions (tenant_id, id) ON DELETE CASCADE);
 -- RLS, for each table above:
@@ -1770,12 +1794,12 @@ this table follows it if they differ.
 | `InboundRouter.Continue` (new) | telephony → pbx | `{TenantID, CallID, Destination, Routing []byte, Reason}` → a new decision; called when a plan's terminal is a destination | — |
 | Plan runner | pbx → telephony (decision data) | Executes `RingPlan` steps; first answer wins; others cancelled with `answered_elsewhere` (SIP `Reason: …;text="Call completed elsewhere"`) | `POST /channels` (originate, `variables` for `CALLERID(all)`, `PJSIP_HEADER(add,Alert-Info)`), `POST /bridges/{id}/addChannel`, `DELETE /channels/{id}` |
 | Program runner | pbx → telephony | D-91 commands plus `Collect{max, interdigit 3 s, terminator}` and `Record{…}` | `answer`, `play`, `record`, `ChannelDtmfReceived` |
-| `CallControl.Park` / `Retrieve` | pbx → telephony | Move a participant to a per-slot holding bridge with a MOH class; retrieve brings the retriever into the call's main bridge `M`, which telephony keeps (LLD-01 §11.4), so recording continues | `bridges?type=holding`, `startMoh` |
+| `CallControl.Park` / `Retrieve` | pbx → telephony | Park: the parked party stays in the call's main bridge `M` with bridge MOH of the lot's class, the parker leaves (D-99, LLD-01 §16; no park bridge); telephony owns the park timer. Retrieve: the retriever joins `M`, MOH stops; recording continues | `bridges/{M}/moh`, `removeChannel`, `addChannel` |
 | `CallControl.Pickup` | pbx → telephony | Atomically answer the picker, cancel the ringing leg (`picked_up`), bridge | as above |
 | `ConferenceControl.Join/Mute/Remove/Lock` | pbx → telephony | Mixing bridge per room; capacity enforced atomically with the limit pbx supplies | `bridges?type=mixing`, `mute` |
 | `DeviceStatePublisher.Set(name, state)` | pbx → telephony | Device state for BLF; the ACL writes `Stasis:<name>` (ARI controls only `Stasis:` devices, LLD-01) | `PUT /deviceStates/Stasis:<name>` |
 | `MailboxPublisher.Set(name, new, old)` | pbx → telephony | MWI | `PUT /mailboxes/{name}` |
-| `CallEventSink` (pbx implements) | telephony → pbx, in process | Participant `Ringing/Connected/OnHold/Disconnected` (LLD-01 canonical states: Invited, Ringing, Connected, OnHold, Parked, Transferring, Disconnected) and registration changes, non-blocking (buffer 1024; overflow → full presence recompute) | `ChannelStateChange`, `ContactStatusChange` |
+| `CallEventSink` (pbx implements) | telephony → pbx, in process | Kinds per LLD-01 §11.5: `ParticipantRinging` (with `Pickable`, `ringing_since`), `ParticipantAnswered`, `ParticipantHeld`, `ParticipantResumed`, `ParticipantParked`, `ParticipantTransferring`, `ParticipantLeft` (with `left_reason`), `MonitorStarted`, `MonitorStopped`, `RegistrationChanged`, `Resync` (canonical Participant states, D-99: Invited, Ringing, Connected, OnHold, Parked, Transferring, Disconnected); non-blocking (buffer 1024; overflow → full presence recompute) | `ChannelStateChange`, `ContactStatusChange` |
 | `MediaStore.Store` | telephony → shared | Move an engine recording to the object store (LLD-09) | `GET /recordings/stored/{name}/file` |
 
 #### 3.5.2 The ring plan and the program (pbx/domain, pure data)
@@ -1798,6 +1822,8 @@ type RingLeg struct {
     CallerID     Presentation // §3.12
     AlertInfo    string
     Attribution  Attribution  // extension and principal (D-87)
+    Pickable     bool         // pbx-core sets it: true for extension legs (direct, forwarded,
+                              // follow-me, ring-group); false for queue offers and external legs (LLD-01 §17)
 }
 type Terminal struct {
     Kind      TerminalKind     // Destination | Voicemail | Refuse
@@ -1827,7 +1853,7 @@ type Program struct { Entry Command; /* D-91 command set + Collect + Record */ }
 | `pbx.routing.read` | SUPERVISOR, TENANT_ADMIN | Read the above |
 | `pbx.self.voicemail` / `pbx.voicemail.read_any` / `pbx.voicemail.write` | AGENT+ / TENANT_ADMIN / TENANT_ADMIN | §3.4 |
 | `pbx.presence.read` | AGENT, SUPERVISOR, TENANT_ADMIN | §3.8 |
-| `call.control` / `call.control.any` | AGENT+ / SUPERVISOR, TENANT_ADMIN | Hold, transfer, park one's own call / anyone's (cross-LLD names, LLD-01) |
+| `call.control` / `call.control.any` | every role that can `call.place` (LLD-01 rule) / SUPERVISOR, TENANT_ADMIN | Hold, transfer, park one's own call / anyone's (cross-LLD names, LLD-01) |
 | `call.pickup` / `call.pickup.any` | AGENT+ / none (grant to receptionists) | Console pickup within one's groups / of any extension (§3.9) |
 | `call.park` / `call.park.retrieve` | AGENT+ / AGENT+ | `ParkCall` / `RetrieveParkedCall` (§3.10) |
 | `conference.moderate` | AGENT+ (room moderators only) | Mute, remove, lock in a room (§3.11) |
@@ -1850,6 +1876,8 @@ phone PIN; no principal is involved. Actions are added to
 - Test tiers: **U** unit · **I** integration (`atsapbx_test`) · **W** wire
   (RPC) · **E** Go e2e on the rig · **C** console component · **B**
   browser e2e · **A** UAT with real phones.
+
+Migration numbers in the table below are provisional labels (D-100).
 
 | Migration | Contents | Section |
 |---|---|---|
@@ -2462,9 +2490,12 @@ fails, LLD-01 restores the bridge). Retriever is in the same tenant.
    `SELECT … FOR UPDATE` on the lot, chosen slot if free else lowest
    free, `INSERT parked_calls` (unique `(tenant, lot, slot)` while `PARKED`), outbox
    `pbx.call_parked`.
-2. `CallControl.Park{participant, slot ref, moh class, timeout}` → holding
-   bridge `P_S` with MOH; slot announced to the parker if their channel is
-   still up (attended) and always returned to the console/API.
+2. `CallControl.Park{call, subject, lot, slot, MOHClass, ExpiresAt}` →
+   telephony (LLD-01 §16, D-99): the parked party **stays in the call's
+   main bridge `M`**, the parker leaves it, and `M` plays the lot's MOH
+   class (no park bridge exists); the slot is announced to the parker on
+   an attended phone park and always returned to the console/API.
+   **The park timer is telephony's**, armed at `expires_at`.
 3. `DeviceStatePublisher.Set("atsa-park-<lot hex>-<slot>", INUSE)`.
 4. Retrieve: dialled number = slot → `RetrieveSlot` marks the row
    `RETRIEVED` (conditional update on state `PARKED`) →
@@ -2473,10 +2504,18 @@ fails, LLD-01 restores the bridge). Retriever is in the same tenant.
    retriever there → slot freed,
    device state `NOT_INUSE`, `pbx.call_unparked`. Empty slot → prompt
    `pbx-slot-empty`, hang up.
-5. Timeout (telephony timer armed at `expires_at`) → `Continue` with
-   reason `park_timeout` → pbx-core returns `RingPlan`: the parker's
-   extension (devices only, `comeback_seconds`, name `Parked 701:
-   <caller>`) then `fallback_destination`. Row state `COMEBACK`.
+5. Timeout (telephony's timer) → `Continue{reason: park_timeout}` →
+   pbx-core `ParkTimeout`, a conditional update on the row:
+   - row still `PARKED`, `comeback_enabled` → `COMEBACK`, slot freed; returns
+     a `RingPlan`: the parker's extension (devices only, `comeback_seconds`,
+     caller ID `Parked 701: <caller>`), then `fallback_destination`;
+   - row still `PARKED`, comeback disabled → `FELL_BACK`, slot freed; returns
+     the `fallback_destination` decision directly;
+   - row no longer `PARKED` (retrieved meanwhile: lost race) → returns
+     **nothing**, and telephony does nothing (LLD-01 §16 step 7).
+6. Comeback plan exhausted with no application terminal (no fallback, or
+   `Refuse`) → telephony plays the announcement and ends the parked party
+   (LLD-01 op `Abandoned`, never for an emergency call) → row `ABANDONED`.
 
 **4. State machine — parked call**
 
@@ -2484,9 +2523,12 @@ fails, LLD-01 restores the bridge). Retriever is in the same tenant.
 |---|---|---|
 | — | allocate | `PARKED` |
 | `PARKED` | retrieve (state precondition) | `RETRIEVED` (slot free) |
-| `PARKED` | `expires_at` reached | `COMEBACK` (slot free; ringing parker) |
+| `PARKED` | telephony timer, `comeback_enabled` | `COMEBACK` (slot free; ringing parker) |
+| `PARKED` | telephony timer, comeback disabled | `FELL_BACK` (slot free; fallback destination) |
+| `PARKED` | telephony timer, row already `RETRIEVED` (lost race) | unchanged; `ParkTimeout` returns nothing |
 | `COMEBACK` | parker answers | `RETRIEVED` |
-| `COMEBACK` | fallback taken | `FELL_BACK` |
+| `COMEBACK` | application terminal (voicemail, IVR, queue) | `FELL_BACK` |
+| `COMEBACK` | recall exhausted (no answer, no fallback, `Refuse`) | `ABANDONED` |
 | `PARKED`/`COMEBACK` | parkee hangs up | `ABANDONED` (slot free) |
 | `PARKED`/`COMEBACK` | engine lost / reconcile finds no channel | `LOST` (slot free; call end reason `parked_lost`) |
 
@@ -2504,6 +2546,7 @@ CREATE TABLE park_lots (
   name VARCHAR(100) NOT NULL, number VARCHAR(16) NOT NULL,          -- e.g. 700
   slot_start INT NOT NULL, slot_end INT NOT NULL,                    -- e.g. 701..720
   timeout_seconds INT NOT NULL DEFAULT 60 CHECK (timeout_seconds BETWEEN 15 AND 900),
+  comeback_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   comeback_seconds INT NOT NULL DEFAULT 20 CHECK (comeback_seconds BETWEEN 5 AND 120),
   fallback_destination JSONB,                                        -- NULL: parker's mailbox, else hang up
   moh_class_id UUID,
@@ -2532,7 +2575,7 @@ func ChooseSlot(lot ParkLot, occupied []int, requested *int) (int, error) // pur
 type ParkService interface {
     AllocateSlot(ctx, tenant, lot LotID, requested *int, call CallID, p ParticipantID, parker *ExtensionID) (Slot, error)
     RetrieveSlot(ctx, tenant, lot LotID, slot int, retriever ExtensionID) (ParkedCall, error) // ErrSlotEmpty
-    ParkTimeout(ctx, tenant, lot LotID, slot int) (RingPlan, error)
+    ParkTimeout(ctx, tenant, lot LotID, slot int) (*InboundDecision, error) // RingPlan (comeback), fallback decision, or nil (lost race)
     Sweep(ctx) error // every 5 s: expired rows with no live call → LOST; re-arms timers after restart
 }
 ```
@@ -3031,7 +3074,15 @@ unregistering does not log out (it may reboot) — expiry does.
 
 **10. Invariants and events.** INV-10 (both extensions same tenant, by
 FK); the person's outbound class follows them, never the device's (no
-class escalation by sitting at a better phone). Events
+class escalation by sitting at a better phone). **INV-01 at a hot desk
+(recommended default, OD-13):** an emergency call from the device is
+never blocked by the session (the emergency matcher runs first, §3.13);
+its **location is the desk's** (the device extension's static location,
+PB-05; dynamic location R1.1), because responders go where the phone is;
+its **callback number** is chosen by §3.12 row 0 for the **person's**
+extension (tenant emergency callback number, else the person's
+presentation number), and while the session lasts a call to the person's
+number rings this desk (§3.14 item 3), so a callback reaches the caller. Events
 `pbx.hot_desk_logged_in|logged_out {device_extension_id, extension_id,
 reason}`; audit login/logout (security-relevant).
 
@@ -3143,6 +3194,7 @@ class as a looped bridge playback driven by telephony.
 | OD-6 | Two tenants authorised for the same presentation-only number? | **Allowed** (each with its own evidence); carrier DIDs stay single-tenant by D-77 attribution |
 | OD-11 | Voicemail (US-03.5) has no acceptance criterion: AC-03.5 is desk-phone provisioning. Add one to PRD EPIC-03? | **Yes, as AC-03.20:** "A caller who reaches an unanswered or busy extension can leave a message of up to 3 minutes; the owner receives an email notice with a console link within 1 minute, sees the message in the console, plays it from their phone with a PIN, and the phone's message lamp shows unread messages within 10 seconds. Messages are kept for the tenant's retention period, then deleted." |
 | OD-12 | Hot-desking (US-03.4) has no acceptance criterion. Add one? | **Yes, as AC-03.21:** "A person logs in at a hot-desk phone with their extension and PIN; within 5 seconds calls to their extension ring that phone, calls from it present their number and use their calling permissions, and its message lamp shows their voicemail; logging out, the maximum session time or the daily logout time restores the phone, and a call in progress is never ended by logout." |
+| OD-13 | INV-01 at a hot desk: whose location and callback number does an emergency call carry? | **The desk's location, the person's callback number** (item 10 of §3.14). Alternative: the desk's callback number too — simpler, but a callback would ring the desk's own number, which does not ring while someone is logged in (OD-5) |
 
 **Open spikes:** SPIKE-P1 (BLF pattern hints, §3.8), SPIKE-M1 (realtime
 MOH, §3.15), SPIKE-V1 (voicemail playback to the phone: object-store URL
@@ -3180,7 +3232,7 @@ unscoped).
 | 3 | The target agent is in a queue the supervisor supervises (TENANT_ADMIN: any agent) | `PermissionDenied` "You don't supervise this agent" |
 | 4 | Target agent is `Busy` with a connected Participant (role `AGENT`) | `FailedPrecondition` "Ana is not on a call" |
 | 5 | Not the supervisor's own call, and the target is not monitoring someone | `FailedPrecondition` "You can't monitor your own call" |
-| 6 | No other live monitor session on this agent's call (checked under `pg_advisory_xact_lock(hashtext('monitor:'||call_id))`), and the supervisor has none (LLD-01's unique index) | `AlreadyExists` "Ben is already monitoring this call"; `FailedPrecondition` "You're already monitoring a call." |
+| 6 | No other live monitor session on this agent's call, and the supervisor has none. pbx-core pre-checks under `pg_advisory_xact_lock(hashtext('monitor:'||call_id))`; LLD-01's unique indexes (per call, §23.2; per supervisor) are the backstop and return `ErrMonitorBusy` | `FailedPrecondition` "Ben Okoro is already monitoring this call." (the other supervisor's display name; also the mapping of `ErrMonitorBusy`); `FailedPrecondition` "You're already monitoring a call." |
 | 7 | The supervisor has a reachable device: their owned extension or connected browser phone | `FailedPrecondition` "Connect your phone first" |
 | 8 | Licence capacity for the supervisor leg (LLD-08; it is a channel) | `ResourceExhausted` "No call capacity left; try again shortly" |
 
@@ -3200,7 +3252,9 @@ Start (mode m):
    snoop into mixing bridge `S`; supervisor originated (ring 20 s) and
    added to `S`; barge adds the supervisor to the call's main bridge `M`.
    Session `Active`.
-3. Monitoring notice (`agent_notice = beep`, decided cross-LLD): on start
+3. Monitoring notice (tenant `agent_notice`, default `none`, decided
+   cross-LLD; pbx-core passes it as `MonitorCommand.BargeBeep` and LLD-01
+   plays the beeps): on start
    and on a change to whisper, `POST /channels/{agentChannel}/play?media=sound:beep`
    (agent only); on a change to or start in **barge**, `POST
    /bridges/{M}/play?media=sound:beep` so **both parties** hear it. With
@@ -3262,7 +3316,8 @@ CREATE TABLE tenant_supervision_settings (
 func MayMonitor(sup SupervisorView, target AgentCallView, s SupervisionSettings, q QueuePolicy, mode MonitorMode) error // pure
 // telephony ports (LLD-01 §11): CallControl.StartMonitor(ctx, MonitorCommand) (MonitorSessionID, error),
 // ChangeMonitorMode(ctx, id, mode), StopMonitor(ctx, id). Session endings reach pbx-core through
-// CallEventSink event kind `call.monitor_stopped` (LLD-01 adds it), which appends MONITOR_STOP to queue_events.
+// CallEventSink kinds MonitorStarted / MonitorStopped (LLD-01 §11.5); pbx-core appends MONITOR_START /
+// MONITOR_STOP to queue_events and notifies pbx_live (§3.3.4).
 type SupervisionService interface {
     Start(ctx context.Context, sup Actor, agent shared.PrincipalID, mode MonitorMode, reason string) (MonitorSessionID, error)
     Change(ctx context.Context, sup Actor, id MonitorSessionID, mode MonitorMode) error
@@ -4015,6 +4070,12 @@ point the agent at this file as the design source.
 
 **Expected changes.** Phase A is the first four; Phase B follows only
 after the Phase A console slice exists, per D-46.
+
+**Migration numbers below and throughout this LLD are provisional labels
+(D-100).** They show grouping and dependency only; each change takes the
+next free numbers in `api/migrations` when it is proposed and updates
+this LLD in the same change, so the delivery order never needs a
+renumbering here.
 
 | Change ID | Phase | Scope | Sequencing note |
 |---|---|---|---|
