@@ -78,6 +78,7 @@ type Policy struct {
     AbandonWindow          time.Duration // 30 days (1–90 days)
     AbandonMarginPct       float64       // 0.5  approaching = limit − margin (0.1–2.0)
     AbandonMinSample       int           // 100 live answers before ratio>1 pacing is allowed (LLD-06 §6.4)
+    AbandonBreachMinSample int           // 50 live answers before a breach STOPS a campaign; below it a breach only locks reserved mode (LLD-06 §6.4)
     AbandonConnectLimit    time.Duration // 2 s (0.5–10 s)
     MinRing                time.Duration // 15 s (0–60 s); originate timeout floor
     AbandonMessageRequired bool          // true
@@ -97,8 +98,13 @@ type CallingWindow struct {
     Weekday     time.Weekday
     StartMinute int          // 0–1439, inclusive
     EndMinute   int          // 1–1440, exclusive
+    Closed      bool         // the whole weekday is closed for this region (e.g. a state Sunday ban)
 }
-type Blackout struct{ Region string; Date civil.Date }
+type Blackout struct{ Region string; Date Date }
+
+// Date is the domain's own calendar date (no new dependency): a local day
+// in the zone being evaluated, compared field by field.
+type Date struct{ Year int; Month time.Month; Day int }
 
 type ContactFacts struct {        // gathered by the orchestration, passed in
     NumberDigits   string         // E.164 without "+"
@@ -117,10 +123,15 @@ type DNCFacts struct {            // hits only; the full list never crosses the 
     RuleID                     string     // the matching row, for the audit trail
 }
 
-type AbandonStats struct {        // rolling window for the campaign (§7.3)
-    LiveAnswered int
-    Abandoned    int
+type AbandonCounts struct { LiveAnswered, Abandoned int }
+
+// AbandonStats carries both measures of §7.3; every rule uses the stricter.
+type AbandonStats struct {
+    Rolling AbandonCounts // last window_days UTC days
+    Period  AbandonCounts // current campaign-anchored 30-day period (or portion)
 }
+// Stricter returns the counts with the higher ratio (ties: more live answers).
+func (s AbandonStats) Stricter() AbandonCounts
 
 type Attempt struct {
     TenantID      shared.TenantID
@@ -144,9 +155,9 @@ func Evaluate(p Policy, c ContactFacts, d DNCFacts, s AbandonStats, a Attempt) V
 // ConnectDeadline and RingTimeout are pure helpers the dialler calls.
 func ConnectDeadline(p Policy, answeredAt time.Time, greetingEnd *time.Time, amdRan bool) time.Time
 func RingTimeout(p Policy, campaignRing time.Duration) time.Duration // max(campaignRing, p.MinRing)
-func AbandonRatio(s AbandonStats) (pct float64, ok bool)            // ok=false when LiveAnswered==0
-func Approaching(p Policy, s AbandonStats) bool                     // ratio ≥ limit − margin
-func Breached(p Policy, s AbandonStats) bool                        // ratio ≥ limit
+func AbandonRatio(c AbandonCounts) (pct float64, ok bool)           // ok=false when LiveAnswered==0
+func Approaching(p Policy, s AbandonStats) bool                     // Stricter() ratio ≥ limit − margin
+func Breached(p Policy, s AbandonStats) bool                        // Stricter() ratio ≥ limit
 ```
 
 **Evaluation order** (first refusal wins; the order is part of the
@@ -163,7 +174,7 @@ contract and is tested):
 | 7 | Consent rule (`WIRELESS`: line type WIRELESS **or UNKNOWN** needs consent ≥ EXPRESS) | `consent_missing` |
 | 8 | Zones empty | `timezone_unknown` |
 | 9 | Blackout date in any candidate zone | `blackout_date` |
-| 10 | Window: permitted only if inside a window **in every candidate zone** (most restrictive); a region-specific window replaces the all-region window for that weekday | `outside_hours` |
+| 10 | Window: permitted only if inside a window **in every candidate zone** (most restrictive); a region-specific row (window or `Closed`) replaces the all-region rows for that weekday; a `Closed` row, or no row at all for the weekday, means no calling that day | `outside_hours` |
 | 11 | `NoRedialAfterAbandon` > 0 and `At − LastAbandonAt` < it | `no_redial_after_abandon` |
 | 12 | Kind = DIALER, not `AgentReserved`, and `Breached` | `abandon_limit` |
 | — | otherwise | `permitted` |
@@ -172,7 +183,11 @@ Rule 12 never refuses a reserved-agent attempt, a preview or a manual
 dial: those cannot abandon, so they cannot add to the ratio. This is
 what lets a breached campaign be resumed in reserved mode (LLD-06 §6.4).
 
-## 4. Data model (migrations 0050–0052 and 0058; LLD-06 holds 0053–0057 and 0059)
+## 4. Data model (provisional migrations 0050–0052 and 0058; LLD-06 0053–0057 and 0059)
+
+Migration numbers are **provisional labels** (D-100): each OpenSpec change
+takes the next free numbers in `api/migrations` when proposed, in the
+order of §14, and updates this LLD in the same change.
 
 RLS policy on every table below, exactly:
 
@@ -197,6 +212,7 @@ CREATE TABLE compliance_policies (
   abandon_window_days SMALLINT NOT NULL DEFAULT 30 CHECK (abandon_window_days BETWEEN 1 AND 90),
   abandon_margin_pct NUMERIC(4,2) NOT NULL DEFAULT 0.50 CHECK (abandon_margin_pct BETWEEN 0.10 AND 2.00),
   abandon_min_sample INT NOT NULL DEFAULT 100 CHECK (abandon_min_sample BETWEEN 0 AND 10000),
+  abandon_breach_min_sample INT NOT NULL DEFAULT 50 CHECK (abandon_breach_min_sample BETWEEN 1 AND 1000),
   abandon_connect_limit_ms INT NOT NULL DEFAULT 2000 CHECK (abandon_connect_limit_ms BETWEEN 500 AND 10000),
   min_ring_seconds SMALLINT NOT NULL DEFAULT 15 CHECK (min_ring_seconds BETWEEN 0 AND 60),
   abandon_message_required BOOLEAN NOT NULL DEFAULT TRUE,
@@ -224,8 +240,31 @@ CREATE TABLE compliance_calling_windows (
   weekday SMALLINT NOT NULL CHECK (weekday BETWEEN 0 AND 6),
   start_minute SMALLINT NOT NULL CHECK (start_minute BETWEEN 0 AND 1439),
   end_minute SMALLINT NOT NULL CHECK (end_minute BETWEEN 1 AND 1440),
+  closed BOOLEAN NOT NULL DEFAULT FALSE,           -- whole weekday closed for this region
   CHECK (end_minute > start_minute),
+  CHECK (NOT closed OR (start_minute = 0 AND end_minute = 1440)),
   PRIMARY KEY (policy_id, region, weekday, start_minute)
+);
+CREATE UNIQUE INDEX compliance_calling_windows_one_closed ON compliance_calling_windows (policy_id, region, weekday) WHERE closed;
+-- The US floor for windows, enforced like the abandonment floor: a US_FCC
+-- profile may narrow 08:00–21:00 local (47 CFR 64.1200(c)(1)) but never widen it.
+CREATE FUNCTION compliance_window_floor() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT NEW.closed AND EXISTS (SELECT 1 FROM compliance_policies p
+       WHERE p.id = NEW.policy_id AND p.template = 'US_FCC')
+     AND (NEW.start_minute < 480 OR NEW.end_minute > 1260) THEN
+    RAISE EXCEPTION 'US_FCC calling window % – % is outside 08:00–21:00', NEW.start_minute, NEW.end_minute
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER compliance_window_floor BEFORE INSERT OR UPDATE ON compliance_calling_windows
+  FOR EACH ROW EXECUTE FUNCTION compliance_window_floor();
+-- The tenant's default profile: manual dials outside a campaign (§8) and list-import scrub (LLD-06 OB-01).
+CREATE TABLE compliance_tenant_settings (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  default_policy_id UUID REFERENCES compliance_policies(id),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE compliance_blackout_dates (
   tenant_id UUID NOT NULL, policy_id UUID NOT NULL REFERENCES compliance_policies(id) ON DELETE CASCADE,
@@ -305,7 +344,27 @@ CREATE TABLE compliance_decisions (               -- append-only (INV-08)
 CREATE INDEX compliance_decisions_period ON compliance_decisions (tenant_id, decided_at DESC);
 CREATE INDEX compliance_decisions_campaign ON compliance_decisions (tenant_id, campaign_id, decided_at DESC);
 CREATE UNIQUE INDEX compliance_decisions_attempt ON compliance_decisions (attempt_id) WHERE attempt_id IS NOT NULL;
+CREATE TABLE compliance_exports (                 -- AC-15.5: async auditor export of any period
+  id UUID PRIMARY KEY, tenant_id UUID NOT NULL,
+  state VARCHAR(8) NOT NULL CHECK (state IN ('RUNNING','DONE','FAILED')),
+  period_from TIMESTAMPTZ NOT NULL, period_to TIMESTAMPTZ NOT NULL CHECK (period_to > period_from),
+  filter JSONB NOT NULL DEFAULT '{}',              -- campaign_id?, permitted?, reason?
+  rows_written BIGINT NOT NULL DEFAULT 0,
+  files JSONB NOT NULL DEFAULT '[]',               -- [{object_key, rows, month}] in the tenant object store
+  failure VARCHAR(64) NOT NULL DEFAULT '',
+  requested_by UUID NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL                  -- files deleted after 7 days
+);
+CREATE UNIQUE INDEX compliance_exports_one_running ON compliance_exports (tenant_id) WHERE state = 'RUNNING';
 ```
+
+`compliance_exports` grants: `SELECT, INSERT, UPDATE`. The partial unique
+index is the **one-export-per-tenant** rule: a second request while one is
+RUNNING fails the insert and the RPC returns `RESOURCE_EXHAUSTED`. The job
+(one worker per installation, `SKIP LOCKED` on RUNNING rows) writes one CSV
+file per calendar month (≤ 1 M rows, split further if larger), then sets
+DONE; a crash leaves RUNNING with no progress for 10 min → FAILED
+`interrupted`, so the tenant can retry.
 
 Grants: `SELECT, INSERT` on `compliance_decisions` (no `UPDATE`/`DELETE`
 for the app role). LLD-06's verdict trigger reads this table under the
@@ -377,7 +436,8 @@ type PrecheckContact struct {
 
 type DecideRequest struct {
     TenantID      shared.TenantID
-    PolicyID      domain.ProfileID       // the campaign's profile; MANUAL outside a campaign uses the tenant default
+    PolicyID      domain.ProfileID       // the campaign's profile; MANUAL outside a campaign and import scrub use
+                                         // compliance_tenant_settings.default_policy_id (none → profile_missing)
     CampaignID    *shared.CampaignID
     AttemptID     *shared.UUID
     Kind          domain.AttemptKind
@@ -398,7 +458,8 @@ type AbandonLedger interface {
     // at, so both increments land in the same UTC-day bucket.
     RecordLiveAnswer(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, at time.Time) error
     RecordAbandon(ctx context.Context, tx pgx.Tx, ev AbandonEvent) error
-    Stats(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, policy domain.ProfileID, at time.Time) (domain.AbandonStats, error)
+    // Rolling window and campaign-anchored period (campaignStart = first dial day, UTC).
+    Stats(ctx context.Context, tx pgx.Tx, tenant shared.TenantID, campaign shared.CampaignID, policy domain.ProfileID, campaignStart domain.Date, at time.Time) (domain.AbandonStats, error)
 }
 
 // OptOuts is written by the agent console, the abandon IVR and the API.
@@ -468,7 +529,8 @@ Permissions (new action strings; role grants are an LLD-02 change, §12.6):
 | `CreateCompliancePolicy` | `name, template, fields…` → `Policy` | policy.manage | `INVALID_ARGUMENT` "Abandon limit must be between 0 and 100 %"; `FAILED_PRECONDITION` "The US template cannot be set below the federal minimum: {field}"; `ALREADY_EXISTS` "A profile with this name already exists" |
 | `GetCompliancePolicy` / `ListCompliancePolicies` | `id` / paging → `Policy` | policy.read | `NOT_FOUND` "Profile not found" |
 | `UpdateCompliancePolicy` | `id, version, fields, update_mask` → `Policy` | policy.manage | as Create; `ABORTED` "Someone else changed this profile; reload" (version mismatch) |
-| `ReplaceCallingWindows` | `policy_id, windows[]` → windows | policy.manage | `INVALID_ARGUMENT` "Window {n}: end must be after start" |
+| `ReplaceCallingWindows` | `policy_id, windows[]{region, weekday, start_minute, end_minute, closed}` → windows | policy.manage | `INVALID_ARGUMENT` "Window {n}: end must be after start"; `FAILED_PRECONDITION` "A US profile cannot allow calls before 08:00 or after 21:00 local time" (service check and DB trigger) |
+| `SetDefaultCompliancePolicy` / `GetDefaultCompliancePolicy` | `policy_id` | policy.manage / policy.read | `NOT_FOUND` "Profile not found"; deleting the default profile → `FAILED_PRECONDITION` "Choose another default first" |
 | `ReplaceBlackoutDates` | `policy_id, dates[]` → dates | policy.manage | `INVALID_ARGUMENT` |
 | `ImportDNC` | client stream: `header{scope, campaign_id?, name, format, mode}` then `chunk bytes` → `{source_id, accepted, rejected, errors[≤100]{line, reason}}` | dnc.manage | `INVALID_ARGUMENT` "Line {n}: not a phone number"; `RESOURCE_EXHAUSTED` "File exceeds 50 MB / 5 million numbers" |
 | `AddDNCNumbers` / `DeleteDNCNumber` | `scope, campaign_id?, numbers[≤1000]` | dnc.manage | `INVALID_ARGUMENT` |
@@ -476,7 +538,7 @@ Permissions (new action strings; role grants are an LLD-02 change, §12.6):
 | `CheckNumber` | `number, policy_id, campaign_id?` → `Verdict` (Precheck) | dnc.read | — (advisory; console labels it "Would be allowed now") |
 | `RecordOptOut` | `number, source, campaign_id?, call_id?` → `{}` | optout.record | `INVALID_ARGUMENT` "Not a phone number" |
 | `RemoveOptOut` | `number, reason (≥ 10 chars)` → `{}` | optout.remove | `FAILED_PRECONDITION` "Opt-outs recorded by the contact cannot be removed" when source ∈ {ABANDON_IVR, AGENT} |
-| `GetAbandonmentStatus` | `campaign_id` → `{live_answered, abandoned, ratio_pct, limit_pct, state: OK/APPROACHING/BREACHED, window_start}` | policy.read | `NOT_FOUND` |
+| `GetAbandonmentStatus` | `campaign_id` → `{rolling{live_answered, abandoned, ratio_pct, window_start}, period{live_answered, abandoned, ratio_pct, period_start}, stricter: ROLLING/PERIOD, limit_pct, state: OK/APPROACHING/BREACHED}` | policy.read | `NOT_FOUND` |
 | `ListComplianceDecisions` | `period, campaign_id?, permitted?, reason?, paging` | decision.read | `INVALID_ARGUMENT` "Period may not exceed 92 days" |
 | `ExportComplianceDecisions` | same filter, **any period** → `{export_id}`; an async job writes chunked CSV files (≤ 1 M rows each, month by month) to the tenant object store | decision.export | audited; CSV cells formula-escaped; `RESOURCE_EXHAUSTED` "An export is already running" (one per tenant) |
 | `GetComplianceExport` | `export_id` → `{state: RUNNING/DONE/FAILED, rows, files[]{url (signed, 1 h)}}` | decision.export | `NOT_FOUND` |
@@ -533,7 +595,8 @@ conservative. Postal-code lookup (Amazon Connect's first step) is R2.
 | **Live answer** | A dialler attempt answered by a person: every BRIDGED attempt plus every ABANDONED attempt. Machine answers (agent-marked or AMD) and preview attempts are **not** counted |
 | **Abandoned** | A live answer not connected to an agent before `ConnectDeadline` (§7.4), including one where the customer hangs up while waiting |
 | **Ratio** | `abandoned ÷ live_answered × 100`, per campaign |
-| **Window** | **Rolling**: the current UTC day plus the previous `window_days − 1` days (decided: rolling, not calendar, because 64.1200(a)(7)(i) says "a 30-day period" and a rolling window is never looser than any calendar alignment). A campaign younger than the window is measured over its life |
+| **Window** | **Both, stricter wins (decided).** *Rolling*: the current UTC day plus the previous `window_days − 1` days. *Campaign-anchored*: the rule's "successive 30-day period or portion thereof" — periods `[start + 30k, start + 30(k+1))` from the campaign's first dial day; the current (possibly partial) period. `Approaching`/`Breached` use whichever ratio is higher, so neither reading of the rule can be exceeded |
+| **Small sample** | Below `abandon_breach_min_sample` (50) live answers a breach does not stop the campaign: LLD-06 locks it in reserved mode, which cannot abandon, so the ratio can only fall. Rule 12 still refuses unreserved attempts, so the limit is never exceeded by dialling |
 | **Approaching** | ratio ≥ limit − margin (2.5 %) |
 | **Breached** | ratio ≥ limit (3.0 %) |
 
@@ -554,7 +617,7 @@ attempts once breached (rule 12).
 | **Deadline** | `ConnectDeadline = start + abandon_connect_limit` (2 s) |
 | **AMD and the deadline** | under `amd_counts_against_connect` the AMD decision must be made by `deadline − 300 ms`; an undecided AMD is treated as **human**. AMD may not run at all where `amd_permitted=false` (all profiles in R1.0) |
 | **Minimum ring** | Measured **from the first 180/183** (`ChannelStateChange` → `Ringing`, or `Dial` `RINGING`/`PROGRESS`) = `ring_started_at`. `RingTimeout = max(campaign ring_timeout, min_ring)` counts from there. The ARI dial `timeout` is only a backstop: `setup_allowance + RingTimeout` (30 + 25 s). No progress within the setup allowance → the leg never rang and is cancelled as a carrier failure. No cancel request (agent, pause, stop, breach, agent-leg loss) takes effect before `ring_started_at + min_ring` (LLD-06 §6.7) |
-| **Message** | played to the customer starting before the deadline: seller identity, a telephone number that accepts DNC requests during business hours, and (prerecorded telemarketing) a key-press opt-out — digit `abandon_optout_digit` writes `opt_outs` source `ABANDON_IVR` and plays a confirmation. Content is the tenant's recording; the console checklist names the three elements, but the platform cannot verify speech |
+| **Message** | played to the customer starting before the deadline. 47 CFR 64.1200(a)(7)(i)(A) limits it to: (1) that the call was for **telemarketing purposes**; (2) the seller's **name**; (3) a **telephone number** that accepts DNC requests during business hours; (4) for prerecorded telemarketing, an automated key-press **opt-out** — digit `abandon_optout_digit` writes `opt_outs` source `ABANDON_IVR` and plays a confirmation; and it must contain **no advertising**. Content is the tenant's recording; the console checklist names all five points and requires the officer to confirm each when uploading, but the platform cannot verify speech |
 | **Evidence** | `compliance_abandon_events.message_started_ms` records how long after the clock start playback began |
 
 ### 7.5 Consent and line type (OWNER DECISION §12.4)
@@ -583,7 +646,7 @@ Adding one is additive; renaming one is a breaking API change.
 | Preview | `Decide` when the agent clicks Dial | PREVIEW | `NextContact` used `Precheck` |
 | Callback | `Decide` at dial; `Precheck` when scheduled | CALLBACK | A callback time outside the window is refused at scheduling |
 | Manual dial from the agent console | one `Decide` before origination; telephony Screening records the carried id and does not decide again (LLD-01 §23.3) | MANUAL | AC-15.1 |
-| Phone/API trunk call by a principal in an active dialler session | Screening adapter → `Decide` | MANUAL | OWNER DECISION §12.3 for other PBX calls |
+| Phone/API trunk call by a principal in an active dialler session | Screening adapter → `Decide` with the tenant default profile | MANUAL | OWNER DECISION §12.3 for other PBX calls |
 | Emergency | **never** — matched before Screening (INV-01); the dialler rejects emergency numbers at import and dial | — | |
 | Inbound | none | — | the caller chose to call |
 
@@ -631,8 +694,8 @@ blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 | C3 | U | NPA mapping to Central and Mountain | 20:30 Central (19:30 Mountain) | permitted; at 21:05 Central refused (most restrictive) |
 | C4 | U | contact zone empty, country with several zones, profile default set | Evaluate | `timezone_unknown` |
 | C5 | U | region `US-FL` window 08:00–20:00 and all-region 08:00–21:00 | 20:30 local in FL | `outside_hours`, RuleID names the FL row |
-| C6 | U | stats 97/3 (3.09 %), Kind DIALER, not reserved | Evaluate | `abandon_limit`; same with `AgentReserved` → permitted; PREVIEW → permitted |
-| C7 | U | stats 1000/25 (2.5 %), margin 0.5 | `Approaching` / `Breached` | true / false |
+| C6 | U | stats Rolling = Period = 97/3 (3.09 %), Kind DIALER, not reserved | Evaluate | `abandon_limit`; same with `AgentReserved` → permitted; PREVIEW → permitted |
+| C7 | U | stats Rolling 1000/25 (2.5 %), Period 1000/20, margin 0.5 | `Approaching` / `Breached` | true / false |
 | C8 | U | `no_redial_after_abandon` 72 h, last abandon 71 h ago | Evaluate | `no_redial_after_abandon` |
 | C9 | U | national required, last sync 32 days ago | Evaluate | `dnc_registry_stale`, even for a number not on any list |
 | C10 | U | consent WIRELESS, line UNKNOWN, consent NONE | Evaluate | `consent_missing`; LANDLINE → permitted |
@@ -650,6 +713,11 @@ blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 | C18d | I | 3 months of decisions | `ExportComplianceDecisions` | async job, 3 files, row count equals `ListComplianceDecisions` totals (AC-15.5) |
 | C19 | I | US_FCC profile | update `abandon_limit_pct` to 5 | `FAILED_PRECONDITION` (DB CHECK and service) |
 | C20 | I | app role | `UPDATE compliance_decisions` | permission denied |
+| C20b | I | US_FCC profile | `ReplaceCallingWindows` with 07:30–21:00, or 08:00–21:30 | `FAILED_PRECONDITION`; the DB trigger also rejects a direct insert |
+| C20c | U | region `US-XX` with a `Closed` Sunday row, all-region Sunday 08:00–21:00 | Sunday 12:00 local in US-XX | `outside_hours`, RuleID names the closed row |
+| C20d | I | no campaign, tenant default profile unset | manual dial `Decide` | `profile_missing`; after `SetDefaultCompliancePolicy` → evaluated under it |
+| C20e | I | an export RUNNING for the tenant | second `ExportComplianceDecisions` | `RESOURCE_EXHAUSTED` "An export is already running" |
+| C20f | U | `Date{2026, 12, 25}` blackout, zone America/Chicago, instant 2026-12-26T03:00Z | Evaluate | `blackout_date` (local date is Dec 25) |
 | C20a | I | compliance officer / supervisor | `RemoveOptOut` of a CONSOLE-sourced opt-out | deleted with audit row / `PERMISSION_DENIED`; an ABANDON_IVR opt-out → `FAILED_PRECONDITION` |
 | C21 | W | every refusal path of every RPC | call | fixed Connect code and detail; no SQL or legal text; no field named `permitted` in any request message |
 | C22 | B | compliance officer | creates a US profile, adds an FL window, uploads an FTC file | sees counts and masked numbers; console shows the 31-day freshness date |
@@ -699,8 +767,9 @@ blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 ## 14. Handoff
 
 OpenSpec changes (each one change, one commit per task), interleaved
-with LLD-06's in the order of LLD-06 §15 so that migration numbers rise
-with it (golang-migrate never applies a lower version):
+with LLD-06's in the order of LLD-06 §15. Migration numbers below are
+provisional (D-100): each change takes the next free numbers when it is
+proposed.
 1. `compliance-profiles-and-gate` — 0050, 0051 (§3, §5 `Precheck`, §6 policy/DNC/opt-out/consent);
 2. `compliance-evidence` — 0052 (decisions, `Decide`, export);
 3. *(LLD-06 0053–0057)*;
