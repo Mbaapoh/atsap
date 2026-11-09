@@ -11,7 +11,8 @@
 
 | Date | Change |
 |---|---|
-| 2026-11-07 | Written. AD-07 split into flows A1–A8, AD-09 into B1–B5, each to the D-98 Definition of Ready. Migrations 0070–0074 reserved. Owner decisions OD-1…OD-11 listed in §0.3 |
+| 2026-11-07 | Written. AD-07 split into flows A1–A8, AD-09 into B1–B5, each to the D-98 Definition of Ready. Migrations 0070–0074 reserved (provisional labels since D-100). Owner decisions OD-1…OD-11 listed in §0.3 |
+| 2026-11-09 | Round 3: migration numbers marked provisional (D-100); device worker role `atsap_device_worker` (NOBYPASSRLS) with named grants and `SECURITY DEFINER` due-work readers; media-set sweep runs as `atsap_backup` (NOBYPASSRLS) through `backup_new_media` / `backup_recording_tombstones`; `CallActivity.ActiveOnExtensions` is the LLD-01 §23 contract, listed in §D |
 | 2026-11-07 | Verification fixes: `device_macs` written only through `SECURITY DEFINER` functions (Delete/Replace needed SELECT); licence precondition removed — `pbx-core` may not call `licensing` (HLD 04 §10.1); OD-2 designed in both branches (§A.3.10) with the `RotateForDevice` contract LLD-03 must add; backup split into a metadata database set and a separate media set (LLD-09 §7.2); AC-09.2, unreachable-target and power-loss tests added |
 | 2026-11-07 | §A.3.9 added: key rendering follows LLD-03 §3.8 presence/BLF (opaque key, pattern hint `atsa-blf`, SPIKE-P1 fallback) and §3.13 feature codes (tenant-effective pickup/DND codes) |
 
@@ -134,7 +135,7 @@ credential or config.
 | Every bound extension exists, is type `SIP` (not `WEBRTC`), same tenant, not bound to another device | `BindLines` in the create/update tx | `NotFound` / `FailedPrecondition` (wording in §A.7) |
 | MAC not present in any tenant | `device_macs` PK | `AlreadyExists` |
 | For `auth_mode = mtls`: family supports factory certificates (catalogue flag) | `domain.ValidateAuthMode` | `InvalidArgument` "This phone can't prove its identity with a certificate; use a provisioning password." |
-| Reboot / firmware: no active call on any of the device's lines (INV-03) | `CallActivity.ActiveOnExtensions` (telephony-core port) | Action **deferred**, not refused (§A.3.3) |
+| Reboot / firmware: no active call on any of the device's lines (INV-03) | `CallActivity.ActiveOnExtensions` (LLD-01 §23 contract) | Action **deferred**, not refused (§A.3.3) |
 | Resync / reboot: a live registration exists | `ps_contacts` read | `FailedPrecondition` "This phone isn't registered, so it can't be told to update. It will pick up the change the next time it checks in." |
 
 ## A.3 Sequences
@@ -200,7 +201,7 @@ the only engine-control path in this LLD.
 |---|---|---|
 | 1 | `ResyncDevice` / `RebootDevice`, or the change debouncer (`auto_resync_on_change`, 30 s debounce) after any write that changes the rendered hash | provisioning |
 | 2 | `INSERT device_actions` (`PENDING`, `not_before = now`, `expires_at = now + action_expiry`) | postgres |
-| 3 | Action worker (every 10 s, `SELECT … FOR UPDATE SKIP LOCKED`): for `REBOOT`, `FIRMWARE` and families whose resync may reboot (Poly), ask `CallActivity.ActiveOnExtensions`; any active → `DEFERRED_BUSY`, `not_before = now + 60 s` | provisioning → `telephony-core` port |
+| 3 | Action worker (every 10 s, `SELECT … FOR UPDATE SKIP LOCKED`): for `REBOOT`, `FIRMWARE` and families whose resync may reboot (Poly), ask `CallActivity.ActiveOnExtensions` (LLD-01 §23); any active → `DEFERRED_BUSY`, `not_before = now + 60 s` | provisioning → `telephony-core` port |
 | 4 | `NotifyEventFor(family, action)` (pure): Yealink resync `check-sync;reboot=false`, reboot `check-sync;reboot=true`; Poly `check-sync` (template sets `voIpProt.SIP.specialEvent.checkSync.alwaysReboot=0`); Grandstream `check-sync` (resync) and `reboot` (verify in spike S-12.2) | domain |
 | 5 | AMI `Action: PJSIPNotify`, `Endpoint: e_<hex>`, `Variable: Event=<value>` — sent to every contact of that endpoint | `pbx/acl/asterisk` adapter over `telephony/acl/ami` |
 | 6 | AMI `Response: Success` → `SENT`; the phone's subsequent fetch with a matching hash → `DONE`. Error → `attempts++`, retry with 30 s/2 min/10 min backoff, then `FAILED`. `expires_at` passed → `EXPIRED` | provisioning |
@@ -389,7 +390,12 @@ panics. Two derived flags are not states: `config_out_of_date`
 | any non-terminal | `expires_at` passed | — | `EXPIRED` |
 | any non-terminal | device revoked / newer action of same kind | — | `CANCELLED` |
 
-## A.5 Data model (migrations 0070–0073)
+## A.5 Data model (provisional migrations 0070–0073)
+
+**Migration numbers are provisional (D-100).** 0070–0074 are labels that
+show grouping and order within this LLD. Each OpenSpec change takes the
+next free numbers in `api/migrations` when it is proposed and updates
+this section in the same change.
 
 All tenant tables: `ENABLE` and `FORCE ROW LEVEL SECURITY`, policy
 `USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)`
@@ -597,10 +603,44 @@ CREATE TABLE device_fetch_log (                      -- retention 30 days, purge
     config_sha256 BYTEA
 );
 CREATE INDEX device_fetch_log_device_at_idx ON device_fetch_log (tenant_id, device_id, at DESC);
--- RLS + grants on both. The worker's cross-tenant scan of due actions uses the
--- existing BYPASSRLS outbox-worker role pattern, reading ids only, then sets
--- app.tenant_id per action.
+-- RLS + grants on both (atsapbx_app: SELECT, INSERT, UPDATE, DELETE).
+
+-- Background work across tenants: the action worker (§A.3.3), the status
+-- sweeper (§A.3.6) and the fetch-log purge. They run on their own pool as a
+-- dedicated role WITHOUT BYPASSRLS. The only cross-tenant reads are two
+-- SECURITY DEFINER functions that return ids; everything else is done per
+-- tenant under RLS after SET LOCAL app.tenant_id.
+-- (Role created by deploy/postgres/init like atsap_outbox_worker; password
+-- from the secret store.)
+CREATE ROLE atsap_device_worker LOGIN NOBYPASSRLS NOINHERIT;
+GRANT USAGE ON SCHEMA public TO atsap_device_worker;
+GRANT SELECT, UPDATE         ON devices, device_actions               TO atsap_device_worker;
+GRANT SELECT                 ON device_lines, device_keys, extensions TO atsap_device_worker;
+GRANT DELETE                 ON device_fetch_log                      TO atsap_device_worker;  -- purge > 30 days
+GRANT INSERT                 ON audit_logs, outbox                    TO atsap_device_worker;
+GRANT SELECT                 ON ps_contacts                           TO atsap_device_worker;  -- engine-owned, no RLS (LLD-03 §5.2)
+-- No access to device_credentials, device_line_secrets, firmware tables or device_macs.
+
+CREATE FUNCTION prov_due_actions(p_now TIMESTAMPTZ, p_limit INT)
+  RETURNS TABLE (tenant_id UUID, action_id UUID)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+  $$ SELECT tenant_id, id FROM device_actions
+     WHERE status IN ('PENDING','DEFERRED_BUSY') AND not_before <= p_now
+     ORDER BY not_before LIMIT LEAST(p_limit, 500) $$;
+CREATE FUNCTION prov_tenants_with_devices()
+  RETURNS TABLE (tenant_id UUID)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+  $$ SELECT DISTINCT tenant_id FROM devices WHERE state <> 'REVOKED' $$;
+REVOKE ALL ON FUNCTION prov_due_actions(TIMESTAMPTZ, INT), prov_tenants_with_devices() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION prov_due_actions(TIMESTAMPTZ, INT), prov_tenants_with_devices() TO atsap_device_worker;
 ```
+
+Worker loop: `prov_due_actions` → for each `(tenant, action)`: `BEGIN;
+SET LOCAL app.tenant_id`; `SELECT … FROM device_actions WHERE id = $1 FOR
+UPDATE SKIP LOCKED` (RLS applies); act; `COMMIT`. Sweeper:
+`prov_tenants_with_devices` → per tenant under RLS. A test asserts the
+role cannot read a second tenant's rows without the context and holds no
+`BYPASSRLS`.
 
 Unknown-MAC requests are **not** logged per row (that would let a
 scanner fill the table); they increment
@@ -661,7 +701,7 @@ package ports // api/internal/pbx/provisioning/ports
 type DeviceStore interface {
     WithTenantTx(ctx context.Context, tenant shared.TenantID, fn func(Tx) error) error
     ResolveMAC(ctx context.Context, mac domain.MAC) (shared.TenantID, shared.ID, bool, error) // prov_resolve_mac
-    DueActions(ctx context.Context, now time.Time, limit int) ([]ActionRef, error)           // ids only
+    DueActions(ctx context.Context, now time.Time, limit int) ([]ActionRef, error)           // prov_due_actions, as atsap_device_worker; ids only
 }
 type Tx interface {
     InsertDevice(d domain.Device, lines []domain.Line, keys []domain.Key) error // AlreadyExists on MAC
@@ -687,7 +727,8 @@ type RegistrationReader interface {
 type EngineNotifier interface {
     Notify(ctx context.Context, endpointID, event string) error
 }
-// Implemented by telephony-core (allowed: pbx-core → telephony-core, HLD 04 §10.1).
+// The LLD-01 §23 contract, implemented by telephony-core (allowed: pbx-core → telephony-core, HLD 04 §10.1).
+// true = the extension has at least one Participant not yet Left/Terminated.
 type CallActivity interface {
     ActiveOnExtensions(ctx context.Context, tenant shared.TenantID, ids []shared.ExtensionID) (map[shared.ExtensionID]bool, error)
 }
@@ -865,6 +906,7 @@ live Asterisk) · **C** console component · **B** browser e2e · **A** UAT
 | A-T10e | Given device of tenant A / When `DeleteDevice` and `ReplaceDevice` run as `atsapbx_app` / Then `prov_release_mac`/`prov_claim_mac` succeed; with tenant B's context `prov_release_mac(A's MAC)` returns 0 | I |
 | A-T11 | Given tenant A context / When selecting devices, lines, secrets of tenant B / Then zero rows; `SELECT` on `device_macs` as `atsapbx_app` is denied | I |
 | A-T12 | Given `asterisk_engine` / When selecting any 0070–0073 table / Then permission denied | I |
+| A-T12b | Given `atsap_device_worker` / When it selects `devices` with no `app.tenant_id` / Then zero rows; `prov_due_actions` returns ids across tenants; `SELECT` on `device_line_secrets` is denied; `rolbypassrls` is false | I |
 | A-T13 | Given an import of 3 rows, one with a WEBRTC extension / When `ImportDevices` / Then nothing is created and `row_errors` names row 2 | W |
 | A-T14 | Given a basic-auth device / When `GET /p/<mac>.cfg` without credentials / Then `401`; with the right ones `200`, `Cache-Control: no-store`, state `PROVISIONED`, event emitted | W |
 | A-T15 | Given 5 wrong passwords in 15 min / When the 6th (correct) request / Then `429`; after 15 min `200` | W |
@@ -1037,7 +1079,7 @@ app never stopped. No restore.
 | Upgrade matrix: every `supported_from` version → target, with data seeded, 50 live calls held across the upgrade | CI job `upgrade-matrix` (AC-09.3) |
 | Down migrations are dev-only and never used by ctl | — |
 
-Migrations 0070–0074 in this LLD are all `expand`.
+Migrations 0070–0074 in this LLD (provisional numbers, D-100) are all `expand`.
 
 ### B.3.5 Restore after commit (outside AC-09.4)
 
@@ -1119,12 +1161,67 @@ Backups run online, with `nice`/`ionice` class idle, and never drain.
 |---|---|---|
 | Holds | `db.dump` + `etc/`: configuration, call and recording **metadata**, tombstones, licence | Objects: recordings, voicemail, prompts, firmware images |
 | Schedule | Daily 02:30, installation time zone | Daily 03:30, incremental: objects created since the last successful run (by object key + ETag) |
-| Retention | 7 daily + 4 weekly (span ≤ 35 days, OD-7) | An object copy is kept until its source is deleted **plus** `media_backup_retention_days` (default **35**, range 1–35 = `backup.retention_days` of LLD-09 §7.2); the media sweep reads `recording_deletions` tombstones and deletes the copies past that window |
+| Retention | 7 daily + 4 weekly (span ≤ 35 days, OD-7) | An object copy is kept until its source is deleted **plus** `media_backup_retention_days` (default **35**, range 1–35 = `backup.retention_days` of LLD-09 §7.2); the media sweep (below) reads deletion tombstones through `backup_recording_tombstones` and deletes the copies past that window |
 | Deletion promise | A deleted recording's metadata survives in older dumps ≤ 35 days | Audio is unrecoverable at `retention_until + 35 days` (AC-07.3), matching LLD-09's stated window |
 | Encryption | AES-256-GCM, passphrase-derived key | Same key; each object a separate sealed file |
 | Target | Local + offsite (OD-6) | Same targets, separate prefix `media/` |
 | Object-store versioning | — | LLD-09 §7.2 rule kept: non-current versions ≤ 1 day; the media set, not bucket versioning, is the media backup |
 | Restore | Whole set (B5 restore step 4) | Whole set or by key list; restored objects whose metadata row is absent in the restored DB are discarded |
+
+**Media set — canonical design (LLD-09 §7.2 aligns to this).** The media
+backup and its sweep run in the app as role **`atsap_backup`**
+(`NOBYPASSRLS`), on their own pool. The role has **no** table privileges
+on tenant tables; it reads only through two `SECURITY DEFINER`
+functions that return keys and ids, never content or personal data:
+
+```sql
+-- provisional migration 0074 (D-100)
+CREATE ROLE atsap_backup LOGIN NOBYPASSRLS NOINHERIT;
+GRANT USAGE ON SCHEMA public TO atsap_backup;
+GRANT SELECT, INSERT, UPDATE ON lifecycle_operations, backup_settings TO atsap_backup;
+
+-- New media since the last run (incremental copy).
+CREATE FUNCTION backup_new_media(p_since TIMESTAMPTZ, p_limit INT)
+  RETURNS TABLE (tenant_id UUID, recording_id UUID, object_key TEXT, sha256 BYTEA, size_bytes BIGINT, created_at TIMESTAMPTZ)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+  $$ SELECT tenant_id, id, object_key, sha256, size_bytes, created_at FROM recordings
+     WHERE created_at > p_since ORDER BY created_at LIMIT LEAST(p_limit, 5000) $$;
+
+-- Deletion tombstones (LLD-09 recording_deletions) old enough to purge from the media set.
+CREATE FUNCTION backup_recording_tombstones(p_deleted_before TIMESTAMPTZ, p_after_id UUID, p_limit INT)
+  RETURNS TABLE (tenant_id UUID, recording_id UUID, deleted_at TIMESTAMPTZ)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+  $$ SELECT tenant_id, recording_id, deleted_at FROM recording_deletions
+     WHERE deleted_at < p_deleted_before AND recording_id > COALESCE(p_after_id, '00000000-0000-0000-0000-000000000000')
+     ORDER BY recording_id LIMIT LEAST(p_limit, 5000) $$;
+
+REVOKE ALL ON FUNCTION backup_new_media(TIMESTAMPTZ, INT), backup_recording_tombstones(TIMESTAMPTZ, UUID, INT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION backup_new_media(TIMESTAMPTZ, INT), backup_recording_tombstones(TIMESTAMPTZ, UUID, INT) TO atsap_backup;
+
+-- Installation-scoped index of what the media set holds (no tenant data beyond ids).
+CREATE TABLE media_backup_index (
+    recording_id UUID PRIMARY KEY,
+    tenant_id    UUID NOT NULL,
+    object_key   TEXT NOT NULL,
+    copy_name    TEXT NOT NULL,          -- sealed file name on the target(s)
+    copied_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    purged_at    TIMESTAMPTZ
+);
+GRANT SELECT, INSERT, UPDATE ON media_backup_index TO atsap_backup;
+```
+
+| # | Media run (daily 03:30) |
+|---|---|
+| 1 | `backup_new_media(last_success_at, 5000)` in pages → for each row not in `media_backup_index`: read the object (object-store credentials of the backup worker, read-only), verify SHA-256 against the row, seal, write to `media/` on each target, insert index row |
+| 2 | Sweep: `backup_recording_tombstones(now − media_backup_retention_days, cursor, 5000)` → for each `recording_id` in the index with `purged_at IS NULL`: delete the copy on every target (not-found = success), set `purged_at` |
+| 3 | Voicemail, prompts and firmware (no tombstone table): object-store listing diff — a copy whose source key has been absent for `media_backup_retention_days` is deleted |
+| 4 | Crash between delete and `purged_at`: next run repeats (idempotent) |
+| 5 | Metrics: copied, purged, oldest unpurged tombstone age; alert when > `media_backup_retention_days` + 1 day (AC-07.3 at risk) |
+
+`media_backup_retention_days` (default 35, range 1–35) is the
+`backup.retention_days` in LLD-09 §7.2's stated window. A test connects
+as `atsap_backup` and proves `SELECT` on `recordings`,
+`recording_deletions` and `calls` is denied while the functions work.
 
 | # | Restore step (`atsapbx-ctl restore <file>`) |
 |---|---|
@@ -1170,7 +1267,7 @@ Backups run online, with `nice`/`ionice` class idle, and never drain.
 | `SUCCEEDED` | retention | `PRUNED` |
 | Bundle `COLLECTING` | done | `READY` → `DOWNLOADED` / `EXPIRED` (file deleted) |
 
-## B.5 Data model (migration 0074)
+## B.5 Data model (provisional migration 0074, D-100)
 
 ```sql
 -- 0074_lifecycle.up.sql  (phase: expand)
@@ -1391,6 +1488,7 @@ ctl writes `actor_type = operator_cli` under the bootstrap tenant):
 | B-T24 | Given the offsite target is unreachable (S3 endpoint refuses) / When the scheduled backup runs / Then the local copy is written and verified, the run ends `FAILED` with `location: local`, operators are e-mailed; a second consecutive failure raises the console banner; the next success clears it | I, E |
 | B-T25 | Given the local backup path is unwritable / When `RunBackupNow` / Then `FAILED`, no partial file remains after the next start, alert sent | I |
 | B-T26 | Given an upgrade killed (SIGKILL ctl, then host power-off simulated by `docker kill` of every container) at each of `SNAPSHOT`, `EXPANDING`, `DRAINING`, `SWITCHING`, `VERIFYING` / When `atsapbx-ctl upgrade` is run again / Then it reads `state.json`, offers resume or rollback, and either path ends `SERVING_UNCOMMITTED` or `ROLLED_BACK` with no dropped call and no dirty migration | E |
+| B-T28 | Given `atsap_backup` / When selecting `recordings`, `recording_deletions` or `calls` / Then permission denied; `backup_new_media` and `backup_recording_tombstones` return ids and keys only; `rolbypassrls` is false | I |
 | B-T27 | Given a recording deleted on day 0 / When media backups run daily / Then its media-set copy is gone by day 35 and absent from any restore after that (AC-07.3) | I |
 | B-T22 | Upgrade N-1 → N with two baresip phones mid-call: neither call drops; then rollback; the phones re-register and call | A |
 
@@ -1428,7 +1526,19 @@ rollback that does not depend on a backup.
 | 11 Tests | §A.11 | §B.11 |
 | 12 Parity | §A.12 | §B.12 |
 
-## D. Spikes and unresolved items
+## D. Spikes, contracts and unresolved items
+
+**Contracts this LLD relies on (other LLDs must carry them):**
+
+| Contract | Owner | Signature / meaning | Used by |
+|---|---|---|---|
+| `CallActivity.ActiveOnExtensions` | LLD-01 §23 (`telephony-core`) | `ActiveOnExtensions(ctx, tenant TenantID, ids []ExtensionID) (map[ExtensionID]bool, error)` — true when the extension has a Participant not yet Left/Terminated | A3 reboot/firmware/resync deferral (INV-03) |
+| `MaintenanceGate` | LLD-01 §23 | `Admit(ctx, emergency bool) error`, `ActiveCallStats()` | B2/B3 drain |
+| `RotateForDevice` | LLD-03 §7.3 | §A.3.10 | A1, A2 (branch O), A7 |
+| `DeleteExtension` refusal for a bound extension | LLD-03 §6 | `FailedPrecondition` | A7 |
+| Presence device state, `atsa-blf` hint, feature codes | LLD-03 §3.8, §3.13 | §A.3.9 | A8 keys |
+| `recording_deletions` tombstones read via `backup_recording_tombstones` | LLD-09 §7.2 (aligned to §B.3.7 here) | §B.3.7 | B5 media sweep |
+
 
 | # | Item | Blocks |
 |---|---|---|
@@ -1445,7 +1555,7 @@ rollback that does not depend on a backup.
 
 | Change | Content | Order |
 |---|---|---|
-| `pbx-device-inventory` | 0070–0071, A1, A7, A8 key templates, `ProvisioningService` CRUD, console Phones list | 1 (after OD-1, OD-2) |
+| `pbx-device-inventory` | 0070–0071 (provisional; next free numbers at propose time, D-100), A1, A7, A8 key templates, `ProvisioningService` CRUD, console Phones list | 1 (after OD-1, OD-2) |
 | `pbx-provisioning-server` | `:8443` listener, A2 (basic + mtls), A5, A6 sweeper, Yealink pack | 2 |
 | `pbx-provisioning-packs` | Poly and Grandstream packs, redirect-service hints | 3 |
 | `pbx-device-actions` | 0073, A3 with the INV-03 deferral | 4 |

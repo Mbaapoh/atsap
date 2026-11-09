@@ -3689,6 +3689,32 @@ and contradicts D-88.
 
 ---
 
+**D-100 · Migration numbers in an LLD are provisional; an OpenSpec
+change takes the next free number when it is proposed (2026-11-09).**
+
+**Context:** The D-98 LLD pass gave each writer a reserved range
+(0030–0074). Re-verification found that the planned delivery order
+crosses those ranges. golang-migrate's `Up` (`api/internal/postgres`)
+never applies a version lower than the current one, so a change that
+ships a lower number after a higher one would be silently skipped.
+
+**Decision:**
+- Migration numbers written in an LLD are **provisional labels** that
+  show grouping and dependency only.
+- When an OpenSpec change is proposed, its migrations take the next free
+  numbers in `api/migrations`, in the order its tasks apply them. The
+  LLD is updated in the same change.
+- Two changes never share a migration.
+
+**Alternatives:** *Renumber every LLD to one global delivery order now.*
+Rejected: the order will change again as the owner reorders work, and
+every reorder would rewrite four documents.
+
+**Related Decisions:** D-29, D-98
+**Traceability:** LLD README; LLD-01, 03, 04, 05, 06, 09, 10, 12
+
+---
+
 ## Known and accepted limitations
 
 - A call already in progress on a failed carrier route cannot be moved. External

@@ -70,6 +70,17 @@ owner may simply accept.
 
 ## 4. Cross-LLD follow-ups still open
 
+- LLD-02 (identity) must publish `tenant.status_changed{tenant, status,
+  at}` through the outbox, because webhook holding on suspension needs
+  it; today `SetTenantStatus` only writes an audit entry.
+- Design still missing (product-owner review, 2026-11-09): the IVR
+  visual-builder UX and the `TestFlow` contract (AC-03.6, AC-03.8);
+  browser-phone resilience (AC-03.1, 03.4, 03.9, 03.10, 03.12: network
+  handover, connection-loss state, per-session credential); partner
+  documentation and sandbox tenant (AC-05.7).
+- PRD: AC-14.2 (AMD) is not marked R2 although A19 makes AMD R2; US-14.1,
+  14.3 and 14.7 have no ACs.
+
 - LLD-02: add the new permissions (`call.control`, `call.control.any`,
   the routing-feature, agent, campaign and compliance permissions) and
   the role presets (A15). Also design the hook by which identity tells
