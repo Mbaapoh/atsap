@@ -218,6 +218,10 @@ CREATE TABLE compliance_policies (
   abandon_message_required BOOLEAN NOT NULL DEFAULT TRUE,
   abandon_message_media_uri TEXT NOT NULL DEFAULT '',
   abandon_optout_digit VARCHAR(1) NOT NULL DEFAULT '9' CHECK (abandon_optout_digit ~ '^[0-9*#]?$'),
+  -- officer's confirmation of the five message points (§7.4) for the current media; reset when the media changes
+  abandon_message_confirmed_points TEXT[] NOT NULL DEFAULT '{}'
+    CHECK (abandon_message_confirmed_points <@ ARRAY['telemarketing_purpose','seller_name','dnc_phone_number','optout_mechanism','no_advertising']),
+  abandon_message_confirmed_by UUID, abandon_message_confirmed_at TIMESTAMPTZ,
   no_redial_after_abandon_hours SMALLINT NOT NULL DEFAULT 0 CHECK (no_redial_after_abandon_hours BETWEEN 0 AND 720),
   amd_permitted BOOLEAN NOT NULL DEFAULT FALSE,
   amd_counts_against_connect BOOLEAN NOT NULL DEFAULT TRUE,
@@ -232,8 +236,19 @@ CREATE TABLE compliance_policies (
   CHECK (template <> 'US_FCC' OR (abandon_limit_pct <= 3.00 AND abandon_window_days >= 30
          AND abandon_connect_limit_ms <= 2000 AND min_ring_seconds >= 15
          AND abandon_message_required AND amd_counts_against_connect AND national_dnc_required)),
-  CHECK (NOT abandon_message_required OR abandon_message_media_uri <> '')
+  CHECK (NOT abandon_message_required OR abandon_message_media_uri <> ''),
+  CHECK (NOT abandon_message_required OR cardinality(abandon_message_confirmed_points) = 5)
 );
+-- template is fixed at creation: a CUSTOM 07:00–22:00 profile can never become US_FCC unchecked
+CREATE FUNCTION compliance_template_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.template <> OLD.template THEN
+    RAISE EXCEPTION 'compliance profile template is immutable' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER compliance_template_immutable BEFORE UPDATE OF template ON compliance_policies
+  FOR EACH ROW EXECUTE FUNCTION compliance_template_immutable();
 CREATE TABLE compliance_calling_windows (
   tenant_id UUID NOT NULL, policy_id UUID NOT NULL REFERENCES compliance_policies(id) ON DELETE CASCADE,
   region VARCHAR(8) NOT NULL DEFAULT '',          -- '' = all; 'US-FL' = stricter override
@@ -361,7 +376,13 @@ CREATE UNIQUE INDEX compliance_exports_one_running ON compliance_exports (tenant
 `compliance_exports` grants: `SELECT, INSERT, UPDATE`. The partial unique
 index is the **one-export-per-tenant** rule: a second request while one is
 RUNNING fails the insert and the RPC returns `RESOURCE_EXHAUSTED`. The job
-(one worker per installation, `SKIP LOCKED` on RUNNING rows) writes one CSV
+(one worker per installation; it finds RUNNING exports across tenants only
+through the D-101 pattern: a `FOR SELECT` policy on `compliance_exports`
+active while `app.compliance_export_scan = 'on'`, set and cleared by the
+function `compliance_running_exports()` that returns `(tenant_id, id)`
+only, `REVOKE ALL … FROM PUBLIC`, `EXECUTE` granted to `atsapbx_app`; the
+worker then sets `app.tenant_id` and works per tenant under normal RLS,
+`SKIP LOCKED` on the row) writes one CSV
 file per calendar month (≤ 1 M rows, split further if larger), then sets
 DONE; a crash leaves RUNNING with no progress for 10 min → FAILED
 `interrupted`, so the tenant can retry.
@@ -390,8 +411,10 @@ CREATE INDEX compliance_abandon_events_number ON compliance_abandon_events (tena
 
 Grants: `SELECT, INSERT` on `compliance_abandon_events` (no
 `UPDATE`/`DELETE` for the app role; a
-retention job running as the migration owner deletes rows older than the
-policy's `retention_days`); `SELECT, INSERT, UPDATE` on buckets. The
+retention job deletes rows older than the policy's `retention_days`, as
+the `atsap_retention` role that the installer and upgrade stage provision
+(D-101; no migration creates a role), granted `DELETE` on these tables by
+the migration); `SELECT, INSERT, UPDATE` on buckets. The
 number is stored in decisions as an HMAC (tenant-keyed) plus last four
 digits, so an auditor can match a complaint's number without the log
 holding the full number; `compliance_abandon_events` keeps the full
@@ -528,7 +551,7 @@ Permissions (new action strings; role grants are an LLD-02 change, §12.6):
 |---|---|---|---|
 | `CreateCompliancePolicy` | `name, template, fields…` → `Policy` | policy.manage | `INVALID_ARGUMENT` "Abandon limit must be between 0 and 100 %"; `FAILED_PRECONDITION` "The US template cannot be set below the federal minimum: {field}"; `ALREADY_EXISTS` "A profile with this name already exists" |
 | `GetCompliancePolicy` / `ListCompliancePolicies` | `id` / paging → `Policy` | policy.read | `NOT_FOUND` "Profile not found" |
-| `UpdateCompliancePolicy` | `id, version, fields, update_mask` → `Policy` | policy.manage | as Create; `ABORTED` "Someone else changed this profile; reload" (version mismatch) |
+| `UpdateCompliancePolicy` | `id, version, fields, update_mask` → `Policy`; `template` is not in the mask (immutable; to change jurisdiction, create a new profile and move campaigns while paused); changing `abandon_message_media_uri` must carry `abandon_message_confirmed_points[]` (all five) or the update is refused; changing `min_ring_seconds` or `abandon_connect_limit_ms` re-validates running campaigns (§9) | policy.manage | as Create; `INVALID_ARGUMENT` "The template cannot be changed; create a new profile"; `FAILED_PRECONDITION` "Confirm all five points of the abandon message"; `ABORTED` "Someone else changed this profile; reload" (version mismatch) |
 | `ReplaceCallingWindows` | `policy_id, windows[]{region, weekday, start_minute, end_minute, closed}` → windows | policy.manage | `INVALID_ARGUMENT` "Window {n}: end must be after start"; `FAILED_PRECONDITION` "A US profile cannot allow calls before 08:00 or after 21:00 local time" (service check and DB trigger) |
 | `SetDefaultCompliancePolicy` / `GetDefaultCompliancePolicy` | `policy_id` | policy.manage / policy.read | `NOT_FOUND` "Profile not found"; deleting the default profile → `FAILED_PRECONDITION` "Choose another default first" |
 | `ReplaceBlackoutDates` | `policy_id, dates[]` → dates | policy.manage | `INVALID_ARGUMENT` |
@@ -617,6 +640,7 @@ attempts once breached (rule 12).
 | **Deadline** | `ConnectDeadline = start + abandon_connect_limit` (2 s) |
 | **AMD and the deadline** | under `amd_counts_against_connect` the AMD decision must be made by `deadline − 300 ms`; an undecided AMD is treated as **human**. AMD may not run at all where `amd_permitted=false` (all profiles in R1.0) |
 | **Minimum ring** | Measured **from the first 180/183** (`ChannelStateChange` → `Ringing`, or `Dial` `RINGING`/`PROGRESS`) = `ring_started_at`. `RingTimeout = max(campaign ring_timeout, min_ring)` counts from there. The ARI dial `timeout` is only a backstop: `setup_allowance + RingTimeout` (30 + 25 s). No progress within the setup allowance → the leg never rang and is cancelled as a carrier failure. No cancel request (agent, pause, stop, breach, agent-leg loss) takes effect before `ring_started_at + min_ring` (LLD-06 §6.7) |
+| **Message confirmation** | the officer confirms each of the five points below when uploading or changing the media: `abandon_message_confirmed_points`, `_by`, `_at` on the profile; a DB CHECK requires all five while the message is required; audit entry `compliance.abandon_message.confirmed` with the media URI and the points |
 | **Message** | played to the customer starting before the deadline. 47 CFR 64.1200(a)(7)(i)(A) limits it to: (1) that the call was for **telemarketing purposes**; (2) the seller's **name**; (3) a **telephone number** that accepts DNC requests during business hours; (4) for prerecorded telemarketing, an automated key-press **opt-out** — digit `abandon_optout_digit` writes `opt_outs` source `ABANDON_IVR` and plays a confirmation; and it must contain **no advertising**. Content is the tenant's recording; the console checklist names all five points and requires the officer to confirm each when uploading, but the platform cannot verify speech |
 | **Evidence** | `compliance_abandon_events.message_started_ms` records how long after the clock start playback began |
 
@@ -655,7 +679,7 @@ Adding one is additive; renaming one is a breaking API change.
 | Failure | Behaviour |
 |---|---|
 | DB error inside `Decide` | returns `ErrComplianceUnavailable`; caller rolls back; no attempt row, no call; pacer backs off 5 s; alert after 3 consecutive |
-| Policy edited while a campaign runs | next `Decide` reads the new `version`; decisions record `policy_version`; calls in progress unaffected (INV-12) |
+| Policy edited while a campaign runs | next `Decide` reads the new `version`; decisions record `policy_version`; calls in progress unaffected (INV-12). In the same transaction, a change to `min_ring_seconds` or `abandon_connect_limit_ms` emits `policy.updated`; LLD-06 re-validates every RUNNING campaign on the profile (setup allowance ≥ min ring, reservation budget) and moves any that no longer fit to PAUSED(`PROFILE_CHANGED`) with an alert (LLD-06 §5.1) |
 | Policy deleted while referenced | refused: `FAILED_PRECONDITION` "Profile is used by {n} campaigns" |
 | DNC `REPLACE` import fails mid-way | staging rolled back; old set remains; `dnc_sources` row not written |
 | National list goes stale | every Decide refuses `dnc_registry_stale`; LLD-06 auto-pauses campaigns using that profile with reason `COMPLIANCE_BLOCKING` after 20 consecutive refusals |
@@ -713,6 +737,8 @@ blackouts, DNC import/add/delete, opt-out record/remove, decision export.
 | C18d | I | 3 months of decisions | `ExportComplianceDecisions` | async job, 3 files, row count equals `ListComplianceDecisions` totals (AC-15.5) |
 | C19 | I | US_FCC profile | update `abandon_limit_pct` to 5 | `FAILED_PRECONDITION` (DB CHECK and service) |
 | C20 | I | app role | `UPDATE compliance_decisions` | permission denied |
+| C20g | I | CUSTOM profile with 07:00–22:00 windows | `UPDATE … SET template='US_FCC'` (service or SQL) | refused (trigger); a new US_FCC profile cannot hold those windows |
+| C20h | I | message required | `UpdateCompliancePolicy` with new media and 4 confirmed points | `FAILED_PRECONDITION`; with 5 → saved, audit `compliance.abandon_message.confirmed` |
 | C20b | I | US_FCC profile | `ReplaceCallingWindows` with 07:30–21:00, or 08:00–21:30 | `FAILED_PRECONDITION`; the DB trigger also rejects a direct insert |
 | C20c | U | region `US-XX` with a `Closed` Sunday row, all-region Sunday 08:00–21:00 | Sunday 12:00 local in US-XX | `outside_hours`, RuleID names the closed row |
 | C20d | I | no campaign, tenant default profile unset | manual dial `Decide` | `profile_missing`; after `SetDefaultCompliancePolicy` → evaluated under it |

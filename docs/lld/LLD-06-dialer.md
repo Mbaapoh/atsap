@@ -169,7 +169,8 @@ CREATE TABLE dialer_campaigns (
   id UUID PRIMARY KEY, tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name VARCHAR(128) NOT NULL, mode VARCHAR(10) NOT NULL CHECK (mode IN ('PREVIEW','POWER','PREDICTIVE')),
   state VARCHAR(18) NOT NULL DEFAULT 'DRAFT' CHECK (state IN ('DRAFT','RUNNING','PAUSED','COMPLETED','STOPPED','STOPPED_COMPLIANCE')),
-  pause_reason VARCHAR(24) NOT NULL DEFAULT '',  -- MANUAL|CARRIER_FAILURE|CALLER_ID_INVALID|COMPLIANCE_BLOCKING|SCHEDULE|NO_AGENTS; ABANDON_LIMIT with STOPPED_COMPLIANCE
+  first_dialed_on DATE,                          -- UTC day of the first PlaceAttempt; set once (COALESCE), campaignStart for LLD-04 Stats
+  pause_reason VARCHAR(24) NOT NULL DEFAULT '',  -- MANUAL|CARRIER_FAILURE|CALLER_ID_INVALID|COMPLIANCE_BLOCKING|PROFILE_CHANGED|RESERVATION_LIMIT|SCHEDULE|NO_AGENTS; ABANDON_LIMIT with STOPPED_COMPLIANCE
   policy_id UUID NOT NULL,                        -- compliance profile (LLD-04)
   ratio NUMERIC(3,1) NOT NULL DEFAULT 1.0 CHECK (ratio BETWEEN 1.0 AND 3.0),
   effective_ratio NUMERIC(3,1) NOT NULL DEFAULT 1.0,   -- pacer-owned (slow-down)
@@ -310,7 +311,7 @@ CREATE INDEX dialer_attempts_contact ON dialer_attempts (tenant_id, contact_id, 
 CREATE INDEX dialer_attempts_campaign ON dialer_attempts (tenant_id, campaign_id, queued_at DESC);
 ```
 
-Grants: `SELECT, INSERT, UPDATE` (no `DELETE`; retention job as owner,
+Grants: `SELECT, INSERT, UPDATE` (no `DELETE` for the app role; the retention job runs as `atsap_retention`, provisioned by the installer/upgrade stage per D-101,
 **760 days** like LLD-04, because an `ABANDONED` attempt is part of the
 two-year abandonment record).
 
@@ -379,6 +380,8 @@ Grants on 0055, 0057, 0059: `SELECT, INSERT, UPDATE`.
 | RUNNING | carrier detector (§6.11) | — | PAUSED(CARRIER_FAILURE) | alert |
 | RUNNING | caller ID becomes unauthorised | — | PAUSED(CALLER_ID_INVALID) | alert |
 | RUNNING | 20 consecutive `Decide` refusals of a policy-wide reason (`dnc_registry_stale`, `profile_missing`) | — | PAUSED(COMPLIANCE_BLOCKING) | alert |
+| RUNNING | `compliance.policy.updated` changing `min_ring_seconds` or `abandon_connect_limit_ms`, re-validation fails (US_FCC `setup_allowance_s < min_ring`, or the §6.2 reservation budget no longer fits) | — | PAUSED(PROFILE_CHANGED) | alert names the failed rule; resume after editing the campaign |
+| RUNNING | LLD-03 `campaign_reservation_seconds` lowered (installation setting change; the dialler re-validates all RUNNING campaigns at startup and on the config-change event) and the budget no longer fits | — | PAUSED(RESERVATION_LIMIT) | alert to tenant admins; calls in progress continue (INV-12) |
 | RUNNING | `schedule_end` passed | — | PAUSED(SCHEDULE) | — |
 | RUNNING | no agent session for 30 min | mode ≠ PREVIEW | PAUSED(NO_AGENTS) | — |
 | RUNNING | no lead eligible ever again (all leads terminal, no callbacks open) | checked every 5 min | COMPLETED | event |
@@ -618,7 +621,7 @@ events/audit (item 10) to §9 unless stated.
 
 1. **Trigger/actors:** the pacer (system) for a RUNNING POWER campaign;
    agents in CONNECTED sessions.
-2. **Preconditions:** campaign RUNNING; ≥ 1 agent `Ready`; the pacer holds
+2. **Preconditions:** campaign RUNNING (pacers discover RUNNING campaigns across tenants only through the D-101 pattern: `FOR SELECT` policy on `dialer_campaigns` under `app.dialer_campaign_scan = 'on'`, function `dialer_running_campaigns()` returning `(tenant_id, campaign_id)` only, `REVOKE ALL … FROM PUBLIC`; all work then runs per tenant under normal RLS); ≥ 1 agent `Ready`; the pacer holds
    the per-campaign advisory lock `pg_try_advisory_lock(hash('dialer', campaign_id))` (one active pacer across app instances; HLD-21 §3 pattern).
 3. **Sequence (each tick, `tick_interval` 1 s):**
    0. **Wake-up:** the pacer `LISTEN`s on `dialer_wake` (payload `<tenant_id>:<campaign_id>`, `NOTIFY` issued by LLD-03 in every transaction that commits an agent into `Ready`) and also ticks every `tick_interval` (1 s) as a safety net; either runs steps 1–9.
@@ -722,7 +725,7 @@ emits no abandonment events.
 1. **Trigger/actors:** the abandonment evaluator (system, per RUNNING POWER/PREDICTIVE campaign, every 10 s, inside the pacer's advisory lock); compliance officer configures the profile (`compliance.policy.manage`) and resumes after a breach (`dialer.campaign.compliance_resume`).
 2. **Preconditions:** campaign mode POWER or PREDICTIVE; profile loaded. PREVIEW campaigns cannot abandon and are not evaluated.
 3. **Sequence:**
-   1. `AbandonLedger.Stats(tx, tenant, campaign, policy, campaignStart, now)` → `AbandonStats{Rolling, Period}`: the rolling window **and** the campaign-anchored "successive 30-day period or portion thereof" (day 0 = campaign start; the current period is `[start + 30k, start + 30(k+1))`), LLD-04 §7.3. Every decision below uses the **stricter** (higher) of the two ratios.
+   1. `AbandonLedger.Stats(tx, tenant, campaign, policy, campaignStart = dialer_campaigns.first_dialed_on, now)` (set once by `UPDATE … SET first_dialed_on = COALESCE(first_dialed_on, current_date)` in the first attempt's tx; a clone gets its own) → `AbandonStats{Rolling, Period}`: the rolling window **and** the campaign-anchored "successive 30-day period or portion thereof" (day 0 = campaign start; the current period is `[start + 30k, start + 30(k+1))`), LLD-04 §7.3. Every decision below uses the **stricter** (higher) of the two ratios.
    2. Read `ControlState` from `dialer_campaign_stats`; pure `AbandonControl(cur, stats, policy, configuredRatio, effectiveRatio, now, cfg)` → `(next ControlState, effectiveRatio, ControlAction)`; persist `next` and `effective_ratio` in one tx; emit an event only when `next.State ≠ cur.State`.
    3. **WARMUP** (`live < abandon_min_sample`, 100): `effective_ratio = 1.0` (reserved mode: cannot abandon, so the first abandon cannot read as 100 %).
    4. **OK** (`ratio < limit − margin`): if `recovery_hold_until` is past, step up `+0.1` per 60 s (`last_step_at`) towards the configured ratio; `reserved_only_lock` is cleared on the first OK evaluation.
@@ -771,6 +774,8 @@ emits no abandonment events.
     | A3a | U | 20 live / 1 abandoned (restart abandon) / — / BREACHED, action LOCK, no STOP |
     | A3b | U | after resume, lock set, 1000 / 31 / — / action NONE (reserved mode continues), no second STOP |
     | A3c | U | rolling 2.0 %, current campaign period 3.1 % / — / BREACHED (stricter of the two) |
+    | A3e | I | US_FCC profile `min_ring_seconds` raised 15 → 40 with a RUNNING campaign at `setup_allowance_s` 30 / `UpdateCompliancePolicy` / campaign PAUSED(PROFILE_CHANGED), alert, live calls untouched |
+    | A3f | I | first attempt / — / `first_dialed_on` set; second attempt next day leaves it unchanged; `Stats` period anchored on it |
     | A3d | I | STOPPED_COMPLIANCE / manager `DuplicateCampaign` → `PERMISSION_DENIED`; compliance officer → clone with `reserved_only_lock = true` |
     | A4 | U | 1000 / 20 (2.0 %) after APPROACHING, hold until T+10 min / at T+9 min → no step; T+10 min → +0.1 per minute up to configured |
     | A5 | I | buckets seeded **999 live / 29 abandoned** (2.90 %), effective 1.5 / one more abandon (`RecordLiveAnswer` + `RecordAbandon`, same `at`) → **1000 / 30 = 3.00 %** / evaluator tick → `STOPPED_COMPLIANCE` within 10 s; bridged and ringing attempts untouched |
@@ -927,7 +932,7 @@ emits no abandonment events.
    1. `RecordDisposition{attempt, code, note}` → tx: attempt DISPOSED; `NextAction(code)` → lead transition (§5.2) using `RetryPlan` (pure); `OPT_OUT` → `OptOuts.RecordOptOut(AGENT)`; `DNC_CAMPAIGN` → campaign DNC row; agent `WrapUp → Ready`.
    2. System outcomes with no agent (NO_ANSWER, BUSY, ABANDONED, CARRIER_FAILED…) are auto-disposed with the outcome as key.
    3. `ScheduleCallback{attempt, local_datetime, contact_zone (prefilled from LLD-04 zone derivation), owner: AGENT|ANY, note}` → convert to UTC; `Precheck` at that instant → refused `outside_hours` → `FAILED_PRECONDITION` "That time is outside the contact's calling hours ({window})"; insert SCHEDULED; lead CALLBACK.
-   4. **Scheduler:** a worker (one per installation under advisory lock `hash('dialer-callbacks')`, tick 15 s) selects `state='SCHEDULED' AND due_at <= now() + 60 s FOR UPDATE SKIP LOCKED LIMIT 500` → DUE; sets the lead `priority = 100` and inserts the hopper row priority 100 with `callback_id`, `not_before = due_at` (inserted up to 60 s early so it is ready, but never leased before `due_at`; the pacer's lease query has the same `not_before <= now()` filter) (and `owner_principal_id` for AGENT). For an AGENT callback whose owner has no CONNECTED session at `due_at + 5 min`: campaign `callback_fallback_to_any` (default true, §4.2) → hopper row loses the owner; else MISSED `owner_absent`, returned to the owner's list in the console.
+   4. **Scheduler:** a worker (one per installation under advisory lock `hash('dialer-callbacks')`, tick 15 s) discovers tenants with due callbacks through the D-101 pattern — `FOR SELECT` policy on `dialer_callbacks` active while `app.dialer_callback_scan = 'on'`, function `dialer_due_callback_tenants(lookahead)` sets and clears the flag and returns tenant ids only, `REVOKE ALL … FROM PUBLIC`, `EXECUTE` to `atsapbx_app` — then, per tenant with `app.tenant_id` set (normal RLS), selects `state='SCHEDULED' AND due_at <= now() + 60 s FOR UPDATE SKIP LOCKED LIMIT 500` → DUE; sets the lead `priority = 100` and inserts the hopper row priority 100 with `callback_id`, `not_before = due_at` (inserted up to 60 s early so it is ready, but never leased before `due_at`; the pacer's lease query has the same `not_before <= now()` filter) (and `owner_principal_id` for AGENT). For an AGENT callback whose owner has no CONNECTED session at `due_at + 5 min`: campaign `callback_fallback_to_any` (default true, §4.2) → hopper row loses the owner; else MISSED `owner_absent`, returned to the owner's list in the console.
    5. **DUE → OFFERED** when its hopper row is leased: in PREVIEW by `NextContact` (owner first, OB-02 query); in POWER by a pacer slot, in reserved mode to the owner if Ready (`Reserve(owner, attemptID)`), else the row waits up to 5 min then falls back. Lease expiry or skip → OFFERED → DUE (row back to READY).
    6. **OFFERED → DIALING** when its attempt reaches DIALING; `delivered_at` recorded; COMPLETED after disposition. Not delivered by `due_at + 15 min` (campaign paused, no agents) → MISSED `campaign_paused|no_agents`; lead READY with `priority = 50`; event `callback.missed`.
 4. **States:**

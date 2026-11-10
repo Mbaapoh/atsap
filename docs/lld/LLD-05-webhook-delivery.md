@@ -302,12 +302,32 @@ CREATE INDEX webhook_queue_head ON webhook_queue (subscription_id, seq) WHERE st
   and a `BEFORE TRUNCATE` statement trigger on both. The function is
   created in this migration (above); DELETE passes only for the retention
   role during a purge.
-- **Worker role:** `atsap_webhook_worker` (`BYPASSRLS`, created by the
-  deploy bootstrap like `atsap_outbox_worker`) with `SELECT, UPDATE` on
-  `webhook_queue`, `webhook_subscriptions`; `INSERT, SELECT` on
-  `webhook_deliveries`, `webhook_delivery_attempts`; `SELECT` on
-  `webhook_secrets`. It needs cross-tenant claim; RPCs use the app role
-  under RLS.
+- **Worker role:** `atsap_webhook_worker` (`NOBYPASSRLS`) runs **both**
+  the fan-out consumer and the sender; RPCs use the app role under RLS.
+  - **Fan-out** is per tenant: the tenant id comes from the subject
+    `tenant.<id>.event.…`, the worker sets `app.tenant_id` and works under
+    normal RLS. Grants: `SELECT, UPDATE (next_seq, updated_at)` on
+    `webhook_subscriptions`; `INSERT, SELECT` on `webhook_deliveries`;
+    `INSERT, SELECT, UPDATE` on `webhook_queue`; `SELECT, INSERT, UPDATE` on
+    `webhook_tenant_status`.
+  - **Sender** grants: `INSERT, SELECT` on `webhook_delivery_attempts`;
+    `SELECT` on `webhook_secrets`; `UPDATE (state, disabled_reason,
+    consecutive_failures, failing_since, updated_at)` on
+    `webhook_subscriptions`.
+  - **Cross-tenant claim (D-101, the migration-0016 pattern):** policy
+    `webhook_claim_queue ON webhook_queue FOR SELECT USING (current_setting('app.webhook_claim', true) = 'on')`;
+    function `webhook_due_candidates(lim int) RETURNS TABLE (tenant_id uuid, delivery_id uuid)`
+    sets `app.webhook_claim = on` for its one query and clears it before
+    returning; `REVOKE ALL … FROM PUBLIC`, `EXECUTE` to
+    `atsap_webhook_worker` only. The worker then claims per tenant, with
+    `app.tenant_id` set: `SELECT … FOR UPDATE SKIP LOCKED` under normal RLS
+    (a row locked or no longer due is skipped). No `SECURITY DEFINER`, no
+    `BYPASSRLS`.
+  - Roles follow D-101: `atsap_webhook_worker` and `atsap_retention` are created
+    by the installer bootstrap and, on existing installations, by the upgrade
+    step's role-provisioning stage (LLD-12 Part B); a migration never creates a
+    role. Every grant to them is wrapped as
+    `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '<role>') THEN RAISE EXCEPTION 'role <role> missing: run the upgrade role-provisioning step (atsapbx-ctl upgrade)'; END IF; GRANT …; END $$;`
 - **Retention:** the retention sweep (role `atsap_retention`, grants in
   LLD-09 §3.6 "Retention role grants", which list these tables) first
   marks `held` rows past `webhook.retention_days` `expired` (`UPDATE` on
@@ -511,14 +531,19 @@ CREATE TABLE event_call_participation (        -- in 0060; RLS standard policy
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   call_id UUID NOT NULL, principal_id UUID NOT NULL,
   first_joined_at TIMESTAMPTZ NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,              -- last left/terminated + events.stream_max_age
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT 'infinity', -- insert: 'infinity'; set on call.terminated
   PRIMARY KEY (tenant_id, call_id, principal_id)
 );
 ```
 
-- Fed by durable consumer `event-participation` on
-  `participant.joined` (insert, principal from the payload) and
-  `participant.left`/`call.terminated` (set `expires_at`). Rows are
+- Fed by durable consumer `event-participation` on `participant.joined`
+  (insert with `expires_at = 'infinity'`, principal from the payload;
+  `ON CONFLICT DO NOTHING`) and `call.terminated` (every row of the call
+  gets `expires_at = ended_at + events.stream_max_age`). `participant.left`
+  changes nothing. A row still at `infinity` 7 days after
+  `first_joined_at` (a lost `call.terminated`) is given
+  `expires_at = now()` by the hourly purge. The consumer runs as the app
+  role per tenant (tenant from the subject). Rows are
   **never removed on leave**: membership "was a participant" stays true
   until `expires_at`, so a cursor resume within `events.stream_max_age`
   sees the same scope as the original stream. Hourly purge after

@@ -127,6 +127,35 @@ refuses (into `cdr_rejects`) a payload whose totals are negative or whose
 `duration_seconds` differs from `floor(ended_at − started_at)` by more than
 1 s.
 
+**Merged calls (LLD-01 §11.6 re-homing).** A provisional call that is
+re-homed into another call terminates with `merged_into_call_id`. It is
+recorded as its **own** ledger row with `disposition = 'merged'` and
+`merged_into_call_id` set (`CHECK ((disposition = 'merged') = (merged_into_call_id IS NOT NULL))`):
+its participants' usage before the merge was real and is billable, and the
+target call's row starts its new participant at the merge instant, so no
+second is counted twice. `ListCallRecords` hides merged rows unless
+`include_merged = true`; `GetCallRecord` of the target lists its merged
+predecessors; `ExportUsage` includes them (per-participant usage). The
+exactly-one-record rule (AC-07.5) is per `call_id`, so both rows are
+expected.
+
+**Disposition mapping (pure, computed by telephony per LLD-01 from the
+participants' `left_reason`s; the ledger stores and validates it):**
+
+| Rule (first match wins) | Disposition |
+|---|---|
+| Call `Terminated(merged)` | `merged` |
+| Call `answered_at` set (any participant answered, including voicemail or IVR answer) | `answered` |
+| The originating participant left with `normal`, `api_hangup` or `cancelled` while destination legs were still ringing | `cancelled` |
+| Any destination leg `busy` | `busy` |
+| Any destination leg `rejected` or `pin_failed` | `rejected` |
+| Any destination leg `no_answer`, `answered_elsewhere` or `hold_abandoned` | `no_answer` |
+| Otherwise (`unreachable`, `transfer_failed`, `pickup_failed`, `leg_lost`, `engine_lost`, `app_restart`, no destination leg) | `failed` |
+
+Reasons that only occur after answer (`transferred`, `parked`,
+`picked_up`, `rehomed`, `kicked`, `no_moderator`, `room_ended`,
+`monitor_stopped`, `voicemail_dropped`) never decide an unanswered call.
+
 ### 3.4 State
 
 Ledger rows have no state: they are written once. The per-call
@@ -159,7 +188,7 @@ projection has a short lifecycle in `cdr_pending`:
   `duration_seconds`, `billable_seconds`, `termination_reason`,
   `disposition`, `service_type`, `department_id`, `route_id`,
   `carrier_id`, `trunk_id`, `cost_micros`, `source`, `source_event_id`,
-  `recorded_at`; then `enc(participant_count)`; then per participant in
+  `recorded_at`, `merged_into_call_id`; then `enc(participant_count)`; then per participant in
   ascending `participant_id` (byte order of the text): `participant_id`,
   `role`, `extension_id`, `principal_id`, `joined_at`, `answered_at`,
   `left_at`, `billable_seconds`, `usage_seconds`, `cost_micros`.
@@ -203,7 +232,8 @@ CREATE TABLE cdr_records (
   duration_seconds INT NOT NULL CHECK (duration_seconds >= 0),
   billable_seconds INT NOT NULL CHECK (billable_seconds >= 0),
   termination_reason TEXT NOT NULL,
-  disposition TEXT NOT NULL CHECK (disposition IN ('answered','no_answer','busy','failed','rejected','cancelled')),
+  disposition TEXT NOT NULL CHECK (disposition IN ('answered','no_answer','busy','failed','rejected','cancelled','merged')),
+  merged_into_call_id UUID CHECK ((disposition = 'merged') = (merged_into_call_id IS NOT NULL)),
   service_type TEXT NOT NULL CHECK (service_type IN ('pbx','contact_centre','campaign')),
   department_id UUID, route_id UUID, carrier_id UUID, trunk_id UUID,
   cost_micros BIGINT NOT NULL DEFAULT 0,
@@ -293,10 +323,20 @@ CREATE TABLE cdr_rejects (
   re-grant itself; the trigger is the guard the owner cannot bypass
   without a migration (which CI reviews).
 - **Retention role grants (single source for 0060–0066).**
-  `atsap_retention` is `NOBYPASSRLS`, created by the deploy bootstrap; it
-  sets `app.tenant_id` per tenant and `atsapbx.retention_purge = on` per
-  transaction. It enumerates tenants through `GRANT SELECT (id, status) ON tenants TO atsap_retention`
-  (in 0060; `tenants` has no RLS, and the name column is not granted).
+  `atsap_retention` is `NOBYPASSRLS`; it sets `app.tenant_id` per tenant
+  and `atsapbx.retention_purge = on` per transaction. It enumerates
+  tenants through `GRANT SELECT (id, status) ON tenants TO atsap_retention`
+  (in 0060): `tenants` is the root of tenancy and has no RLS, so this is a
+  column grant, not a cross-tenant read of tenant data, and needs neither a
+  definer function nor a flag-gated policy (D-101). Every other read and
+  delete is per tenant under normal RLS. The same rule applies to every
+  reporting background job (missing-CDR check, anchor timer, month purge,
+  recording upload scan): enumerate tenants, then work per tenant.
+  Roles follow D-101: `atsap_webhook_worker` and `atsap_retention` are created
+  by the installer bootstrap and, on existing installations, by the upgrade
+  step's role-provisioning stage (LLD-12 Part B); a migration never creates a
+  role. Every grant to them is wrapped as
+  `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '<role>') THEN RAISE EXCEPTION 'role <role> missing: run the upgrade role-provisioning step (atsapbx-ctl upgrade)'; END IF; GRANT …; END $$;`
   Each owning migration grants it (numbers are provisional labels, D-100):
 
   | Migration / LLD | `SELECT, DELETE` | Extra |
@@ -932,10 +972,9 @@ AI tap stop in the same operation, and intervals as audited metadata.
 | 2 | `CreateRecordingAccess(recording_id, purpose, reason_code, reason)` → one transaction: INSERT `recording_access`, INSERT `recording_tickets` (token hash), identity audit `recording.play`/`recording.download` |
 | 3 | Response: `media_url = /media/recordings/<token>` (same origin, D-69), `expires_at` |
 | 4 | Browser `<audio>` (play) or download fetches `GET /media/recordings/<token>` (same origin, so the console session cookie is sent) |
-| 4a | **Tenant before RLS.** The token is `base64url(tenant_id[16] ‖ random[32])`; the handler parses the tenant id, opens a transaction with `app.tenant_id` set to it, and looks up `recording_tickets` by `SHA-256(token)` under RLS — no `SECURITY DEFINER` function and no cross-tenant read. A forged tenant prefix finds nothing (404) |
+| 4a | **Tenant before RLS.** The token is 48 bytes, `tenant_id[16] ‖ random[32]`, sent as 64 base64url characters; the handler parses the tenant id, opens a transaction with `app.tenant_id` set to it, and looks up `recording_tickets` by `SHA-256(token)` under RLS — no `SECURITY DEFINER` function and no cross-tenant read. A forged tenant prefix finds nothing (404) |
 | 4b | **Session check.** The request must carry a valid session (console cookie, or `Authorization` for API clients) whose principal equals `recording_tickets.principal_id` and whose active tenant equals the ticket's tenant; validated per request (D-56, never cached). Mismatch or no session → 404 (never 403: no existence oracle, INV-10). Expired → 410 |
-| 4c | Increment `uses`; stream from `ObjectStore.Get` with HTTP `Range`; `Content-Disposition: inline` (play) or `attachment` (download) |
-| 5 | Each fetch increments `uses`; > `recording.ticket_max_uses` → 410 |
+| 4c | `UPDATE recording_tickets SET uses = uses + 1 WHERE id = $1 AND uses < recording.ticket_max_uses` — exactly once per HTTP request; 0 rows → 410. Then stream from `ObjectStore.Get` with HTTP `Range`; `Content-Disposition: inline` (play) or `attachment` (download) |
 
 ### 6.3 API (`RecordingService`, reporting)
 

@@ -61,7 +61,7 @@ logs, exports or errors; INV-06 accounting is asynchronous.
 |---|---|---|
 | 0 | ai-pipeline | **One ordered consumer per call.** Durable consumer `ai-tap` on `participant.joined`, `participant.left`, `call.terminated`, `call.consent_satisfied`, `call.consent_failed`, `call.pci_paused`, `call.pci_resumed` and internal `ai.tap_lost`; messages are dispatched to a per-call actor keyed by `call_id` (hash-partitioned onto `ai.tap.partitions` workers, each processing its calls' messages strictly in stream order); acks after the actor has persisted the resulting state. JetStream order per call holds because all these subjects are in one stream and published by one telephony call actor |
 | 1 | ai-pipeline | Receives `participant.joined`; `DecideTap(policy, participant, state)` (pure) |
-| 2 | ai-pipeline | `require_consent = false` → proceed. Else by `participant.joined.consent`: `satisfied`/`not_required` → proceed; `pending` → INSERT `audio_streams` with status **`awaiting_consent`** and `consent_deadline = now + ai.tap.consent_wait` (persisted, so a restart resumes the wait) and stop here; the call actor moves it on `call.consent_satisfied` (→ step 3) or `call.consent_failed` (→ `unavailable{consent}`); a sweeper every 5 s moves rows past `consent_deadline` to `unavailable{consent_timeout}`. `not_evaluated`/`failed` → `unavailable{consent}` (no announcement was played for this call) |
+| 2 | ai-pipeline | `require_consent = false` → proceed. Else by `participant.joined.consent`: `satisfied`/`not_required` → proceed; `pending` → INSERT `audio_streams` with status **`awaiting_consent`** and `consent_deadline = now + ai.tap.consent_wait` (persisted, so a restart resumes the wait) and stop here; the call actor moves it on `call.consent_satisfied` (→ step 3) or `call.consent_failed` (→ `unavailable{consent}`); a sweeper every 5 s moves rows past `consent_deadline` to `unavailable{consent_timeout}` (cross-tenant find per D-101, §3.6). `not_evaluated`/`failed` → `unavailable{consent}` (no announcement was played for this call) |
 | 3 | ai-pipeline | INSERT (or move the `awaiting_consent` row to) `audio_streams` `connecting`; opens a UDP relay socket on `127.0.0.1:<port>` from `ai.tap.port_range` |
 | 4 | ai-pipeline → telephony | `MediaTap.Start(ctx, TapRequest{CallID, ParticipantID, StreamID, RelayAddr})` (telephony inbound port) |
 | 5 | telephony ACL | `POST /channels/{participantChannel}/snoop?spy=in&whisper=none&app=atsapbx&appArgs=aitap,<streamId>&snoopId=aitap-<streamId>` — `spy=in` is what that speaker says; `whisper=none` means nothing can be injected into the call |
@@ -201,6 +201,15 @@ CREATE TABLE ai_flow_generations (               -- AI-02 evidence, INSERT-only
   `USING (tenant_id = (NULLIF(current_setting('app.tenant_id', true), ''))::uuid)` on all.
 - `ai_usage_seconds`, `ai_flow_generations`: `REVOKE UPDATE, DELETE, TRUNCATE … FROM atsapbx_app`
   + `atsapbx_forbid_mutation()` trigger (function created in `0060`, LLD-05 §4.6).
+- **Cross-tenant reads (D-101, the migration-0016 pattern).** The
+  consent-deadline sweeper and the restart sweep need open streams across
+  tenants: policy `ai_stream_sweep ON audio_streams FOR SELECT USING (current_setting('app.ai_stream_sweep', true) = 'on')`
+  and function `ai_open_streams(kind text) RETURNS TABLE (tenant_id uuid, stream_id uuid)`
+  that sets the flag for its one query and clears it before returning;
+  `REVOKE ALL … FROM PUBLIC`, `EXECUTE` to `atsapbx_app` only. Every
+  update then runs per tenant with `app.tenant_id` set, under normal RLS.
+  No `SECURITY DEFINER` and no new role: ai-pipeline runs as the app role;
+  its event consumers take the tenant from the subject.
 - Retention purge by `atsap_retention`: grants per LLD-09 §3.6 "Retention
   role grants" (`SELECT, DELETE` on `ai_usage_seconds`, `audio_streams`,
   `ai_flow_generations`), deleting in FK order `ai_usage_seconds` →
