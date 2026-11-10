@@ -9,7 +9,23 @@ they win and this file is wrong.
 
 **Continuing next week? Read [HANDOFF.md](HANDOFF.md) first.**
 
-**Last updated:** 2026-11-07, after an architecture review of everything
+**Last updated:** 2026-11-10. Every R1.0 flow now has an LLD that meets
+the twelve-item Flow Definition of Ready (D-98). That covers LLD-01, 03,
+04, 05, 06, 09, 10 and the new LLD-12. Three rounds of `code-reviewer`
+and `product-owner` verification confirmed them; the result is in
+[HLD-20 §11](hld/20-call-flow-catalogue.md). The rounds also settled
+D-99 (transfer identity), D-100 (provisional migration numbers) and
+D-101 (cross-tenant reads and role provisioning).
+
+Three designs are still missing:
+- the IVR visual builder and `TestFlow`;
+- browser-phone resilience;
+- partner documentation and the sandbox tenant.
+
+24 owner decisions are open in
+[lld/OPEN-DECISIONS.md](lld/OPEN-DECISIONS.md).
+
+Earlier, 2026-11-07, after an architecture review of everything
 delivered since 2026-11-02 (11 changes, D-79 to D-90). The tracker,
 handoff and decision log were reconciled with the code. Two designs were
 judged below the industry standard and flagged for refactor. The IVR model

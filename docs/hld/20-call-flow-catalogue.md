@@ -184,20 +184,29 @@ before an OpenSpec change.
 Each becomes an LLD section first, then OpenSpec scenarios, and the
 `product-owner` agent accepts it against the PRD (D-94).
 
-## 11. Coding readiness (D-98 audit, 2026-11-07)
+## 11. Coding readiness (D-98; verified 2026-11-10)
 
-Four read-only reviewers scored every flow against the twelve-item Flow
-Definition of Ready ([lld/README.md](../lld/README.md)). **No unbuilt
-R1.0 flow is ready for a coding agent.** "Designed" in the tables above
-means a sequence exists, not that the LLD is complete.
+On 2026-11-07, four reviewers found no unbuilt R1.0 flow ready for a
+coding agent. After three rounds of LLD rewrites and verification by
+`code-reviewer` and `product-owner` agents, the status on 2026-11-10 is:
 
-| Area | Ready | Nearly (≥ 9/12) | Needs detail | No design |
-|---|---|---|---|---|
-| Built flows (AD-01–05, PB-01–03, PB-05–06, RC-04, FL-01–03) | Built; their LLDs lack DoR-form tests and parity only | — | — | — |
-| Call control and PBX features (PB-04, 07–20, 24, AD-06) | 0 | 0 | PB-04, 07–11, 19, 20, AD-06 | PB-12–18, 24 |
-| Contact centre and supervision (IC-01–05, 08, 10) | 0 | 0 | IC-01–05, 08, 10 | IC-07 |
-| Outbound and compliance (OB-01–03, 05–07, 09–12) | 0 | OB-05 | OB-01–03, 06, 07, 09, 10 | OB-11, OB-12 |
-| Admin, recording, records, integration, AI, failure | 0 | AD-10, AD-11 (MFA/SSO), IN-02, FL-05 | AD-09, RC-01–07, IN-03, AI-01, AI-06, FL-04 | AD-07, AI-02 |
+| Area | Ready for an OpenSpec proposal | Ready, gated by a spike or owner decision | Not ready (design missing) |
+|---|---|---|---|
+| Call control (LLD-01 §11–§23) | PB-09, PB-10, PB-13 (ad hoc), call waiting, §22 engine loss, §23 contracts | PB-08 hold (SPIKE-CC-2), phone REFER (SPIKE-CC-1), PB-11 park, PB-12 pickup (SPIKE-CC-4), monitoring primitives (SPIKE-CC-3), device state (SPIKE-P1) | — |
+| PBX features (LLD-03 §3.4–§3.16) | PB-14 ring groups, PB-15–17 forwarding/follow-me/DND, PB-24 caller ID, pickup groups, park lots, conference rooms, feature codes, hot-desk | PB-18 presence/BLF on desk phones (SPIKE-P1; the console works without it), PB-19 voicemail (SPIKE-V1, A23), MOH classes (SPIKE-M1, A22) | PB-21 paging (A18: out of R1.0) |
+| Contact centre (LLD-03 §3.1.1, §3.3, §3.17) | IC-01–IC-05, IC-10, live view, queue event log | IC-08 supervision (SPIKE-CC-3 whisper direction), US-03.9 AC (A17) | IC-07 inbound disposition (A17) |
+| Outbound and compliance (LLD-04, LLD-06) | OB-01, OB-03, OB-05, OB-06, OB-07, OB-09–OB-12, compliance export | OB-02 preview and OB-08 drop (SPIKE D2, A19); profiles beyond US (A10); consent model (A9); stop-on-breach (A21) | OB-04 predictive is R2 but designed |
+| Records, webhooks, AI (LLD-05, LLD-09, LLD-10) | IN-02, IN-03, FL-05, RC-02, RC-03, RC-05 | RC-01 (A1, A6–A8), RC-06 (SPIKE R-S1), RC-07 (SPIKE R-S2), AI-01 and AI-06 (SPIKE AI-S1), AI-02 (provider choice) | — |
+| Provisioning and lifecycle (LLD-12) | AD-09 upgrade/rollback/backup | AD-07 provisioning (A4, A5, A16; spikes S-12.1–S-12.3) | — |
+| IVR (LLD-03 §3.2.1, `pbx-ivr-flow-graph`) | — | — | **Visual builder UX and `TestFlow` contract** (AC-03.6, AC-03.8) |
+| Browser phone (PB-07) | — | — | **Resilience design** (AC-03.1, 03.4, 03.9, 03.10, 03.12: handover, connection-loss state, per-session credential) |
+| Partner enablement | — | — | **Documentation and sandbox tenant** (AC-05.7) |
+
+Decisions and spikes are listed in
+[lld/OPEN-DECISIONS.md](../lld/OPEN-DECISIONS.md). Cross-cutting rules
+settled during verification: D-99 (transfer identity, main bridge never
+replaced), D-100 (provisional migration numbers), D-101 (cross-tenant
+reads and role provisioning).
 
 **Contradictions found and where they are fixed:**
 - **Fixed here:** HLD-16 (barge R1.0); this catalogue (PB-14–17, PB-21,

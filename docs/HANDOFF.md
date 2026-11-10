@@ -11,6 +11,7 @@ before-pilot item is closed; see PROGRESS). Phase B is in progress.
 
 | # | What | State | How to start |
 |---|---|---|---|
+| −1 | **Owner decisions** in `docs/lld/OPEN-DECISIONS.md` (A1–A24: dependencies, security trade-offs, legal and scope), then the **spikes** listed there | LLDs ready (D-98, verified 2026-11-10; HLD-20 §11) | Walk the list with the owner; record answers as D-numbers |
 | 0 | **`console-review-fixes`**: Call flows republish wipes the IVR menu (data loss), dialog errors hidden behind the modal, then the missing browser/real-API specs and the Medium findings (PROGRESS R5–R7) | Found 2026-11-07; not proposed yet | `/opsx:propose console-review-fixes`; run it with the D-93 subagent loop |
 | 1 | **`pbx-ivr-flow-graph`**: typed destinations, multi-level menus as a node graph, weekly schedules in an IANA time zone with a manual override, re-prompt, direct dial, and an extension delete that checks flows | **Proposed** (D-91); planning artifacts in `openspec/changes/pbx-ivr-flow-graph/` | `/opsx:apply pbx-ivr-flow-graph`, one task and one commit at a time |
 | 2 | **`pbx-queues`**: ACD queues, agents and state, hot-desk (LLD-03 §3.3) | Designed | Propose after #1; it adds the `queue` destination kind |

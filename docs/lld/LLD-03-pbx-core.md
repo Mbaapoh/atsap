@@ -3607,7 +3607,12 @@ but are **not domain tables** (D-47, [HLD 17 §6](../hld/17-data-model-erd.md)):
 
 ### 5.3 The Asterisk database role
 
+The role is created by the deploy bootstrap
+(`deploy/postgres/init/02-atsapbx.sql`), not by a migration (D-101);
+migration `0004` only grants to it.
+
 ```sql
+-- bootstrap (superuser), shown for reference:
 CREATE ROLE asterisk_engine LOGIN PASSWORD :'engine_password';
 GRANT USAGE ON SCHEMA public TO asterisk_engine;
 GRANT SELECT ON ps_endpoints, ps_auths, ps_aors TO asterisk_engine;
